@@ -58,8 +58,28 @@ export default function OrderPage() {
   const [remotelyUpdated, setRemotelyUpdated] = useState(false);
   const [remoteUpdatedBy, setRemoteUpdatedBy] = useState<string | null>(null);
   const suppressNextRefresh = useRef(false);
+  const suppressTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const remotelyUpdatedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   
+  // Suppress the remote-update indicator for a short grace window when returning
+  // from the background. Mobile browsers reconnect the socket on visibility restore,
+  // which triggers orders:refresh — but no *other* device made a change, so we
+  // must not flash the "Actualizado" banner at the current user.
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        suppressNextRefresh.current = true;
+        if (suppressTimeoutRef.current) clearTimeout(suppressTimeoutRef.current);
+        suppressTimeoutRef.current = setTimeout(() => {
+          suppressNextRefresh.current = false;
+          suppressTimeoutRef.current = null;
+        }, 500);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, []);
+
   useEffect(() => {
     const empStr = localStorage.getItem("employee");
     if (!empStr) {
@@ -119,8 +139,16 @@ export default function OrderPage() {
     if (!order?.id && !employeeId) return;
     const socket = io({ path: '/api/socket.io' });
     
-    // On reconnect, re-fetch the order in case events were missed during the gap
+    // On reconnect, suppress the indicator for a short grace window so that the
+    // automatic re-fetch (which catches up missed events) does not flash the
+    // "Actualizado" banner when no other device actually made a change.
     socket.on('reconnect', () => {
+      suppressNextRefresh.current = true;
+      if (suppressTimeoutRef.current) clearTimeout(suppressTimeoutRef.current);
+      suppressTimeoutRef.current = setTimeout(() => {
+        suppressNextRefresh.current = false;
+        suppressTimeoutRef.current = null;
+      }, 500);
       queryClient.invalidateQueries({ queryKey: getGetTableOrderQueryKey(tableId) });
     });
 
