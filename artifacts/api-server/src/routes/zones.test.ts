@@ -70,6 +70,13 @@ vi.mock("drizzle-orm", async (importOriginal) => {
   return importOriginal();
 });
 
+// The socket module is not initialised in tests; mock getIO so routes that call
+// getIO().emit(...) after a successful write don't throw and return 500.
+vi.mock("../lib/socket", () => ({
+  getIO: vi.fn(() => ({ emit: vi.fn() })),
+  initSocket: vi.fn(),
+}));
+
 // ─── App import (after mocks are registered) ──────────────────────────────────
 
 const { default: app } = await import("../app");
@@ -686,9 +693,152 @@ describe("Partial reorder — browser reload mid-drag rollback", () => {
     const byId = Object.fromEntries(
       getRes.body.map((z: { id: string; sortOrder: number }) => [z.id, z.sortOrder])
     );
-    expect(byId["zone-b"]).toBe(1); // first PATCH committed
-    expect(byId["zone-a"]).toBe(1); // second PATCH never landed — still at 1
-    expect(byId["zone-c"]).toBe(3); // unaffected
+    // The DB holds a tie (zone-a=1, zone-b=1) from the partial reorder.
+    // GET /zones detects the tie and re-normalises to sequential values
+    // preserving the order the DB returned (zone-a first, zone-b second,
+    // zone-c third in the mock array).
+    expect(byId["zone-a"]).toBe(1); // first in returned array → gets 1
+    expect(byId["zone-b"]).toBe(2); // second in returned array → gets 2
+    expect(byId["zone-c"]).toBe(3); // third in returned array → gets 3
+  });
+});
+
+// ─── GET /zones — on-the-fly sortOrder re-normalisation ──────────────────────
+//
+// When a partial reorder leaves two zones sharing the same sortOrder value,
+// GET /zones re-assigns sequential 1-based values preserving the DB's returned
+// order (sortOrder ASC, name ASC).  Nothing is written back to the DB.
+
+describe("GET /api/zones — on-the-fly sortOrder re-normalisation", () => {
+  beforeEach(() => {
+    process.env["SESSION_SECRET"] = "test-secret";
+    vi.clearAllMocks();
+    mockDb.transaction.mockImplementation(async (cb: (tx: typeof mockDb) => unknown) => cb(mockDb));
+    mockDb.execute.mockResolvedValue([]);
+  });
+
+  it("re-normalises to 1,2,3 when two zones share sortOrder=1 (partial-reorder tie)", async () => {
+    // Partial reorder left zone-a and zone-b both at sortOrder=1.
+    // DB returns them in (sortOrder ASC, name ASC) order:
+    //   zone-b (Interior, sort=1), zone-a (Terraza, sort=1), zone-c (Barra, sort=3)
+    // After re-normalisation they get sequential values 1, 2, 3.
+    mockDb.select.mockReturnValueOnce(
+      makeChain([
+        { ...ZONE_B, sortOrder: 1 }, // Interior — first alphabetically
+        { ...ZONE_A, sortOrder: 1 }, // Terraza — second
+        { ...ZONE_C, sortOrder: 3 }, // Barra — unaffected
+      ])
+    );
+    // The heal-write fires UPDATEs for the two zones whose sortOrder changed.
+    mockDb.update.mockReturnValue(makeChain([]));
+
+    const res = await request(app).get("/api/zones").set("Authorization", AUTH);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(3);
+
+    const byId = Object.fromEntries(
+      res.body.map((z: { id: string; sortOrder: number }) => [z.id, z.sortOrder])
+    );
+    // All values must be unique and sequential
+    expect(byId["zone-b"]).toBe(1);
+    expect(byId["zone-a"]).toBe(2);
+    expect(byId["zone-c"]).toBe(3);
+
+    // Let the fire-and-forget heal-write microtasks settle.
+    await new Promise(resolve => setImmediate(resolve));
+    // zone-a changed (1→2) and zone-c changed (3→3 — wait, zone-c sortOrder 3 → index 2+1=3, no change).
+    // Only zone-a (1→2) changed. zone-b stayed at 1. zone-c stayed at 3.
+    // Wait: zone-b was sortOrder=1 and gets index 0 → sortOrder=1 (no change).
+    //       zone-a was sortOrder=1 and gets index 1 → sortOrder=2 (changed).
+    //       zone-c was sortOrder=3 and gets index 2 → sortOrder=3 (no change).
+    // So only one UPDATE fires.
+    expect(mockDb.update).toHaveBeenCalledTimes(1);
+  });
+
+  it("does NOT re-normalise when sortOrders have gaps but no ties (normal after delete)", async () => {
+    // Zone B was deleted; remaining zones have sortOrders 1 and 3 — a gap but no tie.
+    mockDb.select.mockReturnValueOnce(
+      makeChain([
+        { ...ZONE_A, sortOrder: 1 },
+        { ...ZONE_C, sortOrder: 3 },
+      ])
+    );
+
+    const res = await request(app).get("/api/zones").set("Authorization", AUTH);
+
+    expect(res.status).toBe(200);
+    // Gaps are preserved — re-normalisation must not fire
+    expect(res.body[0].sortOrder).toBe(1);
+    expect(res.body[1].sortOrder).toBe(3);
+    // No ties → no heal-write
+    await new Promise(resolve => setImmediate(resolve));
+    expect(mockDb.update).not.toHaveBeenCalled();
+  });
+
+  it("re-normalises correctly when all three zones are tied at the same sortOrder, and writes back the two changed rows", async () => {
+    // Extreme case: every zone has sortOrder=1 (e.g. from a broken migration).
+    // zone-a (index 0) → 1 (unchanged), zone-b (index 1) → 2, zone-c (index 2) → 3
+    mockDb.select.mockReturnValueOnce(
+      makeChain([
+        { ...ZONE_A, sortOrder: 1 },
+        { ...ZONE_B, sortOrder: 1 },
+        { ...ZONE_C, sortOrder: 1 },
+      ])
+    );
+    mockDb.update.mockReturnValue(makeChain([]));
+
+    const res = await request(app).get("/api/zones").set("Authorization", AUTH);
+
+    expect(res.status).toBe(200);
+    const sortOrders = res.body.map((z: { sortOrder: number }) => z.sortOrder);
+    expect(sortOrders).toEqual([1, 2, 3]);
+
+    // Two rows changed (zone-b: 1→2, zone-c: 1→3); one row was already correct.
+    await new Promise(resolve => setImmediate(resolve));
+    expect(mockDb.update).toHaveBeenCalledTimes(2);
+  });
+
+  it("returns an empty array without errors when no zones exist", async () => {
+    mockDb.select.mockReturnValueOnce(makeChain([]));
+
+    const res = await request(app).get("/api/zones").set("Authorization", AUTH);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual([]);
+    // Empty array → no ties → no heal-write
+    await new Promise(resolve => setImmediate(resolve));
+    expect(mockDb.update).not.toHaveBeenCalled();
+  });
+
+  it("heal-write returns no-match (0 rows) when a concurrent PATCH already updated sort_order — response is still correct", async () => {
+    // Scenario: GET reads zone-a=1 and zone-b=1 (tie).  A concurrent PATCH
+    // changes zone-a to sortOrder=2 between this GET's read and the background
+    // heal UPDATE.  The conditional WHERE (id=zone-a AND sort_order=1) finds no
+    // row (zone-a is now at sortOrder=2 in the DB).  The heal-write is silently
+    // skipped — it must not error and must not clobber the newer value.
+    mockDb.select.mockReturnValueOnce(
+      makeChain([
+        { ...ZONE_A, sortOrder: 1 }, // zone-a: tied at 1
+        { ...ZONE_B, sortOrder: 1 }, // zone-b: tied at 1
+      ])
+    );
+    // Simulates the conditional WHERE finding no matching row (concurrent PATCH
+    // already changed zone-a's sort_order before the heal-write ran).
+    mockDb.update.mockReturnValue(makeChain([]));
+
+    const res = await request(app).get("/api/zones").set("Authorization", AUTH);
+
+    // Response is already sent with normalised values — concurrent DB state irrelevant.
+    expect(res.status).toBe(200);
+    const sortOrders = res.body.map((z: { sortOrder: number }) => z.sortOrder);
+    expect(sortOrders).toEqual([1, 2]);
+
+    // Let the fire-and-forget settle — should complete without throwing even if
+    // the DB returned 0 updated rows (stale-heal no-op).
+    await new Promise(resolve => setImmediate(resolve));
+    // The heal-write was attempted for zone-b (sort 1→2; zone-a was already 1→1, no change)
+    expect(mockDb.update).toHaveBeenCalledTimes(1);
   });
 });
 

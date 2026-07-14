@@ -4,6 +4,7 @@ import { roomZonesTable, restaurantTablesTable, ordersTable } from "@workspace/d
 import { sql, eq, asc, max, and, inArray } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { getIO } from "../lib/socket";
+import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
 
@@ -29,14 +30,50 @@ router.get("/zones", requireAuth, async (req, res): Promise<void> => {
     .from(roomZonesTable)
     .orderBy(asc(roomZonesTable.sortOrder), asc(roomZonesTable.name));
 
-  if (!showAll) {
-    const zones = await query.where(eq(roomZonesTable.active, true));
+  const zones = showAll
+    ? await query
+    : await query.where(eq(roomZonesTable.active, true));
+
+  // Re-normalise sortOrder values when a partial reorder left ties.
+  // A partial reorder (first PATCH succeeds, second never arrives) can produce
+  // two zones sharing the same sortOrder.  We detect this, fix the response
+  // payload immediately, and fire a background UPDATE to persist the corrected
+  // values so ties don't accumulate in the DB over time.
+  const hasTies =
+    zones.length > 0 &&
+    new Set(zones.map(z => z.sortOrder)).size !== zones.length;
+
+  if (!hasTies) {
     res.json(zones);
     return;
   }
 
-  const zones = await query;
-  res.json(zones);
+  const normalised = zones.map((z, i) => ({ ...z, sortOrder: i + 1 }));
+
+  // Respond immediately with the corrected order.
+  res.json(normalised);
+
+  // Fire-and-forget: persist the new sortOrder values to the DB so the tie
+  // is healed at rest and future GETs don't have to renormalise again.
+  //
+  // Each UPDATE is guarded by WHERE sort_order = <original value> so that if a
+  // concurrent PATCH reorder landed between this GET's read and our background
+  // write, the stale heal cannot clobber the newer committed value.  Any row
+  // updated concurrently will simply not match the WHERE and will be skipped —
+  // the next GET will re-detect the remaining tie and try again.
+  const changed = normalised
+    .map((z, i) => ({ zone: z, originalSortOrder: zones[i]!.sortOrder }))
+    .filter(({ zone, originalSortOrder }) => zone.sortOrder !== originalSortOrder);
+
+  Promise.all(
+    changed.map(({ zone, originalSortOrder }) =>
+      db.update(roomZonesTable)
+        .set({ sortOrder: zone.sortOrder })
+        .where(and(eq(roomZonesTable.id, zone.id), eq(roomZonesTable.sortOrder, originalSortOrder)))
+    )
+  ).catch(err => {
+    logger.error({ err }, "sortOrder heal-write failed — ties may persist in DB");
+  });
 });
 
 // ── POST /zones — create zone (admin) ─────────────────────────────────────────
