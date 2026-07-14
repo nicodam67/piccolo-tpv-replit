@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useLocation, Link } from 'wouter';
 import { useQueryClient } from '@tanstack/react-query';
 import { io } from 'socket.io-client';
@@ -33,6 +33,9 @@ export default function OrderPage() {
   const [editingItem, setEditingItem] = useState<any | null>(null);
   const [showNotifications, setShowNotifications] = useState(false);
   const [activeAlert, setActiveAlert] = useState<any | null>(null);
+  const [remotelyUpdated, setRemotelyUpdated] = useState(false);
+  const suppressNextRefresh = useRef(false);
+  const remotelyUpdatedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   
   useEffect(() => {
     const empStr = localStorage.getItem("employee");
@@ -112,6 +115,13 @@ export default function OrderPage() {
       socket.on('orders:refresh', (data: any) => {
         if (data?.orderId === order.id) {
           queryClient.invalidateQueries({ queryKey: getGetTableOrderQueryKey(tableId) });
+          if (suppressNextRefresh.current) {
+            suppressNextRefresh.current = false;
+          } else {
+            if (remotelyUpdatedTimer.current) clearTimeout(remotelyUpdatedTimer.current);
+            setRemotelyUpdated(true);
+            remotelyUpdatedTimer.current = setTimeout(() => setRemotelyUpdated(false), 2000);
+          }
         }
       });
     }
@@ -146,31 +156,40 @@ export default function OrderPage() {
 
   const handleAddProduct = (productId: string) => {
     if (!actualOrderId) return;
+    suppressNextRefresh.current = true;
     addOrderItem.mutate(
       { orderId: actualOrderId, data: { productId, quantity: 1 } },
       {
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: getGetTableOrderQueryKey(tableId) });
         },
-        onError: () => toast.error("No se pudo añadir el producto")
+        onError: () => {
+          suppressNextRefresh.current = false;
+          toast.error("No se pudo añadir el producto");
+        }
       }
     );
   };
 
   const handleDeleteItem = (itemId: string) => {
+    suppressNextRefresh.current = true;
     deleteOrderItem.mutate(
       { itemId },
       {
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: getGetTableOrderQueryKey(tableId) });
         },
-        onError: () => toast.error("No se pudo eliminar el producto")
+        onError: () => {
+          suppressNextRefresh.current = false;
+          toast.error("No se pudo eliminar el producto");
+        }
       }
     );
   };
 
   const handleSendOrder = () => {
     if (!actualOrderId) return;
+    suppressNextRefresh.current = true;
     sendOrder.mutate(
       { orderId: actualOrderId },
       {
@@ -180,7 +199,10 @@ export default function OrderPage() {
           queryClient.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() });
           toast.success("Comanda enviada a preparación");
         },
-        onError: () => toast.error("Error al enviar la comanda")
+        onError: () => {
+          suppressNextRefresh.current = false;
+          toast.error("Error al enviar la comanda");
+        }
       }
     );
   };
@@ -325,7 +347,17 @@ export default function OrderPage() {
       {/* RIGHT PANEL - TICKET (COMANDA) */}
       <div className="w-full md:w-[40%] md:min-w-[350px] lg:max-w-[450px] border-l border-border bg-card flex flex-col h-[50vh] md:h-full z-20 shadow-[-8px_0_20px_rgba(0,0,0,0.15)] relative">
         <div className="p-5 border-b border-border bg-secondary/30 flex items-center justify-between shrink-0">
-          <h2 className="text-2xl font-black tracking-tight">Comanda</h2>
+          <div className="flex items-center gap-3">
+            <h2 className="text-2xl font-black tracking-tight">Comanda</h2>
+            <span className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-black uppercase tracking-wider transition-all duration-300 ${
+              remotelyUpdated
+                ? 'bg-blue-500/15 text-blue-500 border border-blue-500/30 opacity-100 scale-100'
+                : 'opacity-0 scale-95 pointer-events-none'
+            }`}>
+              <CheckCircle2 size={13} />
+              Actualizado
+            </span>
+          </div>
           <span className="bg-primary text-primary-foreground px-3 py-1 rounded-lg text-sm font-black shadow-sm">
             {allItems.length} items
           </span>
