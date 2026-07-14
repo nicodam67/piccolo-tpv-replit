@@ -15,7 +15,7 @@ import {
   type Table,
   type CanvasElement,
 } from "@workspace/api-client-react";
-import { LogOut, Loader2, Monitor, Settings, ZoomIn, ZoomOut, Maximize2 } from "lucide-react";
+import { LogOut, Loader2, Monitor, Settings, ZoomIn, ZoomOut, Maximize2, Package } from "lucide-react";
 import { toast } from "sonner";
 
 // Canvas constants — same as zone-editor so layouts match
@@ -506,6 +506,9 @@ export default function Tables() {
     if (table.status === "free") {
       setPendingGuestCount(2);
       setGuestCountTable(table);
+    } else if (table.status === "out_of_service") {
+      // Out-of-service tables have no active order — do nothing
+      return;
     } else {
       setLocation(`/pedido/${table.id}/current`);
     }
@@ -558,6 +561,12 @@ export default function Tables() {
         )}
 
         <div className="flex items-center gap-3">
+          <button onClick={() => setLocation("/recogida")}
+            className="h-9 px-3 flex items-center gap-1.5 rounded-lg border border-border bg-secondary/60 hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors active:scale-95 text-sm font-bold uppercase tracking-wider"
+            title="Recogida de pedidos">
+            <Package size={14} />
+            <span className="hidden sm:inline">Recogida</span>
+          </button>
           {isAdmin && (
             <>
               <button onClick={() => setLocation("/configuracion")}

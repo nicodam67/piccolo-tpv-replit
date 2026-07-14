@@ -228,14 +228,14 @@ export default function OrderPage() {
   }, [setLocation]);
 
   const { data: tableData, isLoading: loadingTable } = useGetTableOrder(tableId, {
-    query: { queryKey: getGetTableOrderQueryKey(tableId), refetchInterval: 30000 }
+    query: { queryKey: getGetTableOrderQueryKey(tableId), refetchInterval: 15000 }
   });
   const table = tableData?.table;
   const order = tableData?.order;
   const actualOrderId = order?.id || (params.orderId !== 'current' ? params.orderId : undefined);
 
   const { data: notificationsData } = useGetUnreadNotifications({
-    query: { enabled: !!employeeId, refetchInterval: 30000, queryKey: getGetUnreadNotificationsQueryKey() }
+    query: { enabled: !!employeeId, refetchInterval: 15000, queryKey: getGetUnreadNotificationsQueryKey() }
   });
   const markRead = useMarkNotificationRead();
   const handleMarkRead = (id: string) => {
@@ -326,9 +326,12 @@ export default function OrderPage() {
   // Flow: tap product → check formats → check modifiers → addOrderItem
   const handleAddProduct = (product: Product) => {
     if (!actualOrderId) return;
-    const hasFormats = (product as any).formats?.length > 0 || product.hasModifiers;
-    // If product has formats we need to load them — show format picker
-    if ((product as any).hasFormats || (product as any).formats?.length > 0) {
+    if (order?.status === 'bill_requested') {
+      toast.error('Cuenta solicitada — cancela la solicitud antes de añadir más productos');
+      return;
+    }
+    // If product has formats, show format picker
+    if (product.formats?.length) {
       setFormatPickerProduct(product);
       return;
     }
@@ -429,6 +432,19 @@ export default function OrderPage() {
     });
   };
 
+  const handleCancelBill = () => {
+    if (!actualOrderId) return;
+    suppressNextRefresh.current = true;
+    updateOrder.mutate({ orderId: actualOrderId, data: { status: 'open' } }, {
+      onSuccess: () => {
+        invalidateOrder();
+        queryClient.invalidateQueries({ queryKey: getGetAllTablesQueryKey() });
+        toast.success('Solicitud de cuenta cancelada');
+      },
+      onError: () => { suppressNextRefresh.current = false; toast.error('Error al cancelar la cuenta'); }
+    });
+  };
+
   const allItems = order?.items || [];
   const draftItems = allItems.filter((i: any) => i.status === 'draft');
   const hasDrafts = draftItems.length > 0;
@@ -500,9 +516,14 @@ export default function OrderPage() {
 
           <div className="flex items-center gap-2">
             {showBillBadge && (
-              <span className="px-2.5 py-1 rounded-md text-xs font-black uppercase tracking-wider bg-blue-500/10 text-blue-400 border border-blue-500/20 flex items-center gap-1">
-                <Receipt size={12} /> Cuenta
-              </span>
+              <button
+                onClick={handleCancelBill}
+                disabled={updateOrder.isPending}
+                className="px-2.5 py-1 rounded-md text-xs font-black uppercase tracking-wider bg-blue-500/10 text-blue-400 border border-blue-500/20 flex items-center gap-1 hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/20 transition-colors"
+                title="Cancelar solicitud de cuenta"
+              >
+                <Receipt size={12} /> Cuenta ×
+              </button>
             )}
             <div className="relative inline-block">
               <button onClick={() => setShowNotifications(!showNotifications)} className="relative p-2 rounded-lg hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors">
@@ -562,8 +583,27 @@ export default function OrderPage() {
           )}
         </div>
 
+        {/* Bill-requested overlay — blocks product grid */}
+        {order?.status === 'bill_requested' && (
+          <div className="flex-1 flex flex-col items-center justify-center bg-background/95 backdrop-blur-sm z-10 relative gap-4 py-12">
+            <Receipt size={48} className="text-blue-400 opacity-70" strokeWidth={1.5} />
+            <div className="text-center">
+              <p className="font-black text-xl text-foreground">Cuenta solicitada</p>
+              <p className="text-muted-foreground text-sm mt-1 font-semibold">El cliente está esperando el cobro</p>
+            </div>
+            <button
+              onClick={handleCancelBill}
+              disabled={updateOrder.isPending}
+              className="mt-2 px-5 py-2.5 rounded-xl border-2 border-border text-muted-foreground hover:border-destructive/40 hover:text-destructive hover:bg-destructive/5 transition-colors font-bold text-sm flex items-center gap-2 disabled:opacity-50"
+            >
+              {updateOrder.isPending ? <Loader2 size={14} className="animate-spin" /> : null}
+              Cancelar solicitud
+            </button>
+          </div>
+        )}
+
         {/* Products Grid */}
-        <div className="flex-1 overflow-y-auto p-4 md:p-6 bg-background relative z-0">
+        {order?.status !== 'bill_requested' && <div className="flex-1 overflow-y-auto p-4 md:p-6 bg-background relative z-0">
           {loadingProducts ? (
             <div className="w-full h-full flex items-center justify-center">
               <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
@@ -621,7 +661,7 @@ export default function OrderPage() {
               })}
             </div>
           )}
-        </div>
+        </div>}
       </div>
 
       {/* RIGHT PANEL — TICKET / COMANDA */}

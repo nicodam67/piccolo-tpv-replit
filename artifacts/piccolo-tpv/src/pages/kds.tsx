@@ -52,7 +52,7 @@ export default function KdsPage() {
 
   const { data: tasks, isLoading } = useGetKdsTasks(zone, {
     query: {
-      refetchInterval: 30000,
+      refetchInterval: 10000,
       queryKey: getGetKdsTasksQueryKey(zone),
     }
   });

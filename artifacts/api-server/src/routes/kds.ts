@@ -51,7 +51,7 @@ router.get("/kds/:zone", requireAuth, async (req, res): Promise<void> => {
     .from(kitchenTasksTable)
     .innerJoin(ordersTable, eq(kitchenTasksTable.orderId, ordersTable.id))
     .innerJoin(restaurantTablesTable, eq(ordersTable.tableId, restaurantTablesTable.id))
-    .innerJoin(employeesTable, eq(ordersTable.employeeId, employeesTable.id));
+    .leftJoin(employeesTable, eq(ordersTable.employeeId, employeesTable.id));
 
   const tasks =
     zone === "pase"

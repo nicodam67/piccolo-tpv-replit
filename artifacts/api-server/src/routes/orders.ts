@@ -180,6 +180,16 @@ router.post("/orders/:orderId/items", requireAuth, async (req, res): Promise<voi
 
   if (!productId) { res.status(400).json({ error: "productId es requerido" }); return; }
 
+  // Guard: only add items to open or sent orders
+  const [currentOrder] = await db
+    .select({ status: ordersTable.status })
+    .from(ordersTable)
+    .where(eq(ordersTable.id, orderId));
+  if (!currentOrder) { res.status(404).json({ error: "Pedido no encontrado" }); return; }
+  if (currentOrder.status === "bill_requested" || currentOrder.status === "paid" || currentOrder.status === "completed") {
+    res.status(409).json({ error: "No se pueden añadir productos: el pedido no está abierto" }); return;
+  }
+
   const [product] = await db
     .select()
     .from(productsTable)
@@ -410,6 +420,16 @@ router.delete("/order-items/:itemId", requireAuth, async (req, res): Promise<voi
 
 router.post("/orders/:orderId/send", requireAuth, async (req, res): Promise<void> => {
   const orderId = req.params.orderId as string;
+
+  // Guard: cannot send to KDS when bill is already requested
+  const [currentOrder] = await db
+    .select({ status: ordersTable.status })
+    .from(ordersTable)
+    .where(eq(ordersTable.id, orderId));
+  if (!currentOrder) { res.status(404).json({ error: "Pedido no encontrado" }); return; }
+  if (currentOrder.status === "bill_requested") {
+    res.status(409).json({ error: "No se puede enviar a cocina: la cuenta ya ha sido solicitada" }); return;
+  }
 
   const draftItems = await db
     .select()
