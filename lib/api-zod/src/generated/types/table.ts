@@ -17,5 +17,10 @@ export interface Table {
   width: number;
   height: number;
   shape: string;
+  rotation: number;
   mergeGroup?: string | null;
+  currentOrderId?: string | null;
+  openedAt?: Date | null;
+  employeeName?: string | null;
+  currentTotal?: number | null;
 }

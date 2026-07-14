@@ -14,4 +14,5 @@ export interface CreateTableInput {
   width?: number;
   height?: number;
   shape?: string;
+  rotation?: number;
 }

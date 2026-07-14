@@ -225,6 +225,45 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /zones/{zoneId}/duplicate:
+    post:
+      operationId: duplicateZone
+      tags: [zones]
+      summary: Duplicate a zone and all its tables (admin only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: zoneId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "201":
+          description: Duplicated zone
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Zone"
+        "404":
+          description: Zone not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /zones/{zoneId}/tables:
     get:
       operationId: getZoneTables
@@ -426,6 +465,45 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "409":
           description: Table not free
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /tables/{tableId}/duplicate:
+    post:
+      operationId: duplicateTable
+      tags: [tables]
+      summary: Duplicate a table (admin only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tableId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "201":
+          description: Duplicated table
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Table"
+        "404":
+          description: Table not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
           content:
             application/json:
               schema:
@@ -1246,6 +1324,11 @@ components:
           type: string
         sortOrder:
           type: integer
+        color:
+          type: string
+          nullable: true
+        active:
+          type: boolean
       required: [id, name, type, sortOrder]
 
     Table:
@@ -1271,10 +1354,26 @@ components:
           type: integer
         shape:
           type: string
+        rotation:
+          type: integer
+          default: 0
         mergeGroup:
           type: string
           nullable: true
-      required: [id, zoneId, name, capacity, status, x, y, width, height, shape]
+        currentOrderId:
+          type: string
+          nullable: true
+        openedAt:
+          type: string
+          format: date-time
+          nullable: true
+        employeeName:
+          type: string
+          nullable: true
+        currentTotal:
+          type: number
+          nullable: true
+      required: [id, zoneId, name, capacity, status, x, y, width, height, shape, rotation]
 
     CreateZoneInput:
       type: object
@@ -1292,6 +1391,11 @@ components:
           type: string
         sortOrder:
           type: integer
+        color:
+          type: string
+          nullable: true
+        active:
+          type: boolean
 
     CreateTableInput:
       type: object
@@ -1310,6 +1414,8 @@ components:
           type: integer
         shape:
           type: string
+        rotation:
+          type: integer
       required: [name]
 
     UpdateTableInput:
@@ -1319,6 +1425,8 @@ components:
           type: string
         capacity:
           type: integer
+        status:
+          type: string
         x:
           type: integer
         y:
@@ -1329,6 +1437,8 @@ components:
           type: integer
         shape:
           type: string
+        rotation:
+          type: integer
         mergeGroup:
           type: string
           nullable: true

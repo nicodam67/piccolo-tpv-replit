@@ -31,6 +31,7 @@ export interface Zone {
   type: string;
   sortOrder: number;
   color?: string | null;
+  active?: boolean;
 }
 
 export interface Table {
@@ -44,7 +45,12 @@ export interface Table {
   width: number;
   height: number;
   shape: string;
+  rotation: number;
   mergeGroup?: string | null;
+  currentOrderId?: string | null;
+  openedAt?: string | null;
+  employeeName?: string | null;
+  currentTotal?: number | null;
 }
 
 export interface CreateZoneInput {
@@ -56,6 +62,7 @@ export interface UpdateZoneInput {
   name?: string;
   sortOrder?: number;
   color?: string | null;
+  active?: boolean;
 }
 
 export interface CreateTableInput {
@@ -66,16 +73,19 @@ export interface CreateTableInput {
   width?: number;
   height?: number;
   shape?: string;
+  rotation?: number;
 }
 
 export interface UpdateTableInput {
   name?: string;
   capacity?: number;
+  status?: string;
   x?: number;
   y?: number;
   width?: number;
   height?: number;
   shape?: string;
+  rotation?: number;
   mergeGroup?: string | null;
 }
 

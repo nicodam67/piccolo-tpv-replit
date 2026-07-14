@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useLocation } from 'wouter';
 import { useQueryClient } from '@tanstack/react-query';
-import { ChevronLeft, Plus, Trash2, Link, Unlink, Loader2, Check, ZoomIn, ZoomOut, Maximize2 } from 'lucide-react';
+import { ChevronLeft, Plus, Trash2, Link, Unlink, Loader2, Check, ZoomIn, ZoomOut, Maximize2, Lock, LockOpen, Copy } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   useGetZoneTables,
@@ -9,6 +9,7 @@ import {
   useCreateTable,
   useUpdateTable,
   useDeleteTable,
+  useDuplicateTable,
   getGetZoneTablesQueryKey,
   getGetZonesQueryKey,
   type Table,
@@ -58,24 +59,27 @@ function tableStyles(t: LocalTable, _selected: boolean) {
   return base;
 }
 
-function TableShape({ t, selected, onPointerDown }: {
+function TableShape({ t, selected, locked, onPointerDown }: {
   t: LocalTable;
   selected: boolean;
+  locked?: boolean;
   onPointerDown: (e: React.PointerEvent) => void;
 }) {
-  const isMerged = !!t.mergeGroup;
-  const borderColor = selected
+  const isMerged       = !!t.mergeGroup;
+  const isOutOfService = t.status === 'out_of_service';
+  const rotation       = t.rotation ?? 0;
+
+  const borderColor = isOutOfService
+    ? '#44444e'
+    : selected
     ? '#f59e0b'
     : isMerged
     ? '#c084fc'
-    : t.status === 'occupied'
-    ? '#c05c4a'
-    : '#3f573c';
+    : t.status === 'occupied' ? '#c05c4a' : '#3f573c';
 
-  const bgColor = t.status === 'occupied' ? '#45201a' : '#253324';
-  const textColor = t.status === 'occupied' ? '#f5dcd8' : '#dcecdb';
-
-  const radius = t.shape === 'round' ? '50%' : '10px';
+  const bgColor   = isOutOfService ? '#1a1a1e' : t.status === 'occupied' ? '#45201a' : '#253324';
+  const textColor = isOutOfService ? '#666670' : t.status === 'occupied' ? '#f5dcd8' : '#dcecdb';
+  const radius    = t.shape === 'round' ? '50%' : '10px';
 
   return (
     <div
@@ -84,6 +88,9 @@ function TableShape({ t, selected, onPointerDown }: {
         borderRadius: radius,
         backgroundColor: bgColor,
         border: `2.5px solid ${borderColor}`,
+        transform: rotation ? `rotate(${rotation}deg)` : undefined,
+        transformOrigin: 'center center',
+        opacity: isOutOfService ? 0.6 : 1,
         boxShadow: selected
           ? `0 0 0 3px rgba(245,158,11,0.35), 0 4px 16px rgba(0,0,0,0.5)`
           : isMerged
@@ -94,6 +101,7 @@ function TableShape({ t, selected, onPointerDown }: {
         alignItems: 'center',
         justifyContent: 'center',
         gap: 2,
+        cursor: locked ? 'default' : 'grab',
       }}
       onPointerDown={onPointerDown}
     >
@@ -105,6 +113,12 @@ function TableShape({ t, selected, onPointerDown }: {
       </span>
       {isMerged && (
         <span style={{ position: 'absolute', top: 3, right: 4, fontSize: 8, color: '#c084fc', fontWeight: 700 }}>⬡</span>
+      )}
+      {isOutOfService && (
+        <span style={{ position: 'absolute', top: 3, left: 4, fontSize: 9, color: '#666670', fontWeight: 700 }}>⊘</span>
+      )}
+      {rotation !== 0 && (
+        <span style={{ position: 'absolute', bottom: 3, right: 4, fontSize: 8, color: textColor, opacity: 0.5 }}>{rotation}°</span>
       )}
     </div>
   );
@@ -164,6 +178,7 @@ export default function ZoneEditor() {
   const [localTables, setLocalTables] = useState<LocalTable[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [dragState, setDragState] = useState<DragState | null>(null);
+  const [locked, setLocked] = useState(false);
 
   // Keep a ref for zoom so drag handlers always see the latest value
   const zoomRef = useRef(zoom);
@@ -216,9 +231,10 @@ export default function ZoneEditor() {
     if (serverTables) setLocalTables(serverTables.map(t => ({ ...t })));
   }, [serverTables]);
 
-  const createTable = useCreateTable();
-  const updateTable = useUpdateTable();
-  const deleteTable = useDeleteTable();
+  const createTable    = useCreateTable();
+  const updateTable    = useUpdateTable();
+  const deleteTable    = useDeleteTable();
+  const duplicateTable = useDuplicateTable();
 
   const invalidate = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: getGetZoneTablesQueryKey(zoneId!) });
@@ -226,6 +242,7 @@ export default function ZoneEditor() {
 
   // --- Drag & Drop ---
   const handleTablePointerDown = useCallback((e: React.PointerEvent, tableId: string) => {
+    if (locked) return; // locked mode: no drag
     e.stopPropagation();
     e.preventDefault();
 
@@ -333,10 +350,26 @@ export default function ZoneEditor() {
           invalidate();
           setSelectedIds(prev => { const n = new Set(prev); n.delete(id); return n; });
         },
-        onError: () => toast.error('Error al eliminar mesa'),
+        onError: (err: any) => {
+          const msg = err?.response?.data?.error ?? 'Error al eliminar mesa';
+          toast.error(msg);
+        },
       });
     }
     toast.success('Mesa(s) eliminada(s)');
+  };
+
+  const handleDuplicate = () => {
+    if (selectedIds.size !== 1) return;
+    const id = [...selectedIds][0];
+    duplicateTable.mutate({ tableId: id }, {
+      onSuccess: (newTable) => {
+        invalidate();
+        setSelectedIds(new Set([newTable.id]));
+        toast.success(`Mesa duplicada → ${newTable.name}`);
+      },
+      onError: () => toast.error('Error al duplicar mesa'),
+    });
   };
 
   const handleUpdateProp = (field: string, value: unknown) => {
@@ -418,6 +451,16 @@ export default function ZoneEditor() {
           <button onClick={handleDelete} disabled={!selectedIds.size}
             className="flex items-center gap-1.5 h-8 px-3 bg-destructive/10 text-destructive border border-destructive/30 rounded-lg text-xs font-bold uppercase tracking-wider hover:bg-destructive hover:text-destructive-foreground active:scale-95 transition-all disabled:opacity-30 disabled:pointer-events-none">
             <Trash2 size={13} /> Eliminar
+          </button>
+          <div className="w-px h-6 bg-border mx-0.5" />
+          <button onClick={handleDuplicate} disabled={selectedIds.size !== 1 || duplicateTable.isPending}
+            className="flex items-center gap-1.5 h-8 px-3 bg-secondary text-muted-foreground border border-border rounded-lg text-xs font-bold uppercase tracking-wider hover:bg-primary hover:text-primary-foreground active:scale-95 transition-all disabled:opacity-30 disabled:pointer-events-none">
+            <Copy size={13} /> Duplicar
+          </button>
+          <div className="w-px h-6 bg-border mx-0.5" />
+          <button onClick={() => setLocked(l => !l)}
+            className={`flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-bold uppercase tracking-wider active:scale-95 transition-all border ${locked ? 'bg-amber-500/20 text-amber-400 border-amber-500/40 hover:bg-amber-500/30' : 'bg-secondary text-muted-foreground border-border hover:bg-secondary/80'}`}>
+            {locked ? <><Lock size={13} /> Bloqueado</> : <><LockOpen size={13} /> Bloquear</>}
           </button>
         </div>
 
@@ -509,7 +552,7 @@ export default function ZoneEditor() {
 
                 {/* Tables */}
                 {localTables.map(t => (
-                  <TableShape key={t.id} t={t} selected={selectedIds.has(t.id)}
+                  <TableShape key={t.id} t={t} selected={selectedIds.has(t.id)} locked={locked}
                     onPointerDown={(e) => handleTablePointerDown(e, t.id)} />
                 ))}
 
@@ -581,6 +624,45 @@ export default function ZoneEditor() {
                     );
                   })}
                 </div>
+              </PropField>
+
+              {/* Rotation */}
+              <PropField label="Rotación">
+                <div className="flex items-center gap-2">
+                  <button onClick={() => handleUpdateProp('rotation', ((firstSelected.rotation ?? 0) - 15 + 360) % 360)}
+                    className="w-8 h-8 rounded-lg bg-secondary flex items-center justify-center font-bold text-xs active:scale-90 hover:bg-primary hover:text-primary-foreground transition-colors shrink-0">−15°</button>
+                  <input
+                    type="number" min={0} max={359} step={1}
+                    value={firstSelected.rotation ?? 0}
+                    onChange={e => {
+                      const v = Math.round(parseInt(e.target.value) || 0) % 360;
+                      handleUpdateProp('rotation', v < 0 ? v + 360 : v);
+                    }}
+                    className="flex-1 text-center bg-background border border-border rounded-lg py-2 font-bold text-sm focus:outline-none focus:border-primary min-w-0"
+                  />
+                  <button onClick={() => handleUpdateProp('rotation', ((firstSelected.rotation ?? 0) + 15) % 360)}
+                    className="w-8 h-8 rounded-lg bg-secondary flex items-center justify-center font-bold text-xs active:scale-90 hover:bg-primary hover:text-primary-foreground transition-colors shrink-0">+15°</button>
+                </div>
+                {(firstSelected.rotation ?? 0) !== 0 && (
+                  <button onClick={() => handleUpdateProp('rotation', 0)}
+                    className="w-full text-xs text-center text-muted-foreground hover:text-foreground py-1 transition-colors">
+                    Restablecer a 0°
+                  </button>
+                )}
+              </PropField>
+
+              {/* Out-of-service toggle */}
+              <PropField label="Estado">
+                <button
+                  onClick={() => handleUpdateProp('status', firstSelected.status === 'out_of_service' ? 'free' : 'out_of_service')}
+                  className={`w-full h-10 rounded-xl border-2 flex items-center justify-center text-sm font-bold transition-all active:scale-95 gap-2 ${
+                    firstSelected.status === 'out_of_service'
+                      ? 'border-green-500/40 bg-green-500/10 text-green-400 hover:bg-green-500/20'
+                      : 'border-orange-500/40 bg-orange-500/10 text-orange-400 hover:bg-orange-500/20'
+                  }`}
+                >
+                  {firstSelected.status === 'out_of_service' ? '✓ Fuera de servicio · Reactivar' : '⊘ Poner fuera de servicio'}
+                </button>
               </PropField>
 
               {/* Merge status */}

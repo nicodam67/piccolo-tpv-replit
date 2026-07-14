@@ -1,0 +1,121 @@
+INSTRUCCIÓN PARA REPLIT — EDITOR DE SALAS Y MESAS
+Implementa ahora un módulo completo y funcional llamado “Editar salas”, accesible únicamente para usuarios con rol admin.
+1. Acceso del administrador
+Después de iniciar sesión como Admin, debe aparecer un botón visible llamado:
+Editar salas
+También debe poder accederse desde:
+Administración → Salas y mesas
+Los camareros, como Carmen, no deben ver ni poder abrir este módulo.
+2. Gestión de salas
+El administrador podrá:
+Crear una sala.
+Cambiar el nombre de una sala.
+Eliminar una sala, solicitando confirmación.
+Duplicar una sala.
+Cambiar el orden de las salas.
+Activar o desactivar una sala.
+Ejemplos:
+Salón 1
+Salón 2
+Terraza
+Barra
+Comedor privado
+No permitir eliminar una sala que tenga mesas con comandas abiertas.
+3. Editor visual del plano
+Al seleccionar una sala, mostrar un lienzo visual que represente el comedor.
+El administrador podrá añadir mesas y moverlas libremente mediante:
+Arrastrar con el dedo en tablet o móvil.
+Arrastrar con el ratón en ordenador.
+Cada mesa tendrá propiedades editables:
+Nombre o número.
+Capacidad de comensales.
+Forma:
+Redonda.
+Cuadrada.
+Rectangular.
+Tamaño.
+Posición horizontal.
+Posición vertical.
+Rotación.
+Activa o fuera de servicio.
+Añadir botones:
+Nueva mesa.
+Duplicar mesa.
+Eliminar mesa.
+Guardar plano.
+Cancelar cambios.
+Bloquear plano.
+Vista previa.
+4. Funcionamiento de las mesas
+Cuando el plano no esté en modo edición, las mesas deben funcionar como en el TPV:
+Verde: libre.
+Rojo: ocupada.
+Amarillo: esperando.
+Azul: cuenta solicitada.
+Gris: fuera de servicio.
+Morado: reservada.
+Cada mesa debe mostrar:
+Número o nombre.
+Capacidad.
+Número actual de comensales.
+Camarero responsable.
+Tiempo desde que se abrió.
+Importe actual, cuando tenga una comanda.
+Al tocar una mesa, debe abrirse su comanda.
+5. Unión y separación de mesas
+Permitir seleccionar varias mesas y pulsar:
+Unir mesas
+Separar mesas
+Al unir mesas:
+Mantener las comandas asociadas.
+Mostrar claramente qué mesas están unidas.
+Calcular la capacidad total.
+Permitir elegir una mesa principal.
+6. Persistencia real
+Las salas, mesas, posiciones, tamaños y configuraciones deben guardarse en la base de datos.
+No utilizar datos fijos o simulados.
+Al recargar la aplicación o entrar desde otra tablet, debe mostrarse exactamente el mismo plano guardado.
+Crear o adaptar las tablas necesarias para guardar:
+Salas.
+Mesas.
+Posiciones.
+Formas.
+Capacidades.
+Estados.
+Mesas unidas.
+Orden de visualización.
+7. Adaptación a dispositivos
+El editor y el plano deben funcionar correctamente en:
+Teléfono móvil.
+Tablet horizontal.
+Tablet vertical.
+Ordenador.
+En tablet, las mesas deben tener un tamaño suficientemente grande para trabajar durante el servicio.
+El diseño debe conservar el estilo actual de Piccolo TPV: fondo oscuro, elementos claros y detalles en naranja.
+8. Seguridad
+Todos los endpoints y acciones de creación, edición o eliminación deben verificar el rol admin en el backend.
+No basta con ocultar los botones en la interfaz.
+Un camarero que intente abrir manualmente la ruta del editor debe recibir acceso denegado.
+9. No romper lo existente
+Conservar y conectar correctamente:
+Inicio de sesión con PIN.
+Perfiles Admin y Carmen.
+Pantalla actual de mesas.
+KDS.
+Caja.
+Comandas existentes.
+Permisos actuales.
+Sustituir las mesas fijas actuales por las mesas almacenadas en la base de datos y creadas desde el editor visual.
+10. Validación final obligatoria
+Antes de finalizar:
+Crear una sala de prueba.
+Añadir varias mesas.
+Moverlas y cambiar su forma.
+Guardar el plano.
+Recargar la aplicación.
+Confirmar que el plano sigue guardado.
+Entrar como Carmen.
+Confirmar que Carmen ve el plano, pero no puede editarlo.
+Confirmar que al tocar una mesa se abre su comanda.
+Informar de los archivos creados o modificados y de cómo probar la función.
+No dar la tarea por terminada hasta que el editor sea funcional y los datos persistan después de recargar.

@@ -1,20 +1,22 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { roomZonesTable } from "@workspace/db";
-import { eq, asc, max } from "drizzle-orm";
+import { roomZonesTable, restaurantTablesTable, ordersTable } from "@workspace/db";
+import { eq, asc, max, and, inArray } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
 
 const router: IRouter = Router();
 
-// GET /zones — all active zones (all roles)
+// ── GET /zones ─────────────────────────────────────────────────────────────────
+
 router.get("/zones", requireAuth, async (_req, res): Promise<void> => {
   const zones = await db
     .select({
-      id: roomZonesTable.id,
-      name: roomZonesTable.name,
-      type: roomZonesTable.type,
+      id:        roomZonesTable.id,
+      name:      roomZonesTable.name,
+      type:      roomZonesTable.type,
       sortOrder: roomZonesTable.sortOrder,
-      color: roomZonesTable.color,
+      color:     roomZonesTable.color,
+      active:    roomZonesTable.active,
     })
     .from(roomZonesTable)
     .where(eq(roomZonesTable.active, true))
@@ -23,7 +25,8 @@ router.get("/zones", requireAuth, async (_req, res): Promise<void> => {
   res.json(zones);
 });
 
-// POST /zones — create zone (admin only)
+// ── POST /zones — create zone (admin) ─────────────────────────────────────────
+
 router.post("/zones", requireAuth, requireRole("admin"), async (req, res): Promise<void> => {
   const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
   const type = typeof req.body?.type === "string" ? req.body.type.trim() : "dining";
@@ -40,14 +43,64 @@ router.post("/zones", requireAuth, requireRole("admin"), async (req, res): Promi
   res.status(201).json(zone);
 });
 
-// PATCH /zones/:zoneId — rename / reorder / recolor zone (admin only)
+// ── POST /zones/:zoneId/duplicate — clone zone + tables (admin) ───────────────
+
+router.post("/zones/:zoneId/duplicate", requireAuth, requireRole("admin"), async (req, res): Promise<void> => {
+  const zoneId = req.params.zoneId as string;
+
+  const [original] = await db
+    .select()
+    .from(roomZonesTable)
+    .where(eq(roomZonesTable.id, zoneId));
+
+  if (!original) { res.status(404).json({ error: "Sala no encontrada" }); return; }
+
+  const [maxRow] = await db.select({ v: max(roomZonesTable.sortOrder) }).from(roomZonesTable);
+  const nextSort = (maxRow?.v ?? 0) + 1;
+
+  // Create copy zone
+  const [newZone] = await db
+    .insert(roomZonesTable)
+    .values({ name: original.name + " (copia)", type: original.type, sortOrder: nextSort, color: original.color })
+    .returning();
+
+  // Copy all active tables from original zone
+  const tables = await db
+    .select()
+    .from(restaurantTablesTable)
+    .where(and(eq(restaurantTablesTable.zoneId, zoneId), eq(restaurantTablesTable.active, true)));
+
+  if (tables.length > 0) {
+    await db.insert(restaurantTablesTable).values(
+      tables.map(t => ({
+        zoneId:     newZone.id,
+        name:       t.name,
+        capacity:   t.capacity,
+        status:     "free" as const,
+        x:          t.x,
+        y:          t.y,
+        width:      t.width,
+        height:     t.height,
+        shape:      t.shape,
+        rotation:   t.rotation,
+        mergeGroup: null,
+        active:     true,
+      }))
+    );
+  }
+
+  res.status(201).json(newZone);
+});
+
+// ── PATCH /zones/:zoneId — rename / reorder / color zone (admin) ──────────────
+
 router.patch("/zones/:zoneId", requireAuth, requireRole("admin"), async (req, res): Promise<void> => {
   const zoneId = req.params.zoneId as string;
   const updates: Partial<typeof roomZonesTable.$inferInsert> = {};
-  if (typeof req.body?.name === "string" && req.body.name.trim()) updates.name = req.body.name.trim();
-  if (typeof req.body?.sortOrder === "number") updates.sortOrder = req.body.sortOrder;
-  if (typeof req.body?.color === "string") updates.color = req.body.color || null;
-  if (req.body?.color === null) updates.color = null;
+  if (typeof req.body?.name === "string" && req.body.name.trim()) updates.name      = req.body.name.trim();
+  if (typeof req.body?.sortOrder === "number")                     updates.sortOrder  = req.body.sortOrder;
+  if ("color" in (req.body ?? {}))                                  updates.color     = req.body.color ?? null;
+  if (typeof req.body?.active === "boolean")                        updates.active    = req.body.active;
 
   if (Object.keys(updates).length === 0) { res.status(400).json({ error: "Sin cambios" }); return; }
 
@@ -61,9 +114,30 @@ router.patch("/zones/:zoneId", requireAuth, requireRole("admin"), async (req, re
   res.json(zone);
 });
 
-// DELETE /zones/:zoneId — soft-delete zone (admin only)
+// ── DELETE /zones/:zoneId — soft-delete zone (admin) ──────────────────────────
+
 router.delete("/zones/:zoneId", requireAuth, requireRole("admin"), async (req, res): Promise<void> => {
   const zoneId = req.params.zoneId as string;
+
+  // Check for open orders in this zone
+  const tables = await db
+    .select({ id: restaurantTablesTable.id })
+    .from(restaurantTablesTable)
+    .where(and(eq(restaurantTablesTable.zoneId, zoneId), eq(restaurantTablesTable.active, true)));
+
+  if (tables.length > 0) {
+    const tableIds = tables.map(t => t.id);
+    const [openOrder] = await db
+      .select({ id: ordersTable.id })
+      .from(ordersTable)
+      .where(and(inArray(ordersTable.tableId, tableIds), eq(ordersTable.status, "open")))
+      .limit(1);
+
+    if (openOrder) {
+      res.status(409).json({ error: "No se puede eliminar una sala con comandas abiertas" });
+      return;
+    }
+  }
 
   const [zone] = await db
     .update(roomZonesTable)

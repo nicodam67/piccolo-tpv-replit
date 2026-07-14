@@ -600,6 +600,77 @@ export const useDeleteZone = <TError = ErrorType<ErrorResponse>,
       return useMutation(getDeleteZoneMutationOptions(options));
     }
 
+export const getDuplicateZoneUrl = (zoneId: string,) => {
+
+
+
+
+  return `/api/zones/${zoneId}/duplicate`
+}
+
+/**
+ * @summary Duplicate a zone and all its tables (admin only)
+ */
+export const duplicateZone = async (zoneId: string, options?: RequestInit): Promise<Zone> => {
+
+  return customFetch<Zone>(getDuplicateZoneUrl(zoneId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getDuplicateZoneMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof duplicateZone>>, TError,{zoneId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof duplicateZone>>, TError,{zoneId: string}, TContext> => {
+
+const mutationKey = ['duplicateZone'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof duplicateZone>>, {zoneId: string}> = (props) => {
+          const {zoneId} = props ?? {};
+
+          return  duplicateZone(zoneId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DuplicateZoneMutationResult = NonNullable<Awaited<ReturnType<typeof duplicateZone>>>
+
+    export type DuplicateZoneMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Duplicate a zone and all its tables (admin only)
+ */
+export const useDuplicateZone = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof duplicateZone>>, TError,{zoneId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof duplicateZone>>,
+        TError,
+        {zoneId: string},
+        TContext
+      > => {
+      return useMutation(getDuplicateZoneMutationOptions(options));
+    }
+
 export const getGetZoneTablesUrl = (zoneId: string,) => {
 
 
@@ -1038,6 +1109,77 @@ export const useOpenTable = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getOpenTableMutationOptions(options));
+    }
+
+export const getDuplicateTableUrl = (tableId: string,) => {
+
+
+
+
+  return `/api/tables/${tableId}/duplicate`
+}
+
+/**
+ * @summary Duplicate a table (admin only)
+ */
+export const duplicateTable = async (tableId: string, options?: RequestInit): Promise<Table> => {
+
+  return customFetch<Table>(getDuplicateTableUrl(tableId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getDuplicateTableMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof duplicateTable>>, TError,{tableId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof duplicateTable>>, TError,{tableId: string}, TContext> => {
+
+const mutationKey = ['duplicateTable'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof duplicateTable>>, {tableId: string}> = (props) => {
+          const {tableId} = props ?? {};
+
+          return  duplicateTable(tableId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DuplicateTableMutationResult = NonNullable<Awaited<ReturnType<typeof duplicateTable>>>
+
+    export type DuplicateTableMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Duplicate a table (admin only)
+ */
+export const useDuplicateTable = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof duplicateTable>>, TError,{tableId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof duplicateTable>>,
+        TError,
+        {tableId: string},
+        TContext
+      > => {
+      return useMutation(getDuplicateTableMutationOptions(options));
     }
 
 export const getCloseTableUrl = (tableId: string,) => {

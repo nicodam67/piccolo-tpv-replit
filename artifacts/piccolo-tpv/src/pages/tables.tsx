@@ -32,38 +32,43 @@ const GRID_BG = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/sv
 // scroll/drag and the click is suppressed.
 const TAP_SLOP = 8;
 
+// Extended status styles for all table states
+const STATUS_STYLES: Record<string, { bg: string; border: string; text: string; dot: string; glow: string }> = {
+  free:           { bg: '#253324', border: '#3f573c', text: '#dcecdb', dot: '#61895f', glow: '#61895f' },
+  occupied:       { bg: '#45201a', border: '#6b3127', text: '#f5dcd8', dot: '#c05c4a', glow: '#c05c4a' },
+  waiting:        { bg: '#3a2c0f', border: '#7a5c1a', text: '#fde68a', dot: '#f59e0b', glow: '#f59e0b' },
+  bill_requested: { bg: '#1a2040', border: '#3b4ea0', text: '#bfcfff', dot: '#4f6ef7', glow: '#4f6ef7' },
+  out_of_service: { bg: '#1e1e22', border: '#44444e', text: '#888898', dot: '#55555f', glow: 'transparent' },
+  reserved:       { bg: '#2a1a3a', border: '#6a3a8a', text: '#e4c8ff', dot: '#a855f7', glow: '#a855f7' },
+};
+
+function elapsed(openedAt: string | null | undefined): string {
+  if (!openedAt) return '';
+  const ms = Date.now() - new Date(openedAt).getTime();
+  if (ms < 0) return '';
+  const mins = Math.floor(ms / 60000);
+  if (mins < 60) return `${mins}m`;
+  const hrs = Math.floor(mins / 60);
+  return `${hrs}h${(mins % 60).toString().padStart(2, '0')}`;
+}
+
 function TableCard({ table, onClick, isBusy }: { table: Table; onClick: () => void; isBusy: boolean }) {
-  const isFree   = table.status === "free";
-  const isMerged = !!table.mergeGroup;
+  const isMerged   = !!table.mergeGroup;
+  const st         = STATUS_STYLES[table.status] ?? STATUS_STYLES.free;
+  const rotation   = (table as any).rotation ?? 0;
+  const radius     = table.shape === "round" ? "50%" : "10px";
+  const elapsedStr = elapsed((table as any).openedAt);
+  const hasAmount  = (table as any).currentTotal != null && (table as any).currentTotal > 0;
+  const amountStr  = hasAmount ? `${Number((table as any).currentTotal).toFixed(2)}€` : '';
 
-  const borderColor = isMerged
-    ? (isFree ? "#7c3aed" : "#9f1239")
-    : isFree
-    ? "#3f573c"
-    : "#6b3127";
-
-  const bgColor   = isFree ? "#253324" : "#45201a";
-  const textColor = isFree ? "#dcecdb" : "#f5dcd8";
-  const dotColor  = isFree ? "#61895f" : "#c05c4a";
-  const radius    = table.shape === "round" ? "50%" : "10px";
-
-  // Track pointer position at press time so we can ignore drags / scrolls.
   const pointerOrigin = useRef<{ x: number; y: number } | null>(null);
-
-  const handlePointerDown = (e: React.PointerEvent) => {
-    pointerOrigin.current = { x: e.clientX, y: e.clientY };
-  };
-
+  const handlePointerDown = (e: React.PointerEvent) => { pointerOrigin.current = { x: e.clientX, y: e.clientY }; };
   const handleClick = (e: React.MouseEvent) => {
     if (isBusy) return;
     if (pointerOrigin.current) {
       const dx = e.clientX - pointerOrigin.current.x;
       const dy = e.clientY - pointerOrigin.current.y;
-      if (Math.sqrt(dx * dx + dy * dy) > TAP_SLOP) {
-        // The pointer drifted — this is a scroll, not a tap. Ignore it.
-        pointerOrigin.current = null;
-        return;
-      }
+      if (Math.sqrt(dx * dx + dy * dy) > TAP_SLOP) { pointerOrigin.current = null; return; }
     }
     pointerOrigin.current = null;
     onClick();
@@ -80,43 +85,64 @@ function TableCard({ table, onClick, isBusy }: { table: Table; onClick: () => vo
         width: table.width,
         height: table.height,
         borderRadius: radius,
-        backgroundColor: bgColor,
-        border: `2.5px solid ${borderColor}`,
+        backgroundColor: st.bg,
+        border: `2.5px solid ${isMerged ? (table.status === 'free' ? '#7c3aed' : '#6b3a8a') : st.border}`,
         boxShadow: `0 2px 10px rgba(0,0,0,0.45)`,
-        cursor: isBusy ? "wait" : "pointer",
+        cursor: isBusy ? "wait" : table.status === 'out_of_service' ? 'not-allowed' : 'pointer',
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
         justifyContent: "center",
         gap: 2,
+        transform: rotation ? `rotate(${rotation}deg)` : undefined,
+        transformOrigin: 'center center',
+        opacity: table.status === 'out_of_service' ? 0.6 : 1,
         transition: "border-color 0.15s, box-shadow 0.15s",
         userSelect: "none",
       }}
       className="hover:brightness-110 active:scale-[0.97] transition-transform"
     >
       {isBusy ? (
-        <Loader2 style={{ width: 20, height: 20, color: textColor, opacity: 0.6 }} className="animate-spin" />
+        <Loader2 style={{ width: 20, height: 20, color: st.text, opacity: 0.6 }} className="animate-spin" />
       ) : (
         <>
-          <span style={{
-            color: textColor, fontWeight: 900,
-            fontSize: Math.max(10, Math.min(table.width, table.height) / 5),
-            lineHeight: 1, pointerEvents: "none",
-          }}>
+          <span style={{ color: st.text, fontWeight: 900, fontSize: Math.max(10, Math.min(table.width, table.height) / 5), lineHeight: 1, pointerEvents: "none" }}>
             {table.name}
           </span>
-          <span style={{ color: textColor, opacity: 0.6, fontSize: 10, pointerEvents: "none" }}>
+          <span style={{ color: st.text, opacity: 0.6, fontSize: 10, pointerEvents: "none" }}>
             {table.capacity}p
           </span>
+          {/* Employee initial — top-left */}
+          {(table as any).employeeName && (
+            <span style={{ position: 'absolute', top: 4, left: 6, fontSize: 8, color: st.text, opacity: 0.55, fontWeight: 700, pointerEvents: 'none' }}>
+              {(table as any).employeeName.charAt(0).toUpperCase()}
+            </span>
+          )}
+          {/* Out-of-service icon — top-right */}
+          {table.status === 'out_of_service' && (
+            <span style={{ position: 'absolute', top: 3, right: 5, fontSize: 10, color: st.dot, pointerEvents: 'none' }}>⊘</span>
+          )}
+          {/* Elapsed time — bottom-left */}
+          {elapsedStr && (
+            <span style={{ position: 'absolute', bottom: 4, left: 6, fontSize: 8, color: st.text, opacity: 0.7, fontWeight: 700, pointerEvents: 'none' }}>
+              {elapsedStr}
+            </span>
+          )}
+          {/* Amount — bottom-right */}
+          {amountStr && (
+            <span style={{ position: 'absolute', bottom: 4, right: 6, fontSize: 8, color: st.text, opacity: 0.7, fontWeight: 700, pointerEvents: 'none' }}>
+              {amountStr}
+            </span>
+          )}
         </>
       )}
-      {/* Status dot */}
-      <div style={{
-        position: "absolute", top: 6, right: 6,
-        width: 8, height: 8, borderRadius: "50%",
-        backgroundColor: dotColor,
-        boxShadow: `0 0 6px ${dotColor}`,
-      }} />
+      {/* Status dot — hidden for out_of_service */}
+      {table.status !== 'out_of_service' && (
+        <div style={{
+          position: "absolute", top: 6, right: 6, width: 8, height: 8, borderRadius: "50%",
+          backgroundColor: st.dot, boxShadow: `0 0 6px ${st.glow}`,
+        }} />
+      )}
     </div>
   );
 }

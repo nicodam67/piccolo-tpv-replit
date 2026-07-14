@@ -9,10 +9,12 @@
 export interface UpdateTableInput {
   name?: string;
   capacity?: number;
+  status?: string;
   x?: number;
   y?: number;
   width?: number;
   height?: number;
   shape?: string;
+  rotation?: number;
   mergeGroup?: string | null;
 }

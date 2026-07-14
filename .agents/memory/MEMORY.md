@@ -1,0 +1,2 @@
+- [Zone & Table extended spec](zone-table-spec.md) — decisions from Entrega 5+ spec: rotation column, extended statuses, duplicate endpoints, order-info JOIN in GET /zones/:zoneId/tables.
+- [OpenAPI spec must-haves](openapi-must-haves.md) — Zone schema needs color+active; UpdateZoneInput needs color+active — without them codegen omits them and TS errors appear.

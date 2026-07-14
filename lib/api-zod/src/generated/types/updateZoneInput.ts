@@ -9,4 +9,6 @@
 export interface UpdateZoneInput {
   name?: string;
   sortOrder?: number;
+  color?: string | null;
+  active?: boolean;
 }

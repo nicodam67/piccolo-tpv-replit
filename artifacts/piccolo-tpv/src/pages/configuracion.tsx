@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useLocation } from 'wouter';
 import { useQueryClient } from '@tanstack/react-query';
-import { ChevronLeft, Plus, Pencil, Trash2, LayoutDashboard, Check, X, Loader2, GripVertical, Palette } from 'lucide-react';
+import { ChevronLeft, Plus, Pencil, Trash2, LayoutDashboard, Check, X, Loader2, GripVertical, Palette, Copy } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   DndContext,
@@ -24,6 +24,7 @@ import {
   useCreateZone,
   useUpdateZone,
   useDeleteZone,
+  useDuplicateZone,
   getGetZonesQueryKey,
 } from '@workspace/api-client-react';
 
@@ -117,6 +118,7 @@ interface SortableZoneCardProps {
   onColorPickerToggle: (id: string) => void;
   onColorPickerClose: () => void;
   onColorSelect: (zoneId: string, color: string | null) => void;
+  onDuplicate: (id: string) => void;
 }
 
 function SortableZoneCard({
@@ -133,6 +135,7 @@ function SortableZoneCard({
   onColorPickerToggle,
   onColorPickerClose,
   onColorSelect,
+  onDuplicate,
 }: SortableZoneCardProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: zone.id });
@@ -236,6 +239,13 @@ function SortableZoneCard({
             <span className="hidden sm:inline">Plano</span>
           </button>
           <button
+            onClick={() => onDuplicate(zone.id)}
+            className="w-9 h-9 flex items-center justify-center rounded-xl hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors active:scale-95"
+            title="Duplicar sala"
+          >
+            <Copy size={14} />
+          </button>
+          <button
             onClick={() => onEditStart(zone.id, zone.name)}
             className="w-9 h-9 flex items-center justify-center rounded-xl hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors active:scale-95"
           >
@@ -276,9 +286,10 @@ export default function Configuracion() {
     if (serverZones) setLocalZones(serverZones as Zone[]);
   }, [serverZones]);
 
-  const createZone = useCreateZone();
-  const updateZone = useUpdateZone();
-  const deleteZone = useDeleteZone();
+  const createZone    = useCreateZone();
+  const updateZone    = useUpdateZone();
+  const deleteZone    = useDeleteZone();
+  const duplicateZone = useDuplicateZone();
 
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [newZoneName, setNewZoneName]           = useState('');
@@ -353,7 +364,21 @@ export default function Configuracion() {
       { zoneId },
       {
         onSuccess: () => { invalidate(); setDeletingId(null); toast.success('Sala eliminada'); },
-        onError: () => toast.error('Error al eliminar sala'),
+        onError: (err: any) => {
+          const msg = err?.response?.data?.error ?? 'Error al eliminar sala';
+          toast.error(msg);
+          setDeletingId(null);
+        },
+      }
+    );
+  };
+
+  const handleDuplicate = (zoneId: string) => {
+    duplicateZone.mutate(
+      { zoneId },
+      {
+        onSuccess: (zone) => { invalidate(); toast.success(`Sala "${zone.name}" creada`); },
+        onError: () => toast.error('Error al duplicar sala'),
       }
     );
   };
@@ -430,6 +455,7 @@ export default function Configuracion() {
                       onColorPickerToggle={id => setColorPickerZoneId(prev => prev === id ? null : id)}
                       onColorPickerClose={() => setColorPickerZoneId(null)}
                       onColorSelect={handleColorSelect}
+                      onDuplicate={handleDuplicate}
                     />
                   ))}
                 </div>

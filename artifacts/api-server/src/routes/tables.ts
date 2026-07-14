@@ -1,43 +1,93 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { restaurantTablesTable, roomZonesTable, ordersTable } from "@workspace/db";
-import { eq, and, asc } from "drizzle-orm";
+import { sql, eq, and, asc, inArray } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
-import { getIO } from "../lib/socket";
 
 const router: IRouter = Router();
 
 type Shape = "square" | "round" | "rect";
 const VALID_SHAPES: Shape[] = ["square", "round", "rect"];
+const VALID_STATUSES = ["free", "occupied", "waiting", "bill_requested", "out_of_service", "reserved"];
 
-function tableShape(t: typeof restaurantTablesTable.$inferSelect) {
+const CANVAS_W = 1600;
+const CANVAS_H = 900;
+
+// ── Shape helpers ─────────────────────────────────────────────────────────────
+
+function rowToTable(r: Record<string, unknown>) {
   return {
-    id: t.id,
-    zoneId: t.zoneId,
-    name: t.name,
-    capacity: t.capacity,
-    status: t.status,
-    x: t.x,
-    y: t.y,
-    width: t.width,
-    height: t.height,
-    shape: t.shape,
-    mergeGroup: t.mergeGroup,
+    id:             r.id,
+    zoneId:         r.zone_id,
+    name:           r.name,
+    capacity:       r.capacity,
+    status:         r.status,
+    x:              r.x,
+    y:              r.y,
+    width:          r.width,
+    height:         r.height,
+    shape:          r.shape,
+    rotation:       Number(r.rotation ?? 0),
+    mergeGroup:     r.merge_group ?? null,
+    active:         r.active,
+    currentOrderId: r.current_order_id ?? null,
+    openedAt:       r.opened_at ?? null,
+    employeeName:   r.employee_name ?? null,
+    currentTotal:   r.current_total !== null && r.current_total !== undefined
+                      ? parseFloat(String(r.current_total))
+                      : null,
   };
 }
 
-// GET /zones/:zoneId/tables — all active tables (all roles)
+function tableShape(t: typeof restaurantTablesTable.$inferSelect) {
+  return {
+    id:             t.id,
+    zoneId:         t.zoneId,
+    name:           t.name,
+    capacity:       t.capacity,
+    status:         t.status,
+    x:              t.x,
+    y:              t.y,
+    width:          t.width,
+    height:         t.height,
+    shape:          t.shape,
+    rotation:       t.rotation,
+    mergeGroup:     t.mergeGroup ?? null,
+    active:         t.active,
+    currentOrderId: null,
+    openedAt:       null,
+    employeeName:   null,
+    currentTotal:   null,
+  };
+}
+
+// ── GET /zones/:zoneId/tables — includes live order summary ────────────────────
+
 router.get("/zones/:zoneId/tables", requireAuth, async (req, res): Promise<void> => {
   const zoneId = req.params.zoneId as string;
-  const tables = await db
-    .select()
-    .from(restaurantTablesTable)
-    .where(and(eq(restaurantTablesTable.zoneId, zoneId), eq(restaurantTablesTable.active, true)))
-    .orderBy(asc(restaurantTablesTable.name));
-  res.json(tables.map(tableShape));
+
+  const rows = await db.execute(sql`
+    SELECT
+      t.id, t.zone_id, t.name, t.capacity, t.status,
+      t.x, t.y, t.width, t.height, t.shape, t.merge_group, t.active, t.rotation,
+      o.id             AS current_order_id,
+      o.created_at     AS opened_at,
+      e.name           AS employee_name,
+      COALESCE(SUM(CAST(oi.unit_price AS numeric) * oi.quantity), 0)::float AS current_total
+    FROM restaurant_tables t
+    LEFT JOIN orders o        ON o.table_id = t.id AND o.status = 'open'
+    LEFT JOIN employees e     ON e.id = o.employee_id
+    LEFT JOIN order_items oi  ON oi.order_id = o.id
+    WHERE t.zone_id = ${zoneId} AND t.active = true
+    GROUP BY t.id, o.id, e.id
+    ORDER BY t.name
+  `);
+
+  res.json((rows.rows as Record<string, unknown>[]).map(rowToTable));
 });
 
-// GET /tables — all active tables across zones (all roles)
+// ── GET /tables — all active tables across zones ───────────────────────────────
+
 router.get("/tables", requireAuth, async (_req, res): Promise<void> => {
   const tables = await db
     .select()
@@ -48,7 +98,8 @@ router.get("/tables", requireAuth, async (_req, res): Promise<void> => {
   res.json(tables.map(r => tableShape(r.restaurant_tables)));
 });
 
-// POST /zones/:zoneId/tables — create table (admin only)
+// ── POST /zones/:zoneId/tables — create table (admin) ─────────────────────────
+
 router.post("/zones/:zoneId/tables", requireAuth, requireRole("admin"), async (req, res): Promise<void> => {
   const zoneId = req.params.zoneId as string;
   const b = req.body ?? {};
@@ -56,34 +107,74 @@ router.post("/zones/:zoneId/tables", requireAuth, requireRole("admin"), async (r
   if (!name) { res.status(400).json({ error: "Nombre requerido" }); return; }
 
   const capacity = Number.isFinite(b.capacity) && b.capacity >= 1 ? Math.floor(b.capacity) : 4;
-  const x = Number.isFinite(b.x) ? Math.floor(b.x) : 40;
-  const y = Number.isFinite(b.y) ? Math.floor(b.y) : 40;
-  const width = Number.isFinite(b.width) && b.width >= 20 ? Math.floor(b.width) : 80;
-  const height = Number.isFinite(b.height) && b.height >= 20 ? Math.floor(b.height) : 80;
+  const x        = Number.isFinite(b.x) ? Math.floor(b.x) : 40;
+  const y        = Number.isFinite(b.y) ? Math.floor(b.y) : 40;
+  const width    = Number.isFinite(b.width)  && b.width  >= 20 ? Math.floor(b.width)  : 80;
+  const height   = Number.isFinite(b.height) && b.height >= 20 ? Math.floor(b.height) : 80;
   const shape: Shape = VALID_SHAPES.includes(b.shape) ? b.shape : "square";
+  const rotation = Number.isFinite(b.rotation) ? Math.round(b.rotation) % 360 : 0;
 
   const [table] = await db
     .insert(restaurantTablesTable)
-    .values({ zoneId, name, capacity, x, y, width, height, shape })
+    .values({ zoneId, name, capacity, x, y, width, height, shape, rotation })
     .returning();
 
   res.status(201).json(tableShape(table));
 });
 
-// PATCH /tables/:tableId — update layout/props (admin only)
+// ── POST /tables/:tableId/duplicate — clone table (admin) ─────────────────────
+
+router.post("/tables/:tableId/duplicate", requireAuth, requireRole("admin"), async (req, res): Promise<void> => {
+  const tableId = req.params.tableId as string;
+
+  const [original] = await db
+    .select()
+    .from(restaurantTablesTable)
+    .where(and(eq(restaurantTablesTable.id, tableId), eq(restaurantTablesTable.active, true)));
+
+  if (!original) { res.status(404).json({ error: "Mesa no encontrada" }); return; }
+
+  const newX = Math.min(original.x + 40, CANVAS_W - original.width);
+  const newY = Math.min(original.y + 40, CANVAS_H - original.height);
+
+  const [copy] = await db
+    .insert(restaurantTablesTable)
+    .values({
+      zoneId:     original.zoneId,
+      name:       original.name + " (copia)",
+      capacity:   original.capacity,
+      status:     "free",
+      x:          newX,
+      y:          newY,
+      width:      original.width,
+      height:     original.height,
+      shape:      original.shape,
+      rotation:   original.rotation,
+      mergeGroup: null,  // copies never inherit merge groups
+      active:     true,
+    })
+    .returning();
+
+  res.status(201).json(tableShape(copy));
+});
+
+// ── PATCH /tables/:tableId — update layout/props (admin) ──────────────────────
+
 router.patch("/tables/:tableId", requireAuth, requireRole("admin"), async (req, res): Promise<void> => {
   const tableId = req.params.tableId as string;
   const b = req.body ?? {};
   const updates: Record<string, unknown> = {};
 
-  if (typeof b.name === "string" && b.name.trim()) updates.name = b.name.trim();
-  if (Number.isFinite(b.capacity) && b.capacity >= 1)    updates.capacity = Math.floor(b.capacity);
-  if (Number.isFinite(b.x))                              updates.x = Math.floor(b.x);
-  if (Number.isFinite(b.y))                              updates.y = Math.floor(b.y);
-  if (Number.isFinite(b.width) && b.width >= 20)         updates.width = Math.floor(b.width);
-  if (Number.isFinite(b.height) && b.height >= 20)       updates.height = Math.floor(b.height);
-  if (VALID_SHAPES.includes(b.shape))                     updates.shape = b.shape;
-  if ("mergeGroup" in b)                                  updates.mergeGroup = b.mergeGroup ?? null;
+  if (typeof b.name === "string" && b.name.trim())           updates.name     = b.name.trim();
+  if (Number.isFinite(b.capacity) && b.capacity >= 1)         updates.capacity = Math.floor(b.capacity);
+  if (Number.isFinite(b.x))                                   updates.x        = Math.floor(b.x);
+  if (Number.isFinite(b.y))                                   updates.y        = Math.floor(b.y);
+  if (Number.isFinite(b.width)  && b.width  >= 20)            updates.width    = Math.floor(b.width);
+  if (Number.isFinite(b.height) && b.height >= 20)            updates.height   = Math.floor(b.height);
+  if (VALID_SHAPES.includes(b.shape))                          updates.shape    = b.shape;
+  if (Number.isFinite(b.rotation))                             updates.rotation = Math.round(b.rotation) % 360;
+  if (VALID_STATUSES.includes(b.status))                       updates.status   = b.status;
+  if ("mergeGroup" in b)                                       updates.mergeGroup = b.mergeGroup ?? null;
 
   if (Object.keys(updates).length === 0) { res.status(400).json({ error: "Sin cambios" }); return; }
 
@@ -97,9 +188,19 @@ router.patch("/tables/:tableId", requireAuth, requireRole("admin"), async (req, 
   res.json(tableShape(table));
 });
 
-// DELETE /tables/:tableId — soft-delete table (admin only)
+// ── DELETE /tables/:tableId — soft-delete (admin) ─────────────────────────────
+
 router.delete("/tables/:tableId", requireAuth, requireRole("admin"), async (req, res): Promise<void> => {
   const tableId = req.params.tableId as string;
+
+  // Block deletion if table has an open order
+  const [openOrder] = await db
+    .select({ id: ordersTable.id })
+    .from(ordersTable)
+    .where(and(eq(ordersTable.tableId, tableId), eq(ordersTable.status, "open")))
+    .limit(1);
+
+  if (openOrder) { res.status(409).json({ error: "La mesa tiene una comanda abierta" }); return; }
 
   const [table] = await db
     .update(restaurantTablesTable)
@@ -111,9 +212,10 @@ router.delete("/tables/:tableId", requireAuth, requireRole("admin"), async (req,
   res.status(204).send();
 });
 
-// POST /tables/:tableId/open — open free table + create order (all roles)
+// ── POST /tables/:tableId/open — open free table + create order ───────────────
+
 router.post("/tables/:tableId/open", requireAuth, async (req, res): Promise<void> => {
-  const tableId = req.params.tableId as string;
+  const tableId  = req.params.tableId as string;
   const employeeId = (req as any).user?.id as string | undefined;
 
   const result = await db.transaction(async (tx) => {
@@ -131,11 +233,11 @@ router.post("/tables/:tableId/open", requireAuth, async (req, res): Promise<void
   });
 
   if (!result) { res.status(409).json({ error: "La mesa no está libre" }); return; }
-  try { getIO().emit("tables:refresh"); } catch (_) {}
   res.json(result);
 });
 
-// POST /tables/:tableId/close — free an occupied table (all roles)
+// ── POST /tables/:tableId/close — free an occupied table ──────────────────────
+
 router.post("/tables/:tableId/close", requireAuth, async (req, res): Promise<void> => {
   const tableId = req.params.tableId as string;
 
@@ -146,7 +248,6 @@ router.post("/tables/:tableId/close", requireAuth, async (req, res): Promise<voi
     .returning();
 
   if (!table) { res.status(409).json({ error: "La mesa no está ocupada" }); return; }
-  try { getIO().emit("tables:refresh"); } catch (_) {}
   res.json(tableShape(table));
 });
 
