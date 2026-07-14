@@ -13,6 +13,8 @@ import cashRouter from "./cash";
 import paymentsRouter from "./payments";
 import canvasElementsRouter from "./canvas-elements";
 import productsRouter from "./products";
+import configRouter from "./config";
+import documentsRouter from "./documents";
 
 const router: IRouter = Router();
 
@@ -30,5 +32,7 @@ router.use(cashRouter);
 router.use(paymentsRouter);
 router.use(canvasElementsRouter);
 router.use(productsRouter);
+router.use(configRouter);
+router.use(documentsRouter);
 
 export default router;

@@ -49,6 +49,16 @@ export const ticketsTable = pgTable("tickets", {
     .unique()
     .references(() => ordersTable.id),
   ticketNumber: bigserial("ticket_number", { mode: "number" }),
+  // Fiscal fields — set by backend at generation time, never editable after issuance
+  serie: text("serie").notNull().default("T"),
+  nifEmisor: text("nif_emisor").notNull().default(""),
+  razonSocialEmisor: text("razon_social_emisor").notNull().default(""),
+  direccionEmisor: text("direccion_emisor").notNull().default(""),
+  formaPago: text("forma_pago").notNull().default(""),
+  // VeriFactu status
+  verifactuStatus: text("verifactu_status").notNull().default("pending"),
+  // pending | generated | sent | accepted | rejected | retry | rectified
+  verifactuResponse: text("verifactu_response"), // JSON string
   subtotal: numeric("subtotal", { precision: 10, scale: 2 }).notNull(),
   taxTotal: numeric("tax_total", { precision: 10, scale: 2 }).notNull().default("0"),
   total: numeric("total", { precision: 10, scale: 2 }).notNull(),

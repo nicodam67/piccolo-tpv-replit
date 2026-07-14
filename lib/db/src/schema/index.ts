@@ -10,3 +10,5 @@ export * from "./notifications";
 export * from "./payments";
 export * from "./canvas-elements";
 export * from "./audit-log";
+export * from "./business-config";
+export * from "./documents";

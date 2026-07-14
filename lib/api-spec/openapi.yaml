@@ -26,6 +26,10 @@ tags:
     description: Order management
   - name: kds
     description: Kitchen Display System
+  - name: config
+    description: Business configuration
+  - name: documents
+    description: Document templates, invoices, printers, and audit log
 
 paths:
   /healthz:
@@ -1706,6 +1710,468 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /config/business:
+    get:
+      operationId: getBusinessConfig
+      tags: [config]
+      summary: Get business/fiscal configuration
+      responses:
+        "200":
+          description: Business config
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BusinessConfig"
+    put:
+      operationId: updateBusinessConfig
+      tags: [config]
+      summary: Update business/fiscal configuration (admin only)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BusinessConfig"
+      responses:
+        "200":
+          description: Updated config
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BusinessConfig"
+        "403":
+          description: Forbidden
+
+  /documents/templates:
+    get:
+      operationId: getDocumentTemplates
+      tags: [documents]
+      summary: List document templates (admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: documentType
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of templates
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DocumentTemplate"
+    post:
+      operationId: createDocumentTemplate
+      tags: [documents]
+      summary: Create a document template (admin)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateDocumentTemplateInput"
+      responses:
+        "201":
+          description: Created template
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DocumentTemplate"
+
+  /documents/templates/{id}:
+    put:
+      operationId: updateDocumentTemplate
+      tags: [documents]
+      summary: Update a document template (admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateDocumentTemplateInput"
+      responses:
+        "200":
+          description: Updated template
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DocumentTemplate"
+    delete:
+      operationId: deleteDocumentTemplate
+      tags: [documents]
+      summary: Soft-delete a template (admin, cannot delete active)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                required: [ok]
+
+  /documents/templates/{id}/activate:
+    post:
+      operationId: activateDocumentTemplate
+      tags: [documents]
+      summary: Set template as default (admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Activated template
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DocumentTemplate"
+
+  /documents/templates/{id}/duplicate:
+    post:
+      operationId: duplicateDocumentTemplate
+      tags: [documents]
+      summary: Clone a template (admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "201":
+          description: Cloned template
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DocumentTemplate"
+
+  /documents/printers:
+    get:
+      operationId: getPrinterConfigs
+      tags: [documents]
+      summary: List printer configurations (admin)
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: List of printers
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PrinterConfig"
+    post:
+      operationId: createPrinterConfig
+      tags: [documents]
+      summary: Create printer configuration (admin)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePrinterConfigInput"
+      responses:
+        "201":
+          description: Created printer config
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrinterConfig"
+
+  /documents/printers/{id}:
+    put:
+      operationId: updatePrinterConfig
+      tags: [documents]
+      summary: Update printer configuration (admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePrinterConfigInput"
+      responses:
+        "200":
+          description: Updated printer config
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrinterConfig"
+    delete:
+      operationId: deletePrinterConfig
+      tags: [documents]
+      summary: Deactivate printer (admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Deactivated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                required: [ok]
+
+  /documents/invoices:
+    post:
+      operationId: createInvoice
+      tags: [documents]
+      summary: Issue a full fiscal invoice for an order
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateInvoiceInput"
+      responses:
+        "201":
+          description: Created invoice
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Invoice"
+
+  /documents/invoices/{id}:
+    get:
+      operationId: getInvoice
+      tags: [documents]
+      summary: Get invoice by ID (admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Invoice with items
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  invoice:
+                    $ref: "#/components/schemas/Invoice"
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        productName:
+                          type: string
+                        quantity:
+                          type: integer
+                        unitPrice:
+                          type: string
+                      required: [productName, quantity, unitPrice]
+                required: [invoice, items]
+
+  /documents/invoices/{id}/rectify:
+    post:
+      operationId: rectifyInvoice
+      tags: [documents]
+      summary: Create a rectificativa (admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RectifyInvoiceInput"
+      responses:
+        "201":
+          description: Rectificativa created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rectificativa:
+                    $ref: "#/components/schemas/Invoice"
+                  originalId:
+                    type: string
+                required: [rectificativa, originalId]
+
+  /documents/clients:
+    get:
+      operationId: getClients
+      tags: [documents]
+      summary: List saved client data (admin/manager)
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: List of clients
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Client"
+    post:
+      operationId: createClient
+      tags: [documents]
+      summary: Save client fiscal data (admin/manager)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateClientInput"
+      responses:
+        "201":
+          description: Created client
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Client"
+
+  /documents/clients/{id}:
+    put:
+      operationId: updateClient
+      tags: [documents]
+      summary: Update client fiscal data (admin/manager)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateClientInput"
+      responses:
+        "200":
+          description: Updated client
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Client"
+
+  /documents/reprints:
+    post:
+      operationId: createReprint
+      tags: [documents]
+      summary: Record a document reprint (any authenticated user)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateReprintInput"
+      responses:
+        "201":
+          description: Reprint recorded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  documentId:
+                    type: string
+                  documentType:
+                    type: string
+                  createdAt:
+                    type: string
+                required: [id, documentId, documentType, createdAt]
+
+  /documents/audit:
+    get:
+      operationId: getDocumentAuditLog
+      tags: [documents]
+      summary: Paginated document audit log (admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+        - in: query
+          name: limit
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Audit log page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DocumentAuditLog"
+
 components:
   securitySchemes:
     bearerAuth:
@@ -2665,3 +3131,310 @@ components:
         error:
           type: string
       required: [error]
+
+    BusinessConfig:
+      type: object
+      properties:
+        nombreComercial:
+          type: string
+        razonSocial:
+          type: string
+        nif:
+          type: string
+        direccionFiscal:
+          type: string
+        codigoPostal:
+          type: string
+        poblacion:
+          type: string
+        provincia:
+          type: string
+        pais:
+          type: string
+        telefono:
+          type: string
+        email:
+          type: string
+        web:
+          type: string
+        logoUrl:
+          type: string
+      required: [nombreComercial, razonSocial, nif, direccionFiscal, codigoPostal, poblacion, provincia, pais, telefono, email, web, logoUrl]
+
+    DocumentTemplate:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        documentType:
+          type: string
+        printFormat:
+          type: string
+        isDefault:
+          type: boolean
+        isBuiltIn:
+          type: boolean
+        config:
+          type: object
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+      required: [id, name, documentType, printFormat, isDefault, isBuiltIn, config, createdAt, updatedAt]
+
+    CreateDocumentTemplateInput:
+      type: object
+      properties:
+        name:
+          type: string
+        documentType:
+          type: string
+        printFormat:
+          type: string
+        config:
+          type: object
+      required: [name, documentType]
+
+    UpdateDocumentTemplateInput:
+      type: object
+      properties:
+        name:
+          type: string
+        printFormat:
+          type: string
+        config:
+          type: object
+
+    PrinterConfig:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        printerType:
+          type: string
+        paperWidth:
+          type: integer
+        location:
+          type: string
+        documentType:
+          type: string
+        copies:
+          type: integer
+        autoCut:
+          type: boolean
+        cashDrawer:
+          type: boolean
+        autoPrint:
+          type: boolean
+        active:
+          type: boolean
+        createdAt:
+          type: string
+      required: [id, name, printerType, paperWidth, location, documentType, copies, autoCut, cashDrawer, autoPrint, active, createdAt]
+
+    CreatePrinterConfigInput:
+      type: object
+      properties:
+        name:
+          type: string
+        printerType:
+          type: string
+        paperWidth:
+          type: integer
+        location:
+          type: string
+        documentType:
+          type: string
+        copies:
+          type: integer
+        autoCut:
+          type: boolean
+        cashDrawer:
+          type: boolean
+        autoPrint:
+          type: boolean
+      required: [name]
+
+    Invoice:
+      type: object
+      properties:
+        id:
+          type: string
+        serie:
+          type: string
+        invoiceNumber:
+          type: integer
+        issuedAt:
+          type: string
+        emisorNombre:
+          type: string
+        emisorNif:
+          type: string
+        clientName:
+          type: string
+        clientNif:
+          type: string
+        clientEmail:
+          type: string
+        orderId:
+          type: string
+          nullable: true
+        subtotal:
+          type: string
+        taxTotal:
+          type: string
+        total:
+          type: string
+        paymentMethod:
+          type: string
+        notes:
+          type: string
+        status:
+          type: string
+        verifactuStatus:
+          type: string
+        originalInvoiceId:
+          type: string
+          nullable: true
+      required: [id, serie, issuedAt, emisorNombre, emisorNif, clientName, clientNif, subtotal, taxTotal, total, paymentMethod, status, verifactuStatus]
+
+    CreateInvoiceInput:
+      type: object
+      properties:
+        orderId:
+          type: string
+        clientName:
+          type: string
+        clientNif:
+          type: string
+        clientAddress:
+          type: string
+        clientCp:
+          type: string
+        clientCity:
+          type: string
+        clientProvince:
+          type: string
+        clientCountry:
+          type: string
+        clientEmail:
+          type: string
+        clientPhone:
+          type: string
+        notes:
+          type: string
+      required: [orderId]
+
+    RectifyInvoiceInput:
+      type: object
+      properties:
+        reason:
+          type: string
+      required: [reason]
+
+    Client:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        nif:
+          type: string
+        address:
+          type: string
+        cp:
+          type: string
+        city:
+          type: string
+        province:
+          type: string
+        country:
+          type: string
+        email:
+          type: string
+        phone:
+          type: string
+        createdAt:
+          type: string
+      required: [id, name, createdAt]
+
+    CreateClientInput:
+      type: object
+      properties:
+        name:
+          type: string
+        nif:
+          type: string
+        address:
+          type: string
+        cp:
+          type: string
+        city:
+          type: string
+        province:
+          type: string
+        country:
+          type: string
+        email:
+          type: string
+        phone:
+          type: string
+      required: [name]
+
+    DocumentAuditEntry:
+      type: object
+      properties:
+        id:
+          type: string
+        action:
+          type: string
+        documentType:
+          type: string
+        documentId:
+          type: string
+        employeeId:
+          type: string
+          nullable: true
+        employeeName:
+          type: string
+        terminal:
+          type: string
+        printCount:
+          type: integer
+        amount:
+          type: string
+          nullable: true
+        details:
+          type: string
+        createdAt:
+          type: string
+      required: [id, action, documentType, documentId, employeeName, terminal, printCount, details, createdAt]
+
+    DocumentAuditLog:
+      type: object
+      properties:
+        rows:
+          type: array
+          items:
+            $ref: "#/components/schemas/DocumentAuditEntry"
+        page:
+          type: integer
+        limit:
+          type: integer
+      required: [rows, page, limit]
+
+    CreateReprintInput:
+      type: object
+      properties:
+        documentId:
+          type: string
+        documentType:
+          type: string
+        reason:
+          type: string
+      required: [documentId, documentType]

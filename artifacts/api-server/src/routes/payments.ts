@@ -10,10 +10,12 @@ import {
   paymentMethodsTable,
   cashSessionsTable,
   ticketsTable,
+  businessConfigTable,
 } from "@workspace/db";
 import { eq, and, sum, inArray } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { getIO } from "../lib/socket";
+import { logDocumentAction } from "../lib/document-audit";
 
 // Roles allowed to process payments (excludes kitchen staff)
 const PAYMENT_ROLES = ["waiter", "cashier", "manager", "admin"];
@@ -228,10 +230,26 @@ router.post("/orders/:id/payments", requireAuth, requireRole(...PAYMENT_ROLES), 
       // Issue ticket + close order + free table
       const { subtotal, taxTotal } = calcTotals(itemTotal);
 
+      // Copy emisor fields from business_config (snapshot at issuance time)
+      const [bizConfig] = await db.select().from(businessConfigTable).limit(1);
+      // Determine payment method name for forma_pago
+      const [pmRow] = await db
+        .select({ name: paymentMethodsTable.name })
+        .from(paymentsTable)
+        .innerJoin(paymentMethodsTable, eq(paymentsTable.paymentMethodId, paymentMethodsTable.id))
+        .where(and(eq(paymentsTable.orderId, orderId), eq(paymentsTable.status, "completed")))
+        .limit(1);
+
       const [t] = await tx
         .insert(ticketsTable)
         .values({
           orderId,
+          serie: "T",
+          nifEmisor: bizConfig?.nif ?? "",
+          razonSocialEmisor: bizConfig?.razonSocial ?? "",
+          direccionEmisor: bizConfig?.direccionFiscal ?? "",
+          formaPago: pmRow?.name ?? method.name,
+          verifactuStatus: "pending",
           subtotal: subtotal.toFixed(2),
           taxTotal: taxTotal.toFixed(2),
           total: total.toFixed(2),
@@ -239,6 +257,18 @@ router.post("/orders/:id/payments", requireAuth, requireRole(...PAYMENT_ROLES), 
         })
         .returning();
       ticket = t;
+
+      // Log ticket issuance to document audit
+      await logDocumentAction({
+        action: "issue_ticket",
+        documentType: "ticket",
+        documentId: t.id,
+        employeeId,
+        employeeName: (req as any).user?.name ?? "",
+        terminal: (req.headers["x-forwarded-for"] as string) ?? req.socket?.remoteAddress ?? "",
+        amount: total.toFixed(2),
+        details: `Ticket T-${t.ticketNumber} emitido para pedido ${orderId}`,
+      });
 
       await tx.update(ordersTable).set({ status: "paid" }).where(eq(ordersTable.id, orderId));
 

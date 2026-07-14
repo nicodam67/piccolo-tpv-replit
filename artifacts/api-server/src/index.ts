@@ -2,6 +2,7 @@ import { createServer } from "http";
 import app from "./app";
 import { logger } from "./lib/logger";
 import { initSocket } from "./lib/socket";
+import { seedDocuments } from "./lib/seed-documents";
 
 const rawPort = process.env["PORT"];
 
@@ -18,8 +19,13 @@ if (Number.isNaN(port) || port <= 0) {
 const server = createServer(app);
 initSocket(server);
 
-server.listen(port, () => {
+server.listen(port, async () => {
   logger.info({ port }, "Server listening");
+  try {
+    await seedDocuments();
+  } catch (err) {
+    logger.error({ err }, "Seed documents failed — continuing");
+  }
 });
 
 server.on("error", (err) => {

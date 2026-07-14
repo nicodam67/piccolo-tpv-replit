@@ -634,3 +634,170 @@ export const GetZoneTablesLayout = {
   eventos: 'eventos',
 } as const;
 
+export interface BusinessConfig {
+  nombreComercial: string;
+  razonSocial: string;
+  nif: string;
+  direccionFiscal: string;
+  codigoPostal: string;
+  poblacion: string;
+  provincia: string;
+  pais: string;
+  telefono: string;
+  email: string;
+  web: string;
+  logoUrl: string;
+}
+
+export interface DocumentTemplate {
+  id: string;
+  name: string;
+  documentType: string;
+  printFormat: string;
+  isDefault: boolean;
+  isBuiltIn: boolean;
+  config: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateDocumentTemplateInput {
+  name: string;
+  documentType: string;
+  printFormat?: string;
+  config?: Record<string, unknown>;
+}
+
+export interface UpdateDocumentTemplateInput {
+  name?: string;
+  printFormat?: string;
+  config?: Record<string, unknown>;
+}
+
+export interface PrinterConfig {
+  id: string;
+  name: string;
+  printerType: string;
+  paperWidth: number;
+  location: string;
+  documentType: string;
+  copies: number;
+  autoCut: boolean;
+  cashDrawer: boolean;
+  autoPrint: boolean;
+  active: boolean;
+  createdAt: string;
+}
+
+export interface CreatePrinterConfigInput {
+  name: string;
+  printerType?: string;
+  paperWidth?: number;
+  location?: string;
+  documentType?: string;
+  copies?: number;
+  autoCut?: boolean;
+  cashDrawer?: boolean;
+  autoPrint?: boolean;
+}
+
+export interface Invoice {
+  id: string;
+  serie: string;
+  invoiceNumber?: number;
+  issuedAt: string;
+  emisorNombre: string;
+  emisorNif: string;
+  clientName: string;
+  clientNif: string;
+  clientEmail?: string;
+  orderId?: string | null;
+  subtotal: string;
+  taxTotal: string;
+  total: string;
+  paymentMethod: string;
+  notes?: string;
+  status: string;
+  verifactuStatus: string;
+  originalInvoiceId?: string | null;
+}
+
+export interface CreateInvoiceInput {
+  orderId: string;
+  clientName?: string;
+  clientNif?: string;
+  clientAddress?: string;
+  clientCp?: string;
+  clientCity?: string;
+  clientProvince?: string;
+  clientCountry?: string;
+  clientEmail?: string;
+  clientPhone?: string;
+  notes?: string;
+}
+
+export interface RectifyInvoiceInput {
+  reason: string;
+}
+
+export interface Client {
+  id: string;
+  name: string;
+  nif?: string;
+  address?: string;
+  cp?: string;
+  city?: string;
+  province?: string;
+  country?: string;
+  email?: string;
+  phone?: string;
+  createdAt: string;
+}
+
+export interface CreateClientInput {
+  name: string;
+  nif?: string;
+  address?: string;
+  cp?: string;
+  city?: string;
+  province?: string;
+  country?: string;
+  email?: string;
+  phone?: string;
+}
+
+export interface DocumentAuditEntry {
+  id: string;
+  action: string;
+  documentType: string;
+  documentId: string;
+  employeeId?: string | null;
+  employeeName: string;
+  terminal: string;
+  printCount: number;
+  amount?: string | null;
+  details: string;
+  createdAt: string;
+}
+
+export interface DocumentAuditLog {
+  rows: DocumentAuditEntry[];
+  page: number;
+  limit: number;
+}
+
+export interface CreateReprintInput {
+  documentId: string;
+  documentType: string;
+  reason?: string;
+}
+
+export type GetDocumentTemplatesParams = {
+  documentType?: string;
+};
+
+export type GetDocumentAuditLogParams = {
+  page?: number;
+  limit?: number;
+};
+
