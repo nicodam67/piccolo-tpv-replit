@@ -1,8 +1,24 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation } from 'wouter';
 import { useQueryClient } from '@tanstack/react-query';
-import { ChevronLeft, Plus, Pencil, Trash2, LayoutDashboard, Check, X, Loader2 } from 'lucide-react';
+import { ChevronLeft, Plus, Pencil, Trash2, LayoutDashboard, Check, X, Loader2, GripVertical } from 'lucide-react';
 import { toast } from 'sonner';
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+  useSortable,
+  arrayMove,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import {
   useGetZones,
   useCreateZone,
@@ -11,6 +27,131 @@ import {
   getGetZonesQueryKey,
 } from '@workspace/api-client-react';
 
+// ─── Types ────────────────────────────────────────────────────────────────────
+interface Zone {
+  id: string;
+  name: string;
+  type: string;
+  sortOrder: number;
+}
+
+// ─── Sortable card ────────────────────────────────────────────────────────────
+interface SortableZoneCardProps {
+  zone: Zone;
+  editingId: string | null;
+  editingName: string;
+  deletingId: string | null;
+  onEditStart: (id: string, name: string) => void;
+  onEditChange: (name: string) => void;
+  onEditSave: (id: string) => void;
+  onEditCancel: () => void;
+  onDeleteStart: (id: string) => void;
+  onNavigate: (id: string) => void;
+}
+
+function SortableZoneCard({
+  zone,
+  editingId,
+  editingName,
+  onEditStart,
+  onEditChange,
+  onEditSave,
+  onEditCancel,
+  onDeleteStart,
+  onNavigate,
+}: SortableZoneCardProps) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: zone.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.4 : 1,
+    zIndex: isDragging ? 50 : undefined,
+  };
+
+  const isEditing = editingId === zone.id;
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className="bg-card border border-border rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow flex items-center gap-3"
+    >
+      {/* Drag handle */}
+      <button
+        {...attributes}
+        {...listeners}
+        className="shrink-0 flex items-center justify-center w-8 h-8 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors cursor-grab active:cursor-grabbing touch-none"
+        aria-label="Arrastrar para reordenar"
+      >
+        <GripVertical size={18} />
+      </button>
+
+      {/* Name / edit row */}
+      <div className="flex-1 min-w-0">
+        {isEditing ? (
+          <div className="flex items-center gap-2">
+            <input
+              autoFocus
+              value={editingName}
+              onChange={e => onEditChange(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter') onEditSave(zone.id);
+                if (e.key === 'Escape') onEditCancel();
+              }}
+              className="flex-1 bg-background border border-primary rounded-lg px-3 py-1.5 text-base font-bold focus:outline-none"
+            />
+            <button
+              onClick={() => onEditSave(zone.id)}
+              className="w-8 h-8 flex items-center justify-center rounded-lg bg-primary text-primary-foreground active:scale-95"
+            >
+              <Check size={14} />
+            </button>
+            <button
+              onClick={onEditCancel}
+              className="w-8 h-8 flex items-center justify-center rounded-lg bg-secondary active:scale-95"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        ) : (
+          <div>
+            <h2 className="text-base font-black leading-tight truncate">{zone.name}</h2>
+            <span className="text-xs text-muted-foreground uppercase tracking-widest font-semibold">{zone.type}</span>
+          </div>
+        )}
+      </div>
+
+      {/* Actions — hidden while editing */}
+      {!isEditing && (
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            onClick={() => onNavigate(zone.id)}
+            className="flex items-center gap-1.5 px-3 py-2 bg-primary/10 text-primary border border-primary/30 rounded-xl font-bold text-sm hover:bg-primary hover:text-primary-foreground transition-all active:scale-95"
+          >
+            <LayoutDashboard size={13} />
+            <span className="hidden sm:inline">Plano</span>
+          </button>
+          <button
+            onClick={() => onEditStart(zone.id, zone.name)}
+            className="w-9 h-9 flex items-center justify-center rounded-xl hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors active:scale-95"
+          >
+            <Pencil size={14} />
+          </button>
+          <button
+            onClick={() => onDeleteStart(zone.id)}
+            className="w-9 h-9 flex items-center justify-center rounded-xl bg-destructive/10 text-destructive hover:bg-destructive hover:text-destructive-foreground transition-all active:scale-95"
+          >
+            <Trash2 size={14} />
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
 export default function Configuracion() {
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
@@ -25,11 +166,17 @@ export default function Configuracion() {
     } catch { setLocation('/'); }
   }, [setLocation]);
 
-  const { data: zones, isLoading } = useGetZones({ query: { queryKey: getGetZonesQueryKey() } });
+  const { data: serverZones, isLoading } = useGetZones({ query: { queryKey: getGetZonesQueryKey() } });
 
-  const createZone  = useCreateZone();
-  const updateZone  = useUpdateZone();
-  const deleteZone  = useDeleteZone();
+  // Local ordered copy — kept in sync with server data; updated optimistically on drag
+  const [localZones, setLocalZones] = useState<Zone[]>([]);
+  useEffect(() => {
+    if (serverZones) setLocalZones(serverZones as Zone[]);
+  }, [serverZones]);
+
+  const createZone = useCreateZone();
+  const updateZone = useUpdateZone();
+  const deleteZone = useDeleteZone();
 
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [newZoneName, setNewZoneName]           = useState('');
@@ -39,6 +186,43 @@ export default function Configuracion() {
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: getGetZonesQueryKey() });
 
+  // ─── DnD sensors (pointer + touch) ────────────────────────────────────────
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor,   { activationConstraint: { delay: 200, tolerance: 8 } }),
+  );
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const oldIndex = localZones.findIndex(z => z.id === active.id);
+    const newIndex = localZones.findIndex(z => z.id === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+
+    const reordered = arrayMove(localZones, oldIndex, newIndex);
+    // Assign sequential sortOrder starting from 1
+    const withOrder = reordered.map((z, i) => ({ ...z, sortOrder: i + 1 }));
+    setLocalZones(withOrder); // optimistic update
+
+    // Persist only the zones whose sortOrder actually changed
+    const originalById = Object.fromEntries(localZones.map(z => [z.id, z.sortOrder]));
+    const changed = withOrder.filter(z => z.sortOrder !== originalById[z.id]);
+
+    Promise.all(
+      changed.map(z =>
+        updateZone.mutateAsync({ zoneId: z.id, data: { sortOrder: z.sortOrder } })
+      )
+    )
+      .then(invalidate)
+      .catch(() => {
+        // Roll back on error
+        if (serverZones) setLocalZones(serverZones as Zone[]);
+        toast.error('Error al guardar el orden');
+      });
+  };
+
+  // ─── CRUD handlers ────────────────────────────────────────────────────────
   const handleCreate = () => {
     if (!newZoneName.trim()) return;
     createZone.mutate(
@@ -92,72 +276,43 @@ export default function Configuracion() {
       </header>
 
       {/* Content */}
-      <main className="flex-1 p-6 lg:p-10 max-w-4xl mx-auto w-full">
+      <main className="flex-1 p-6 lg:p-10 max-w-2xl mx-auto w-full">
         {isLoading ? (
           <div className="flex justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-muted-foreground" /></div>
-        ) : !zones?.length ? (
+        ) : !localZones.length ? (
           <div className="flex flex-col items-center justify-center py-24 text-muted-foreground">
             <LayoutDashboard size={48} className="mb-4 opacity-30" />
             <p className="text-lg font-semibold">No hay salas configuradas</p>
             <p className="text-sm mt-1">Crea la primera sala para empezar a distribuir mesas</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {zones.map(zone => (
-              <div
-                key={zone.id}
-                className="bg-card border border-border rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow flex flex-col gap-4"
-              >
-                {/* Name row */}
-                {editingId === zone.id ? (
-                  <div className="flex items-center gap-2">
-                    <input
-                      autoFocus
-                      value={editingName}
-                      onChange={e => setEditingName(e.target.value)}
-                      onKeyDown={e => { if (e.key === 'Enter') handleRename(zone.id); if (e.key === 'Escape') setEditingId(null); }}
-                      className="flex-1 bg-background border border-primary rounded-lg px-3 py-1.5 text-base font-bold focus:outline-none"
+          <>
+            <p className="text-xs text-muted-foreground mb-4 flex items-center gap-1.5">
+              <GripVertical size={13} className="opacity-60" />
+              Arrastra las salas para cambiar el orden en las pestañas
+            </p>
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+              <SortableContext items={localZones.map(z => z.id)} strategy={verticalListSortingStrategy}>
+                <div className="flex flex-col gap-3">
+                  {localZones.map(zone => (
+                    <SortableZoneCard
+                      key={zone.id}
+                      zone={zone}
+                      editingId={editingId}
+                      editingName={editingName}
+                      deletingId={deletingId}
+                      onEditStart={(id, name) => { setEditingId(id); setEditingName(name); }}
+                      onEditChange={setEditingName}
+                      onEditSave={handleRename}
+                      onEditCancel={() => setEditingId(null)}
+                      onDeleteStart={setDeletingId}
+                      onNavigate={id => setLocation(`/configuracion/salas/${id}`)}
                     />
-                    <button onClick={() => handleRename(zone.id)} className="w-8 h-8 flex items-center justify-center rounded-lg bg-primary text-primary-foreground active:scale-95">
-                      <Check size={14} />
-                    </button>
-                    <button onClick={() => setEditingId(null)} className="w-8 h-8 flex items-center justify-center rounded-lg bg-secondary active:scale-95">
-                      <X size={14} />
-                    </button>
-                  </div>
-                ) : (
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h2 className="text-lg font-black leading-tight">{zone.name}</h2>
-                      <span className="text-xs text-muted-foreground uppercase tracking-widest font-semibold">{zone.type}</span>
-                    </div>
-                    <button
-                      onClick={() => { setEditingId(zone.id); setEditingName(zone.name); }}
-                      className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors active:scale-95"
-                    >
-                      <Pencil size={14} />
-                    </button>
-                  </div>
-                )}
-
-                {/* Actions */}
-                <div className="flex gap-2 mt-auto">
-                  <button
-                    onClick={() => setLocation(`/configuracion/salas/${zone.id}`)}
-                    className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-primary/10 text-primary border border-primary/30 rounded-xl font-bold text-sm hover:bg-primary hover:text-primary-foreground transition-all active:scale-95"
-                  >
-                    <LayoutDashboard size={14} /> Editar plano
-                  </button>
-                  <button
-                    onClick={() => setDeletingId(zone.id)}
-                    className="w-10 h-10 flex items-center justify-center rounded-xl bg-destructive/10 text-destructive hover:bg-destructive hover:text-destructive-foreground transition-all active:scale-95 shrink-0"
-                  >
-                    <Trash2 size={14} />
-                  </button>
+                  ))}
                 </div>
-              </div>
-            ))}
-          </div>
+              </SortableContext>
+            </DndContext>
+          </>
         )}
       </main>
 
