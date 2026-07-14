@@ -156,16 +156,26 @@ export default function Tables() {
     query: { enabled: !!activeZone, queryKey: getGetZoneTablesQueryKey(activeZone!) }
   });
 
-  // Real-time: listen for table status changes pushed by the server
+  // Keep a ref to the active zone so the socket handler always reads the
+  // latest value without needing to reconnect when the zone changes.
+  const activeZoneRef = useRef<string | null>(null);
+  activeZoneRef.current = activeZone;
+
+  // Real-time: socket is created once on mount and torn down on unmount.
+  // Zone switches only change which queryKey is invalidated — no reconnect.
   useEffect(() => {
     const socket = io({ path: "/api/socket.io" });
     socket.on("tables:refresh", () => {
-      queryClient.invalidateQueries({ queryKey: getGetZoneTablesQueryKey(activeZone!) });
+      const zone = activeZoneRef.current;
+      if (zone) {
+        queryClient.invalidateQueries({ queryKey: getGetZoneTablesQueryKey(zone) });
+      }
       queryClient.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() });
       queryClient.invalidateQueries({ queryKey: getGetAllTablesQueryKey() });
     });
     return () => { socket.disconnect(); };
-  }, [queryClient, activeZone]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [queryClient]);
 
   const openTable = useOpenTable();
 
