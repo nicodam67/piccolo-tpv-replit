@@ -529,6 +529,21 @@ export default function Tables() {
         </div>
       </div>
 
+      {/* Zone color accent — thin rule that follows the active zone */}
+      {(() => {
+        const activeZoneColor = zones?.find(z => z.id === activeZone)?.color ?? null;
+        return (
+          <div
+            style={{
+              height: 3,
+              background: activeZoneColor ?? "transparent",
+              transition: "background 0.35s ease",
+              flexShrink: 0,
+            }}
+          />
+        );
+      })()}
+
       {/* Floor plan canvas */}
       <main ref={canvasContainerRef} className="flex-1 overflow-auto bg-[#0c0c0c] relative">
         {loadingTables ? (
