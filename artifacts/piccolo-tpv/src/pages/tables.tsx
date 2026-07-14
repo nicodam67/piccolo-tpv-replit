@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useLocation } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import { io } from "socket.io-client";
@@ -12,12 +12,17 @@ import {
   getGetAllTablesQueryKey,
   type Table,
 } from "@workspace/api-client-react";
-import { LogOut, Loader2, Monitor, Settings } from "lucide-react";
+import { LogOut, Loader2, Monitor, Settings, ZoomIn, ZoomOut, Maximize2 } from "lucide-react";
 import { toast } from "sonner";
 
 // Canvas constants — same as zone-editor so layouts match
 const CANVAS_W = 1600;
 const CANVAS_H = 900;
+
+const ZOOM_STEP = 0.1;
+const ZOOM_MIN = 0.2;
+const ZOOM_MAX = 2.0;
+const ZOOM_STORAGE_KEY = "piccolo_floor_zoom";
 
 // SVG grid background
 const GRID_BG = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40'%3E%3Cpath d='M 40 0 L 0 0 0 40' fill='none' stroke='rgba(255,255,255,0.04)' stroke-width='1'/%3E%3C/svg%3E")`;
@@ -91,9 +96,37 @@ function TableCard({ table, onClick, isBusy }: { table: Table; onClick: () => vo
 export default function Tables() {
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
+  const canvasContainerRef = useRef<HTMLDivElement>(null);
 
   const [employeeName, setEmployeeName] = useState<string>("");
   const [employeeRole, setEmployeeRole] = useState<string>("");
+
+  // Zoom state — persisted per session
+  const [zoom, setZoom] = useState<number>(() => {
+    try {
+      const saved = sessionStorage.getItem(ZOOM_STORAGE_KEY);
+      const parsed = saved ? parseFloat(saved) : NaN;
+      return !isNaN(parsed) && parsed >= ZOOM_MIN && parsed <= ZOOM_MAX ? parsed : 1;
+    } catch { return 1; }
+  });
+
+  const persistZoom = useCallback((z: number) => {
+    const clamped = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, parseFloat(z.toFixed(2))));
+    setZoom(clamped);
+    try { sessionStorage.setItem(ZOOM_STORAGE_KEY, String(clamped)); } catch { /* ignore */ }
+    return clamped;
+  }, []);
+
+  const handleZoomIn  = () => persistZoom(zoom + ZOOM_STEP);
+  const handleZoomOut = () => persistZoom(zoom - ZOOM_STEP);
+
+  const handleFit = useCallback(() => {
+    const el = canvasContainerRef.current;
+    if (!el) return;
+    const { width: cw, height: ch } = el.getBoundingClientRect();
+    const fitZoom = Math.min(cw / CANVAS_W, ch / CANVAS_H) * 0.98;
+    persistZoom(fitZoom);
+  }, [persistZoom]);
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -251,32 +284,62 @@ export default function Tables() {
         </div>
       </header>
 
-      {/* Zone Tabs */}
-      <div className="bg-card border-b border-border shrink-0 px-4 pt-4 pb-0 overflow-x-auto hide-scrollbar">
-        {loadingZones ? (
-          <div className="flex gap-2 pb-4">
-            {[1, 2, 3].map(i => <div key={i} className="w-24 h-10 rounded-t-xl bg-secondary animate-pulse" />)}
-          </div>
-        ) : (
-          <div className="flex gap-2">
-            {zones?.map(zone => {
-              const isActive = activeZone === zone.id;
-              return (
-                <button key={zone.id} onClick={() => setActiveZone(zone.id)}
-                  className={`px-6 py-3 rounded-t-xl font-semibold text-sm transition-all whitespace-nowrap
-                    ${isActive
-                      ? "bg-background text-primary border-t-2 border-primary shadow-[0_-4px_10px_rgba(0,0,0,0.05)]"
-                      : "bg-secondary/50 text-muted-foreground hover:bg-secondary hover:text-foreground"}`}>
-                  {zone.name}
-                </button>
-              );
-            })}
-          </div>
-        )}
+      {/* Zone Tabs + Zoom controls */}
+      <div className="bg-card border-b border-border shrink-0 px-4 pt-4 pb-0 flex items-end justify-between overflow-x-auto hide-scrollbar">
+        <div className="overflow-x-auto hide-scrollbar">
+          {loadingZones ? (
+            <div className="flex gap-2 pb-4">
+              {[1, 2, 3].map(i => <div key={i} className="w-24 h-10 rounded-t-xl bg-secondary animate-pulse" />)}
+            </div>
+          ) : (
+            <div className="flex gap-2">
+              {zones?.map(zone => {
+                const isActive = activeZone === zone.id;
+                return (
+                  <button key={zone.id} onClick={() => setActiveZone(zone.id)}
+                    className={`px-6 py-3 rounded-t-xl font-semibold text-sm transition-all whitespace-nowrap
+                      ${isActive
+                        ? "bg-background text-primary border-t-2 border-primary shadow-[0_-4px_10px_rgba(0,0,0,0.05)]"
+                        : "bg-secondary/50 text-muted-foreground hover:bg-secondary hover:text-foreground"}`}>
+                    {zone.name}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Zoom controls */}
+        <div className="flex items-center gap-1 mb-2 ml-4 shrink-0">
+          <button
+            onClick={handleZoomOut}
+            disabled={zoom <= ZOOM_MIN}
+            className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors active:scale-90 disabled:opacity-30"
+            title="Reducir zoom">
+            <ZoomOut size={15} />
+          </button>
+          <span className="text-xs font-mono font-bold text-muted-foreground w-10 text-center tabular-nums">
+            {Math.round(zoom * 100)}%
+          </span>
+          <button
+            onClick={handleZoomIn}
+            disabled={zoom >= ZOOM_MAX}
+            className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors active:scale-90 disabled:opacity-30"
+            title="Ampliar zoom">
+            <ZoomIn size={15} />
+          </button>
+          <button
+            onClick={handleFit}
+            className="h-8 px-2.5 flex items-center gap-1.5 rounded-lg border border-border bg-secondary/60 hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors active:scale-95 text-xs font-bold uppercase tracking-wider ml-1"
+            title="Ajustar al área disponible">
+            <Maximize2 size={12} />
+            <span>Encajar</span>
+          </button>
+        </div>
       </div>
 
       {/* Floor plan canvas */}
-      <main className="flex-1 overflow-auto bg-[#0c0c0c] relative">
+      <main ref={canvasContainerRef} className="flex-1 overflow-auto bg-[#0c0c0c] relative">
         {loadingTables ? (
           <div className="absolute inset-0 flex items-center justify-center">
             <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
@@ -295,39 +358,46 @@ export default function Tables() {
             )}
           </div>
         ) : (
-          <div
-            style={{
-              position: "relative",
-              width: CANVAS_W,
-              height: CANVAS_H,
-              backgroundImage: GRID_BG,
-              backgroundSize: "40px 40px",
-            }}
-          >
-            {/* Merge group bounding boxes */}
-            <svg style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }}>
-              {Object.values(mergeGroups).filter(g => g.length >= 2).map((grp, gi) => {
-                const minX = Math.min(...grp.map(t => t.x)) - 6;
-                const minY = Math.min(...grp.map(t => t.y)) - 6;
-                const maxX = Math.max(...grp.map(t => t.x + t.width)) + 6;
-                const maxY = Math.max(...grp.map(t => t.y + t.height)) + 6;
-                return (
-                  <rect key={gi} x={minX} y={minY} width={maxX - minX} height={maxY - minY}
-                    rx="12" ry="12" fill="rgba(192,132,252,0.06)"
-                    stroke="rgba(192,132,252,0.3)" strokeWidth="1.5" strokeDasharray="6 4" />
-                );
-              })}
-            </svg>
+          /* Outer wrapper occupies exactly the scaled canvas size so scrollbars appear correctly */
+          <div style={{ width: CANVAS_W * zoom, height: CANVAS_H * zoom, position: "relative", flexShrink: 0 }}>
+            <div
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                width: CANVAS_W,
+                height: CANVAS_H,
+                transform: `scale(${zoom})`,
+                transformOrigin: "top left",
+                backgroundImage: GRID_BG,
+                backgroundSize: "40px 40px",
+              }}
+            >
+              {/* Merge group bounding boxes */}
+              <svg style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }}>
+                {Object.values(mergeGroups).filter(g => g.length >= 2).map((grp, gi) => {
+                  const minX = Math.min(...grp.map(t => t.x)) - 6;
+                  const minY = Math.min(...grp.map(t => t.y)) - 6;
+                  const maxX = Math.max(...grp.map(t => t.x + t.width)) + 6;
+                  const maxY = Math.max(...grp.map(t => t.y + t.height)) + 6;
+                  return (
+                    <rect key={gi} x={minX} y={minY} width={maxX - minX} height={maxY - minY}
+                      rx="12" ry="12" fill="rgba(192,132,252,0.06)"
+                      stroke="rgba(192,132,252,0.3)" strokeWidth="1.5" strokeDasharray="6 4" />
+                  );
+                })}
+              </svg>
 
-            {/* Tables */}
-            {tables.map(table => (
-              <TableCard
-                key={table.id}
-                table={table}
-                onClick={() => handleTableClick(table)}
-                isBusy={openTable.isPending && openTable.variables?.tableId === table.id}
-              />
-            ))}
+              {/* Tables */}
+              {tables.map(table => (
+                <TableCard
+                  key={table.id}
+                  table={table}
+                  onClick={() => handleTableClick(table)}
+                  isBusy={openTable.isPending && openTable.variables?.tableId === table.id}
+                />
+              ))}
+            </div>
           </div>
         )}
       </main>

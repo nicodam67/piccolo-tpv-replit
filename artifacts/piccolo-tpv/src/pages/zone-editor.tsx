@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useLocation } from 'wouter';
 import { useQueryClient } from '@tanstack/react-query';
-import { ChevronLeft, Plus, Trash2, Link, Unlink, Loader2, RotateCcw, Check } from 'lucide-react';
+import { ChevronLeft, Plus, Trash2, Link, Unlink, Loader2, Check, ZoomIn, ZoomOut, Maximize2 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   useGetZoneTables,
@@ -18,6 +18,11 @@ import {
 const CANVAS_W = 1600;
 const CANVAS_H = 900;
 const GRID = 20; // snap size in px
+
+const ZOOM_STEP = 0.1;
+const ZOOM_MIN = 0.2;
+const ZOOM_MAX = 2.0;
+const ZOOM_STORAGE_KEY = 'piccolo_editor_zoom';
 
 type LocalTable = Table & { _saving?: boolean };
 
@@ -38,7 +43,7 @@ function snap(v: number, min = 0, max = 9999) {
   return Math.max(min, Math.min(max, Math.round(v / GRID) * GRID));
 }
 
-function tableStyles(t: LocalTable, selected: boolean) {
+function tableStyles(t: LocalTable, _selected: boolean) {
   const base: React.CSSProperties = {
     position: 'absolute',
     left: t.x,
@@ -110,6 +115,7 @@ export default function ZoneEditor() {
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
   const canvasRef = useRef<HTMLDivElement>(null);
+  const canvasContainerRef = useRef<HTMLDivElement>(null);
 
   // Admin guard
   useEffect(() => {
@@ -121,6 +127,33 @@ export default function ZoneEditor() {
     } catch { setLocation('/'); }
   }, [setLocation]);
 
+  // Zoom state — persisted per session
+  const [zoom, setZoom] = useState<number>(() => {
+    try {
+      const saved = sessionStorage.getItem(ZOOM_STORAGE_KEY);
+      const parsed = saved ? parseFloat(saved) : NaN;
+      return !isNaN(parsed) && parsed >= ZOOM_MIN && parsed <= ZOOM_MAX ? parsed : 1;
+    } catch { return 1; }
+  });
+
+  const persistZoom = useCallback((z: number) => {
+    const clamped = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, parseFloat(z.toFixed(2))));
+    setZoom(clamped);
+    try { sessionStorage.setItem(ZOOM_STORAGE_KEY, String(clamped)); } catch { /* ignore */ }
+    return clamped;
+  }, []);
+
+  const handleZoomIn  = () => persistZoom(zoom + ZOOM_STEP);
+  const handleZoomOut = () => persistZoom(zoom - ZOOM_STEP);
+
+  const handleFit = useCallback(() => {
+    const el = canvasContainerRef.current;
+    if (!el) return;
+    const { width: cw, height: ch } = el.getBoundingClientRect();
+    const fitZoom = Math.min(cw / CANVAS_W, ch / CANVAS_H) * 0.98;
+    persistZoom(fitZoom);
+  }, [persistZoom]);
+
   const { data: zones } = useGetZones({ query: { queryKey: getGetZonesQueryKey() } });
   const zoneName = zones?.find(z => z.id === zoneId)?.name ?? '…';
 
@@ -131,6 +164,10 @@ export default function ZoneEditor() {
   const [localTables, setLocalTables] = useState<LocalTable[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [dragState, setDragState] = useState<DragState | null>(null);
+
+  // Keep a ref for zoom so drag handlers always see the latest value
+  const zoomRef = useRef(zoom);
+  useEffect(() => { zoomRef.current = zoom; }, [zoom]);
 
   useEffect(() => {
     if (serverTables) setLocalTables(serverTables.map(t => ({ ...t })));
@@ -171,8 +208,10 @@ export default function ZoneEditor() {
 
   const handleCanvasPointerMove = useCallback((e: React.PointerEvent) => {
     if (!dragState) return;
-    const dx = e.clientX - dragState.originPointer.x;
-    const dy = e.clientY - dragState.originPointer.y;
+    // Divide client-space delta by zoom to get canvas-space delta
+    const z = zoomRef.current;
+    const dx = (e.clientX - dragState.originPointer.x) / z;
+    const dy = (e.clientY - dragState.originPointer.y) / z;
     setLocalTables(prev => prev.map(t => {
       if (!dragState.originPositions[t.id]) return t;
       const ox = dragState.originPositions[t.id].x;
@@ -271,7 +310,6 @@ export default function ZoneEditor() {
     for (const id of selectedIds) {
       const t = localTables.find(t => t.id === id);
       if (!t) continue;
-      // Preserve height, adjust width for rect
       const w = shape === 'rect' ? Math.max(t.width, Math.round(t.height * 1.5)) : t.height;
       updateTable.mutate({ tableId: id, data: { shape, width: w, height: t.height } }, {
         onSuccess: invalidate,
@@ -341,70 +379,105 @@ export default function ZoneEditor() {
         </div>
 
         <div className="flex-1" />
-        <div className="text-xs text-muted-foreground font-semibold hidden lg:block">
-          {localTables.length} mesa{localTables.length !== 1 ? 's' : ''} · Arrastra para mover · Shift+clic para selección múltiple
+
+        {/* Zoom controls */}
+        <div className="flex items-center gap-1 mr-3">
+          <button
+            onClick={handleZoomOut}
+            disabled={zoom <= ZOOM_MIN}
+            className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors active:scale-90 disabled:opacity-30"
+            title="Reducir zoom">
+            <ZoomOut size={15} />
+          </button>
+          <span className="text-xs font-mono font-bold text-muted-foreground w-10 text-center tabular-nums">
+            {Math.round(zoom * 100)}%
+          </span>
+          <button
+            onClick={handleZoomIn}
+            disabled={zoom >= ZOOM_MAX}
+            className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors active:scale-90 disabled:opacity-30"
+            title="Ampliar zoom">
+            <ZoomIn size={15} />
+          </button>
+          <button
+            onClick={handleFit}
+            className="h-8 px-2.5 flex items-center gap-1.5 rounded-lg border border-border bg-secondary/60 hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors active:scale-95 text-xs font-bold uppercase tracking-wider ml-1"
+            title="Ajustar al área disponible">
+            <Maximize2 size={12} />
+            <span className="hidden lg:inline">Encajar</span>
+          </button>
+        </div>
+
+        <div className="text-xs text-muted-foreground font-semibold hidden xl:block">
+          {localTables.length} mesa{localTables.length !== 1 ? 's' : ''} · Arrastra para mover · Shift+clic para múltiple
         </div>
       </header>
 
       {/* Main: canvas + sidebar */}
       <div className="flex-1 flex overflow-hidden">
         {/* Canvas */}
-        <div className="flex-1 overflow-auto bg-[#0d0d0d] relative">
+        <div ref={canvasContainerRef} className="flex-1 overflow-auto bg-[#0d0d0d] relative">
           {isLoading ? (
             <div className="absolute inset-0 flex items-center justify-center">
               <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
             </div>
           ) : (
-            <div
-              ref={canvasRef}
-              style={{
-                position: 'relative',
-                width: CANVAS_W,
-                height: CANVAS_H,
-                backgroundImage: gridBg,
-                backgroundSize: '40px 40px',
-                cursor: dragState ? 'grabbing' : 'default',
-              }}
-              onPointerDown={handleCanvasBgClick}
-              onPointerMove={handleCanvasPointerMove}
-              onPointerUp={handleCanvasPointerUp}
-            >
-              {/* Merge group SVG connections */}
-              <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }}>
-                {(() => {
-                  const groups: Record<string, LocalTable[]> = {};
-                  for (const t of localTables) {
-                    if (t.mergeGroup) (groups[t.mergeGroup] = groups[t.mergeGroup] ?? []).push(t);
-                  }
-                  return Object.values(groups).map((grp, gi) => {
-                    if (grp.length < 2) return null;
-                    // Draw bounding rect around group
-                    const minX = Math.min(...grp.map(t => t.x)) - 6;
-                    const minY = Math.min(...grp.map(t => t.y)) - 6;
-                    const maxX = Math.max(...grp.map(t => t.x + t.width)) + 6;
-                    const maxY = Math.max(...grp.map(t => t.y + t.height)) + 6;
-                    return (
-                      <rect key={gi} x={minX} y={minY} width={maxX - minX} height={maxY - minY}
-                        rx="12" ry="12" fill="rgba(192,132,252,0.06)" stroke="rgba(192,132,252,0.35)"
-                        strokeWidth="1.5" strokeDasharray="6 4" />
-                    );
-                  });
-                })()}
-              </svg>
+            /* Outer wrapper occupies the scaled canvas size so scrollbars appear correctly */
+            <div style={{ width: CANVAS_W * zoom, height: CANVAS_H * zoom, position: 'relative', flexShrink: 0 }}>
+              <div
+                ref={canvasRef}
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  width: CANVAS_W,
+                  height: CANVAS_H,
+                  transform: `scale(${zoom})`,
+                  transformOrigin: 'top left',
+                  backgroundImage: gridBg,
+                  backgroundSize: '40px 40px',
+                  cursor: dragState ? 'grabbing' : 'default',
+                }}
+                onPointerDown={handleCanvasBgClick}
+                onPointerMove={handleCanvasPointerMove}
+                onPointerUp={handleCanvasPointerUp}
+              >
+                {/* Merge group SVG connections */}
+                <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }}>
+                  {(() => {
+                    const groups: Record<string, LocalTable[]> = {};
+                    for (const t of localTables) {
+                      if (t.mergeGroup) (groups[t.mergeGroup] = groups[t.mergeGroup] ?? []).push(t);
+                    }
+                    return Object.values(groups).map((grp, gi) => {
+                      if (grp.length < 2) return null;
+                      const minX = Math.min(...grp.map(t => t.x)) - 6;
+                      const minY = Math.min(...grp.map(t => t.y)) - 6;
+                      const maxX = Math.max(...grp.map(t => t.x + t.width)) + 6;
+                      const maxY = Math.max(...grp.map(t => t.y + t.height)) + 6;
+                      return (
+                        <rect key={gi} x={minX} y={minY} width={maxX - minX} height={maxY - minY}
+                          rx="12" ry="12" fill="rgba(192,132,252,0.06)" stroke="rgba(192,132,252,0.35)"
+                          strokeWidth="1.5" strokeDasharray="6 4" />
+                      );
+                    });
+                  })()}
+                </svg>
 
-              {/* Tables */}
-              {localTables.map(t => (
-                <TableShape key={t.id} t={t} selected={selectedIds.has(t.id)}
-                  onPointerDown={(e) => handleTablePointerDown(e, t.id)} />
-              ))}
+                {/* Tables */}
+                {localTables.map(t => (
+                  <TableShape key={t.id} t={t} selected={selectedIds.has(t.id)}
+                    onPointerDown={(e) => handleTablePointerDown(e, t.id)} />
+                ))}
 
-              {/* Empty state */}
-              {localTables.length === 0 && !isLoading && (
-                <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.2)', gap: 12 }}>
-                  <div style={{ fontSize: 48 }}>🪑</div>
-                  <p style={{ fontSize: 16, fontWeight: 700 }}>Sin mesas · Pulsa "+ Mesa" para añadir</p>
-                </div>
-              )}
+                {/* Empty state */}
+                {localTables.length === 0 && !isLoading && (
+                  <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.2)', gap: 12 }}>
+                    <div style={{ fontSize: 48 }}>🪑</div>
+                    <p style={{ fontSize: 16, fontWeight: 700 }}>Sin mesas · Pulsa "+ Mesa" para añadir</p>
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>
