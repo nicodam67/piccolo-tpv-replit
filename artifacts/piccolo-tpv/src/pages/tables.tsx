@@ -482,20 +482,30 @@ export default function Tables() {
 
   const openTable = useOpenTable();
 
+  // Guest count dialog state
+  const [guestCountTable, setGuestCountTable] = useState<Table | null>(null);
+  const [pendingGuestCount, setPendingGuestCount] = useState(2);
+
+  const doOpenTable = (table: Table, guestCount: number) => {
+    openTable.mutate(
+      { tableId: table.id, data: { guestCount } },
+      {
+        onSuccess: (data) => {
+          queryClient.invalidateQueries({ queryKey: getGetZoneTablesQueryKey(activeZone!) });
+          queryClient.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() });
+          queryClient.invalidateQueries({ queryKey: getGetAllTablesQueryKey() });
+          setLocation(`/pedido/${table.id}/${data.order.id}`);
+        },
+        onError: () => toast.error("No se pudo abrir la mesa"),
+      }
+    );
+    setGuestCountTable(null);
+  };
+
   const handleTableClick = (table: Table) => {
     if (table.status === "free") {
-      openTable.mutate(
-        { tableId: table.id },
-        {
-          onSuccess: (data) => {
-            queryClient.invalidateQueries({ queryKey: getGetZoneTablesQueryKey(activeZone!) });
-            queryClient.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() });
-            queryClient.invalidateQueries({ queryKey: getGetAllTablesQueryKey() });
-            setLocation(`/pedido/${table.id}/${data.order.id}`);
-          },
-          onError: () => toast.error("No se pudo abrir la mesa"),
-        }
-      );
+      setPendingGuestCount(2);
+      setGuestCountTable(table);
     } else {
       setLocation(`/pedido/${table.id}/current`);
     }
@@ -745,6 +755,59 @@ export default function Tables() {
           </div>
         )}
       </main>
+
+      {/* Guest count dialog */}
+      {guestCountTable && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-6" onClick={() => setGuestCountTable(null)}>
+          <div className="bg-card border border-border rounded-2xl w-full max-w-xs shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="p-5 border-b border-border">
+              <h2 className="font-black text-2xl leading-tight">{guestCountTable.name}</h2>
+              <p className="text-muted-foreground text-sm mt-1 font-semibold">¿Cuántos comensales?</p>
+            </div>
+            <div className="p-4">
+              {/* Quick selector grid */}
+              <div className="grid grid-cols-4 gap-2 mb-4">
+                {[1, 2, 3, 4, 5, 6, 7, 8].map(n => (
+                  <button
+                    key={n}
+                    onClick={() => setPendingGuestCount(n)}
+                    className={`h-12 rounded-xl font-black text-xl transition-all active:scale-[0.95] border-2 ${
+                      pendingGuestCount === n
+                        ? 'bg-primary text-primary-foreground border-primary shadow-[0_4px_12px_rgba(0,0,0,0.3)]'
+                        : 'bg-secondary/50 border-border text-foreground hover:border-primary/40'
+                    }`}
+                  >
+                    {n}
+                  </button>
+                ))}
+              </div>
+              {/* Manual +/- for more than 8 */}
+              <div className="flex items-center justify-center gap-4 mb-5">
+                <button
+                  onClick={() => setPendingGuestCount(Math.max(1, pendingGuestCount - 1))}
+                  className="w-10 h-10 flex items-center justify-center rounded-xl bg-secondary border border-border hover:border-primary/40 text-foreground transition-colors active:scale-90 font-black text-lg"
+                >−</button>
+                <span className="text-3xl font-black w-12 text-center tabular-nums">{pendingGuestCount}</span>
+                <button
+                  onClick={() => setPendingGuestCount(pendingGuestCount + 1)}
+                  className="w-10 h-10 flex items-center justify-center rounded-xl bg-secondary border border-border hover:border-primary/40 text-foreground transition-colors active:scale-90 font-black text-lg"
+                >+</button>
+              </div>
+              <button
+                onClick={() => doOpenTable(guestCountTable, pendingGuestCount)}
+                disabled={openTable.isPending}
+                className="w-full py-4 bg-primary text-primary-foreground font-black text-xl uppercase tracking-wider rounded-xl active:scale-[0.98] transition-all flex items-center justify-center gap-2 shadow-[0_8px_20px_rgba(0,0,0,0.3)] disabled:opacity-50 hover:-translate-y-0.5"
+              >
+                {openTable.isPending ? <Loader2 className="w-5 h-5 animate-spin" /> : null}
+                Abrir mesa
+              </button>
+              <button onClick={() => setGuestCountTable(null)} className="w-full mt-2.5 py-3 rounded-xl border border-border text-muted-foreground hover:bg-secondary transition-colors font-bold">
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

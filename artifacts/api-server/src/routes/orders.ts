@@ -5,18 +5,21 @@ import {
   orderItemsTable,
   kitchenTasksTable,
   productsTable,
+  productFormatsTable,
   restaurantTablesTable,
   employeesTable,
   orderItemModifiersTable,
   waiterNotificationsTable,
+  auditLogTable,
 } from "@workspace/db";
-import { eq, and, inArray } from "drizzle-orm";
+import { eq, and, inArray, desc } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import { getIO } from "../lib/socket";
 
 const router: IRouter = Router();
 
-// Helper: load items with modifiers for an order
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
 async function loadOrderItems(orderId: string) {
   const rows = await db
     .select({
@@ -24,12 +27,15 @@ async function loadOrderItems(orderId: string) {
       orderId: orderItemsTable.orderId,
       productId: orderItemsTable.productId,
       productName: productsTable.name,
+      formatId: orderItemsTable.formatId,
+      formatName: orderItemsTable.formatName,
       quantity: orderItemsTable.quantity,
       unitPrice: orderItemsTable.unitPrice,
       status: orderItemsTable.status,
       notes: orderItemsTable.notes,
       allergyNote: orderItemsTable.allergyNote,
       hasAllergy: orderItemsTable.hasAllergy,
+      isInvitation: orderItemsTable.isInvitation,
       createdAt: orderItemsTable.createdAt,
     })
     .from(orderItemsTable)
@@ -37,7 +43,6 @@ async function loadOrderItems(orderId: string) {
     .where(eq(orderItemsTable.orderId, orderId))
     .orderBy(orderItemsTable.createdAt);
 
-  // Load modifiers per item
   const itemIds = rows.map((r) => r.id);
   const allModifiers =
     itemIds.length > 0
@@ -56,60 +61,153 @@ async function loadOrderItems(orderId: string) {
   return rows.map((item) => ({ ...item, modifiers: modsByItem.get(item.id) ?? [] }));
 }
 
-// GET /tables/:tableId/order
+async function writeAudit(
+  orderId: string | null,
+  employeeId: string | null | undefined,
+  employeeName: string,
+  action: string,
+  details: string,
+) {
+  try {
+    await db.insert(auditLogTable).values({
+      orderId: orderId ?? null,
+      employeeId: employeeId ?? null,
+      employeeName,
+      action,
+      details,
+    });
+  } catch {
+    // audit failure must not break the main operation
+  }
+}
+
+function emitRefresh(orderId: string, employeeName?: string) {
+  try {
+    getIO().emit("orders:refresh", { orderId, employeeName });
+  } catch { /* socket not initialised */ }
+}
+
+// ── GET /tables/:tableId/order ─────────────────────────────────────────────────
+
 router.get("/tables/:tableId/order", requireAuth, async (req, res): Promise<void> => {
-  const { tableId } = req.params;
+  const tableId = req.params.tableId as string;
 
   const [table] = await db
     .select()
     .from(restaurantTablesTable)
     .where(eq(restaurantTablesTable.id, tableId));
 
-  if (!table) {
-    res.status(404).json({ error: "Mesa no encontrada" });
-    return;
-  }
+  if (!table) { res.status(404).json({ error: "Mesa no encontrada" }); return; }
 
   const [order] = await db
     .select()
     .from(ordersTable)
-    .where(
-      and(eq(ordersTable.tableId, tableId), inArray(ordersTable.status, ["open", "sent", "ready"])),
-    )
+    .where(and(eq(ordersTable.tableId, tableId), inArray(ordersTable.status, ["open", "sent", "ready", "bill_requested"])))
     .orderBy(ordersTable.createdAt)
     .limit(1);
 
-  if (!order) {
-    res.status(404).json({ error: "No hay pedido activo para esta mesa" });
-    return;
-  }
+  if (!order) { res.status(404).json({ error: "No hay pedido activo para esta mesa" }); return; }
 
   const items = await loadOrderItems(order.id);
   res.json({ table, order: { ...order, items } });
 });
 
-// POST /orders/:orderId/items
-router.post("/orders/:orderId/items", requireAuth, async (req, res): Promise<void> => {
-  const { orderId } = req.params;
-  const { productId, quantity = 1, notes } = req.body as {
-    productId: string;
-    quantity: number;
-    notes?: string;
+// ── PATCH /orders/:orderId — update guestCount / notes / status ───────────────
+
+router.patch("/orders/:orderId", requireAuth, async (req, res): Promise<void> => {
+  const orderId = req.params.orderId as string;
+  const { guestCount, notes, status } = req.body as {
+    guestCount?: number; notes?: string; status?: string;
   };
 
-  if (!productId) {
-    res.status(400).json({ error: "productId es requerido" });
-    return;
+  const ALLOWED_STATUSES = ["open", "bill_requested"];
+  const updates: Record<string, unknown> = {};
+  if (guestCount != null && Number.isFinite(guestCount) && guestCount >= 1)
+    updates.guestCount = Math.floor(guestCount);
+  if (notes != null) updates.notes = notes;
+  if (status != null && ALLOWED_STATUSES.includes(status)) updates.status = status;
+
+  if (!Object.keys(updates).length) { res.status(400).json({ error: "Sin cambios" }); return; }
+
+  const [order] = await db
+    .update(ordersTable)
+    .set(updates as Partial<typeof ordersTable.$inferInsert>)
+    .where(eq(ordersTable.id, orderId))
+    .returning();
+
+  if (!order) { res.status(404).json({ error: "Pedido no encontrado" }); return; }
+
+  if (status === "bill_requested") {
+    // Update the table status as well
+    if (order.tableId) {
+      await db
+        .update(restaurantTablesTable)
+        .set({ status: "bill_requested" })
+        .where(eq(restaurantTablesTable.id, order.tableId));
+      try { getIO().emit("tables:refresh"); } catch { /* ignore */ }
+    }
+    await writeAudit(orderId, req.user?.id, req.user?.name ?? "", "bill_request", "Cuenta solicitada");
   }
+
+  if (guestCount != null) {
+    await writeAudit(orderId, req.user?.id, req.user?.name ?? "", "update_guests",
+      `Comensales actualizado a ${Math.floor(guestCount)}`);
+  }
+
+  emitRefresh(orderId, req.user?.name);
+  res.json({ ...order, items: [] });
+});
+
+// ── POST /orders/:orderId/items ────────────────────────────────────────────────
+
+router.post("/orders/:orderId/items", requireAuth, async (req, res): Promise<void> => {
+  const orderId = req.params.orderId as string;
+  const {
+    productId,
+    quantity = 1,
+    notes,
+    formatId,
+    isInvitation = false,
+    modifiers,
+  } = req.body as {
+    productId: string;
+    quantity?: number;
+    notes?: string;
+    formatId?: string;
+    isInvitation?: boolean;
+    modifiers?: { modifierId?: string; modifierName: string; priceDelta: string }[];
+  };
+
+  if (!productId) { res.status(400).json({ error: "productId es requerido" }); return; }
 
   const [product] = await db
     .select()
     .from(productsTable)
     .where(eq(productsTable.id, productId));
 
-  if (!product) {
-    res.status(404).json({ error: "Producto no encontrado" });
-    return;
+  if (!product) { res.status(404).json({ error: "Producto no encontrado" }); return; }
+
+  // Resolve unit price: use format price if formatId given
+  let unitPrice = product.price;
+  let resolvedFormatId: string | null = null;
+  let resolvedFormatName: string | null = null;
+
+  if (formatId) {
+    const [fmt] = await db
+      .select()
+      .from(productFormatsTable)
+      .where(and(eq(productFormatsTable.id, formatId), eq(productFormatsTable.productId, productId)));
+    if (fmt) {
+      unitPrice = fmt.price;
+      resolvedFormatId = fmt.id;
+      resolvedFormatName = fmt.name;
+    }
+  }
+
+  // Add modifier price deltas
+  if (modifiers?.length) {
+    const delta = modifiers.reduce((sum, m) => sum + parseFloat(m.priceDelta || "0"), 0);
+    unitPrice = String(parseFloat(unitPrice) + delta);
   }
 
   const [item] = await db
@@ -117,69 +215,201 @@ router.post("/orders/:orderId/items", requireAuth, async (req, res): Promise<voi
     .values({
       orderId,
       productId,
+      formatId: resolvedFormatId,
+      formatName: resolvedFormatName,
       quantity,
-      unitPrice: product.price,
+      unitPrice,
       status: "draft",
       notes: notes ?? "",
       allergyNote: "",
       hasAllergy: false,
+      isInvitation,
     })
     .returning();
 
-  try {
-    getIO().emit("orders:refresh", { orderId, employeeName: req.user?.name });
-  } catch {
-    // socket not initialised
+  // Insert modifiers inline
+  if (modifiers?.length) {
+    await db.insert(orderItemModifiersTable).values(
+      modifiers.map((m) => ({
+        orderItemId: item.id,
+        modifierId: m.modifierId ?? null,
+        modifierName: m.modifierName,
+        priceDelta: m.priceDelta,
+      })),
+    );
   }
+
+  const itemModifiers = modifiers?.length
+    ? await db.select().from(orderItemModifiersTable).where(eq(orderItemModifiersTable.orderItemId, item.id))
+    : [];
+
+  await writeAudit(orderId, req.user?.id, req.user?.name ?? "", "add_item",
+    `Añadido: ${product.name}${resolvedFormatName ? ` [${resolvedFormatName}]` : ""}`);
+  emitRefresh(orderId, req.user?.name);
 
   res.status(201).json({
     id: item.id,
     orderId: item.orderId,
     productId: item.productId,
     productName: product.name,
+    formatId: item.formatId,
+    formatName: item.formatName,
     quantity: item.quantity,
     unitPrice: item.unitPrice,
     status: item.status,
     notes: item.notes,
     allergyNote: item.allergyNote,
     hasAllergy: item.hasAllergy,
-    modifiers: [],
+    isInvitation: item.isInvitation,
+    modifiers: itemModifiers,
     createdAt: item.createdAt,
   });
 });
 
-// DELETE /order-items/:itemId
-router.delete("/order-items/:itemId", requireAuth, async (req, res): Promise<void> => {
-  const { itemId } = req.params;
+// ── PATCH /order-items/:itemId — update quantity / notes / flags ──────────────
+
+router.patch("/order-items/:itemId", requireAuth, async (req, res): Promise<void> => {
+  const itemId = req.params.itemId as string;
+  const { quantity, notes, allergyNote, hasAllergy, isInvitation } = req.body as {
+    quantity?: number;
+    notes?: string;
+    allergyNote?: string;
+    hasAllergy?: boolean;
+    isInvitation?: boolean;
+  };
 
   const [item] = await db
     .select()
     .from(orderItemsTable)
     .where(eq(orderItemsTable.id, itemId));
 
-  if (!item) {
-    res.status(404).json({ error: "Línea no encontrada" });
+  if (!item) { res.status(404).json({ error: "Línea no encontrada" }); return; }
+
+  if (quantity != null && item.status !== "draft") {
+    res.status(400).json({ error: "Solo se puede cambiar la cantidad de líneas en borrador" });
     return;
   }
-  if (item.status !== "draft") {
+
+  const updates: Record<string, unknown> = {};
+  if (quantity != null && Number.isFinite(quantity) && quantity >= 1) updates.quantity = Math.floor(quantity);
+  if (notes != null) updates.notes = notes;
+  if (allergyNote != null) updates.allergyNote = allergyNote;
+  if (hasAllergy != null) updates.hasAllergy = hasAllergy;
+  if (isInvitation != null) updates.isInvitation = isInvitation;
+
+  if (!Object.keys(updates).length) { res.status(400).json({ error: "Sin cambios" }); return; }
+
+  const [updated] = await db
+    .update(orderItemsTable)
+    .set(updates as Partial<typeof orderItemsTable.$inferInsert>)
+    .where(eq(orderItemsTable.id, itemId))
+    .returning();
+
+  const itemModifiers = await db
+    .select()
+    .from(orderItemModifiersTable)
+    .where(eq(orderItemModifiersTable.orderItemId, itemId));
+
+  const [product] = await db
+    .select({ name: productsTable.name })
+    .from(productsTable)
+    .where(eq(productsTable.id, item.productId));
+
+  emitRefresh(item.orderId, req.user?.name);
+  res.json({ ...updated, productName: product?.name ?? "", modifiers: itemModifiers });
+});
+
+// ── POST /order-items/:itemId/duplicate ───────────────────────────────────────
+
+router.post("/order-items/:itemId/duplicate", requireAuth, async (req, res): Promise<void> => {
+  const itemId = req.params.itemId as string;
+
+  const [original] = await db
+    .select()
+    .from(orderItemsTable)
+    .innerJoin(productsTable, eq(orderItemsTable.productId, productsTable.id))
+    .where(eq(orderItemsTable.id, itemId));
+
+  if (!original) { res.status(404).json({ error: "Línea no encontrada" }); return; }
+
+  const srcItem = original.order_items;
+  const srcProduct = original.products;
+
+  const originalMods = await db
+    .select()
+    .from(orderItemModifiersTable)
+    .where(eq(orderItemModifiersTable.orderItemId, itemId));
+
+  const [copy] = await db
+    .insert(orderItemsTable)
+    .values({
+      orderId: srcItem.orderId,
+      productId: srcItem.productId,
+      formatId: srcItem.formatId,
+      formatName: srcItem.formatName,
+      quantity: 1,
+      unitPrice: srcItem.unitPrice,
+      status: "draft",
+      notes: srcItem.notes,
+      allergyNote: srcItem.allergyNote,
+      hasAllergy: srcItem.hasAllergy,
+      isInvitation: srcItem.isInvitation,
+    })
+    .returning();
+
+  let copyMods: typeof originalMods = [];
+  if (originalMods.length) {
+    await db.insert(orderItemModifiersTable).values(
+      originalMods.map((m) => ({
+        orderItemId: copy.id,
+        modifierId: m.modifierId,
+        modifierName: m.modifierName,
+        priceDelta: m.priceDelta,
+      })),
+    );
+    copyMods = await db.select().from(orderItemModifiersTable).where(eq(orderItemModifiersTable.orderItemId, copy.id));
+  }
+
+  await writeAudit(srcItem.orderId, req.user?.id, req.user?.name ?? "", "duplicate_item", `Duplicado: ${srcProduct.name}`);
+  emitRefresh(srcItem.orderId, req.user?.name);
+
+  res.status(201).json({
+    ...copy,
+    productName: srcProduct.name,
+    modifiers: copyMods,
+  });
+});
+
+// ── DELETE /order-items/:itemId ────────────────────────────────────────────────
+
+router.delete("/order-items/:itemId", requireAuth, async (req, res): Promise<void> => {
+  const itemId = req.params.itemId as string;
+
+  const [item] = await db
+    .select()
+    .from(orderItemsTable)
+    .innerJoin(productsTable, eq(orderItemsTable.productId, productsTable.id))
+    .where(eq(orderItemsTable.id, itemId));
+
+  if (!item) { res.status(404).json({ error: "Línea no encontrada" }); return; }
+  if (item.order_items.status !== "draft") {
     res.status(400).json({ error: "Solo se pueden eliminar líneas en borrador" });
     return;
   }
 
   await db.delete(orderItemsTable).where(eq(orderItemsTable.id, itemId));
 
-  try {
-    getIO().emit("orders:refresh", { orderId: item.orderId, employeeName: req.user?.name });
-  } catch {
-    // socket not initialised
-  }
+  await writeAudit(item.order_items.orderId, req.user?.id, req.user?.name ?? "", "cancel_item",
+    `Anulado: ${item.products.name}`);
+  emitRefresh(item.order_items.orderId, req.user?.name);
 
   res.status(204).send();
 });
 
-// POST /orders/:orderId/send
+// ── POST /orders/:orderId/send — send drafts to KDS ───────────────────────────
+
 router.post("/orders/:orderId/send", requireAuth, async (req, res): Promise<void> => {
-  const { orderId } = req.params;
+  const orderId = req.params.orderId as string;
 
   const draftItems = await db
     .select()
@@ -192,7 +422,6 @@ router.post("/orders/:orderId/send", requireAuth, async (req, res): Promise<void
     return;
   }
 
-  // Load modifiers for all draft items
   const draftItemIds = draftItems.map((r) => r.order_items.id);
   const allMods =
     draftItemIds.length > 0
@@ -213,16 +442,16 @@ router.post("/orders/:orderId/send", requireAuth, async (req, res): Promise<void
       const item = row.order_items;
       const product = row.products;
 
-      // Build notes string with modifiers
       const mods = modsByItem.get(item.id) ?? [];
       const modText = mods.map((m) => m.modifierName).join(", ");
-      const fullNote = [modText, item.notes].filter(Boolean).join(" | ");
+      const formatPart = item.formatName ? `[${item.formatName}]` : "";
+      const fullNote = [formatPart, modText, item.notes].filter(Boolean).join(" | ");
 
       await tx.insert(kitchenTasksTable).values({
         orderId,
         orderItemId: item.id,
         prepZone: product.prepZone,
-        productName: product.name,
+        productName: product.name + (item.formatName ? ` (${item.formatName})` : ""),
         quantity: item.quantity,
         status: "new",
         allergyNote: item.allergyNote,
@@ -230,11 +459,10 @@ router.post("/orders/:orderId/send", requireAuth, async (req, res): Promise<void
       });
     }
 
-    const itemIds = draftItems.map((r) => r.order_items.id);
     await tx
       .update(orderItemsTable)
       .set({ status: "sent" })
-      .where(inArray(orderItemsTable.id, itemIds));
+      .where(inArray(orderItemsTable.id, draftItemIds));
 
     await tx
       .update(ordersTable)
@@ -244,20 +472,34 @@ router.post("/orders/:orderId/send", requireAuth, async (req, res): Promise<void
 
   const [updated] = await db.select().from(ordersTable).where(eq(ordersTable.id, orderId));
 
+  await writeAudit(orderId, req.user?.id, req.user?.name ?? "", "send_kds",
+    `${draftItems.length} línea(s) enviada(s) a preparación`);
+
   try {
     const io = getIO();
     io.emit("kds:refresh");
-    io.emit("orders:refresh", { orderId, employeeName: req.user?.name });
-  } catch {
-    // socket not initialised
-  }
+    emitRefresh(orderId, req.user?.name);
+  } catch { /* ignore */ }
 
   res.json(updated);
 });
 
-// POST /orders/:orderId/pase
+// ── GET /orders/:orderId/audit ─────────────────────────────────────────────────
+
+router.get("/orders/:orderId/audit", requireAuth, async (req, res): Promise<void> => {
+  const orderId = req.params.orderId as string;
+  const entries = await db
+    .select()
+    .from(auditLogTable)
+    .where(eq(auditLogTable.orderId, orderId))
+    .orderBy(desc(auditLogTable.createdAt));
+  res.json(entries);
+});
+
+// ── POST /orders/:orderId/pase ─────────────────────────────────────────────────
+
 router.post("/orders/:orderId/pase", requireAuth, async (req, res): Promise<void> => {
-  const { orderId } = req.params;
+  const orderId = req.params.orderId as string;
   const { action } = req.body as { action: "collected" | "served" };
 
   if (!["collected", "served"].includes(action)) {
@@ -275,10 +517,7 @@ router.post("/orders/:orderId/pase", requireAuth, async (req, res): Promise<void
   } else {
     const [order] = await db.select().from(ordersTable).where(eq(ordersTable.id, orderId));
 
-    if (!order) {
-      res.status(404).json({ error: "Pedido no encontrado" });
-      return;
-    }
+    if (!order) { res.status(404).json({ error: "Pedido no encontrado" }); return; }
 
     await db.transaction(async (tx) => {
       await tx
@@ -314,9 +553,7 @@ router.post("/orders/:orderId/pase", requireAuth, async (req, res): Promise<void
           employeeId: order.employeeId,
         });
       }
-    } catch {
-      // socket not initialised
-    }
+    } catch { /* ignore */ }
   }
 
   const [updated] = await db.select().from(ordersTable).where(eq(ordersTable.id, orderId));

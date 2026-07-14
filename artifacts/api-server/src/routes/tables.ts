@@ -241,8 +241,12 @@ router.delete("/tables/:tableId", requireAuth, requireRole("admin"), async (req,
 // ── POST /tables/:tableId/open — open free table + create order ───────────────
 
 router.post("/tables/:tableId/open", requireAuth, async (req, res): Promise<void> => {
-  const tableId  = req.params.tableId as string;
+  const tableId    = req.params.tableId as string;
   const employeeId = (req as any).user?.id as string | undefined;
+  const rawGuests  = req.body?.guestCount;
+  const guestCount = Number.isFinite(Number(rawGuests)) && Number(rawGuests) >= 1
+    ? Math.floor(Number(rawGuests))
+    : 1;
 
   const result = await db.transaction(async (tx) => {
     const [table] = await tx
@@ -253,7 +257,7 @@ router.post("/tables/:tableId/open", requireAuth, async (req, res): Promise<void
     if (!table) return null;
     const [order] = await tx
       .insert(ordersTable)
-      .values({ tableId: table.id, employeeId: employeeId ?? null, status: "open" })
+      .values({ tableId: table.id, employeeId: employeeId ?? null, status: "open", guestCount })
       .returning();
     return { table: tableShape(table), order: { ...order, items: [] } };
   });

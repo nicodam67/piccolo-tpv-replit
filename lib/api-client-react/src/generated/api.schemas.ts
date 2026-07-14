@@ -199,12 +199,15 @@ export interface OrderItem {
   orderId: string;
   productId: string;
   productName: string;
+  formatId?: string | null;
+  formatName?: string | null;
   quantity: number;
   unitPrice: string;
   status: string;
   notes: string;
   allergyNote: string;
   hasAllergy: boolean;
+  isInvitation: boolean;
   modifiers?: OrderItemModifier[];
   createdAt: string;
 }
@@ -214,6 +217,8 @@ export interface Order {
   tableId: string;
   employeeId: string;
   status: string;
+  guestCount?: number;
+  notes?: string;
   createdAt: string;
   sentAt?: string;
   items?: OrderItem[];
@@ -268,12 +273,26 @@ export interface Category {
   sortOrder: number;
 }
 
+export interface ProductFormat {
+  id: string;
+  productId: string;
+  name: string;
+  price: string;
+  sortOrder: number;
+  active: boolean;
+}
+
 export interface Product {
   id: string;
   categoryId: string;
   name: string;
   price: string;
   prepZone: string;
+  tpvVisible?: boolean;
+  outOfStock?: boolean;
+  allergens?: string;
+  hasModifiers?: boolean;
+  formats?: ProductFormat[];
 }
 
 export interface KitchenTask {
@@ -296,10 +315,67 @@ export interface KitchenTask {
   servedAt?: string;
 }
 
+export type AddOrderItemInputModifiersItem = {
+  modifierId?: string;
+  modifierName: string;
+  priceDelta: string;
+};
+
 export interface AddOrderItemInput {
   productId: string;
-  quantity: number;
+  quantity?: number;
   notes?: string;
+  formatId?: string;
+  isInvitation?: boolean;
+  modifiers?: AddOrderItemInputModifiersItem[];
+}
+
+export interface OpenTableInput {
+  guestCount?: number;
+}
+
+export type UpdateOrderInputStatus = typeof UpdateOrderInputStatus[keyof typeof UpdateOrderInputStatus];
+
+export const UpdateOrderInputStatus = {
+  open: 'open',
+  bill_requested: 'bill_requested',
+} as const;
+
+export interface UpdateOrderInput {
+  guestCount?: number;
+  notes?: string;
+  status?: UpdateOrderInputStatus;
+}
+
+export interface UpdateOrderItemInput {
+  quantity?: number;
+  notes?: string;
+  allergyNote?: string;
+  hasAllergy?: boolean;
+  isInvitation?: boolean;
+}
+
+export interface CreateProductFormatInput {
+  name: string;
+  price: string;
+  sortOrder?: number;
+}
+
+export interface UpdateProductFormatInput {
+  name?: string;
+  price?: string;
+  sortOrder?: number;
+  active?: boolean;
+}
+
+export interface AuditLogEntry {
+  id: string;
+  orderId?: string | null;
+  employeeId?: string | null;
+  employeeName: string;
+  action: string;
+  details: string;
+  createdAt: string;
 }
 
 export type UpdateTaskStatusInputStatus = typeof UpdateTaskStatusInputStatus[keyof typeof UpdateTaskStatusInputStatus];

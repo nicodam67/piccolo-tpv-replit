@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, uuid, integer } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { restaurantTablesTable } from "./tables";
@@ -10,6 +10,8 @@ export const ordersTable = pgTable("orders", {
   employeeId: uuid("employee_id").references(() => employeesTable.id),
   orderType: text("order_type").notNull().default("table"),
   status: text("status").notNull().default("open"),
+  guestCount: integer("guest_count").notNull().default(1),
+  notes: text("notes").notNull().default(""),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   sentAt: timestamp("sent_at", { withTimezone: true }),
 });

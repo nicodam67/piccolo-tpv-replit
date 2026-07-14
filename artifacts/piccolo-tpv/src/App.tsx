@@ -13,6 +13,7 @@ import Ticket from './pages/ticket';
 import Configuracion from './pages/configuracion';
 import ZoneEditor from './pages/zone-editor';
 import AdminDashboard from './pages/admin-dashboard';
+import Recogida from './pages/recogida';
 import NotFound from './pages/not-found';
 
 const queryClient = new QueryClient({
@@ -37,6 +38,7 @@ function Router() {
       <Route path="/admin" component={AdminDashboard} />
       <Route path="/configuracion" component={Configuracion} />
       <Route path="/configuracion/salas/:zoneId" component={ZoneEditor} />
+      <Route path="/recogida" component={Recogida} />
       <Route component={NotFound} />
     </Switch>
   );

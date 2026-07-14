@@ -1,6 +1,6 @@
 import { boolean, numeric, pgTable, text, uuid, integer, timestamp } from "drizzle-orm/pg-core";
 import { ordersTable } from "./orders";
-import { productsTable } from "./categories";
+import { productsTable, productFormatsTable } from "./categories";
 
 export const orderItemsTable = pgTable("order_items", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -10,12 +10,15 @@ export const orderItemsTable = pgTable("order_items", {
   productId: uuid("product_id")
     .notNull()
     .references(() => productsTable.id),
+  formatId: uuid("format_id").references(() => productFormatsTable.id),
+  formatName: text("format_name"),
   quantity: integer("quantity").notNull().default(1),
   unitPrice: numeric("unit_price", { precision: 10, scale: 2 }).notNull(),
   status: text("status").notNull().default("draft"),
   notes: text("notes").notNull().default(""),
   allergyNote: text("allergy_note").notNull().default(""),
   hasAllergy: boolean("has_allergy").notNull().default(false),
+  isInvitation: boolean("is_invitation").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

@@ -1,3 +1,7 @@
 - [Zone & Table extended spec](zone-table-spec.md) — decisions from Entrega 5+ spec: rotation column, extended statuses, duplicate endpoints, order-info JOIN in GET /zones/:zoneId/tables.
 - [OpenAPI spec must-haves](openapi-must-haves.md) — Zone schema needs color+active; UpdateZoneInput needs color+active — without them codegen omits them and TS errors appear.
 - [Layouts & canvas elements](layouts-canvas-elements.md) — activeLayout on zones, layout on tables, canvas_elements table; api-zod index must only export from ./generated/api (not types/).
+- [Orval codegen broken workaround](orval-codegen-workaround.md) — orval v8.21 can't load config in this env; always edit generated files manually then rebuild lib/api-client-react dist with `tsc --build lib/api-client-react`.
+- [Express params cast pattern](express-params-cast.md) — In api-server routes, always use `const id = req.params.id as string` — destructuring without cast gives `string | string[]` which breaks drizzle `eq()` calls.
+- [lib/db dist rebuild](lib-db-rebuild.md) — After schema changes, run `tsc --build lib/db` to update dist declarations; only then will api-server tsc pick up new columns.
+- [Comandas module schema](comandas-schema.md) — guestCount+notes on orders, formatId+formatName+isInvitation on order_items, productFormatsTable in categories schema, auditLogTable; all pushed to DB.

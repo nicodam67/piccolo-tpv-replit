@@ -618,6 +618,12 @@ paths:
           required: true
           schema:
             type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OpenTableInput"
       responses:
         "200":
           description: Table opened with active order
@@ -1111,6 +1117,269 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
           description: Notification not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /orders/{orderId}:
+    patch:
+      operationId: updateOrder
+      tags: [orders]
+      summary: Update order guest count, notes or status
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateOrderInput"
+      responses:
+        "200":
+          description: Order updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+        "404":
+          description: Order not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /order-items/{itemId}:
+    patch:
+      operationId: updateOrderItem
+      tags: [orders]
+      summary: Update quantity, notes, allergy or invitation flag on a line item
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: itemId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateOrderItemInput"
+      responses:
+        "200":
+          description: Item updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderItem"
+        "400":
+          description: Cannot change quantity of sent item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Item not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /order-items/{itemId}/duplicate:
+    post:
+      operationId: duplicateOrderItem
+      tags: [orders]
+      summary: Duplicate a line item (copies product, format, modifiers)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: itemId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "201":
+          description: Duplicated item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderItem"
+        "404":
+          description: Item not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /orders/{orderId}/audit:
+    get:
+      operationId: getOrderAudit
+      tags: [orders]
+      summary: Get audit log entries for an order
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Audit log entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AuditLogEntry"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /products/{productId}/formats:
+    get:
+      operationId: getProductFormats
+      tags: [categories]
+      summary: Get active formats for a product
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: productId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of formats
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ProductFormat"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      operationId: createProductFormat
+      tags: [categories]
+      summary: Create a format for a product (admin only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: productId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProductFormatInput"
+      responses:
+        "201":
+          description: Format created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductFormat"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /products/formats/{formatId}:
+    patch:
+      operationId: updateProductFormat
+      tags: [categories]
+      summary: Update a product format (admin only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: formatId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProductFormatInput"
+      responses:
+        "200":
+          description: Format updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductFormat"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
           content:
             application/json:
               schema:
@@ -1727,6 +1996,10 @@ components:
           type: string
         status:
           type: string
+        guestCount:
+          type: integer
+        notes:
+          type: string
         createdAt:
           type: string
         sentAt:
@@ -1757,6 +2030,12 @@ components:
           type: string
         productName:
           type: string
+        formatId:
+          type: string
+          nullable: true
+        formatName:
+          type: string
+          nullable: true
         quantity:
           type: integer
         unitPrice:
@@ -1769,13 +2048,15 @@ components:
           type: string
         hasAllergy:
           type: boolean
+        isInvitation:
+          type: boolean
         modifiers:
           type: array
           items:
             $ref: "#/components/schemas/OrderItemModifier"
         createdAt:
           type: string
-      required: [id, orderId, productId, productName, quantity, unitPrice, status, createdAt, notes, allergyNote, hasAllergy]
+      required: [id, orderId, productId, productName, quantity, unitPrice, status, createdAt, notes, allergyNote, hasAllergy, isInvitation]
 
     OrderItemModifier:
       type: object
@@ -1887,6 +2168,18 @@ components:
           type: string
         prepZone:
           type: string
+        tpvVisible:
+          type: boolean
+        outOfStock:
+          type: boolean
+        allergens:
+          type: string
+        hasModifiers:
+          type: boolean
+        formats:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProductFormat"
       required: [id, categoryId, name, price, prepZone]
 
     KitchenTask:
@@ -1937,7 +2230,118 @@ components:
           type: integer
         notes:
           type: string
-      required: [productId, quantity]
+        formatId:
+          type: string
+        isInvitation:
+          type: boolean
+        modifiers:
+          type: array
+          items:
+            type: object
+            properties:
+              modifierId:
+                type: string
+              modifierName:
+                type: string
+              priceDelta:
+                type: string
+            required: [modifierName, priceDelta]
+      required: [productId]
+
+    OpenTableInput:
+      type: object
+      properties:
+        guestCount:
+          type: integer
+          minimum: 1
+
+    UpdateOrderInput:
+      type: object
+      properties:
+        guestCount:
+          type: integer
+          minimum: 1
+        notes:
+          type: string
+        status:
+          type: string
+          enum: [open, bill_requested]
+
+    UpdateOrderItemInput:
+      type: object
+      properties:
+        quantity:
+          type: integer
+          minimum: 1
+        notes:
+          type: string
+        allergyNote:
+          type: string
+        hasAllergy:
+          type: boolean
+        isInvitation:
+          type: boolean
+
+    ProductFormat:
+      type: object
+      properties:
+        id:
+          type: string
+        productId:
+          type: string
+        name:
+          type: string
+        price:
+          type: string
+        sortOrder:
+          type: integer
+        active:
+          type: boolean
+      required: [id, productId, name, price, sortOrder, active]
+
+    CreateProductFormatInput:
+      type: object
+      properties:
+        name:
+          type: string
+        price:
+          type: string
+        sortOrder:
+          type: integer
+      required: [name, price]
+
+    UpdateProductFormatInput:
+      type: object
+      properties:
+        name:
+          type: string
+        price:
+          type: string
+        sortOrder:
+          type: integer
+        active:
+          type: boolean
+
+    AuditLogEntry:
+      type: object
+      properties:
+        id:
+          type: string
+        orderId:
+          type: string
+          nullable: true
+        employeeId:
+          type: string
+          nullable: true
+        employeeName:
+          type: string
+        action:
+          type: string
+        details:
+          type: string
+        createdAt:
+          type: string
+      required: [id, employeeName, action, details, createdAt]
 
     UpdateTaskStatusInput:
       type: object
