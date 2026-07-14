@@ -6,11 +6,14 @@ import {
   useGetDashboardSummary,
   useGetZones,
   useGetZoneTables,
+  useGetCanvasElements,
   useOpenTable,
   getGetZoneTablesQueryKey,
   getGetDashboardSummaryQueryKey,
   getGetAllTablesQueryKey,
+  getGetCanvasElementsQueryKey,
   type Table,
+  type CanvasElement,
 } from "@workspace/api-client-react";
 import { LogOut, Loader2, Monitor, Settings, ZoomIn, ZoomOut, Maximize2 } from "lucide-react";
 import { toast } from "sonner";
@@ -18,6 +21,51 @@ import { toast } from "sonner";
 // Canvas constants — same as zone-editor so layouts match
 const CANVAS_W = 1600;
 const CANVAS_H = 900;
+
+// Element colour defaults — must match zone-editor
+const ELEMENT_COLOR: Record<string, string> = {
+  wall: '#64748b', door: '#854d0e', window: '#7dd3fc', bar: '#78350f', column: '#475569',
+};
+
+/** Read-only element renderer for the camarero floor plan view */
+function ElementShape({ el }: { el: CanvasElement }) {
+  const color  = el.color ?? ELEMENT_COLOR[el.type] ?? '#64748b';
+  const isCol  = el.type === 'column';
+  const isDoor = el.type === 'door';
+  const isBar  = el.type === 'bar';
+  const isWin  = el.type === 'window';
+  return (
+    <div style={{
+      position: 'absolute', left: el.x, top: el.y, width: el.width, height: el.height,
+      backgroundColor: isWin ? 'transparent' : color,
+      borderRadius: isCol ? '50%' : isDoor ? '4px 4px 0 0' : isBar ? '8px' : isWin ? '2px' : '3px',
+      border: isWin ? `3px solid ${color}` : `1px solid ${color}dd`,
+      transform: el.rotation ? `rotate(${el.rotation}deg)` : undefined,
+      transformOrigin: 'center center',
+      boxShadow: '0 1px 4px rgba(0,0,0,0.5)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      opacity: 0.78, pointerEvents: 'none', userSelect: 'none', overflow: 'visible',
+    }}>
+      {isWin && (
+        <>
+          <div style={{ position: 'absolute', left: '50%', top: 0, bottom: 0, width: 2, backgroundColor: color, transform: 'translateX(-50%)', opacity: 0.7 }} />
+          <div style={{ position: 'absolute', top: '50%', left: 0, right: 0, height: 2, backgroundColor: color, transform: 'translateY(-50%)', opacity: 0.7 }} />
+        </>
+      )}
+      {(isBar || el.label) && !isWin && (
+        <span style={{ color: '#fff', fontSize: Math.max(9, Math.min(el.height / 2, 14)), fontWeight: 800, letterSpacing: 1, opacity: 0.9, textTransform: 'uppercase' }}>
+          {el.label ?? el.type}
+        </span>
+      )}
+      {isDoor && (
+        <svg width={el.width * 0.7} height={el.height * 1.5} viewBox="0 0 40 40"
+          style={{ position: 'absolute', bottom: el.height * 0.9, pointerEvents: 'none', opacity: 0.6 }}>
+          <path d="M0,40 A40,40 0 0,1 40,40" fill="none" stroke="#fff" strokeWidth="2" />
+        </svg>
+      )}
+    </div>
+  );
+}
 
 const ZOOM_STEP = 0.1;
 const ZOOM_MIN = 0.2;
@@ -194,8 +242,11 @@ export default function Tables() {
     const el = canvasContainerRef.current;
     if (!el) return;
     const { width: cw, height: ch } = el.getBoundingClientRect();
-    const fitZoom = Math.min(cw / CANVAS_W, ch / CANVAS_H) * 0.98;
+    const fitZoom = Math.min(cw / CANVAS_W, ch / CANVAS_H) * 0.95;
     persistZoom(fitZoom);
+    // Reset scroll so the whole canvas is visible from the top-left
+    el.scrollLeft = 0;
+    el.scrollTop  = 0;
   }, [persistZoom]);
 
   // Pinch-to-zoom — non-passive so we can preventDefault and block scroll
@@ -383,6 +434,21 @@ export default function Tables() {
     undefined,
     { query: { enabled: !!activeZone, queryKey: getGetZoneTablesQueryKey(activeZone!) } }
   );
+
+  // Canvas elements (walls, doors, etc.) — read-only in camarero view
+  const { data: elements } = useGetCanvasElements(
+    activeZone!,
+    { layout: 'normal' },
+    { query: { enabled: !!activeZone, queryKey: getGetCanvasElementsQueryKey(activeZone!, { layout: 'normal' }) } }
+  );
+
+  // Auto-fit on first tables load so the full floor plan is visible immediately
+  const didAutoFit = useRef(false);
+  useEffect(() => {
+    if (!tables?.length || didAutoFit.current) return;
+    didAutoFit.current = true;
+    requestAnimationFrame(() => handleFit());
+  }, [tables, handleFit]);
 
   // Keep a ref to the active zone so the socket handler always reads the
   // latest value without needing to reconnect when the zone changes.
@@ -662,6 +728,9 @@ export default function Tables() {
                   );
                 })}
               </svg>
+
+              {/* Canvas elements — read-only room layout (walls, doors, etc.) */}
+              {elements?.map(el => <ElementShape key={el.id} el={el} />)}
 
               {/* Tables */}
               {tables.map(table => (
