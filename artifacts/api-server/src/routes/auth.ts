@@ -9,11 +9,13 @@ import { AuthWithPinBody } from "@workspace/api-zod";
 const router: IRouter = Router();
 
 router.get("/employees/login-list", async (_req, res): Promise<void> => {
+  // role is intentionally omitted: it is not needed by the PIN login UI and
+  // disclosing it publicly would let an attacker identify and prioritise
+  // admin accounts for targeted brute-force attempts.
   const employees = await db
     .select({
       id: employeesTable.id,
       name: employeesTable.name,
-      role: employeesTable.role,
     })
     .from(employeesTable)
     .where(eq(employeesTable.active, true))
