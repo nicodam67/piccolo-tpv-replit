@@ -1,8 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from './ui/dialog';
 import { useGetProductModifiers, useUpdateOrderItemDetails, getGetTableOrderQueryKey, getGetProductModifiersQueryKey } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Loader2 } from 'lucide-react';
+
+const TAP_SLOP = 8;
 
 interface EditItemModalProps {
   isOpen: boolean;
@@ -14,6 +16,24 @@ interface EditItemModalProps {
 export function EditItemModal({ isOpen, onClose, item, tableId }: EditItemModalProps) {
   const queryClient = useQueryClient();
   const isDraft = item?.status === 'draft';
+  const pointerOriginRef = useRef<{ x: number; y: number } | null>(null);
+
+  const handlePointerDown = (e: React.PointerEvent) => {
+    pointerOriginRef.current = { x: e.clientX, y: e.clientY };
+  };
+
+  const guardedLabelClick = (e: React.MouseEvent) => {
+    if (pointerOriginRef.current) {
+      const dx = e.clientX - pointerOriginRef.current.x;
+      const dy = e.clientY - pointerOriginRef.current.y;
+      if (Math.sqrt(dx * dx + dy * dy) > TAP_SLOP) {
+        e.preventDefault();
+        pointerOriginRef.current = null;
+        return;
+      }
+    }
+    pointerOriginRef.current = null;
+  };
 
   const productId = item?.productId || '';
   const { data: modifiersData, isLoading: loadingModifiers } = useGetProductModifiers(productId, {
@@ -151,6 +171,8 @@ export function EditItemModal({ isOpen, onClose, item, tableId }: EditItemModalP
                       return (
                         <label 
                           key={opt.id} 
+                          onPointerDown={handlePointerDown}
+                          onClick={guardedLabelClick}
                           className={`flex items-center gap-3 p-3 rounded-lg border-2 cursor-pointer transition-colors ${
                             isSelected 
                               ? 'border-primary bg-primary/5' 
