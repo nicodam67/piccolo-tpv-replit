@@ -10,6 +10,11 @@ import {
   type AddPaymentInputMethodCode,
 } from '@workspace/api-client-react';
 
+// ── tap-slop guard ────────────────────────────────────────────────────────────
+// Prevents accidental taps while scrolling: record pointer-down origin; if the
+// finger/cursor moves more than TAP_SLOP pixels before release, suppress the click.
+const TAP_SLOP = 8;
+
 // ── helpers ───────────────────────────────────────────────────────────────────
 function fmt(n: number) { return n.toFixed(2); }
 function parseAmt(s: string) { const n = parseFloat(s); return isNaN(n) ? 0 : n; }
@@ -54,6 +59,26 @@ export default function Payment() {
   const { orderId } = useParams<{ orderId: string }>();
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
+
+  // Shared tap-slop guard: prevents accidental taps while scrolling.
+  // Store pointer-down origin; if the finger/cursor travels more than TAP_SLOP
+  // pixels before releasing, treat it as a scroll gesture and suppress the click.
+  const pointerOriginRef = useRef<{ x: number; y: number } | null>(null);
+  const handlePointerDown = (e: React.PointerEvent) => {
+    pointerOriginRef.current = { x: e.clientX, y: e.clientY };
+  };
+  const guardedClick = (handler: () => void) => (e: React.MouseEvent) => {
+    if (pointerOriginRef.current) {
+      const dx = e.clientX - pointerOriginRef.current.x;
+      const dy = e.clientY - pointerOriginRef.current.y;
+      if (Math.sqrt(dx * dx + dy * dy) > TAP_SLOP) {
+        pointerOriginRef.current = null;
+        return;
+      }
+    }
+    pointerOriginRef.current = null;
+    handler();
+  };
 
   const { data: summary, isLoading } = useGetOrderPaymentSummary(orderId!, {
     query: { enabled: !!orderId, queryKey: getGetOrderPaymentSummaryQueryKey(orderId!) },
@@ -265,7 +290,8 @@ export default function Payment() {
                 return (
                   <button
                     key={m.code}
-                    onPointerDown={e => { e.preventDefault(); setFocused(m.code); }}
+                    onPointerDown={handlePointerDown}
+                    onClick={guardedClick(() => setFocused(m.code))}
                     style={{ touchAction: 'manipulation' }}
                     className={`flex-1 rounded-xl border-2 px-2 py-3 lg:py-4 flex flex-col items-center gap-1 transition-all ${
                       isFocused
