@@ -14,5 +14,8 @@ export interface Table {
   status: string;
   x: number;
   y: number;
+  width: number;
+  height: number;
   shape: string;
+  mergeGroup?: string | null;
 }

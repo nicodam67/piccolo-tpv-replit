@@ -10,6 +10,8 @@ import Kds from './pages/kds';
 import Payment from './pages/payment';
 import CashSession from './pages/cash-session';
 import Ticket from './pages/ticket';
+import Configuracion from './pages/configuracion';
+import ZoneEditor from './pages/zone-editor';
 import NotFound from './pages/not-found';
 
 const queryClient = new QueryClient({
@@ -31,6 +33,8 @@ function Router() {
       <Route path="/cobro/:orderId" component={Payment} />
       <Route path="/caja" component={CashSession} />
       <Route path="/ticket/:orderId" component={Ticket} />
+      <Route path="/configuracion" component={Configuracion} />
+      <Route path="/configuracion/salas/:zoneId" component={ZoneEditor} />
       <Route component={NotFound} />
     </Switch>
   );

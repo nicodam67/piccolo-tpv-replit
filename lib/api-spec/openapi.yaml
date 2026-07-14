@@ -109,6 +109,121 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+    post:
+      operationId: createZone
+      tags: [zones]
+      summary: Create a new zone (admin only)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateZoneInput"
+      responses:
+        "201":
+          description: Zone created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Zone"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /zones/{zoneId}:
+    patch:
+      operationId: updateZone
+      tags: [zones]
+      summary: Update a zone name or order (admin only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: zoneId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateZoneInput"
+      responses:
+        "200":
+          description: Zone updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Zone"
+        "404":
+          description: Zone not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteZone
+      tags: [zones]
+      summary: Delete (soft) a zone (admin only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: zoneId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Zone deleted
+        "404":
+          description: Zone not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /zones/{zoneId}/tables:
     get:
@@ -134,6 +249,127 @@ paths:
                   $ref: "#/components/schemas/Table"
         "401":
           description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      operationId: createTable
+      tags: [tables]
+      summary: Create a table in a zone (admin only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: zoneId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTableInput"
+      responses:
+        "201":
+          description: Table created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Table"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /tables/{tableId}:
+    patch:
+      operationId: updateTable
+      tags: [tables]
+      summary: Update table layout and properties (admin only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tableId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateTableInput"
+      responses:
+        "200":
+          description: Table updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Table"
+        "404":
+          description: Table not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteTable
+      tags: [tables]
+      summary: Delete a table (admin only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tableId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Table deleted
+        "404":
+          description: Table not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
           content:
             application/json:
               schema:
@@ -1008,7 +1244,9 @@ components:
           type: string
         type:
           type: string
-      required: [id, name, type]
+        sortOrder:
+          type: integer
+      required: [id, name, type, sortOrder]
 
     Table:
       type: object
@@ -1027,9 +1265,73 @@ components:
           type: integer
         y:
           type: integer
+        width:
+          type: integer
+        height:
+          type: integer
         shape:
           type: string
-      required: [id, zoneId, name, capacity, status, x, y, shape]
+        mergeGroup:
+          type: string
+          nullable: true
+      required: [id, zoneId, name, capacity, status, x, y, width, height, shape]
+
+    CreateZoneInput:
+      type: object
+      properties:
+        name:
+          type: string
+        type:
+          type: string
+      required: [name]
+
+    UpdateZoneInput:
+      type: object
+      properties:
+        name:
+          type: string
+        sortOrder:
+          type: integer
+
+    CreateTableInput:
+      type: object
+      properties:
+        name:
+          type: string
+        capacity:
+          type: integer
+        x:
+          type: integer
+        y:
+          type: integer
+        width:
+          type: integer
+        height:
+          type: integer
+        shape:
+          type: string
+      required: [name]
+
+    UpdateTableInput:
+      type: object
+      properties:
+        name:
+          type: string
+        capacity:
+          type: integer
+        x:
+          type: integer
+        y:
+          type: integer
+        width:
+          type: integer
+        height:
+          type: integer
+        shape:
+          type: string
+        mergeGroup:
+          type: string
+          nullable: true
 
     Order:
       type: object

@@ -6,9 +6,7 @@
  * OpenAPI spec version: 0.2.0
  */
 
-export interface Zone {
-  id: string;
-  name: string;
-  type: string;
-  sortOrder: number;
+export interface UpdateZoneInput {
+  name?: string;
+  sortOrder?: number;
 }

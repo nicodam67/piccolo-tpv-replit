@@ -6,9 +6,12 @@
  * OpenAPI spec version: 0.2.0
  */
 
-export interface Zone {
-  id: string;
+export interface CreateTableInput {
   name: string;
-  type: string;
-  sortOrder: number;
+  capacity?: number;
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
+  shape?: string;
 }

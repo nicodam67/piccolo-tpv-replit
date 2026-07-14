@@ -11,7 +11,10 @@ export const restaurantTablesTable = pgTable("restaurant_tables", {
   status: text("status").notNull().default("free"),
   x: integer("x").notNull().default(0),
   y: integer("y").notNull().default(0),
+  width: integer("width").notNull().default(80),
+  height: integer("height").notNull().default(80),
   shape: text("shape").notNull().default("square"),
+  mergeGroup: text("merge_group"),
   active: boolean("active").notNull().default(true),
 });
 

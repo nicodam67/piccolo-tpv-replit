@@ -29,6 +29,7 @@ export interface Zone {
   id: string;
   name: string;
   type: string;
+  sortOrder: number;
 }
 
 export interface Table {
@@ -39,7 +40,41 @@ export interface Table {
   status: string;
   x: number;
   y: number;
+  width: number;
+  height: number;
   shape: string;
+  mergeGroup?: string | null;
+}
+
+export interface CreateZoneInput {
+  name: string;
+  type?: string;
+}
+
+export interface UpdateZoneInput {
+  name?: string;
+  sortOrder?: number;
+}
+
+export interface CreateTableInput {
+  name: string;
+  capacity?: number;
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
+  shape?: string;
+}
+
+export interface UpdateTableInput {
+  name?: string;
+  capacity?: number;
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
+  shape?: string;
+  mergeGroup?: string | null;
 }
 
 export interface OrderItemModifier {

@@ -30,6 +30,8 @@ import type {
   CashSessionWithEmployee,
   Category,
   CloseCashSessionInput,
+  CreateTableInput,
+  CreateZoneInput,
   DashboardSummary,
   Employee,
   ErrorResponse,
@@ -48,7 +50,9 @@ import type {
   TableWithOrder,
   TicketData,
   UpdateOrderItemDetailsInput,
+  UpdateTableInput,
   UpdateTaskStatusInput,
+  UpdateZoneInput,
   WaiterNotification,
   Zone
 } from './api.schemas';
@@ -382,6 +386,220 @@ export function useGetZones<TData = Awaited<ReturnType<typeof getZones>>, TError
 
 
 
+export const getCreateZoneUrl = () => {
+
+
+
+
+  return `/api/zones`
+}
+
+/**
+ * @summary Create a new zone (admin only)
+ */
+export const createZone = async (createZoneInput: CreateZoneInput, options?: RequestInit): Promise<Zone> => {
+
+  return customFetch<Zone>(getCreateZoneUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createZoneInput)
+  }
+);}
+
+
+
+
+
+export const getCreateZoneMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createZone>>, TError,{data: BodyType<CreateZoneInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createZone>>, TError,{data: BodyType<CreateZoneInput>}, TContext> => {
+
+const mutationKey = ['createZone'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createZone>>, {data: BodyType<CreateZoneInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createZone(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateZoneMutationResult = NonNullable<Awaited<ReturnType<typeof createZone>>>
+    export type CreateZoneMutationBody = BodyType<CreateZoneInput>
+    export type CreateZoneMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Create a new zone (admin only)
+ */
+export const useCreateZone = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createZone>>, TError,{data: BodyType<CreateZoneInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createZone>>,
+        TError,
+        {data: BodyType<CreateZoneInput>},
+        TContext
+      > => {
+      return useMutation(getCreateZoneMutationOptions(options));
+    }
+
+export const getUpdateZoneUrl = (zoneId: string,) => {
+
+
+
+
+  return `/api/zones/${zoneId}`
+}
+
+/**
+ * @summary Update a zone name or order (admin only)
+ */
+export const updateZone = async (zoneId: string,
+    updateZoneInput: UpdateZoneInput, options?: RequestInit): Promise<Zone> => {
+
+  return customFetch<Zone>(getUpdateZoneUrl(zoneId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(updateZoneInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateZoneMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateZone>>, TError,{zoneId: string;data: BodyType<UpdateZoneInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateZone>>, TError,{zoneId: string;data: BodyType<UpdateZoneInput>}, TContext> => {
+
+const mutationKey = ['updateZone'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateZone>>, {zoneId: string;data: BodyType<UpdateZoneInput>}> = (props) => {
+          const {zoneId,data} = props ?? {};
+
+          return  updateZone(zoneId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateZoneMutationResult = NonNullable<Awaited<ReturnType<typeof updateZone>>>
+    export type UpdateZoneMutationBody = BodyType<UpdateZoneInput>
+    export type UpdateZoneMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Update a zone name or order (admin only)
+ */
+export const useUpdateZone = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateZone>>, TError,{zoneId: string;data: BodyType<UpdateZoneInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateZone>>,
+        TError,
+        {zoneId: string;data: BodyType<UpdateZoneInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateZoneMutationOptions(options));
+    }
+
+export const getDeleteZoneUrl = (zoneId: string,) => {
+
+
+
+
+  return `/api/zones/${zoneId}`
+}
+
+/**
+ * @summary Delete (soft) a zone (admin only)
+ */
+export const deleteZone = async (zoneId: string, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteZoneUrl(zoneId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteZoneMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteZone>>, TError,{zoneId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteZone>>, TError,{zoneId: string}, TContext> => {
+
+const mutationKey = ['deleteZone'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteZone>>, {zoneId: string}> = (props) => {
+          const {zoneId} = props ?? {};
+
+          return  deleteZone(zoneId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteZoneMutationResult = NonNullable<Awaited<ReturnType<typeof deleteZone>>>
+
+    export type DeleteZoneMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Delete (soft) a zone (admin only)
+ */
+export const useDeleteZone = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteZone>>, TError,{zoneId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteZone>>,
+        TError,
+        {zoneId: string},
+        TContext
+      > => {
+      return useMutation(getDeleteZoneMutationOptions(options));
+    }
+
 export const getGetZoneTablesUrl = (zoneId: string,) => {
 
 
@@ -458,6 +676,221 @@ export function useGetZoneTables<TData = Awaited<ReturnType<typeof getZoneTables
 
 
 
+
+export const getCreateTableUrl = (zoneId: string,) => {
+
+
+
+
+  return `/api/zones/${zoneId}/tables`
+}
+
+/**
+ * @summary Create a table in a zone (admin only)
+ */
+export const createTable = async (zoneId: string,
+    createTableInput: CreateTableInput, options?: RequestInit): Promise<Table> => {
+
+  return customFetch<Table>(getCreateTableUrl(zoneId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createTableInput)
+  }
+);}
+
+
+
+
+
+export const getCreateTableMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createTable>>, TError,{zoneId: string;data: BodyType<CreateTableInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createTable>>, TError,{zoneId: string;data: BodyType<CreateTableInput>}, TContext> => {
+
+const mutationKey = ['createTable'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createTable>>, {zoneId: string;data: BodyType<CreateTableInput>}> = (props) => {
+          const {zoneId,data} = props ?? {};
+
+          return  createTable(zoneId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateTableMutationResult = NonNullable<Awaited<ReturnType<typeof createTable>>>
+    export type CreateTableMutationBody = BodyType<CreateTableInput>
+    export type CreateTableMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Create a table in a zone (admin only)
+ */
+export const useCreateTable = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createTable>>, TError,{zoneId: string;data: BodyType<CreateTableInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createTable>>,
+        TError,
+        {zoneId: string;data: BodyType<CreateTableInput>},
+        TContext
+      > => {
+      return useMutation(getCreateTableMutationOptions(options));
+    }
+
+export const getUpdateTableUrl = (tableId: string,) => {
+
+
+
+
+  return `/api/tables/${tableId}`
+}
+
+/**
+ * @summary Update table layout and properties (admin only)
+ */
+export const updateTable = async (tableId: string,
+    updateTableInput: UpdateTableInput, options?: RequestInit): Promise<Table> => {
+
+  return customFetch<Table>(getUpdateTableUrl(tableId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(updateTableInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateTableMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateTable>>, TError,{tableId: string;data: BodyType<UpdateTableInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateTable>>, TError,{tableId: string;data: BodyType<UpdateTableInput>}, TContext> => {
+
+const mutationKey = ['updateTable'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateTable>>, {tableId: string;data: BodyType<UpdateTableInput>}> = (props) => {
+          const {tableId,data} = props ?? {};
+
+          return  updateTable(tableId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateTableMutationResult = NonNullable<Awaited<ReturnType<typeof updateTable>>>
+    export type UpdateTableMutationBody = BodyType<UpdateTableInput>
+    export type UpdateTableMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Update table layout and properties (admin only)
+ */
+export const useUpdateTable = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateTable>>, TError,{tableId: string;data: BodyType<UpdateTableInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateTable>>,
+        TError,
+        {tableId: string;data: BodyType<UpdateTableInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateTableMutationOptions(options));
+    }
+
+export const getDeleteTableUrl = (tableId: string,) => {
+
+
+
+
+  return `/api/tables/${tableId}`
+}
+
+/**
+ * @summary Delete a table (admin only)
+ */
+export const deleteTable = async (tableId: string, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteTableUrl(tableId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteTableMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteTable>>, TError,{tableId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteTable>>, TError,{tableId: string}, TContext> => {
+
+const mutationKey = ['deleteTable'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteTable>>, {tableId: string}> = (props) => {
+          const {tableId} = props ?? {};
+
+          return  deleteTable(tableId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteTableMutationResult = NonNullable<Awaited<ReturnType<typeof deleteTable>>>
+
+    export type DeleteTableMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Delete a table (admin only)
+ */
+export const useDeleteTable = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteTable>>, TError,{tableId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteTable>>,
+        TError,
+        {tableId: string},
+        TContext
+      > => {
+      return useMutation(getDeleteTableMutationOptions(options));
+    }
 
 export const getGetAllTablesUrl = () => {
 

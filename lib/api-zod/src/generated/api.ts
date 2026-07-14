@@ -51,9 +51,56 @@ export const AuthWithPinResponse = zod.object({
 export const GetZonesResponseItem = zod.object({
   "id": zod.string(),
   "name": zod.string(),
-  "type": zod.string()
+  "type": zod.string(),
+  "sortOrder": zod.number()
 })
 export const GetZonesResponse = zod.array(GetZonesResponseItem)
+
+
+/**
+ * @summary Create a new zone (admin only)
+ */
+export const CreateZoneBody = zod.object({
+  "name": zod.string(),
+  "type": zod.string().optional()
+})
+
+export const CreateZoneResponse = zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "type": zod.string(),
+  "sortOrder": zod.number()
+})
+
+
+/**
+ * @summary Update a zone name or order (admin only)
+ */
+export const UpdateZoneParams = zod.object({
+  "zoneId": zod.coerce.string()
+})
+
+export const UpdateZoneBody = zod.object({
+  "name": zod.string().optional(),
+  "sortOrder": zod.number().optional()
+})
+
+export const UpdateZoneResponse = zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "type": zod.string(),
+  "sortOrder": zod.number()
+})
+
+
+/**
+ * @summary Delete (soft) a zone (admin only)
+ */
+export const DeleteZoneParams = zod.object({
+  "zoneId": zod.coerce.string()
+})
+
+export const DeleteZoneResponse = zod.void()
 
 
 /**
@@ -71,9 +118,87 @@ export const GetZoneTablesResponseItem = zod.object({
   "status": zod.string(),
   "x": zod.number(),
   "y": zod.number(),
-  "shape": zod.string()
+  "width": zod.number(),
+  "height": zod.number(),
+  "shape": zod.string(),
+  "mergeGroup": zod.string().nullish()
 })
 export const GetZoneTablesResponse = zod.array(GetZoneTablesResponseItem)
+
+
+/**
+ * @summary Create a table in a zone (admin only)
+ */
+export const CreateTableParams = zod.object({
+  "zoneId": zod.coerce.string()
+})
+
+export const CreateTableBody = zod.object({
+  "name": zod.string(),
+  "capacity": zod.number().optional(),
+  "x": zod.number().optional(),
+  "y": zod.number().optional(),
+  "width": zod.number().optional(),
+  "height": zod.number().optional(),
+  "shape": zod.string().optional()
+})
+
+export const CreateTableResponse = zod.object({
+  "id": zod.string(),
+  "zoneId": zod.string(),
+  "name": zod.string(),
+  "capacity": zod.number(),
+  "status": zod.string(),
+  "x": zod.number(),
+  "y": zod.number(),
+  "width": zod.number(),
+  "height": zod.number(),
+  "shape": zod.string(),
+  "mergeGroup": zod.string().nullish()
+})
+
+
+/**
+ * @summary Update table layout and properties (admin only)
+ */
+export const UpdateTableParams = zod.object({
+  "tableId": zod.coerce.string()
+})
+
+export const UpdateTableBody = zod.object({
+  "name": zod.string().optional(),
+  "capacity": zod.number().optional(),
+  "x": zod.number().optional(),
+  "y": zod.number().optional(),
+  "width": zod.number().optional(),
+  "height": zod.number().optional(),
+  "shape": zod.string().optional(),
+  "mergeGroup": zod.string().nullish()
+})
+
+export const UpdateTableResponse = zod.object({
+  "id": zod.string(),
+  "zoneId": zod.string(),
+  "name": zod.string(),
+  "capacity": zod.number(),
+  "status": zod.string(),
+  "x": zod.number(),
+  "y": zod.number(),
+  "width": zod.number(),
+  "height": zod.number(),
+  "shape": zod.string(),
+  "mergeGroup": zod.string().nullish()
+})
+
+
+/**
+ * @summary Delete a table (admin only)
+ */
+export const DeleteTableParams = zod.object({
+  "tableId": zod.coerce.string()
+})
+
+export const DeleteTableResponse = zod.void()
 
 
 /**
@@ -87,7 +212,10 @@ export const GetAllTablesResponseItem = zod.object({
   "status": zod.string(),
   "x": zod.number(),
   "y": zod.number(),
-  "shape": zod.string()
+  "width": zod.number(),
+  "height": zod.number(),
+  "shape": zod.string(),
+  "mergeGroup": zod.string().nullish()
 })
 export const GetAllTablesResponse = zod.array(GetAllTablesResponseItem)
 
@@ -108,7 +236,10 @@ export const OpenTableResponse = zod.object({
   "status": zod.string(),
   "x": zod.number(),
   "y": zod.number(),
-  "shape": zod.string()
+  "width": zod.number(),
+  "height": zod.number(),
+  "shape": zod.string(),
+  "mergeGroup": zod.string().nullish()
 }),
   "order": zod.object({
   "id": zod.string(),
@@ -156,7 +287,10 @@ export const CloseTableResponse = zod.object({
   "status": zod.string(),
   "x": zod.number(),
   "y": zod.number(),
-  "shape": zod.string()
+  "width": zod.number(),
+  "height": zod.number(),
+  "shape": zod.string(),
+  "mergeGroup": zod.string().nullish()
 })
 
 
@@ -176,7 +310,10 @@ export const GetTableOrderResponse = zod.object({
   "status": zod.string(),
   "x": zod.number(),
   "y": zod.number(),
-  "shape": zod.string()
+  "width": zod.number(),
+  "height": zod.number(),
+  "shape": zod.string(),
+  "mergeGroup": zod.string().nullish()
 }),
   "order": zod.object({
   "id": zod.string(),
