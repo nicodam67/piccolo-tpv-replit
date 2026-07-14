@@ -21,11 +21,33 @@ import {
 } from '@workspace/api-client-react';
 import { EditItemModal } from '../components/EditItemModal';
 
+const TAP_SLOP = 8;
+
 export default function OrderPage() {
   const params = useParams();
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
   const tableId = params.tableId!;
+
+  // Shared tap-slop guard: prevents accidental taps while scrolling.
+  // Store pointer-down origin; if the finger/cursor travels more than TAP_SLOP
+  // pixels before releasing, treat it as a scroll gesture and suppress the click.
+  const pointerOriginRef = useRef<{ x: number; y: number } | null>(null);
+  const handlePointerDown = (e: React.PointerEvent) => {
+    pointerOriginRef.current = { x: e.clientX, y: e.clientY };
+  };
+  const guardedClick = (handler: () => void) => (e: React.MouseEvent) => {
+    if (pointerOriginRef.current) {
+      const dx = e.clientX - pointerOriginRef.current.x;
+      const dy = e.clientY - pointerOriginRef.current.y;
+      if (Math.sqrt(dx * dx + dy * dy) > TAP_SLOP) {
+        pointerOriginRef.current = null;
+        return;
+      }
+    }
+    pointerOriginRef.current = null;
+    handler();
+  };
   
   const [employeeId, setEmployeeId] = useState<string>("");
   const [employeeName, setEmployeeName] = useState<string>("");
@@ -301,7 +323,8 @@ export default function OrderPage() {
             categories?.map(cat => (
               <button 
                 key={cat.id}
-                onClick={() => setActiveCategoryId(cat.id)}
+                onPointerDown={handlePointerDown}
+                onClick={guardedClick(() => setActiveCategoryId(cat.id))}
                 className={`px-6 py-3 rounded-t-xl font-bold text-sm whitespace-nowrap transition-all ${
                   activeCategoryId === cat.id 
                     ? "bg-background text-primary border-t-2 border-x border-primary/50 border-b-0 shadow-[0_-4px_10px_rgba(0,0,0,0.1)] relative z-10" 
@@ -327,7 +350,8 @@ export default function OrderPage() {
                 return (
                   <button
                     key={p.id}
-                    onClick={() => handleAddProduct(p.id)}
+                    onPointerDown={handlePointerDown}
+                    onClick={guardedClick(() => handleAddProduct(p.id))}
                     disabled={!actualOrderId || isAdding}
                     className={`bg-card border-2 border-border hover:border-primary/50 hover:bg-secondary/30 rounded-2xl p-4 flex flex-col items-start text-left transition-all active:scale-[0.96] aspect-[4/3] justify-between group shadow-sm relative overflow-hidden ${isAdding ? 'opacity-70' : ''}`}
                   >
@@ -415,14 +439,16 @@ export default function OrderPage() {
                      
                      <div className="flex gap-1">
                        <button
-                         onClick={() => setEditingItem(item)}
+                         onPointerDown={handlePointerDown}
+                         onClick={guardedClick(() => setEditingItem(item))}
                          className="text-muted-foreground hover:bg-secondary hover:text-foreground p-1.5 rounded-lg transition-colors active:scale-90"
                        >
                          <PenLine size={18} />
                        </button>
                        {item.status === 'draft' && (
                          <button 
-                           onClick={() => handleDeleteItem(item.id)} 
+                           onPointerDown={handlePointerDown}
+                           onClick={guardedClick(() => handleDeleteItem(item.id))}
                            disabled={isDeleting}
                            className="text-destructive hover:bg-destructive hover:text-destructive-foreground p-1.5 rounded-lg transition-colors active:scale-90"
                          >
