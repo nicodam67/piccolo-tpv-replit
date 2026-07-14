@@ -1,0 +1,320 @@
+import { Router, type IRouter } from "express";
+import { db } from "@workspace/db";
+import {
+  ordersTable,
+  orderItemsTable,
+  productsTable,
+  restaurantTablesTable,
+  employeesTable,
+  paymentsTable,
+  paymentMethodsTable,
+  cashSessionsTable,
+  ticketsTable,
+} from "@workspace/db";
+import { eq, and, sum, inArray } from "drizzle-orm";
+import { requireAuth } from "../middlewares/auth";
+import { getIO } from "../lib/socket";
+
+const router: IRouter = Router();
+
+// TAX_RATE: Spain reduced VAT (10%) for food/beverage, prices are VAT-inclusive
+const TAX_RATE = 0.10;
+
+function calcTotals(itemTotal: number) {
+  // Prices are VAT-inclusive. Tax = total * rate / (1 + rate)
+  const total = itemTotal;
+  const taxTotal = parseFloat((total * TAX_RATE / (1 + TAX_RATE)).toFixed(2));
+  const subtotal = parseFloat((total - taxTotal).toFixed(2));
+  return { subtotal, taxTotal, total };
+}
+
+// GET /orders/:id/payment-summary
+router.get("/orders/:id/payment-summary", requireAuth, async (req, res): Promise<void> => {
+  const { id } = req.params;
+
+  const [order] = await db.select().from(ordersTable).where(eq(ordersTable.id, id));
+  if (!order) {
+    res.status(404).json({ error: "Pedido no encontrado" });
+    return;
+  }
+
+  const items = await db
+    .select({
+      id: orderItemsTable.id,
+      productName: productsTable.name,
+      quantity: orderItemsTable.quantity,
+      unitPrice: orderItemsTable.unitPrice,
+      status: orderItemsTable.status,
+    })
+    .from(orderItemsTable)
+    .innerJoin(productsTable, eq(orderItemsTable.productId, productsTable.id))
+    .where(eq(orderItemsTable.orderId, id));
+
+  const [tableRow] = order.tableId
+    ? await db
+        .select({ name: restaurantTablesTable.name })
+        .from(restaurantTablesTable)
+        .where(eq(restaurantTablesTable.id, order.tableId))
+    : [{ name: "—" }];
+
+  const [empRow] = order.employeeId
+    ? await db
+        .select({ name: employeesTable.name })
+        .from(employeesTable)
+        .where(eq(employeesTable.id, order.employeeId))
+    : [{ name: "—" }];
+
+  // Item total (all non-draft items contribute to bill; draft items still in process)
+  const itemTotal = items.reduce(
+    (acc, it) => acc + parseFloat(it.unitPrice) * it.quantity,
+    0,
+  );
+  const { subtotal, taxTotal, total } = calcTotals(itemTotal);
+
+  // Paid so far
+  const paidResult = await db
+    .select({ paid: sum(paymentsTable.amount) })
+    .from(paymentsTable)
+    .where(and(eq(paymentsTable.orderId, id), eq(paymentsTable.status, "completed")));
+
+  const paid = parseFloat(paidResult[0]?.paid ?? "0");
+  const remaining = parseFloat((total - paid).toFixed(2));
+
+  // Payment methods
+  const methods = await db
+    .select()
+    .from(paymentMethodsTable)
+    .where(eq(paymentMethodsTable.active, true))
+    .orderBy(paymentMethodsTable.sortOrder);
+
+  // Existing payments
+  const existingPayments = await db
+    .select({
+      id: paymentsTable.id,
+      amount: paymentsTable.amount,
+      status: paymentsTable.status,
+      createdAt: paymentsTable.createdAt,
+      methodCode: paymentMethodsTable.code,
+      methodName: paymentMethodsTable.name,
+    })
+    .from(paymentsTable)
+    .innerJoin(paymentMethodsTable, eq(paymentsTable.paymentMethodId, paymentMethodsTable.id))
+    .where(eq(paymentsTable.orderId, id));
+
+  res.json({
+    order: {
+      id: order.id,
+      status: order.status,
+      tableName: tableRow?.name,
+      employeeName: empRow?.name,
+    },
+    items: items.map((it) => ({
+      ...it,
+      lineTotal: (parseFloat(it.unitPrice) * it.quantity).toFixed(2),
+    })),
+    subtotal: subtotal.toFixed(2),
+    taxTotal: taxTotal.toFixed(2),
+    total: total.toFixed(2),
+    paid: paid.toFixed(2),
+    remaining: remaining.toFixed(2),
+    methods,
+    payments: existingPayments,
+  });
+});
+
+// POST /orders/:id/payments
+router.post("/orders/:id/payments", requireAuth, async (req, res): Promise<void> => {
+  const { id: orderId } = req.params;
+  const employeeId = (req as any).user?.id as string;
+  const { methodCode, amount, reference } = req.body as {
+    methodCode: string;
+    amount: string;
+    reference?: string;
+  };
+
+  const amountNum = parseFloat(amount);
+  if (isNaN(amountNum) || amountNum <= 0) {
+    res.status(400).json({ error: "Importe inválido" });
+    return;
+  }
+
+  const [order] = await db.select().from(ordersTable).where(eq(ordersTable.id, orderId));
+  if (!order) {
+    res.status(404).json({ error: "Pedido no encontrado" });
+    return;
+  }
+  if (order.status === "paid") {
+    res.status(409).json({ error: "El pedido ya está cobrado" });
+    return;
+  }
+
+  const [method] = await db
+    .select()
+    .from(paymentMethodsTable)
+    .where(and(eq(paymentMethodsTable.code, methodCode), eq(paymentMethodsTable.active, true)));
+
+  if (!method) {
+    res.status(400).json({ error: "Método de pago no válido" });
+    return;
+  }
+
+  // Calculate remaining
+  const items = await db
+    .select({ unitPrice: orderItemsTable.unitPrice, quantity: orderItemsTable.quantity })
+    .from(orderItemsTable)
+    .where(eq(orderItemsTable.orderId, orderId));
+
+  const itemTotal = items.reduce(
+    (acc, it) => acc + parseFloat(it.unitPrice) * it.quantity,
+    0,
+  );
+  const { total } = calcTotals(itemTotal);
+
+  const paidResult = await db
+    .select({ paid: sum(paymentsTable.amount) })
+    .from(paymentsTable)
+    .where(and(eq(paymentsTable.orderId, orderId), eq(paymentsTable.status, "completed")));
+
+  const alreadyPaid = parseFloat(paidResult[0]?.paid ?? "0");
+  const remaining = parseFloat((total - alreadyPaid).toFixed(2));
+
+  // Only cash can exceed remaining (for change)
+  if (methodCode !== "cash" && amountNum > remaining + 0.001) {
+    res.status(400).json({
+      error: `El importe excede el pendiente de ${remaining.toFixed(2)} €. Solo el efectivo puede superar el pendiente para dar cambio.`,
+    });
+    return;
+  }
+
+  // Get open cash session (required for cash payments, optional for others)
+  const [openSession] = await db
+    .select()
+    .from(cashSessionsTable)
+    .where(eq(cashSessionsTable.status, "open"))
+    .limit(1);
+
+  // Insert payment (cap at remaining for non-cash; for cash allow full amount for change calc)
+  const effectiveAmount = methodCode === "cash"
+    ? Math.min(amountNum, remaining + 0.001) <= remaining
+      ? amount
+      : remaining.toFixed(2)  // only charge remaining, return change to customer
+    : amount;
+
+  const change = methodCode === "cash" ? Math.max(0, amountNum - remaining) : 0;
+
+  const result = await db.transaction(async (tx) => {
+    const [payment] = await tx
+      .insert(paymentsTable)
+      .values({
+        orderId,
+        cashSessionId: openSession?.id ?? null,
+        paymentMethodId: method.id,
+        amount: effectiveAmount,
+        status: "completed",
+        reference: reference ?? null,
+        employeeId,
+      })
+      .returning();
+
+    // Recalculate remaining after this payment
+    const newPaid = alreadyPaid + parseFloat(effectiveAmount);
+    const newRemaining = parseFloat((total - newPaid).toFixed(2));
+
+    let ticket = null;
+    if (newRemaining <= 0.001) {
+      // Issue ticket + close order + free table
+      const { subtotal, taxTotal } = calcTotals(itemTotal);
+
+      const [t] = await tx
+        .insert(ticketsTable)
+        .values({
+          orderId,
+          subtotal: subtotal.toFixed(2),
+          taxTotal: taxTotal.toFixed(2),
+          total: total.toFixed(2),
+          employeeId,
+        })
+        .returning();
+      ticket = t;
+
+      await tx.update(ordersTable).set({ status: "paid" }).where(eq(ordersTable.id, orderId));
+
+      if (order.tableId) {
+        await tx
+          .update(restaurantTablesTable)
+          .set({ status: "free" })
+          .where(eq(restaurantTablesTable.id, order.tableId));
+      }
+    }
+
+    return { payment, ticket, change: change.toFixed(2), newRemaining: Math.max(0, newRemaining) };
+  });
+
+  // Emit table refresh so floor plan updates
+  try {
+    getIO().emit("tables:refresh");
+  } catch { /* socket not init */ }
+
+  res.status(201).json(result);
+});
+
+// GET /orders/:id/ticket
+router.get("/orders/:id/ticket", requireAuth, async (req, res): Promise<void> => {
+  const { id } = req.params;
+
+  const [ticket] = await db
+    .select()
+    .from(ticketsTable)
+    .where(eq(ticketsTable.orderId, id));
+
+  if (!ticket) {
+    res.status(404).json({ error: "No hay ticket para este pedido" });
+    return;
+  }
+
+  const [order] = await db.select().from(ordersTable).where(eq(ordersTable.id, id));
+
+  const items = await db
+    .select({
+      productName: productsTable.name,
+      quantity: orderItemsTable.quantity,
+      unitPrice: orderItemsTable.unitPrice,
+    })
+    .from(orderItemsTable)
+    .innerJoin(productsTable, eq(orderItemsTable.productId, productsTable.id))
+    .where(eq(orderItemsTable.orderId, id));
+
+  const [tableRow] = order?.tableId
+    ? await db
+        .select({ name: restaurantTablesTable.name })
+        .from(restaurantTablesTable)
+        .where(eq(restaurantTablesTable.id, order.tableId))
+    : [{ name: "—" }];
+
+  const [emp] = await db
+    .select({ name: employeesTable.name })
+    .from(employeesTable)
+    .where(eq(employeesTable.id, ticket.employeeId));
+
+  const payments = await db
+    .select({
+      amount: paymentsTable.amount,
+      methodName: paymentMethodsTable.name,
+    })
+    .from(paymentsTable)
+    .innerJoin(paymentMethodsTable, eq(paymentsTable.paymentMethodId, paymentMethodsTable.id))
+    .where(and(eq(paymentsTable.orderId, id), eq(paymentsTable.status, "completed")));
+
+  res.json({
+    ticket,
+    order: { id: order?.id, tableName: tableRow?.name, createdAt: order?.createdAt },
+    items: items.map((it) => ({
+      ...it,
+      lineTotal: (parseFloat(it.unitPrice) * it.quantity).toFixed(2),
+    })),
+    payments,
+    employeeName: emp?.name,
+  });
+});
+
+export default router;

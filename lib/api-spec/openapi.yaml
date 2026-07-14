@@ -2,21 +2,37 @@ openapi: 3.1.0
 info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
-  version: 0.1.0
-  description: API specification
+  version: 0.2.0
+  description: Piccolo TPV API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: auth
+    description: Authentication
+  - name: employees
+    description: Employee management
+  - name: zones
+    description: Room zones
+  - name: tables
+    description: Restaurant tables
+  - name: dashboard
+    description: Dashboard summaries
+  - name: categories
+    description: Menu categories and products
+  - name: orders
+    description: Order management
+  - name: kds
+    description: Kitchen Display System
+
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,13 +40,1533 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /employees/login-list:
+    get:
+      operationId: getEmployeeLoginList
+      tags: [employees]
+      summary: Get list of active employees for login
+      responses:
+        "200":
+          description: List of employees
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Employee"
+
+  /auth/pin:
+    post:
+      operationId: authWithPin
+      tags: [auth]
+      summary: Authenticate employee with PIN
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PinLoginInput"
+      responses:
+        "200":
+          description: Authentication successful
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "400":
+          description: Missing fields
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Invalid PIN
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /zones:
+    get:
+      operationId: getZones
+      tags: [zones]
+      summary: Get all active zones
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: List of zones
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Zone"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /zones/{zoneId}/tables:
+    get:
+      operationId: getZoneTables
+      tags: [tables]
+      summary: Get tables for a zone
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: zoneId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of tables
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Table"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /tables:
+    get:
+      operationId: getAllTables
+      tags: [tables]
+      summary: Get all tables across all zones
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: All tables
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Table"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /tables/{tableId}/open:
+    post:
+      operationId: openTable
+      tags: [tables]
+      summary: Open (occupy) a free table and create/return its active order
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tableId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Table opened with active order
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TableWithOrder"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Table not free
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /tables/{tableId}/close:
+    post:
+      operationId: closeTable
+      tags: [tables]
+      summary: Close (free) an occupied table
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tableId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Table closed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Table"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Table not occupied
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /tables/{tableId}/order:
+    get:
+      operationId: getTableOrder
+      tags: [orders]
+      summary: Get active order for an occupied table
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tableId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Table with its active order and items
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TableWithOrder"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: No active order
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /dashboard/summary:
+    get:
+      operationId: getDashboardSummary
+      tags: [dashboard]
+      summary: Get dashboard summary stats
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Summary statistics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /categories:
+    get:
+      operationId: getCategories
+      tags: [categories]
+      summary: Get all active categories
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: List of categories
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Category"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /categories/{categoryId}/products:
+    get:
+      operationId: getCategoryProducts
+      tags: [categories]
+      summary: Get active products for a category
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: categoryId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of products
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Product"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /orders/{orderId}/items:
+    post:
+      operationId: addOrderItem
+      tags: [orders]
+      summary: Add an item to an order
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddOrderItemInput"
+      responses:
+        "201":
+          description: Item added
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderItem"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /order-items/{itemId}:
+    delete:
+      operationId: deleteOrderItem
+      tags: [orders]
+      summary: Delete a draft order item
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: itemId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Item deleted
+        "400":
+          description: Item not in draft status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Item not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /orders/{orderId}/send:
+    post:
+      operationId: sendOrder
+      tags: [orders]
+      summary: Send order to production (creates kitchen tasks)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Order sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+        "400":
+          description: No draft items
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /kds/{zone}:
+    get:
+      operationId: getKdsTasks
+      tags: [kds]
+      summary: Get kitchen tasks for a production zone
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: zone
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [cocina, pizza, ensalada, barra, pase]
+      responses:
+        "200":
+          description: Kitchen tasks for the zone
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/KitchenTask"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /kitchen-tasks/{taskId}/status:
+    patch:
+      operationId: updateKitchenTaskStatus
+      tags: [kds]
+      summary: Update status of a kitchen task
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateTaskStatusInput"
+      responses:
+        "200":
+          description: Task updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KitchenTask"
+        "400":
+          description: Invalid status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /products/{productId}/modifiers:
+    get:
+      operationId: getProductModifiers
+      tags: [categories]
+      summary: Get modifier groups and options for a product
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: productId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Modifier groups for the product
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ModifierGroup"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /order-items/{itemId}/details:
+    patch:
+      operationId: updateOrderItemDetails
+      tags: [orders]
+      summary: Update notes, allergy info and modifiers on a line item
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: itemId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateOrderItemDetailsInput"
+      responses:
+        "200":
+          description: Item updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderItem"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Item not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /notifications/unread:
+    get:
+      operationId: getUnreadNotifications
+      tags: [orders]
+      summary: Get unread waiter notifications for the authenticated employee
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: List of unread notifications
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/WaiterNotification"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /notifications/{notificationId}/read:
+    patch:
+      operationId: markNotificationRead
+      tags: [orders]
+      summary: Mark a notification as read
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: notificationId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Notification marked as read
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WaiterNotification"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Notification not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /orders/{orderId}/pase:
+    post:
+      operationId: markOrderPase
+      tags: [kds]
+      summary: Mark order as collected/served from pase
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PaseActionInput"
+      responses:
+        "200":
+          description: Pase action applied
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /cash-sessions/open:
+    post:
+      operationId: openCashSession
+      tags: [cash]
+      summary: Open a new cash session
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OpenCashSessionInput"
+      responses:
+        "201":
+          description: Cash session opened
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CashSession"
+        "409":
+          description: Session already open
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /cash-sessions/current:
+    get:
+      operationId: getCurrentCashSession
+      tags: [cash]
+      summary: Get the currently open cash session (or null)
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Current cash session or null
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CashSessionWithEmployee"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /cash-sessions/{id}/movements:
+    post:
+      operationId: addCashMovement
+      tags: [cash]
+      summary: Add a manual cash movement (in or out)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddCashMovementInput"
+      responses:
+        "201":
+          description: Movement created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CashMovement"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Session not found or closed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /cash-sessions/{id}/close:
+    post:
+      operationId: closeCashSession
+      tags: [cash]
+      summary: Close the cash session with counted cash
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CloseCashSessionInput"
+      responses:
+        "200":
+          description: Session closed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CashSession"
+        "404":
+          description: Session not found or already closed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /cash-sessions/{id}/summary:
+    get:
+      operationId: getCashSessionSummary
+      tags: [cash]
+      summary: Get detailed session summary with sales by method and movements
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Session summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CashSessionSummary"
+        "404":
+          description: Session not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /orders/{orderId}/payment-summary:
+    get:
+      operationId: getOrderPaymentSummary
+      tags: [payments]
+      summary: Get order totals, tax, paid and remaining for the payment screen
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Payment summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaymentSummary"
+        "404":
+          description: Order not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /orders/{orderId}/payments:
+    post:
+      operationId: addPayment
+      tags: [payments]
+      summary: Add a payment to an order (supports partial and mixed payments)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddPaymentInput"
+      responses:
+        "201":
+          description: Payment recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaymentResult"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Order already paid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /orders/{orderId}/ticket:
+    get:
+      operationId: getOrderTicket
+      tags: [payments]
+      summary: Get the issued ticket for an order
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Ticket data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TicketData"
+        "404":
+          description: No ticket for this order
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
   schemas:
     HealthStatus:
       type: object
       properties:
         status:
           type: string
-      required:
-        - status
+      required: [status]
 
+    Employee:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        role:
+          type: string
+      required: [id, name, role]
+
+    PinLoginInput:
+      type: object
+      properties:
+        employeeId:
+          type: string
+        pin:
+          type: string
+      required: [employeeId, pin]
+
+    AuthResponse:
+      type: object
+      properties:
+        token:
+          type: string
+        employee:
+          $ref: "#/components/schemas/Employee"
+      required: [token, employee]
+
+    Zone:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        type:
+          type: string
+      required: [id, name, type]
+
+    Table:
+      type: object
+      properties:
+        id:
+          type: string
+        zoneId:
+          type: string
+        name:
+          type: string
+        capacity:
+          type: integer
+        status:
+          type: string
+        x:
+          type: integer
+        y:
+          type: integer
+        shape:
+          type: string
+      required: [id, zoneId, name, capacity, status, x, y, shape]
+
+    Order:
+      type: object
+      properties:
+        id:
+          type: string
+        tableId:
+          type: string
+        employeeId:
+          type: string
+        status:
+          type: string
+        createdAt:
+          type: string
+        sentAt:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrderItem"
+      required: [id, tableId, employeeId, status, createdAt]
+
+    TableWithOrder:
+      type: object
+      properties:
+        table:
+          $ref: "#/components/schemas/Table"
+        order:
+          $ref: "#/components/schemas/Order"
+      required: [table, order]
+
+    OrderItem:
+      type: object
+      properties:
+        id:
+          type: string
+        orderId:
+          type: string
+        productId:
+          type: string
+        productName:
+          type: string
+        quantity:
+          type: integer
+        unitPrice:
+          type: string
+        status:
+          type: string
+        notes:
+          type: string
+        allergyNote:
+          type: string
+        hasAllergy:
+          type: boolean
+        modifiers:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrderItemModifier"
+        createdAt:
+          type: string
+      required: [id, orderId, productId, productName, quantity, unitPrice, status, createdAt, notes, allergyNote, hasAllergy]
+
+    OrderItemModifier:
+      type: object
+      properties:
+        id:
+          type: string
+        orderItemId:
+          type: string
+        modifierId:
+          type: string
+        modifierName:
+          type: string
+        priceDelta:
+          type: string
+      required: [id, orderItemId, modifierName, priceDelta]
+
+    ModifierGroup:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        required:
+          type: boolean
+        maxSelect:
+          type: integer
+        modifiers:
+          type: array
+          items:
+            $ref: "#/components/schemas/ModifierOption"
+      required: [id, name, required, maxSelect, modifiers]
+
+    ModifierOption:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        priceDelta:
+          type: string
+      required: [id, name, priceDelta]
+
+    UpdateOrderItemDetailsInput:
+      type: object
+      properties:
+        notes:
+          type: string
+        allergyNote:
+          type: string
+        hasAllergy:
+          type: boolean
+        modifiers:
+          type: array
+          items:
+            type: object
+            properties:
+              modifierId:
+                type: string
+              modifierName:
+                type: string
+              priceDelta:
+                type: string
+            required: [modifierName, priceDelta]
+
+    WaiterNotification:
+      type: object
+      properties:
+        id:
+          type: string
+        employeeId:
+          type: string
+        orderId:
+          type: string
+        type:
+          type: string
+        title:
+          type: string
+        message:
+          type: string
+        readAt:
+          type: string
+        createdAt:
+          type: string
+      required: [id, employeeId, type, title, message, createdAt]
+
+    Category:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        sortOrder:
+          type: integer
+      required: [id, name, sortOrder]
+
+    Product:
+      type: object
+      properties:
+        id:
+          type: string
+        categoryId:
+          type: string
+        name:
+          type: string
+        price:
+          type: string
+        prepZone:
+          type: string
+      required: [id, categoryId, name, price, prepZone]
+
+    KitchenTask:
+      type: object
+      properties:
+        id:
+          type: string
+        orderId:
+          type: string
+        orderItemId:
+          type: string
+        prepZone:
+          type: string
+        productName:
+          type: string
+        quantity:
+          type: integer
+        status:
+          type: string
+        allergyNote:
+          type: string
+        hasAllergy:
+          type: boolean
+        tableName:
+          type: string
+        employeeName:
+          type: string
+        employeeId:
+          type: string
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+        readyAt:
+          type: string
+        collectedAt:
+          type: string
+        servedAt:
+          type: string
+      required: [id, orderId, orderItemId, prepZone, productName, quantity, status, allergyNote, hasAllergy, tableName, employeeName, createdAt, updatedAt]
+
+    AddOrderItemInput:
+      type: object
+      properties:
+        productId:
+          type: string
+        quantity:
+          type: integer
+        notes:
+          type: string
+      required: [productId, quantity]
+
+    UpdateTaskStatusInput:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [new, preparing, ready, collected, served, cancelled]
+      required: [status]
+
+    PaseActionInput:
+      type: object
+      properties:
+        action:
+          type: string
+          enum: [collected, served]
+      required: [action]
+
+    DashboardSummary:
+      type: object
+      properties:
+        totalTables:
+          type: integer
+        occupiedTables:
+          type: integer
+        freeTables:
+          type: integer
+        totalZones:
+          type: integer
+      required: [totalTables, occupiedTables, freeTables, totalZones]
+
+    PaymentMethod:
+      type: object
+      properties:
+        id:
+          type: string
+        code:
+          type: string
+        name:
+          type: string
+        active:
+          type: boolean
+        sortOrder:
+          type: integer
+      required: [id, code, name, active, sortOrder]
+
+    CashSession:
+      type: object
+      properties:
+        id:
+          type: string
+        employeeId:
+          type: string
+        openedAt:
+          type: string
+        openingFloat:
+          type: string
+        closedAt:
+          type: string
+        expectedCash:
+          type: string
+        countedCash:
+          type: string
+        difference:
+          type: string
+        status:
+          type: string
+      required: [id, employeeId, openedAt, openingFloat, status]
+
+    CashSessionWithEmployee:
+      allOf:
+        - $ref: "#/components/schemas/CashSession"
+        - type: object
+          properties:
+            employeeName:
+              type: string
+
+    CashMovement:
+      type: object
+      properties:
+        id:
+          type: string
+        cashSessionId:
+          type: string
+        movementType:
+          type: string
+          enum: [in, out]
+        amount:
+          type: string
+        reason:
+          type: string
+        employeeId:
+          type: string
+        createdAt:
+          type: string
+      required: [id, cashSessionId, movementType, amount, reason, employeeId, createdAt]
+
+    CashSessionSummary:
+      type: object
+      properties:
+        session:
+          $ref: "#/components/schemas/CashSession"
+        salesByMethod:
+          type: array
+          items:
+            type: object
+            properties:
+              methodCode:
+                type: string
+              methodName:
+                type: string
+              total:
+                type: string
+            required: [methodCode, methodName]
+        movements:
+          type: array
+          items:
+            $ref: "#/components/schemas/CashMovement"
+      required: [session, salesByMethod, movements]
+
+    OpenCashSessionInput:
+      type: object
+      properties:
+        openingFloat:
+          type: string
+
+    AddCashMovementInput:
+      type: object
+      properties:
+        movementType:
+          type: string
+          enum: [in, out]
+        amount:
+          type: string
+        reason:
+          type: string
+      required: [movementType, amount, reason]
+
+    CloseCashSessionInput:
+      type: object
+      properties:
+        countedCash:
+          type: string
+      required: [countedCash]
+
+    PaymentSummary:
+      type: object
+      properties:
+        order:
+          type: object
+          properties:
+            id:
+              type: string
+            status:
+              type: string
+            tableName:
+              type: string
+            employeeName:
+              type: string
+          required: [id, status]
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              productName:
+                type: string
+              quantity:
+                type: integer
+              unitPrice:
+                type: string
+              lineTotal:
+                type: string
+            required: [id, productName, quantity, unitPrice, lineTotal]
+        subtotal:
+          type: string
+        taxTotal:
+          type: string
+        total:
+          type: string
+        paid:
+          type: string
+        remaining:
+          type: string
+        methods:
+          type: array
+          items:
+            $ref: "#/components/schemas/PaymentMethod"
+        payments:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              amount:
+                type: string
+              status:
+                type: string
+              methodCode:
+                type: string
+              methodName:
+                type: string
+              createdAt:
+                type: string
+            required: [id, amount, status, methodCode, methodName, createdAt]
+      required: [order, items, subtotal, taxTotal, total, paid, remaining, methods, payments]
+
+    AddPaymentInput:
+      type: object
+      properties:
+        methodCode:
+          type: string
+          enum: [cash, card, bizum]
+        amount:
+          type: string
+        reference:
+          type: string
+      required: [methodCode, amount]
+
+    PaymentResult:
+      type: object
+      properties:
+        payment:
+          type: object
+          properties:
+            id:
+              type: string
+            amount:
+              type: string
+            status:
+              type: string
+          required: [id, amount, status]
+        ticket:
+          nullable: true
+          type: object
+          properties:
+            id:
+              type: string
+            ticketNumber:
+              type: integer
+            total:
+              type: string
+            issuedAt:
+              type: string
+        change:
+          type: string
+        newRemaining:
+          type: number
+      required: [payment, change, newRemaining]
+
+    TicketData:
+      type: object
+      properties:
+        ticket:
+          type: object
+          properties:
+            id:
+              type: string
+            orderId:
+              type: string
+            ticketNumber:
+              type: integer
+            subtotal:
+              type: string
+            taxTotal:
+              type: string
+            total:
+              type: string
+            issuedAt:
+              type: string
+          required: [id, orderId, ticketNumber, subtotal, taxTotal, total, issuedAt]
+        order:
+          type: object
+          properties:
+            id:
+              type: string
+            tableName:
+              type: string
+            createdAt:
+              type: string
+          required: [id]
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              productName:
+                type: string
+              quantity:
+                type: integer
+              unitPrice:
+                type: string
+              lineTotal:
+                type: string
+            required: [productName, quantity, unitPrice, lineTotal]
+        payments:
+          type: array
+          items:
+            type: object
+            properties:
+              amount:
+                type: string
+              methodName:
+                type: string
+            required: [amount, methodName]
+        employeeName:
+          type: string
+      required: [ticket, order, items, payments]
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required: [error]

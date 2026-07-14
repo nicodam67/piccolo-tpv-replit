@@ -1,0 +1,27 @@
+kind = "web"
+previewPath = "/"
+title = "Piccolo TPV"
+version = "1.0.0"
+id = "artifacts/piccolo-tpv"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 24683
+
+[services.development]
+run = "pnpm --filter @workspace/piccolo-tpv run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/piccolo-tpv", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/piccolo-tpv/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "24683"
+BASE_PATH = "/"
