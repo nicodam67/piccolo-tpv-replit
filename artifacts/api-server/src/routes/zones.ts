@@ -45,7 +45,10 @@ router.post("/zones", requireAuth, requireRole("admin"), async (req, res): Promi
   const type = typeof req.body?.type === "string" ? req.body.type.trim() : "dining";
   if (!name) { res.status(400).json({ error: "Nombre requerido" }); return; }
 
-  const [maxRow] = await db.select({ v: max(roomZonesTable.sortOrder) }).from(roomZonesTable);
+  const [maxRow] = await db
+    .select({ v: max(roomZonesTable.sortOrder) })
+    .from(roomZonesTable)
+    .where(eq(roomZonesTable.active, true));
   const nextSort = (maxRow?.v ?? 0) + 1;
 
   const [zone] = await db
@@ -68,7 +71,10 @@ router.post("/zones/:zoneId/duplicate", requireAuth, requireRole("admin"), async
 
   if (!original) { res.status(404).json({ error: "Sala no encontrada" }); return; }
 
-  const [maxRow] = await db.select({ v: max(roomZonesTable.sortOrder) }).from(roomZonesTable);
+  const [maxRow] = await db
+    .select({ v: max(roomZonesTable.sortOrder) })
+    .from(roomZonesTable)
+    .where(eq(roomZonesTable.active, true));
   const nextSort = (maxRow?.v ?? 0) + 1;
 
   const [newZone] = await db

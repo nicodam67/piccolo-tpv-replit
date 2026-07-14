@@ -165,6 +165,24 @@ describe("POST /api/zones — sortOrder after create", () => {
     // New zone appended after the highest sort, not into the gap
     expect(res.body.sortOrder).toBe(4);
   });
+
+  it("ignores soft-deleted zones when computing the next sortOrder", async () => {
+    // Scenario: 3 active zones (max sortOrder=3) plus one soft-deleted zone at sortOrder=50
+    // (accumulated from many create/delete cycles). The new zone must get sortOrder=4,
+    // not sortOrder=51 — the MAX query filters active=true only.
+    mockDb.select.mockReturnValue(makeChain([{ v: 3 }])); // active-only max
+    const newZone = { id: "zone-f", name: "Terraza 2", type: "dining", sortOrder: 4, active: true, color: null };
+    mockDb.insert.mockReturnValue(makeChain([newZone]));
+
+    const res = await request(app)
+      .post("/api/zones")
+      .set("Authorization", AUTH)
+      .send({ name: "Terraza 2" });
+
+    expect(res.status).toBe(201);
+    // sortOrder must be based on the active-zones max (3), not a bloated all-rows max (50)
+    expect(res.body.sortOrder).toBe(4);
+  });
 });
 
 describe("PATCH /api/zones/:zoneId — reordering with various sortOrder values", () => {
