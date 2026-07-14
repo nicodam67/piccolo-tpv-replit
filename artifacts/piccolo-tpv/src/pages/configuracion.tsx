@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useLocation } from 'wouter';
 import { useQueryClient } from '@tanstack/react-query';
 import { io } from 'socket.io-client';
-import { ChevronLeft, Plus, Pencil, Trash2, LayoutDashboard, Check, X, Loader2, GripVertical, Palette, Copy, Eye, EyeOff, Smile } from 'lucide-react';
+import { ChevronLeft, Plus, Pencil, Trash2, LayoutDashboard, Check, X, Loader2, GripVertical, Palette, Copy, Eye, EyeOff, Smile, FileText } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   DndContext,
@@ -778,6 +778,12 @@ export default function Configuracion() {
         </button>
         <h1 className="text-xl font-bold ml-3">Configuración · Salas</h1>
         <div className="flex-1" />
+        <button
+          onClick={() => setLocation('/configuracion/documentos')}
+          className="hidden sm:flex items-center gap-2 px-3 py-2 bg-secondary text-muted-foreground hover:text-foreground border border-border rounded-xl font-bold text-sm hover:border-primary/40 active:scale-95 transition-all mr-2"
+        >
+          <FileText size={15} /> Documentos
+        </button>
         <button
           onClick={() => setShowCreateDialog(true)}
           className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground font-bold rounded-xl hover:opacity-90 active:scale-95 transition-all shadow-md text-sm"

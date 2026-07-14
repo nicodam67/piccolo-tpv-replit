@@ -1,18 +1,23 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useLocation, Link } from 'wouter';
 import { useQueryClient } from '@tanstack/react-query';
-import { ChevronLeft, Check, Loader2, Euro, CreditCard, Smartphone } from 'lucide-react';
+import { ChevronLeft, Check, Loader2, Euro, CreditCard, Smartphone, FileText, X, Printer } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   useGetOrderPaymentSummary,
   useAddPayment,
+  useGetClients,
+  useCreateInvoice,
+  useCreateClient,
   getGetOrderPaymentSummaryQueryKey,
+  getGetClientsQueryKey,
   type AddPaymentInputMethodCode,
+  type Invoice,
+  type Client,
+  type CreateClientInput,
 } from '@workspace/api-client-react';
 
 // ── tap-slop guard ────────────────────────────────────────────────────────────
-// Prevents accidental taps while scrolling: record pointer-down origin; if the
-// finger/cursor moves more than TAP_SLOP pixels before release, suppress the click.
 const TAP_SLOP = 8;
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -26,7 +31,19 @@ function methodIcon(code: string) {
   return <Euro className="w-5 h-5" />;
 }
 
-// ── PinKey — reliable touch feedback ─────────────────────────────────────────
+// ── VeriFactu pill ────────────────────────────────────────────────────────────
+function VeriFactuPill({ status }: { status: string }) {
+  const info = status === 'accepted'
+    ? { label: 'VeriFactu aceptado', cls: 'bg-green-500/10 text-green-400 border-green-500/30' }
+    : { label: 'Integración fiscal pendiente', cls: 'bg-amber-500/10 text-amber-400 border-amber-500/30' };
+  return (
+    <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs font-bold ${info.cls}`}>
+      {info.label}
+    </span>
+  );
+}
+
+// ── TouchBtn — reliable touch feedback ────────────────────────────────────────
 function TouchBtn({
   children, onPress, className, disabled,
 }: {
@@ -54,15 +71,268 @@ function TouchBtn({
   );
 }
 
+// ── Factura completa modal ────────────────────────────────────────────────────
+interface FacturaModalProps {
+  orderId: string;
+  onClose: () => void;
+  onIssued: (invoice: Invoice) => void;
+}
+
+function FacturaModal({ orderId, onClose, onIssued }: FacturaModalProps) {
+  const qc = useQueryClient();
+  const { data: clients = [] } = useGetClients({ query: { queryKey: getGetClientsQueryKey() } });
+  const createInvoice = useCreateInvoice();
+  const createClient  = useCreateClient();
+
+  const [selectedClientId, setSelectedClientId] = useState<string>('new');
+  const [form, setForm] = useState<Partial<CreateClientInput>>({});
+  const [saveClient, setSaveClient] = useState(false);
+  const [issuing, setIssuing] = useState(false);
+
+  const setF = (k: keyof CreateClientInput, v: string) => setForm(p => ({ ...p, [k]: v }));
+
+  const handleIssue = async () => {
+    if (!form.name?.trim()) { toast.error('El nombre es obligatorio'); return; }
+    setIssuing(true);
+    try {
+      // Optionally save client for next time
+      if (saveClient && form.name) {
+        try {
+          await createClient.mutateAsync({ data: form as CreateClientInput });
+          qc.invalidateQueries({ queryKey: getGetClientsQueryKey() });
+        } catch {}
+      }
+      const invoice = await createInvoice.mutateAsync({
+        data: {
+          orderId,
+          clientName:    form.name,
+          clientNif:     form.nif,
+          clientAddress: form.address,
+          clientCp:      form.cp,
+          clientCity:    form.city,
+          clientProvince:form.province,
+          clientCountry: form.country,
+          clientEmail:   form.email,
+          clientPhone:   form.phone,
+        },
+      });
+      onIssued(invoice);
+    } catch (e: any) {
+      toast.error(e?.message ?? 'Error al generar la factura');
+    } finally {
+      setIssuing(false);
+    }
+  };
+
+  const handleSelectClient = (c: Client) => {
+    setSelectedClientId(c.id);
+    setForm({
+      name:     c.name,
+      nif:      c.nif ?? '',
+      address:  c.address ?? '',
+      cp:       c.cp ?? '',
+      city:     c.city ?? '',
+      province: c.province ?? '',
+      country:  c.country ?? 'España',
+      email:    c.email ?? '',
+      phone:    c.phone ?? '',
+    });
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+      <div className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col">
+        {/* Header */}
+        <div className="flex items-center gap-3 px-6 py-4 border-b border-border shrink-0">
+          <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center">
+            <FileText size={16} className="text-primary" />
+          </div>
+          <div className="flex-1">
+            <h3 className="font-black text-lg leading-none">Generar factura completa</h3>
+            <p className="text-xs text-muted-foreground mt-0.5">Introduce los datos fiscales del cliente</p>
+          </div>
+          <button onClick={onClose} className="w-9 h-9 flex items-center justify-center rounded-xl hover:bg-secondary text-muted-foreground transition-colors">
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-6 space-y-4">
+          {/* Saved clients picker */}
+          {clients.length > 0 && (
+            <div>
+              <label className="text-xs font-black text-muted-foreground uppercase tracking-widest mb-2 block">Cliente guardado</label>
+              <div className="flex flex-wrap gap-2 mb-2">
+                <button
+                  onClick={() => { setSelectedClientId('new'); setForm({}); }}
+                  className={`px-3 py-1.5 rounded-xl border text-xs font-bold transition-colors ${selectedClientId === 'new' ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground'}`}
+                >
+                  + Nuevo cliente
+                </button>
+                {clients.slice(0, 6).map(c => (
+                  <button key={c.id} onClick={() => handleSelectClient(c)}
+                    className={`px-3 py-1.5 rounded-xl border text-xs font-bold transition-colors ${selectedClientId === c.id ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground'}`}>
+                    {c.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Client data form */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="col-span-2">
+              <label className="text-xs font-bold text-muted-foreground mb-1 block">Nombre / Razón social *</label>
+              <input value={form.name ?? ''} onChange={e => setF('name', e.target.value)} placeholder="Empresa Ejemplo S.L."
+                className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary" />
+            </div>
+            <div>
+              <label className="text-xs font-bold text-muted-foreground mb-1 block">NIF / CIF</label>
+              <input value={form.nif ?? ''} onChange={e => setF('nif', e.target.value)} placeholder="B12345678"
+                className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary" />
+            </div>
+            <div>
+              <label className="text-xs font-bold text-muted-foreground mb-1 block">Email</label>
+              <input type="email" value={form.email ?? ''} onChange={e => setF('email', e.target.value)} placeholder="info@empresa.es"
+                className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary" />
+            </div>
+            <div className="col-span-2">
+              <label className="text-xs font-bold text-muted-foreground mb-1 block">Dirección fiscal</label>
+              <input value={form.address ?? ''} onChange={e => setF('address', e.target.value)} placeholder="Calle Mayor 1"
+                className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary" />
+            </div>
+            <div>
+              <label className="text-xs font-bold text-muted-foreground mb-1 block">CP</label>
+              <input value={form.cp ?? ''} onChange={e => setF('cp', e.target.value)} placeholder="43580"
+                className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary" />
+            </div>
+            <div>
+              <label className="text-xs font-bold text-muted-foreground mb-1 block">Localidad</label>
+              <input value={form.city ?? ''} onChange={e => setF('city', e.target.value)} placeholder="La Ràpita"
+                className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary" />
+            </div>
+          </div>
+
+          {/* Save client toggle */}
+          <label className="flex items-center gap-3 cursor-pointer select-none">
+            <button onClick={() => setSaveClient(s => !s)}
+              className={`w-10 h-6 rounded-full transition-colors shrink-0 ${saveClient ? 'bg-primary' : 'bg-secondary'}`}>
+              <div className={`w-5 h-5 bg-white rounded-full shadow transition-transform mx-0.5 ${saveClient ? 'translate-x-4' : ''}`} />
+            </button>
+            <span className="text-sm font-semibold text-muted-foreground">Guardar datos para futuros pedidos</span>
+          </label>
+        </div>
+
+        {/* Footer */}
+        <div className="flex gap-3 px-6 py-4 border-t border-border shrink-0">
+          <button onClick={onClose} className="flex-1 py-3 bg-secondary text-foreground font-bold rounded-xl" style={{ touchAction: 'manipulation' }}>
+            Cancelar
+          </button>
+          <button onClick={handleIssue} disabled={issuing || !form.name?.trim()}
+            className="flex-1 py-3 bg-primary text-primary-foreground font-black rounded-xl flex items-center justify-center gap-2 disabled:opacity-50"
+            style={{ touchAction: 'manipulation' }}>
+            {issuing ? <Loader2 className="w-5 h-5 animate-spin" /> : <FileText className="w-4 h-4" />}
+            Generar factura
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Invoice result display ────────────────────────────────────────────────────
+interface InvoiceResultProps {
+  invoice: Invoice;
+  onClose: () => void;
+}
+
+function InvoiceResult({ invoice, onClose }: InvoiceResultProps) {
+  const handlePrint = () => window.print();
+  const handlePdf = () => {
+    const el = document.createElement('style');
+    el.textContent = `@media print { @page { size: A4; margin: 20mm; } }`;
+    document.head.appendChild(el);
+    window.print();
+    setTimeout(() => el.remove(), 500);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+      <div className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-md flex flex-col max-h-[90vh]">
+        <div className="flex items-center gap-3 px-6 py-4 border-b border-border shrink-0">
+          <div className="w-9 h-9 rounded-xl bg-green-500/10 flex items-center justify-center">
+            <Check size={16} className="text-green-400" />
+          </div>
+          <div className="flex-1">
+            <h3 className="font-black text-lg leading-none text-green-400">Factura emitida</h3>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {invoice.serie}-{invoice.invoiceNumber?.toString().padStart(4, '0')}
+            </p>
+          </div>
+          <button onClick={onClose} className="w-9 h-9 flex items-center justify-center rounded-xl hover:bg-secondary text-muted-foreground">
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-6 space-y-4">
+          {/* VeriFactu status */}
+          <div className="flex justify-center">
+            <VeriFactuPill status={invoice.verifactuStatus} />
+          </div>
+
+          {/* Invoice summary */}
+          <div className="bg-secondary/30 rounded-xl p-4 space-y-2 text-sm">
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Número</span>
+              <span className="font-bold">{invoice.serie}-{invoice.invoiceNumber?.toString().padStart(4, '0')}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Cliente</span>
+              <span className="font-bold truncate ml-4 max-w-[60%] text-right">{invoice.clientName}</span>
+            </div>
+            {invoice.clientNif && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">NIF</span>
+                <span className="font-bold">{invoice.clientNif}</span>
+              </div>
+            )}
+            <div className="flex justify-between border-t border-border pt-2 mt-2">
+              <span className="text-muted-foreground">Base imponible</span>
+              <span className="font-bold">{parseFloat(invoice.subtotal).toFixed(2)}€</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">IVA</span>
+              <span className="font-bold">{parseFloat(invoice.taxTotal).toFixed(2)}€</span>
+            </div>
+            <div className="flex justify-between text-lg font-black">
+              <span>TOTAL</span>
+              <span>{parseFloat(invoice.total).toFixed(2)}€</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex gap-3 px-6 py-4 border-t border-border shrink-0">
+          <button onClick={handlePrint}
+            className="flex-1 py-3 bg-secondary text-foreground font-bold rounded-xl flex items-center justify-center gap-2 text-sm"
+            style={{ touchAction: 'manipulation' }}>
+            <Printer size={15} /> Imprimir
+          </button>
+          <button onClick={handlePdf}
+            className="flex-1 py-3 bg-primary text-primary-foreground font-bold rounded-xl flex items-center justify-center gap-2 text-sm"
+            style={{ touchAction: 'manipulation' }}>
+            <FileText size={15} /> Descargar PDF
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 export default function Payment() {
   const { orderId } = useParams<{ orderId: string }>();
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
 
-  // Shared tap-slop guard: prevents accidental taps while scrolling.
-  // Store pointer-down origin; if the finger/cursor travels more than TAP_SLOP
-  // pixels before releasing, treat it as a scroll gesture and suppress the click.
   const pointerOriginRef = useRef<{ x: number; y: number } | null>(null);
   const handlePointerDown = (e: React.PointerEvent) => {
     pointerOriginRef.current = { x: e.clientX, y: e.clientY };
@@ -85,21 +355,19 @@ export default function Payment() {
   });
   const addPayment = useAddPayment();
 
-  // amounts keyed by method code
-  const [amounts, setAmounts]       = useState<Record<string, string>>({});
-  // which method the numpad is editing
-  const [focused, setFocused]       = useState<string>('cash');
+  const [amounts, setAmounts]         = useState<Record<string, string>>({});
+  const [focused, setFocused]         = useState<string>('cash');
   const [showConfirm, setShowConfirm] = useState(false);
-  const [submitting, setSubmitting]  = useState(false);
+  const [submitting, setSubmitting]   = useState(false);
+  const [showFacturaModal, setShowFacturaModal] = useState(false);
+  const [issuedInvoice, setIssuedInvoice]       = useState<Invoice | null>(null);
 
-  // initialise once summary loads
   const initialised = useRef(false);
   useEffect(() => {
     if (!summary || initialised.current) return;
     initialised.current = true;
     const init: Record<string, string> = {};
     for (const m of summary.methods) init[m.code] = '0';
-    // pre-fill first method with remaining
     if (summary.methods[0]) {
       init[summary.methods[0].code] = summary.remaining;
       setFocused(summary.methods[0].code);
@@ -107,8 +375,6 @@ export default function Payment() {
     setAmounts(init);
   }, [summary]);
 
-  // ── IMPORTANT: all hooks must be called unconditionally before any early return ──
-  // remainingNum and handleNumpad are defined here so useCallback is always called.
   const remainingNum = summary ? parseAmt(summary.remaining) : 0;
 
   const handleNumpad = useCallback((val: string) => {
@@ -118,11 +384,8 @@ export default function Payment() {
         const next = cur.slice(0, -1);
         return { ...prev, [focused]: next === '' ? '0' : next };
       }
-      if (val === 'clear') {
-        return { ...prev, [focused]: '0' };
-      }
+      if (val === 'clear') return { ...prev, [focused]: '0' };
       if (val === 'resto') {
-        // fill focused method with its share of remaining
         const others = Object.entries(prev)
           .filter(([k]) => k !== focused)
           .reduce((s, [, v]) => s + parseAmt(v), 0);
@@ -133,13 +396,11 @@ export default function Payment() {
         if (cur.includes('.')) return prev;
         return { ...prev, [focused]: cur + '.' };
       }
-      // number digit
       const base = cur === '0' ? val : cur + val;
       return { ...prev, [focused]: base };
     });
   }, [focused, remainingNum]);
 
-  // ── early return for loading state (after all hooks) ─────────────────────
   if (isLoading || !summary) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -150,24 +411,18 @@ export default function Payment() {
 
   const { order, items, subtotal, taxTotal, total, paid, remaining, methods, payments } = summary;
 
-  // derived totals
-  const enteredTotal = Object.values(amounts).reduce((s, v) => s + parseAmt(v), 0);
-  const focusedAmt   = parseAmt(amounts[focused] ?? '0');
-  const leftover     = Math.max(0, remainingNum - enteredTotal + focusedAmt); // remaining once others are set
-
-  // validation
-  const nonZeroMethods = methods.filter(m => parseAmt(amounts[m.code] ?? '0') > 0);
-  const hasChange      = focused === 'cash' && focusedAmt > leftover + 0.001;
-  const changeAmt      = hasChange ? focusedAmt - leftover : 0;
-  // non-cash cannot exceed their slice
+  const enteredTotal    = Object.values(amounts).reduce((s, v) => s + parseAmt(v), 0);
+  const focusedAmt      = parseAmt(amounts[focused] ?? '0');
+  const leftover        = Math.max(0, remainingNum - enteredTotal + focusedAmt);
+  const nonZeroMethods  = methods.filter(m => parseAmt(amounts[m.code] ?? '0') > 0);
+  const hasChange       = focused === 'cash' && focusedAmt > leftover + 0.001;
+  const changeAmt       = hasChange ? focusedAmt - leftover : 0;
   const nonCashOverflow = methods.some(m =>
     m.code !== 'cash' && parseAmt(amounts[m.code] ?? '0') > remainingNum + 0.001
   );
-  // total entered (excl change) must be >= remaining
-  const effectiveTotal = enteredTotal - changeAmt;
-  const canSubmit = nonZeroMethods.length > 0 && effectiveTotal >= remainingNum - 0.01 && !nonCashOverflow;
+  const effectiveTotal  = enteredTotal - changeAmt;
+  const canSubmit       = nonZeroMethods.length > 0 && effectiveTotal >= remainingNum - 0.01 && !nonCashOverflow;
 
-  // ── submit ────────────────────────────────────────────────────────────────
   const submitAll = async () => {
     setSubmitting(true);
     let lastChange = 0;
@@ -202,9 +457,20 @@ export default function Payment() {
     setTimeout(() => setLocation(`/ticket/${orderId}`), 1600);
   };
 
-  // ── render ────────────────────────────────────────────────────────────────
   return (
     <div className="flex flex-col lg:flex-row min-h-[100dvh] bg-background text-foreground overflow-hidden">
+
+      {/* Factura modal */}
+      {showFacturaModal && orderId && (
+        <FacturaModal
+          orderId={orderId}
+          onClose={() => setShowFacturaModal(false)}
+          onIssued={(inv) => { setShowFacturaModal(false); setIssuedInvoice(inv); }}
+        />
+      )}
+      {issuedInvoice && (
+        <InvoiceResult invoice={issuedInvoice} onClose={() => setIssuedInvoice(null)} />
+      )}
 
       {/* ── LEFT: order summary ── */}
       <div className="flex-1 flex flex-col border-b lg:border-b-0 lg:border-r border-border bg-card lg:max-w-md xl:max-w-lg shrink-0 h-[38vh] lg:h-full">
@@ -274,16 +540,25 @@ export default function Payment() {
             <div className="w-24 h-24 bg-green-500/20 text-green-500 rounded-full flex items-center justify-center mb-6">
               <Check className="w-12 h-12" strokeWidth={3} />
             </div>
-            <h2 className="text-4xl font-black text-green-500 mb-8">¡COBRADO!</h2>
-            <button onClick={() => setLocation(`/ticket/${orderId}`)}
-              className="px-8 py-4 bg-primary text-primary-foreground text-xl font-black uppercase tracking-wider rounded-xl active:scale-[0.98] transition-all shadow-lg">
-              Ver Ticket
-            </button>
+            <h2 className="text-4xl font-black text-green-500 mb-6">¡COBRADO!</h2>
+            <div className="flex flex-col gap-3 w-full max-w-xs">
+              <button onClick={() => setLocation(`/ticket/${orderId}`)}
+                className="w-full px-8 py-4 bg-primary text-primary-foreground text-xl font-black uppercase tracking-wider rounded-xl active:scale-[0.98] transition-all shadow-lg"
+                style={{ touchAction: 'manipulation' }}>
+                Ver Ticket
+              </button>
+              <button
+                onClick={() => setShowFacturaModal(true)}
+                className="w-full px-8 py-4 bg-secondary text-foreground text-base font-black uppercase tracking-wider rounded-xl active:scale-[0.98] transition-all border-2 border-border hover:border-primary/40 flex items-center justify-center gap-2"
+                style={{ touchAction: 'manipulation' }}>
+                <FileText size={18} /> Generar factura completa
+              </button>
+            </div>
           </div>
         ) : (
           <div className="flex-1 flex flex-col p-3 lg:p-6 gap-3 max-w-2xl mx-auto w-full">
 
-            {/* ── Method cards — tap to focus ── */}
+            {/* ── Method cards ── */}
             <div className="flex gap-2 lg:gap-3">
               {methods.map(m => {
                 const isFocused = focused === m.code;
@@ -316,9 +591,7 @@ export default function Payment() {
                     {isCash && amt > 0 && amt > remainingNum - Object.entries(amounts).filter(([k]) => k !== 'cash').reduce((s, [, v]) => s + parseAmt(v), 0) + 0.001 && (
                       <span className="text-green-500 text-[10px] font-bold">cambio</span>
                     )}
-                    {isFocused && (
-                      <span className="w-1.5 h-1.5 rounded-full bg-primary mt-0.5" />
-                    )}
+                    {isFocused && <span className="w-1.5 h-1.5 rounded-full bg-primary mt-0.5" />}
                   </button>
                 );
               })}
@@ -349,7 +622,6 @@ export default function Payment() {
 
             {/* ── Numpad ── */}
             <div className="grid grid-cols-4 gap-2 flex-1">
-              {/* Quick shortcuts column */}
               <div className="flex flex-col gap-2">
                 <TouchBtn onPress={() => handleNumpad('resto')}
                   className="flex-1 bg-primary/20 text-primary font-bold text-sm rounded-xl border border-primary/30 flex items-center justify-center min-h-[48px]">
@@ -363,7 +635,6 @@ export default function Payment() {
                 ))}
               </div>
 
-              {/* Digit grid */}
               <div className="col-span-3 grid grid-cols-3 gap-2">
                 {['7','8','9','4','5','6','1','2','3','0','.','⌫'].map(btn => (
                   <TouchBtn key={btn}
