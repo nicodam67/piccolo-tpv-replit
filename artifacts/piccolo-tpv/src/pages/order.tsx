@@ -72,7 +72,9 @@ export default function OrderPage() {
     } catch (e) {}
   }, [setLocation]);
 
-  const { data: tableData, isLoading: loadingTable } = useGetTableOrder(tableId);
+  const { data: tableData, isLoading: loadingTable } = useGetTableOrder(tableId, {
+    query: { refetchInterval: 30000 }
+  });
   const table = tableData?.table;
   const order = tableData?.order;
 
@@ -116,6 +118,11 @@ export default function OrderPage() {
     if (!order?.id && !employeeId) return;
     const socket = io({ path: '/api/socket.io' });
     
+    // On reconnect, re-fetch the order in case events were missed during the gap
+    socket.on('reconnect', () => {
+      queryClient.invalidateQueries({ queryKey: getGetTableOrderQueryKey(tableId) });
+    });
+
     if (order?.id) {
       socket.on('waiter:order-ready', (data: any) => {
         if (data.orderId === order.id) {
