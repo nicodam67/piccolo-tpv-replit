@@ -126,6 +126,12 @@ router.post("/orders/:orderId/items", requireAuth, async (req, res): Promise<voi
     })
     .returning();
 
+  try {
+    getIO().emit("orders:refresh", { orderId });
+  } catch {
+    // socket not initialised
+  }
+
   res.status(201).json({
     id: item.id,
     orderId: item.orderId,
@@ -161,6 +167,13 @@ router.delete("/order-items/:itemId", requireAuth, async (req, res): Promise<voi
   }
 
   await db.delete(orderItemsTable).where(eq(orderItemsTable.id, itemId));
+
+  try {
+    getIO().emit("orders:refresh", { orderId: item.orderId });
+  } catch {
+    // socket not initialised
+  }
+
   res.status(204).send();
 });
 
@@ -232,7 +245,9 @@ router.post("/orders/:orderId/send", requireAuth, async (req, res): Promise<void
   const [updated] = await db.select().from(ordersTable).where(eq(ordersTable.id, orderId));
 
   try {
-    getIO().emit("kds:refresh");
+    const io = getIO();
+    io.emit("kds:refresh");
+    io.emit("orders:refresh", { orderId });
   } catch {
     // socket not initialised
   }

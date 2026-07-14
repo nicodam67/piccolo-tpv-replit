@@ -86,7 +86,7 @@ export default function OrderPage() {
     }
   });
 
-  // Socket for waiter notifications
+  // Socket for waiter notifications and live order updates
   useEffect(() => {
     if (!order?.id && !employeeId) return;
     const socket = io({ path: '/api/socket.io' });
@@ -108,6 +108,12 @@ export default function OrderPage() {
           } catch (e) {}
         }
       });
+
+      socket.on('orders:refresh', (data: any) => {
+        if (data?.orderId === order.id) {
+          queryClient.invalidateQueries({ queryKey: getGetTableOrderQueryKey(tableId) });
+        }
+      });
     }
 
     if (employeeId) {
@@ -124,7 +130,7 @@ export default function OrderPage() {
     }
 
     return () => { socket.disconnect(); };
-  }, [order?.id, employeeId, queryClient]);
+  }, [order?.id, employeeId, queryClient, tableId]);
 
   const dismissAlert = () => {
     if (activeAlert?.id) {
