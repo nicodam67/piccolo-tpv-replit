@@ -449,8 +449,13 @@ export default function Configuracion() {
     const newIndex = localZones.findIndex(z => z.id === over.id);
     if (oldIndex === -1 || newIndex === -1) return;
 
-    // Snapshot the current sort orders BEFORE the optimistic update so we can
-    // send them as expectedSortOrder for optimistic concurrency control.
+    // Full pre-drag snapshot used to roll back the UI immediately on any error.
+    // (serverZones from the query cache may still be stale at catch time, so we
+    // capture our own copy here before the optimistic update overwrites state.)
+    const preDragSnapshot = [...localZones];
+
+    // Snapshot sort orders BEFORE the optimistic update so we can send them
+    // as expectedSortOrder for optimistic concurrency control.
     const originalById = Object.fromEntries(localZones.map(z => [z.id, z.sortOrder]));
 
     const reordered = arrayMove(localZones, oldIndex, newIndex);
@@ -474,9 +479,12 @@ export default function Configuracion() {
     )
       .then(invalidate)
       .catch((err: any) => {
-        // Re-fetch from server first so localZones reflects the true current
-        // state (which may include another admin's concurrent reorder).
-        queryClient.invalidateQueries({ queryKey: getGetZonesQueryKey({ all: true }) });
+        // Immediately restore the pre-drag order so the UI is not stuck in an
+        // inconsistent optimistic position. The background refetch below will
+        // then bring in whatever the server actually committed (which may differ
+        // if some PATCHes succeeded before the failure — e.g. on page reload
+        // mid-reorder the server could hold a partial state).
+        setLocalZones(preDragSnapshot);
 
         const isConflict = err?.response?.status === 409 ||
           (Array.isArray(err?.errors) && err.errors.some((e: any) => e?.response?.status === 409));
@@ -484,9 +492,13 @@ export default function Configuracion() {
         if (isConflict) {
           toast.error('Otro usuario reordenó las salas al mismo tiempo. Por favor, inténtalo de nuevo.');
         } else {
-          if (serverZones) setLocalZones(serverZones as Zone[]);
           toast.error('Error al guardar el orden');
         }
+
+        // Re-fetch from server so localZones eventually converges to the true
+        // committed state. The useEffect on serverZones will call setLocalZones
+        // once the refetch completes.
+        queryClient.invalidateQueries({ queryKey: getGetZonesQueryKey({ all: true }) });
       });
   };
 
