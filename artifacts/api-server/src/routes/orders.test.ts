@@ -43,6 +43,7 @@ const mockDb = vi.hoisted(() => ({
   insert: vi.fn(),
   update: vi.fn(),
   delete: vi.fn(),
+  transaction: vi.fn(),
 }));
 
 const mockEmit = vi.hoisted(() => vi.fn());
@@ -192,6 +193,100 @@ describe("DELETE /api/order-items/:itemId — remove item emits orders:refresh",
 
     const res = await request(app)
       .delete(`/api/order-items/${ITEM_ID}`)
+      .set("Authorization", AUTH);
+
+    expect(res.status).toBe(400);
+    expect(mockEmit).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST /api/orders/:orderId/send — emits kds:refresh and orders:refresh", () => {
+  const DRAFT_ROW = {
+    order_items: {
+      id: ITEM_ID,
+      orderId: ORDER_ID,
+      notes: "",
+      allergyNote: "",
+      hasAllergy: false,
+      quantity: 1,
+    },
+    products: {
+      id: PRODUCT_ID,
+      name: "Paella Valenciana",
+      prepZone: "cocina",
+      price: "14.50",
+    },
+  };
+
+  const UPDATED_ORDER = {
+    id: ORDER_ID,
+    tableId: TABLE_ID,
+    status: "sent",
+    sentAt: new Date().toISOString(),
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env["SESSION_SECRET"] = "test-secret";
+  });
+
+  it("emits kds:refresh and orders:refresh after successfully sending draft items", async () => {
+    // 1. draft items query (select + innerJoin)
+    mockDb.select.mockReturnValueOnce(makeChain([DRAFT_ROW]));
+    // 2. modifiers query (inArray on draftItemIds)
+    mockDb.select.mockReturnValueOnce(makeChain([]));
+    // 3. transaction — execute callback with a minimal tx mock
+    mockDb.transaction.mockImplementationOnce(async (cb: (tx: Record<string, unknown>) => Promise<void>) => {
+      const tx = {
+        insert: vi.fn(() => makeChain([])),
+        update: vi.fn(() => makeChain([])),
+      };
+      await cb(tx);
+    });
+    // 4. final select → updated order
+    mockDb.select.mockReturnValueOnce(makeChain([UPDATED_ORDER]));
+
+    const res = await request(app)
+      .post(`/api/orders/${ORDER_ID}/send`)
+      .set("Authorization", AUTH);
+
+    expect(res.status).toBe(200);
+    // Both events must be emitted
+    expect(mockEmit).toHaveBeenCalledWith("kds:refresh");
+    expect(mockEmit).toHaveBeenCalledWith("orders:refresh", { orderId: ORDER_ID });
+    expect(mockEmit).toHaveBeenCalledTimes(2);
+  });
+
+  it("emits kds:refresh before orders:refresh (kitchen display updates first)", async () => {
+    mockDb.select.mockReturnValueOnce(makeChain([DRAFT_ROW]));
+    mockDb.select.mockReturnValueOnce(makeChain([]));
+    mockDb.transaction.mockImplementationOnce(async (cb: (tx: Record<string, unknown>) => Promise<void>) => {
+      const tx = {
+        insert: vi.fn(() => makeChain([])),
+        update: vi.fn(() => makeChain([])),
+      };
+      await cb(tx);
+    });
+    mockDb.select.mockReturnValueOnce(makeChain([UPDATED_ORDER]));
+
+    await request(app)
+      .post(`/api/orders/${ORDER_ID}/send`)
+      .set("Authorization", AUTH)
+      .expect(200);
+
+    const calls = mockEmit.mock.calls;
+    const kdsIndex = calls.findIndex((c) => c[0] === "kds:refresh");
+    const ordersIndex = calls.findIndex((c) => c[0] === "orders:refresh");
+    expect(kdsIndex).toBeGreaterThanOrEqual(0);
+    expect(ordersIndex).toBeGreaterThan(kdsIndex);
+  });
+
+  it("returns 400 and does NOT emit any socket event when there are no draft items", async () => {
+    // Draft items query returns empty → early 400
+    mockDb.select.mockReturnValueOnce(makeChain([]));
+
+    const res = await request(app)
+      .post(`/api/orders/${ORDER_ID}/send`)
       .set("Authorization", AUTH);
 
     expect(res.status).toBe(400);
