@@ -12,8 +12,11 @@ import {
   ticketsTable,
 } from "@workspace/db";
 import { eq, and, sum, inArray } from "drizzle-orm";
-import { requireAuth } from "../middlewares/auth";
+import { requireAuth, requireRole } from "../middlewares/auth";
 import { getIO } from "../lib/socket";
+
+// Roles allowed to process payments (excludes kitchen staff)
+const PAYMENT_ROLES = ["waiter", "cashier", "manager", "admin"];
 
 const router: IRouter = Router();
 
@@ -123,7 +126,7 @@ router.get("/orders/:id/payment-summary", requireAuth, async (req, res): Promise
 });
 
 // POST /orders/:id/payments
-router.post("/orders/:id/payments", requireAuth, async (req, res): Promise<void> => {
+router.post("/orders/:id/payments", requireAuth, requireRole(...PAYMENT_ROLES), async (req, res): Promise<void> => {
   const { id: orderId } = req.params;
   const employeeId = (req as any).user?.id as string;
   const { methodCode, amount, reference } = req.body as {

@@ -8,12 +8,15 @@ import {
   employeesTable,
 } from "@workspace/db";
 import { eq, and, isNull, desc, sum, sql } from "drizzle-orm";
-import { requireAuth } from "../middlewares/auth";
+import { requireAuth, requireRole } from "../middlewares/auth";
+
+// Roles allowed to manage cash sessions (open, close, movements, summary)
+const CASH_MANAGER_ROLES = ["manager", "admin"];
 
 const router: IRouter = Router();
 
 // POST /cash-sessions/open
-router.post("/cash-sessions/open", requireAuth, async (req, res): Promise<void> => {
+router.post("/cash-sessions/open", requireAuth, requireRole(...CASH_MANAGER_ROLES), async (req, res): Promise<void> => {
   const employeeId = (req as any).user?.id as string;
   const { openingFloat = "0" } = req.body as { openingFloat?: string };
 
@@ -61,7 +64,7 @@ router.get("/cash-sessions/current", requireAuth, async (_req, res): Promise<voi
 });
 
 // POST /cash-sessions/:id/movements
-router.post("/cash-sessions/:id/movements", requireAuth, async (req, res): Promise<void> => {
+router.post("/cash-sessions/:id/movements", requireAuth, requireRole(...CASH_MANAGER_ROLES), async (req, res): Promise<void> => {
   const { id } = req.params;
   const employeeId = (req as any).user?.id as string;
   const { movementType, amount, reason } = req.body as {
@@ -98,7 +101,7 @@ router.post("/cash-sessions/:id/movements", requireAuth, async (req, res): Promi
 });
 
 // POST /cash-sessions/:id/close
-router.post("/cash-sessions/:id/close", requireAuth, async (req, res): Promise<void> => {
+router.post("/cash-sessions/:id/close", requireAuth, requireRole(...CASH_MANAGER_ROLES), async (req, res): Promise<void> => {
   const { id } = req.params;
   const { countedCash } = req.body as { countedCash: string };
 
@@ -178,7 +181,7 @@ router.post("/cash-sessions/:id/close", requireAuth, async (req, res): Promise<v
 });
 
 // GET /cash-sessions/:id/summary
-router.get("/cash-sessions/:id/summary", requireAuth, async (req, res): Promise<void> => {
+router.get("/cash-sessions/:id/summary", requireAuth, requireRole(...CASH_MANAGER_ROLES), async (req, res): Promise<void> => {
   const { id } = req.params;
 
   const [session] = await db.select().from(cashSessionsTable).where(eq(cashSessionsTable.id, id));
