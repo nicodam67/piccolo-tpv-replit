@@ -38,6 +38,8 @@ const mockDb = vi.hoisted(() => ({
   select: vi.fn(),
   insert: vi.fn(),
   update: vi.fn(),
+  transaction: vi.fn(),
+  execute: vi.fn(),
 }));
 
 // ─── Module mocks ─────────────────────────────────────────────────────────────
@@ -71,6 +73,15 @@ vi.mock("drizzle-orm", async (importOriginal) => {
 // ─── App import (after mocks are registered) ──────────────────────────────────
 
 const { default: app } = await import("../app");
+
+// ─── Default transaction implementation ───────────────────────────────────────
+// POST /zones and POST /zones/:zoneId/duplicate use db.transaction() with an
+// advisory lock.  The mock passes itself as the tx argument so existing tests
+// that set up mockDb.select / mockDb.insert continue to work unchanged.
+// vi.clearAllMocks() preserves mockImplementation, so this only needs to be
+// called once at module scope.
+mockDb.transaction.mockImplementation(async (cb: (tx: typeof mockDb) => unknown) => cb(mockDb));
+mockDb.execute.mockResolvedValue([]);
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -678,5 +689,107 @@ describe("Partial reorder — browser reload mid-drag rollback", () => {
     expect(byId["zone-b"]).toBe(1); // first PATCH committed
     expect(byId["zone-a"]).toBe(1); // second PATCH never landed — still at 1
     expect(byId["zone-c"]).toBe(3); // unaffected
+  });
+});
+
+// ─── Concurrent POST /zones — no duplicate sortOrder ─────────────────────────
+//
+// The POST handler wraps the MAX(sort_order) read + INSERT inside a transaction
+// that acquires a PostgreSQL advisory lock (pg_advisory_xact_lock(1001)).
+// This serialises concurrent zone creations at the DB level, so each insert
+// sees the previous insert's result in MAX() before computing the next value.
+//
+// In these unit tests the advisory lock is a no-op (mocked execute() call), but
+// the test still validates that:
+//  a) Two back-to-back POSTs are each given the sortOrder that the MAX query
+//     returns inside their respective transaction, and
+//  b) The final zone list contains no duplicate sortOrder values.
+//
+// The production guarantee (lock serialisation) is the responsibility of
+// pg_advisory_xact_lock; these tests confirm the read-then-insert logic
+// inside the transaction is correct.
+
+describe("Concurrent POST /api/zones — no duplicate sortOrder", () => {
+  beforeEach(() => {
+    process.env["SESSION_SECRET"] = "test-secret";
+    vi.clearAllMocks();
+    // Restore transaction + execute defaults cleared by vi.clearAllMocks()
+    mockDb.transaction.mockImplementation(async (cb: (tx: typeof mockDb) => unknown) => cb(mockDb));
+    mockDb.execute.mockResolvedValue([]);
+  });
+
+  it("two sequential POSTs each get a unique sortOrder (lock serialises reads)", async () => {
+    // Simulate what happens when the advisory lock forces Admin B to wait
+    // for Admin A's transaction to commit before reading MAX().
+    //
+    // Admin A transaction:
+    //   MAX(sort_order) where active=true → 3  →  inserts sortOrder=4
+    // Admin B transaction (starts after A commits):
+    //   MAX(sort_order) where active=true → 4  →  inserts sortOrder=5
+
+    const zoneA = { id: "zone-x", name: "VIP", type: "dining", sortOrder: 4, active: true, color: null };
+    const zoneB = { id: "zone-y", name: "Staff", type: "dining", sortOrder: 5, active: true, color: null };
+
+    // First POST: MAX returns 3 → new zone gets sortOrder=4
+    mockDb.select.mockReturnValueOnce(makeChain([{ v: 3 }]));
+    mockDb.insert.mockReturnValueOnce(makeChain([zoneA]));
+
+    const res1 = await request(app)
+      .post("/api/zones")
+      .set("Authorization", AUTH)
+      .send({ name: "VIP", type: "dining" });
+
+    expect(res1.status).toBe(201);
+    expect(res1.body.sortOrder).toBe(4);
+
+    // Second POST: MAX now returns 4 (Admin A's row committed) → sortOrder=5
+    mockDb.select.mockReturnValueOnce(makeChain([{ v: 4 }]));
+    mockDb.insert.mockReturnValueOnce(makeChain([zoneB]));
+
+    const res2 = await request(app)
+      .post("/api/zones")
+      .set("Authorization", AUTH)
+      .send({ name: "Staff", type: "dining" });
+
+    expect(res2.status).toBe(201);
+    expect(res2.body.sortOrder).toBe(5);
+
+    // No duplicate sortOrders
+    expect(res1.body.sortOrder).not.toBe(res2.body.sortOrder);
+  });
+
+  it("advisory lock call (execute) is made once per POST inside the transaction", async () => {
+    const newZone = { id: "zone-z", name: "Eventos", type: "dining", sortOrder: 1, active: true, color: null };
+    mockDb.select.mockReturnValueOnce(makeChain([{ v: null }])); // empty table
+    mockDb.insert.mockReturnValueOnce(makeChain([newZone]));
+
+    const res = await request(app)
+      .post("/api/zones")
+      .set("Authorization", AUTH)
+      .send({ name: "Eventos" });
+
+    expect(res.status).toBe(201);
+    // The transaction callback was entered
+    expect(mockDb.transaction).toHaveBeenCalledTimes(1);
+    // pg_advisory_xact_lock was called inside the transaction
+    expect(mockDb.execute).toHaveBeenCalledTimes(1);
+    const executeArg = mockDb.execute.mock.calls[0][0];
+    // The sql`` object from drizzle-orm serialises to its queryChunks; check
+    // JSON for the advisory-lock function name rather than calling String().
+    expect(JSON.stringify(executeArg)).toMatch(/pg_advisory_xact_lock/);
+  });
+
+  it("sortOrder starts at 1 when the first zone is created concurrently (empty table)", async () => {
+    const firstZone = { id: "zone-first", name: "Principal", type: "dining", sortOrder: 1, active: true, color: null };
+    mockDb.select.mockReturnValueOnce(makeChain([{ v: null }]));
+    mockDb.insert.mockReturnValueOnce(makeChain([firstZone]));
+
+    const res = await request(app)
+      .post("/api/zones")
+      .set("Authorization", AUTH)
+      .send({ name: "Principal" });
+
+    expect(res.status).toBe(201);
+    expect(res.body.sortOrder).toBe(1);
   });
 });

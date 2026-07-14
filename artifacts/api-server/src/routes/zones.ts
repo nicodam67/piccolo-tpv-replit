@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { roomZonesTable, restaurantTablesTable, ordersTable } from "@workspace/db";
-import { eq, asc, max, and, inArray } from "drizzle-orm";
+import { sql, eq, asc, max, and, inArray } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
 
 const router: IRouter = Router();
@@ -48,16 +48,22 @@ router.post("/zones", requireAuth, requireRole("admin"), async (req, res): Promi
   const color = typeof req.body?.color === "string" ? req.body.color : null;
   const icon  = typeof req.body?.icon  === "string" ? req.body.icon  : null;
 
-  const [maxRow] = await db
-    .select({ v: max(roomZonesTable.sortOrder) })
-    .from(roomZonesTable)
-    .where(eq(roomZonesTable.active, true));
-  const nextSort = (maxRow?.v ?? 0) + 1;
+  // Advisory lock 1001 serialises all zone-creation writes so two concurrent
+  // POSTs cannot both read the same MAX(sort_order) and produce a duplicate.
+  const [zone] = await db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(1001)`);
 
-  const [zone] = await db
-    .insert(roomZonesTable)
-    .values({ name, type, sortOrder: nextSort, color, icon })
-    .returning();
+    const [maxRow] = await tx
+      .select({ v: max(roomZonesTable.sortOrder) })
+      .from(roomZonesTable)
+      .where(eq(roomZonesTable.active, true));
+    const nextSort = (maxRow?.v ?? 0) + 1;
+
+    return tx
+      .insert(roomZonesTable)
+      .values({ name, type, sortOrder: nextSort, color, icon })
+      .returning();
+  });
 
   res.status(201).json(zone);
 });
@@ -74,16 +80,22 @@ router.post("/zones/:zoneId/duplicate", requireAuth, requireRole("admin"), async
 
   if (!original) { res.status(404).json({ error: "Sala no encontrada" }); return; }
 
-  const [maxRow] = await db
-    .select({ v: max(roomZonesTable.sortOrder) })
-    .from(roomZonesTable)
-    .where(eq(roomZonesTable.active, true));
-  const nextSort = (maxRow?.v ?? 0) + 1;
+  // Same advisory lock as POST /zones so a concurrent create + duplicate cannot
+  // both read the same MAX(sort_order) and produce a duplicate sort position.
+  const [newZone] = await db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(1001)`);
 
-  const [newZone] = await db
-    .insert(roomZonesTable)
-    .values({ name: original.name + " (copia)", type: original.type, sortOrder: nextSort, color: original.color, icon: original.icon })
-    .returning();
+    const [maxRow] = await tx
+      .select({ v: max(roomZonesTable.sortOrder) })
+      .from(roomZonesTable)
+      .where(eq(roomZonesTable.active, true));
+    const nextSort = (maxRow?.v ?? 0) + 1;
+
+    return tx
+      .insert(roomZonesTable)
+      .values({ name: original.name + " (copia)", type: original.type, sortOrder: nextSort, color: original.color, icon: original.icon })
+      .returning();
+  });
 
   // Copy all active tables from original zone
   const tables = await db
