@@ -63,6 +63,33 @@ interface Zone {
   activeLayout?: string;
 }
 
+interface ReorderQueueItem {
+  /** The desired post-drag zone list — applied to UI on successful flush. */
+  intendedZones: Zone[];
+  /** The pre-drag snapshot — restored if flush ultimately fails (conflict/server error). */
+  preDragSnapshot: Zone[];
+}
+
+// ─── Reorder queue helpers ────────────────────────────────────────────────────
+const REORDER_QUEUE_KEY = 'piccolo_reorder_queue';
+
+function loadReorderQueue(): ReorderQueueItem[] {
+  try {
+    const raw = localStorage.getItem(REORDER_QUEUE_KEY);
+    return raw ? (JSON.parse(raw) as ReorderQueueItem[]) : [];
+  } catch { return []; }
+}
+
+function saveReorderQueue(queue: ReorderQueueItem[]) {
+  try {
+    if (queue.length === 0) {
+      localStorage.removeItem(REORDER_QUEUE_KEY);
+    } else {
+      localStorage.setItem(REORDER_QUEUE_KEY, JSON.stringify(queue));
+    }
+  } catch {}
+}
+
 // ─── Emoji picker popover ─────────────────────────────────────────────────────
 interface EmojiPickerProps {
   currentIcon: string | null | undefined;
@@ -431,10 +458,124 @@ export default function Configuracion() {
   const [colorPickerZoneId, setColorPickerZoneId] = useState<string | null>(null);
   const [emojiPickerZoneId, setEmojiPickerZoneId] = useState<string | null>(null);
 
+  // ─── Reorder retry queue ─────────────────────────────────────────────────────
+  const reorderQueueRef = useRef<ReorderQueueItem[]>(loadReorderQueue());
+  const isFlushing = useRef(false);
+
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: getGetZonesQueryKey() });
     queryClient.invalidateQueries({ queryKey: [...getGetZonesQueryKey(), 'all'] });
   };
+
+  // ─── Flush queued reorder operations ────────────────────────────────────────
+  // Processes queued items one-by-one in FIFO order. Called on reconnect.
+  //
+  // Before retrying each item we fetch the CURRENT server zone list and compute
+  // patches as the diff between that state and the intended order, using the
+  // server's live sortOrder values as expectedSortOrder. This means:
+  //   • Patches that already landed before the network dropped are no-ops
+  //     (server is already at the intended value → not included in the diff)
+  //   • Stale expectedSortOrder values are never sent, so no spurious 409s
+  //
+  // Outcomes:
+  //   Network error on fetch/patch → item stays in queue, loop stops
+  //   409 or other server error    → item dropped, pre-drag snapshot restored
+  //   All patches succeed / no-op  → intended order applied to UI
+  const flushReorderQueue = useRef<() => Promise<void>>(undefined as any);
+  flushReorderQueue.current = async () => {
+    if (isFlushing.current) return;
+    if (reorderQueueRef.current.length === 0) return;
+
+    isFlushing.current = true;
+    try {
+      while (reorderQueueRef.current.length > 0) {
+        const item = reorderQueueRef.current[0];
+
+        // Step 1: fetch fresh server state so we know which patches are still needed
+        // and can use live sortOrders as expectedSortOrder.
+        let currentZones: Zone[];
+        try {
+          currentZones = await queryClient.fetchQuery({
+            queryKey: getGetZonesQueryKey({ all: true }),
+            staleTime: 0,
+          }) as Zone[];
+        } catch {
+          // Still offline — stop and wait for the next online event
+          break;
+        }
+
+        // Step 2: compute minimal patch set (only zones not yet at intended sortOrder)
+        const currentOrderById = Object.fromEntries(currentZones.map(z => [z.id, z.sortOrder]));
+        const patchesNeeded = item.intendedZones
+          .filter(z => currentOrderById[z.id] !== undefined && currentOrderById[z.id] !== z.sortOrder)
+          .map(z => ({
+            zoneId: z.id,
+            sortOrder: z.sortOrder,
+            // Use the LIVE server sortOrder so we never send a stale expected value
+            expectedSortOrder: currentOrderById[z.id],
+          }));
+
+        if (patchesNeeded.length === 0) {
+          // Already converged — nothing to send
+          setLocalZones(item.intendedZones);
+          reorderQueueRef.current = reorderQueueRef.current.slice(1);
+          saveReorderQueue(reorderQueueRef.current);
+          continue;
+        }
+
+        // Step 3: send only the patches that are still outstanding
+        try {
+          await Promise.all(
+            patchesNeeded.map(p =>
+              updateZone.mutateAsync({
+                zoneId: p.zoneId,
+                data: { sortOrder: p.sortOrder, expectedSortOrder: p.expectedSortOrder },
+              })
+            )
+          );
+          // Success — apply intended order and remove from queue
+          setLocalZones(item.intendedZones);
+          reorderQueueRef.current = reorderQueueRef.current.slice(1);
+          saveReorderQueue(reorderQueueRef.current);
+          queryClient.invalidateQueries({ queryKey: getGetZonesQueryKey({ all: true }) });
+        } catch (err: any) {
+          const isNetworkError = !err?.response;
+          if (isNetworkError) {
+            // Still offline — keep item in queue, stop loop
+            break;
+          }
+          // Server rejected (conflict or other) — drop item, restore snapshot
+          reorderQueueRef.current = reorderQueueRef.current.slice(1);
+          saveReorderQueue(reorderQueueRef.current);
+          setLocalZones(item.preDragSnapshot);
+          queryClient.invalidateQueries({ queryKey: getGetZonesQueryKey({ all: true }) });
+
+          const isConflict = err?.response?.status === 409;
+          toast.error(isConflict
+            ? 'Orden cambiado por otro usuario. Por favor, reordena de nuevo.'
+            : 'Error al guardar el orden. Los cambios han sido revertidos.'
+          );
+        }
+      }
+    } finally {
+      isFlushing.current = false;
+    }
+  };
+
+  // ─── Listen for reconnection to flush pending reorders ───────────────────────
+  useEffect(() => {
+    const handleOnline = () => {
+      if (reorderQueueRef.current.length > 0) {
+        flushReorderQueue.current();
+      }
+    };
+    window.addEventListener('online', handleOnline);
+    // Also attempt flush on mount in case we were offline and came back
+    if (navigator.onLine && reorderQueueRef.current.length > 0) {
+      flushReorderQueue.current();
+    }
+    return () => window.removeEventListener('online', handleOnline);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── Live zone updates from other admin sessions ─────────────────────────────
   useEffect(() => {
@@ -474,7 +615,9 @@ export default function Configuracion() {
 
     const changed = withOrder.filter(z => z.sortOrder !== originalById[z.id]);
 
-    Promise.all(
+    // Use allSettled so a mid-flight network drop doesn't throw — we inspect
+    // each result individually to decide whether to queue, restore, or succeed.
+    Promise.allSettled(
       changed.map(z =>
         updateZone.mutateAsync({
           zoneId: z.id,
@@ -486,30 +629,52 @@ export default function Configuracion() {
           },
         })
       )
-    )
-      .then(invalidate)
-      .catch((err: any) => {
-        // Immediately restore the pre-drag order so the UI is not stuck in an
-        // inconsistent optimistic position. The background refetch below will
-        // then bring in whatever the server actually committed (which may differ
-        // if some PATCHes succeeded before the failure — e.g. on page reload
-        // mid-reorder the server could hold a partial state).
+    ).then(results => {
+      const failures = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
+
+      if (failures.length === 0) {
+        // Every patch landed — just sync the query cache
+        invalidate();
+        return;
+      }
+
+      const hasNetworkFailure = failures.some(r => !r.reason?.response);
+      const hasConflict       = failures.some(r => r.reason?.response?.status === 409);
+
+      if (hasNetworkFailure) {
+        // At least one patch failed due to connectivity.
+        // Queue the full intended state; the flush will re-fetch current server
+        // zones and compute which patches are still outstanding, so any patches
+        // that already landed before the drop become no-ops on retry.
+        reorderQueueRef.current = [
+          ...reorderQueueRef.current,
+          { intendedZones: withOrder, preDragSnapshot },
+        ];
+        saveReorderQueue(reorderQueueRef.current);
+        toast('Sin conexión — el orden se guardará al reconectar', { icon: '📶' });
+        // Keep the optimistic UI so staff can see the intended order.
+        // Immediately attempt a flush in case connectivity returned before
+        // this callback ran (the `online` event would have fired while the
+        // queue was still empty, so we cannot rely on it alone).
+        if (navigator.onLine) {
+          flushReorderQueue.current();
+        }
+      } else {
+        // Server-side failure (conflict or other) with no network issues —
+        // restore immediately so the UI reflects the true committed state.
         setLocalZones(preDragSnapshot);
 
-        const isConflict = err?.response?.status === 409 ||
-          (Array.isArray(err?.errors) && err.errors.some((e: any) => e?.response?.status === 409));
-
-        if (isConflict) {
+        if (hasConflict) {
           toast.error('Otro usuario reordenó las salas al mismo tiempo. Por favor, inténtalo de nuevo.');
         } else {
           toast.error('Error al guardar el orden');
         }
 
-        // Re-fetch from server so localZones eventually converges to the true
-        // committed state. The useEffect on serverZones will call setLocalZones
-        // once the refetch completes.
+        // Re-fetch so localZones converges to whatever the server committed
+        // (partial patches may have landed before the failure).
         queryClient.invalidateQueries({ queryKey: getGetZonesQueryKey({ all: true }) });
-      });
+      }
+    });
   };
 
   // ─── CRUD handlers ────────────────────────────────────────────────────────
