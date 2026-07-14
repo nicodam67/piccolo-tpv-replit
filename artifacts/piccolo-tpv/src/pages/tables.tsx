@@ -378,12 +378,23 @@ export default function Tables() {
             <div className="flex gap-2">
               {zones?.map(zone => {
                 const isActive = activeZone === zone.id;
+                const zoneColor = zone.color ?? null;
                 return (
-                  <button key={zone.id} onClick={() => setActiveZone(zone.id)}
-                    className={`px-6 py-3 rounded-t-xl font-semibold text-sm transition-all whitespace-nowrap
+                  <button
+                    key={zone.id}
+                    onClick={() => setActiveZone(zone.id)}
+                    style={isActive && zoneColor ? { borderTopColor: zoneColor, color: zoneColor } : undefined}
+                    className={`flex items-center gap-2 px-5 py-3 rounded-t-xl font-semibold text-sm transition-all whitespace-nowrap
                       ${isActive
-                        ? "bg-background text-primary border-t-2 border-primary shadow-[0_-4px_10px_rgba(0,0,0,0.05)]"
-                        : "bg-secondary/50 text-muted-foreground hover:bg-secondary hover:text-foreground"}`}>
+                        ? "bg-background border-t-2 border-primary shadow-[0_-4px_10px_rgba(0,0,0,0.05)]"
+                        : "bg-secondary/50 text-muted-foreground hover:bg-secondary hover:text-foreground"}`}
+                  >
+                    {zoneColor && (
+                      <span
+                        className="shrink-0 w-2.5 h-2.5 rounded-full"
+                        style={{ backgroundColor: zoneColor, boxShadow: isActive ? `0 0 6px ${zoneColor}88` : undefined }}
+                      />
+                    )}
                     {zone.name}
                   </button>
                 );

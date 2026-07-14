@@ -30,6 +30,7 @@ export interface Zone {
   name: string;
   type: string;
   sortOrder: number;
+  color?: string | null;
 }
 
 export interface Table {
@@ -54,6 +55,7 @@ export interface CreateZoneInput {
 export interface UpdateZoneInput {
   name?: string;
   sortOrder?: number;
+  color?: string | null;
 }
 
 export interface CreateTableInput {

@@ -14,6 +14,7 @@ router.get("/zones", requireAuth, async (_req, res): Promise<void> => {
       name: roomZonesTable.name,
       type: roomZonesTable.type,
       sortOrder: roomZonesTable.sortOrder,
+      color: roomZonesTable.color,
     })
     .from(roomZonesTable)
     .where(eq(roomZonesTable.active, true))
@@ -39,12 +40,14 @@ router.post("/zones", requireAuth, requireRole("admin"), async (req, res): Promi
   res.status(201).json(zone);
 });
 
-// PATCH /zones/:zoneId — rename / reorder zone (admin only)
+// PATCH /zones/:zoneId — rename / reorder / recolor zone (admin only)
 router.patch("/zones/:zoneId", requireAuth, requireRole("admin"), async (req, res): Promise<void> => {
   const zoneId = req.params.zoneId as string;
   const updates: Partial<typeof roomZonesTable.$inferInsert> = {};
   if (typeof req.body?.name === "string" && req.body.name.trim()) updates.name = req.body.name.trim();
   if (typeof req.body?.sortOrder === "number") updates.sortOrder = req.body.sortOrder;
+  if (typeof req.body?.color === "string") updates.color = req.body.color || null;
+  if (req.body?.color === null) updates.color = null;
 
   if (Object.keys(updates).length === 0) { res.status(400).json({ error: "Sin cambios" }); return; }
 

@@ -8,6 +8,7 @@ export const roomZonesTable = pgTable("room_zones", {
   type: text("type").notNull().default("dining"),
   sortOrder: integer("sort_order").notNull().default(0),
   active: boolean("active").notNull().default(true),
+  color: text("color"),
 });
 
 export const insertRoomZoneSchema = createInsertSchema(roomZonesTable).omit({ id: true });
