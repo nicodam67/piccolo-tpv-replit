@@ -234,22 +234,56 @@ export default function ZoneEditor() {
     persistZoom(Math.min(cw / CANVAS_W, ch / CANVAS_H) * 0.98);
   }, [persistZoom]);
 
-  // Pinch-to-zoom
-  const pinchRef = useRef<{ startDist: number; startZoom: number } | null>(null);
+  // Pinch-to-zoom — non-passive so we can preventDefault and block scroll
+  const pinchRef = useRef<{
+    startDist: number;
+    startZoom: number;
+    /** Canvas-space coordinates of the pinch midpoint at gesture start */
+    canvasPoint: { x: number; y: number };
+    /** Pinch midpoint position relative to the container's top-left edge */
+    midScreen: { x: number; y: number };
+  } | null>(null);
+
   useEffect(() => {
-    const el = canvasContainerRef.current;
-    if (!el) return;
+    const elOrNull = canvasContainerRef.current;
+    if (!elOrNull) return;
+    const el: HTMLDivElement = elOrNull;
     function dist(t: TouchList) {
       const dx = t[0].clientX - t[1].clientX, dy = t[0].clientY - t[1].clientY;
       return Math.sqrt(dx * dx + dy * dy);
     }
     function onTouchStart(e: TouchEvent) {
-      if (e.touches.length === 2) pinchRef.current = { startDist: dist(e.touches), startZoom: zoomRef.current };
+      if (e.touches.length === 2) {
+        const rect = el.getBoundingClientRect();
+        const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+        const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+        // Position of midpoint relative to the scrollable container's origin
+        const relX = midX - rect.left;
+        const relY = midY - rect.top;
+        const z = zoomRef.current;
+        // Canvas coordinates under the midpoint (inverse of scale+scroll transform)
+        const cx = (el.scrollLeft + relX) / z;
+        const cy = (el.scrollTop + relY) / z;
+        pinchRef.current = {
+          startDist: dist(e.touches),
+          startZoom: z,
+          canvasPoint: { x: cx, y: cy },
+          midScreen: { x: relX, y: relY },
+        };
+      }
     }
     function onTouchMove(e: TouchEvent) {
       if (e.touches.length === 2 && pinchRef.current) {
-        e.preventDefault();
-        persistZoom(pinchRef.current.startZoom * dist(e.touches) / pinchRef.current.startDist);
+        e.preventDefault(); // prevent browser pan/zoom during pinch
+        const scale = dist(e.touches) / pinchRef.current.startDist;
+        const rawZoom = pinchRef.current.startZoom * scale;
+        // Clamp (mirror persistZoom logic so scroll uses the final value)
+        const newZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, parseFloat(rawZoom.toFixed(2))));
+        // Reposition scroll so the pinch midpoint stays fixed on screen
+        const { canvasPoint, midScreen } = pinchRef.current;
+        el.scrollLeft = canvasPoint.x * newZoom - midScreen.x;
+        el.scrollTop  = canvasPoint.y * newZoom - midScreen.y;
+        persistZoom(newZoom);
       }
     }
     function onTouchEnd() { pinchRef.current = null; }
