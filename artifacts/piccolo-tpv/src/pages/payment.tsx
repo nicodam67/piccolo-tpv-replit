@@ -107,35 +107,10 @@ export default function Payment() {
     setAmounts(init);
   }, [summary]);
 
-  if (isLoading || !summary) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <Loader2 className="w-10 h-10 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
+  // ── IMPORTANT: all hooks must be called unconditionally before any early return ──
+  // remainingNum and handleNumpad are defined here so useCallback is always called.
+  const remainingNum = summary ? parseAmt(summary.remaining) : 0;
 
-  const { order, items, subtotal, taxTotal, total, paid, remaining, methods, payments } = summary;
-  const remainingNum = parseAmt(remaining);
-
-  // derived totals
-  const enteredTotal = Object.values(amounts).reduce((s, v) => s + parseAmt(v), 0);
-  const focusedAmt   = parseAmt(amounts[focused] ?? '0');
-  const leftover     = Math.max(0, remainingNum - enteredTotal + focusedAmt); // remaining once others are set
-
-  // validation
-  const nonZeroMethods = methods.filter(m => parseAmt(amounts[m.code] ?? '0') > 0);
-  const hasChange      = focused === 'cash' && focusedAmt > leftover + 0.001;
-  const changeAmt      = hasChange ? focusedAmt - leftover : 0;
-  // non-cash cannot exceed their slice
-  const nonCashOverflow = methods.some(m =>
-    m.code !== 'cash' && parseAmt(amounts[m.code] ?? '0') > remainingNum + 0.001
-  );
-  // total entered (excl change) must be >= remaining
-  const effectiveTotal = enteredTotal - changeAmt;
-  const canSubmit = nonZeroMethods.length > 0 && effectiveTotal >= remainingNum - 0.01 && !nonCashOverflow;
-
-  // ── numpad ────────────────────────────────────────────────────────────────
   const handleNumpad = useCallback((val: string) => {
     setAmounts(prev => {
       const cur = prev[focused] ?? '0';
@@ -163,6 +138,34 @@ export default function Payment() {
       return { ...prev, [focused]: base };
     });
   }, [focused, remainingNum]);
+
+  // ── early return for loading state (after all hooks) ─────────────────────
+  if (isLoading || !summary) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <Loader2 className="w-10 h-10 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  const { order, items, subtotal, taxTotal, total, paid, remaining, methods, payments } = summary;
+
+  // derived totals
+  const enteredTotal = Object.values(amounts).reduce((s, v) => s + parseAmt(v), 0);
+  const focusedAmt   = parseAmt(amounts[focused] ?? '0');
+  const leftover     = Math.max(0, remainingNum - enteredTotal + focusedAmt); // remaining once others are set
+
+  // validation
+  const nonZeroMethods = methods.filter(m => parseAmt(amounts[m.code] ?? '0') > 0);
+  const hasChange      = focused === 'cash' && focusedAmt > leftover + 0.001;
+  const changeAmt      = hasChange ? focusedAmt - leftover : 0;
+  // non-cash cannot exceed their slice
+  const nonCashOverflow = methods.some(m =>
+    m.code !== 'cash' && parseAmt(amounts[m.code] ?? '0') > remainingNum + 0.001
+  );
+  // total entered (excl change) must be >= remaining
+  const effectiveTotal = enteredTotal - changeAmt;
+  const canSubmit = nonZeroMethods.length > 0 && effectiveTotal >= remainingNum - 0.01 && !nonCashOverflow;
 
   // ── submit ────────────────────────────────────────────────────────────────
   const submitAll = async () => {
