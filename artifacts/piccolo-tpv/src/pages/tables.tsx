@@ -811,22 +811,29 @@ export default function Tables() {
         </div>
       </div>
 
-      {/* Zone color accent — thin rule that follows the active zone */}
+      {/* Zone color accent — thin rule that follows the active zone.
+          Always occupies 3 px so it acts as a visual separator even when
+          the zone has no custom color. The empty-state overlay inside
+          <main> is absolutely positioned and cannot cover this element. */}
       {(() => {
         const activeZoneColor = zones?.find(z => z.id === activeZone)?.color ?? null;
         return (
           <div
             style={{
               height: 3,
-              background: activeZoneColor ?? "transparent",
-              transition: "background 0.35s ease",
+              minHeight: 3,
               flexShrink: 0,
+              background: activeZoneColor ?? undefined,
+              borderBottom: activeZoneColor ? undefined : "1px solid var(--border)",
+              transition: "background 0.35s ease, border-color 0.35s ease",
             }}
           />
         );
       })()}
 
-      {/* Floor plan canvas */}
+      {/* Floor plan canvas — overflow:auto creates a scroll container that
+          clips absolutely-positioned children (e.g. the empty-state overlay)
+          so they cannot bleed upward and obscure the accent rule above. */}
       <main ref={canvasContainerRef} className="flex-1 overflow-auto bg-[#0c0c0c] relative">
         {loadingTables ? (
           <div className="absolute inset-0 flex items-center justify-center">
