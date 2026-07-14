@@ -3,7 +3,8 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "codegen": "orval --config ./orval.config.ts && pnpm -w run typecheck:libs"
+    "codegen": "orval --config ./orval.config.ts && pnpm -w run typecheck:libs",
+    "codegen:stamp": "sha256sum ../../lib/api-spec/openapi.yaml | awk '{print $1}' > .codegen-stamp && echo 'Stamp updated'"
   },
   "devDependencies": {
     "orval": "^8.21.0"
