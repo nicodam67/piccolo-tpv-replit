@@ -1582,7 +1582,7 @@ components:
       properties:
         type:
           type: string
-          enum: [wall, door, bar, column]
+          enum: [wall, door, bar, column, window]
         layout:
           type: string
           enum: [normal, verano, invierno, eventos]

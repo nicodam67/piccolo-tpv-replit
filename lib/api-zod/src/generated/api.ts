@@ -180,7 +180,7 @@ export const CreateCanvasElementParams = zod.object({
 })
 
 export const CreateCanvasElementBody = zod.object({
-  "type": zod.enum(['wall', 'door', 'bar', 'column']),
+  "type": zod.enum(['wall', 'door', 'bar', 'column', 'window']),
   "layout": zod.enum(['normal', 'verano', 'invierno', 'eventos']).optional(),
   "x": zod.number().optional(),
   "y": zod.number().optional(),

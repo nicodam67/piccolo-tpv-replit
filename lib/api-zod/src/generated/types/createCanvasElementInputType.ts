@@ -14,4 +14,5 @@ export const CreateCanvasElementInputType = {
   door: 'door',
   bar: 'bar',
   column: 'column',
+  window: 'window',
 } as const;

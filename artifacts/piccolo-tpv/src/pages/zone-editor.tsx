@@ -47,10 +47,11 @@ const LAYOUTS: Array<{ key: string; label: string }> = [
 ];
 
 // ── Element types ─────────────────────────────────────────────────────────────
-type ElementType = 'wall' | 'door' | 'bar' | 'column';
+type ElementType = 'wall' | 'door' | 'bar' | 'column' | 'window';
 const ELEMENT_DEFS: Array<{ type: ElementType; label: string; icon: string }> = [
   { type: 'wall',   label: 'Pared',   icon: '▬' },
   { type: 'door',   label: 'Puerta',  icon: '🚪' },
+  { type: 'window', label: 'Ventana', icon: '🪟' },
   { type: 'bar',    label: 'Barra',   icon: '🍺' },
   { type: 'column', label: 'Columna', icon: '⬤' },
 ];
@@ -58,6 +59,7 @@ const ELEMENT_DEFS: Array<{ type: ElementType; label: string; icon: string }> = 
 const ELEMENT_DEFAULTS: Record<ElementType, { w: number; h: number; color: string }> = {
   wall:   { w: 160, h: 20,  color: '#64748b' },
   door:   { w: 80,  h: 20,  color: '#854d0e' },
+  window: { w: 100, h: 16,  color: '#7dd3fc' },
   bar:    { w: 200, h: 60,  color: '#78350f' },
   column: { w: 40,  h: 40,  color: '#475569' },
 };
@@ -143,19 +145,24 @@ function CanvasElementShape({ el, selected, locked, onPointerDown }: {
   el: CanvasElement; selected: boolean; locked?: boolean;
   onPointerDown: (e: React.PointerEvent) => void;
 }) {
-  const color  = el.color ?? ELEMENT_DEFAULTS[el.type as ElementType]?.color ?? '#64748b';
-  const isCol  = el.type === 'column';
-  const isDoor = el.type === 'door';
-  const isBar  = el.type === 'bar';
+  const color   = el.color ?? ELEMENT_DEFAULTS[el.type as ElementType]?.color ?? '#64748b';
+  const isCol   = el.type === 'column';
+  const isDoor  = el.type === 'door';
+  const isBar   = el.type === 'bar';
+  const isWin   = el.type === 'window';
 
   return (
     <div
       style={{
         position: 'absolute',
         left: el.x, top: el.y, width: el.width, height: el.height,
-        backgroundColor: color,
-        borderRadius: isCol ? '50%' : isDoor ? '4px 4px 0 0' : isBar ? '8px' : '3px',
-        border: selected ? `2px solid #f59e0b` : `1px solid ${color}dd`,
+        backgroundColor: isWin ? 'transparent' : color,
+        borderRadius: isCol ? '50%' : isDoor ? '4px 4px 0 0' : isBar ? '8px' : isWin ? '2px' : '3px',
+        border: selected
+          ? `2px solid #f59e0b`
+          : isWin
+          ? `3px solid ${color}`
+          : `1px solid ${color}dd`,
         transform: el.rotation ? `rotate(${el.rotation}deg)` : undefined,
         transformOrigin: 'center center',
         boxShadow: selected ? `0 0 0 3px rgba(245,158,11,0.35)` : `0 1px 4px rgba(0,0,0,0.5)`,
@@ -163,10 +170,18 @@ function CanvasElementShape({ el, selected, locked, onPointerDown }: {
         cursor: locked ? 'default' : 'grab',
         userSelect: 'none', touchAction: 'none',
         opacity: 0.85,
+        overflow: 'visible',
       }}
       onPointerDown={onPointerDown}
     >
-      {(isBar || (el.label)) && (
+      {isWin && (
+        /* window cross-bar decorations */
+        <>
+          <div style={{ position: 'absolute', left: '50%', top: 0, bottom: 0, width: 2, backgroundColor: color, transform: 'translateX(-50%)', opacity: 0.7 }} />
+          <div style={{ position: 'absolute', top: '50%', left: 0, right: 0, height: 2, backgroundColor: color, transform: 'translateY(-50%)', opacity: 0.7 }} />
+        </>
+      )}
+      {(isBar || el.label) && !isWin && (
         <span style={{
           color: '#fff', fontSize: Math.max(9, Math.min(el.height / 2, 14)),
           fontWeight: 800, letterSpacing: 1, opacity: 0.9, pointerEvents: 'none',
@@ -673,7 +688,7 @@ export default function ZoneEditor() {
         {ELEMENT_DEFS.map(def => (
           <button key={def.type} onClick={() => handleAddElement(def.type)}
             title={`Añadir ${def.label}`}
-            className="flex items-center gap-1 h-8 px-2.5 rounded-lg border border-border bg-secondary text-muted-foreground hover:bg-primary/20 hover:text-foreground hover:border-primary/40 text-xs font-bold active:scale-95 transition-all shrink-0">
+            className="flex items-center gap-1 h-8 px-2.5 rounded-lg border border-slate-500 bg-slate-700 text-slate-100 hover:bg-slate-500 hover:border-slate-400 hover:text-white text-xs font-bold active:scale-95 transition-all shrink-0 shadow-sm">
             <span>{def.icon}</span>
             <span className="hidden lg:inline">{def.label}</span>
           </button>

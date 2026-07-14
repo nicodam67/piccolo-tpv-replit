@@ -6,7 +6,7 @@ import { requireAuth, requireRole } from "../middlewares/auth";
 
 const router: IRouter = Router();
 
-const VALID_TYPES = ["wall", "door", "bar", "column"];
+const VALID_TYPES = ["wall", "door", "bar", "column", "window"];
 const VALID_LAYOUTS = ["normal", "verano", "invierno", "eventos"];
 const CANVAS_W = 1600;
 const CANVAS_H = 900;
