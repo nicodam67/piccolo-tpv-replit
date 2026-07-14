@@ -669,14 +669,17 @@ export default function ZoneEditor() {
 
         {/* Table add */}
         <button onClick={() => handleAddTable('square')} disabled={createTable.isPending}
+          style={{ touchAction: 'manipulation' }}
           className="flex items-center gap-1 h-8 px-2.5 bg-primary text-primary-foreground rounded-lg text-xs font-bold uppercase tracking-wide hover:opacity-90 active:scale-95 transition-all disabled:opacity-50 shrink-0">
           <Square size={11} /> Mesa
         </button>
         <button onClick={() => handleAddTable('round')}
+          style={{ touchAction: 'manipulation' }}
           className="flex items-center gap-1 h-8 px-2 bg-primary/20 text-primary border border-primary/30 rounded-lg text-xs font-bold hover:bg-primary hover:text-primary-foreground active:scale-95 transition-all shrink-0" title="Añadir mesa redonda">
           <Circle size={11} />
         </button>
         <button onClick={() => handleAddTable('rect')}
+          style={{ touchAction: 'manipulation' }}
           className="flex items-center gap-1 h-8 px-2 bg-primary/20 text-primary border border-primary/30 rounded-lg text-xs font-bold hover:bg-primary hover:text-primary-foreground active:scale-95 transition-all shrink-0" title="Añadir mesa rectangular">
           <RectangleHorizontal size={11} />
         </button>
@@ -686,8 +689,11 @@ export default function ZoneEditor() {
         {/* Elements */}
         <span className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider shrink-0 hidden sm:inline">Añadir:</span>
         {ELEMENT_DEFS.map(def => (
-          <button key={def.type} onClick={() => handleAddElement(def.type)}
+          <button key={def.type}
+            onPointerDown={e => { e.stopPropagation(); }}
+            onClick={() => handleAddElement(def.type)}
             title={`Añadir ${def.label}`}
+            style={{ touchAction: 'manipulation' }}
             className="flex items-center gap-1 h-8 px-2.5 rounded-lg border border-slate-500 bg-slate-700 text-slate-100 hover:bg-slate-500 hover:border-slate-400 hover:text-white text-xs font-bold active:scale-95 transition-all shrink-0 shadow-sm">
             <span>{def.icon}</span>
             <span className="hidden lg:inline">{def.label}</span>
