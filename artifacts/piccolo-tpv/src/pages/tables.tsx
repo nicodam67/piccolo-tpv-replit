@@ -10,7 +10,7 @@ import {
   getGetDashboardSummaryQueryKey,
   getGetAllTablesQueryKey
 } from "@workspace/api-client-react";
-import { LogOut, Users, Loader2 } from "lucide-react";
+import { LogOut, Loader2, Monitor, Users } from "lucide-react";
 import { toast } from "sonner";
 
 export default function Tables() {
@@ -18,6 +18,7 @@ export default function Tables() {
   const queryClient = useQueryClient();
 
   const [employeeName, setEmployeeName] = useState<string>("");
+  const [employeeRole, setEmployeeRole] = useState<string>("");
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -28,11 +29,14 @@ export default function Tables() {
       try {
         const emp = JSON.parse(empStr);
         setEmployeeName(emp.name);
+        setEmployeeRole(emp.role ?? "");
       } catch (e) {
         // ignore parse error
       }
     }
   }, [setLocation]);
+
+  const isAdmin = employeeRole === "admin";
 
   const { data: summary } = useGetDashboardSummary();
   const { data: zones, isLoading: loadingZones } = useGetZones();
@@ -108,27 +112,55 @@ export default function Tables() {
           </div>
         )}
 
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2 text-sm font-medium">
-            <div className="w-8 h-8 rounded-full bg-secondary border border-border flex items-center justify-center text-secondary-foreground">
-              {employeeName.charAt(0) || "U"}
+        <div className="flex items-center gap-3">
+          {/* Admin-only tools */}
+          {isAdmin && (
+            <>
+              <button
+                onClick={() => setLocation('/kds')}
+                className="h-9 px-3 flex items-center gap-1.5 rounded-lg border border-border bg-secondary/60 hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors active:scale-95 text-sm font-bold uppercase tracking-wider"
+                title="Pantalla de cocina"
+              >
+                <Monitor size={15} />
+                <span className="hidden sm:inline">KDS</span>
+              </button>
+              <button
+                onClick={() => setLocation('/caja')}
+                className="h-9 px-3 flex items-center gap-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20 text-amber-500 transition-colors active:scale-95 text-sm font-bold uppercase tracking-wider"
+                title="Gestión de caja"
+              >
+                <span className="text-base leading-none">🗃</span>
+                <span className="hidden sm:inline">Caja</span>
+              </button>
+            </>
+          )}
+
+          {/* Employee chip */}
+          <div className="flex items-center gap-2 text-sm font-medium pl-1">
+            <div className="relative">
+              <div className="w-8 h-8 rounded-full bg-secondary border border-border flex items-center justify-center font-bold text-secondary-foreground">
+                {employeeName.charAt(0) || "U"}
+              </div>
+              {isAdmin && (
+                <span className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-amber-500 border-2 border-card flex items-center justify-center text-[8px] font-black text-white leading-none">
+                  A
+                </span>
+              )}
             </div>
-            <span className="hidden md:inline">{employeeName}</span>
+            <div className="hidden md:flex flex-col leading-none">
+              <span className="font-semibold">{employeeName}</span>
+              <span className={`text-[10px] uppercase tracking-widest font-bold mt-0.5 ${isAdmin ? 'text-amber-500' : 'text-muted-foreground'}`}>
+                {employeeRole || 'staff'}
+              </span>
+            </div>
           </div>
-          <button
-            onClick={() => setLocation('/caja')}
-            className="h-9 px-3 flex items-center gap-1.5 rounded-lg border border-border bg-secondary/60 hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors active:scale-95 text-sm font-bold uppercase tracking-wider"
-            title="Gestión de caja"
-          >
-            <span>🗃</span>
-            <span className="hidden sm:inline">Caja</span>
-          </button>
+
           <button
             onClick={handleLogout}
-            className="w-10 h-10 flex items-center justify-center rounded-lg hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors active:scale-90"
-            title="Logout"
+            className="w-9 h-9 flex items-center justify-center rounded-lg hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors active:scale-90"
+            title="Cerrar sesión"
           >
-            <LogOut size={20} strokeWidth={2.5} />
+            <LogOut size={18} strokeWidth={2.5} />
           </button>
         </div>
       </header>
