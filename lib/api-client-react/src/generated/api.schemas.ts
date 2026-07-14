@@ -132,9 +132,7 @@ export const UpdateZoneInputActiveLayout = {
 export interface UpdateZoneInput {
   name?: string;
   sortOrder?: number;
-  /** Optimistic concurrency guard. When provided with sortOrder, the server
-   *  only updates if the row's current sortOrder matches this value.
-   *  Returns 409 on conflict so the client can re-fetch and retry. */
+  /** Optimistic concurrency guard for reordering. When provided together with sortOrder, the server only applies the update if the row's current sortOrder still matches this value. Returns 409 if not. */
   expectedSortOrder?: number;
   color?: string | null;
   icon?: string | null;

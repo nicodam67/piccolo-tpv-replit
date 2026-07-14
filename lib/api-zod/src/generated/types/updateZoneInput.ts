@@ -10,6 +10,8 @@ import type { UpdateZoneInputActiveLayout } from './updateZoneInputActiveLayout'
 export interface UpdateZoneInput {
   name?: string;
   sortOrder?: number;
+  /** Optimistic concurrency guard for reordering. When provided together with sortOrder, the server only applies the update if the row's current sortOrder still matches this value. Returns 409 if not. */
+  expectedSortOrder?: number;
   color?: string | null;
   icon?: string | null;
   active?: boolean;

@@ -95,6 +95,7 @@ export const UpdateZoneParams = zod.object({
 export const UpdateZoneBody = zod.object({
   "name": zod.string().optional(),
   "sortOrder": zod.number().optional(),
+  "expectedSortOrder": zod.number().optional().describe('Optimistic concurrency guard for reordering. When provided together with sortOrder, the server only applies the update if the row\'s current sortOrder still matches this value. Returns 409 if not.\n'),
   "color": zod.string().nullish(),
   "icon": zod.string().nullish(),
   "active": zod.boolean().optional(),

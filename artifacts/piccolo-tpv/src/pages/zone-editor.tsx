@@ -57,11 +57,11 @@ const ELEMENT_DEFS: Array<{ type: ElementType; label: string; icon: string }> = 
 ];
 
 const ELEMENT_DEFAULTS: Record<ElementType, { w: number; h: number; color: string }> = {
-  wall:   { w: 160, h: 20,  color: '#64748b' },
-  door:   { w: 80,  h: 20,  color: '#854d0e' },
-  window: { w: 100, h: 16,  color: '#7dd3fc' },
-  bar:    { w: 200, h: 60,  color: '#78350f' },
-  column: { w: 40,  h: 40,  color: '#475569' },
+  wall:   { w: 220, h: 20, color: '#64748b' },
+  door:   { w: 70,  h: 20, color: '#854d0e' },
+  window: { w: 100, h: 18, color: '#7dd3fc' },
+  bar:    { w: 200, h: 70, color: '#78350f' },
+  column: { w: 45,  h: 45, color: '#475569' },
 };
 
 // ── Local types ───────────────────────────────────────────────────────────────
@@ -690,10 +690,9 @@ export default function ZoneEditor() {
         <span className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider shrink-0 hidden sm:inline">Añadir:</span>
         {ELEMENT_DEFS.map(def => (
           <button key={def.type}
-            onPointerDown={e => { e.stopPropagation(); }}
-            onClick={() => handleAddElement(def.type)}
+            onPointerDown={e => { e.stopPropagation(); e.preventDefault(); handleAddElement(def.type); }}
             title={`Añadir ${def.label}`}
-            style={{ touchAction: 'manipulation' }}
+            style={{ touchAction: 'manipulation', userSelect: 'none' }}
             className="flex items-center gap-1 h-8 px-2.5 rounded-lg border border-slate-500 bg-slate-700 text-slate-100 hover:bg-slate-500 hover:border-slate-400 hover:text-white text-xs font-bold active:scale-95 transition-all shrink-0 shadow-sm">
             <span>{def.icon}</span>
             <span className="hidden lg:inline">{def.label}</span>
