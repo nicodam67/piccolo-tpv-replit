@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
+import { io } from "socket.io-client";
 import {
   useGetDashboardSummary,
   useGetZones,
@@ -121,6 +122,17 @@ export default function Tables() {
   const { data: tables, isLoading: loadingTables } = useGetZoneTables(activeZone!, {
     query: { enabled: !!activeZone, queryKey: getGetZoneTablesQueryKey(activeZone!) }
   });
+
+  // Real-time: listen for table status changes pushed by the server
+  useEffect(() => {
+    const socket = io({ path: "/api/socket.io" });
+    socket.on("tables:refresh", () => {
+      queryClient.invalidateQueries({ queryKey: getGetZoneTablesQueryKey(activeZone!) });
+      queryClient.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() });
+      queryClient.invalidateQueries({ queryKey: getGetAllTablesQueryKey() });
+    });
+    return () => { socket.disconnect(); };
+  }, [queryClient, activeZone]);
 
   const openTable = useOpenTable();
 

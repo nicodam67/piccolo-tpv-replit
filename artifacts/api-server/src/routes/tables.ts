@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { restaurantTablesTable, roomZonesTable, ordersTable } from "@workspace/db";
 import { eq, and, asc } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
+import { getIO } from "../lib/socket";
 
 const router: IRouter = Router();
 
@@ -130,6 +131,7 @@ router.post("/tables/:tableId/open", requireAuth, async (req, res): Promise<void
   });
 
   if (!result) { res.status(409).json({ error: "La mesa no está libre" }); return; }
+  try { getIO().emit("tables:refresh"); } catch (_) {}
   res.json(result);
 });
 
@@ -144,6 +146,7 @@ router.post("/tables/:tableId/close", requireAuth, async (req, res): Promise<voi
     .returning();
 
   if (!table) { res.status(409).json({ error: "La mesa no está ocupada" }); return; }
+  try { getIO().emit("tables:refresh"); } catch (_) {}
   res.json(tableShape(table));
 });
 
