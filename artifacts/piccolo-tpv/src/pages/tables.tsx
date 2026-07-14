@@ -329,6 +329,15 @@ export default function Tables() {
   const activeZoneRef = useRef<string | null>(null);
   activeZoneRef.current = activeZone;
 
+  // Reset in-flight gesture state whenever the zone changes.
+  // Normally touchend fires before a zone tap registers, but a cancelled
+  // touch (browser interrupt, rapid switch) can leave stale pinch/pan state
+  // that would anchor the *next* gesture to the wrong canvas coordinates.
+  useEffect(() => {
+    pinchRef.current = null;
+    panRef.current = null;
+  }, [activeZone]);
+
   // Real-time: socket is created once on mount and torn down on unmount.
   // Zone switches only change which queryKey is invalidated — no reconnect.
   useEffect(() => {
