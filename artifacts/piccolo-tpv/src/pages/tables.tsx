@@ -473,6 +473,17 @@ export default function Tables() {
     } catch { /* ignore */ }
   }, []);
 
+  // Pulse key — increments on every explicit zone switch so the accent div
+  // remounts (via key={}) and re-runs its CSS animation. We skip the very
+  // first auto-selection (null → zones[0]) so there's no animation on load.
+  const [accentPulseKey, setAccentPulseKey] = useState(0);
+  const accentInitRef = useRef(false);
+  useEffect(() => {
+    if (!activeZone) return;
+    if (!accentInitRef.current) { accentInitRef.current = true; return; }
+    setAccentPulseKey(k => k + 1);
+  }, [activeZone]);
+
   /** Switch zone: persist current scroll first, then change the active zone. */
   const switchZone = useCallback((zoneId: string) => {
     if (activeZone) saveScrollForZone(activeZone);
@@ -814,11 +825,26 @@ export default function Tables() {
       {/* Zone color accent — thin rule that follows the active zone.
           Always occupies 3 px so it acts as a visual separator even when
           the zone has no custom color. The empty-state overlay inside
-          <main> is absolutely positioned and cannot cover this element. */}
+          <main> is absolutely positioned and cannot cover this element.
+          When the zone changes, accentPulseKey increments → the div remounts
+          with key= so the CSS animation runs from scratch each time. */}
+      <style>{`
+        @keyframes zone-accent-pulse {
+          0%   { transform: scaleY(1);   filter: brightness(1);   opacity: 1; }
+          30%  { transform: scaleY(2.6); filter: brightness(1.9); opacity: 1; }
+          100% { transform: scaleY(1);   filter: brightness(1);   opacity: 1; }
+        }
+        .zone-accent-pulse {
+          animation: zone-accent-pulse 0.38s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+          transform-origin: center;
+        }
+      `}</style>
       {(() => {
         const activeZoneColor = zones?.find(z => z.id === activeZone)?.color ?? null;
         return (
           <div
+            key={accentPulseKey}
+            className={accentPulseKey > 0 ? "zone-accent-pulse" : undefined}
             style={{
               height: 3,
               minHeight: 3,
