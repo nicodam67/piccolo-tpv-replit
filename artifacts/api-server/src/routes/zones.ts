@@ -120,13 +120,46 @@ router.patch("/zones/:zoneId", requireAuth, requireRole("admin"), async (req, re
 
   if (Object.keys(updates).length === 0) { res.status(400).json({ error: "Sin cambios" }); return; }
 
+  // ── Optimistic concurrency control for sortOrder reordering ──────────────────
+  // When the client sends expectedSortOrder together with a new sortOrder, we
+  // only apply the update if the row's current sortOrder still matches.
+  // A mismatch means another admin already reordered since the client last
+  // fetched — return 409 so the client can re-fetch and retry.
+  const expectedSortOrder: number | undefined =
+    typeof req.body?.expectedSortOrder === "number" ? req.body.expectedSortOrder : undefined;
+
+  const useConditionalUpdate =
+    typeof updates.sortOrder === "number" && expectedSortOrder !== undefined;
+
+  const whereClause = useConditionalUpdate
+    ? and(eq(roomZonesTable.id, zoneId), eq(roomZonesTable.sortOrder, expectedSortOrder!))
+    : eq(roomZonesTable.id, zoneId);
+
   const [zone] = await db
     .update(roomZonesTable)
     .set(updates)
-    .where(eq(roomZonesTable.id, zoneId))
+    .where(whereClause)
     .returning();
 
-  if (!zone) { res.status(404).json({ error: "Sala no encontrada" }); return; }
+  if (!zone) {
+    if (useConditionalUpdate) {
+      // Check whether the zone exists at all (to distinguish 404 from 409)
+      const [existing] = await db
+        .select({ id: roomZonesTable.id })
+        .from(roomZonesTable)
+        .where(eq(roomZonesTable.id, zoneId));
+
+      if (!existing) {
+        res.status(404).json({ error: "Sala no encontrada" });
+      } else {
+        res.status(409).json({ error: "Conflicto de orden: otro usuario reordenó las salas. Recargando..." });
+      }
+      return;
+    }
+    res.status(404).json({ error: "Sala no encontrada" });
+    return;
+  }
+
   res.json(zone);
 });
 

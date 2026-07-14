@@ -449,22 +449,44 @@ export default function Configuracion() {
     const newIndex = localZones.findIndex(z => z.id === over.id);
     if (oldIndex === -1 || newIndex === -1) return;
 
+    // Snapshot the current sort orders BEFORE the optimistic update so we can
+    // send them as expectedSortOrder for optimistic concurrency control.
+    const originalById = Object.fromEntries(localZones.map(z => [z.id, z.sortOrder]));
+
     const reordered = arrayMove(localZones, oldIndex, newIndex);
     const withOrder = reordered.map((z, i) => ({ ...z, sortOrder: i + 1 }));
     setLocalZones(withOrder);
 
-    const originalById = Object.fromEntries(localZones.map(z => [z.id, z.sortOrder]));
     const changed = withOrder.filter(z => z.sortOrder !== originalById[z.id]);
 
     Promise.all(
       changed.map(z =>
-        updateZone.mutateAsync({ zoneId: z.id, data: { sortOrder: z.sortOrder } })
+        updateZone.mutateAsync({
+          zoneId: z.id,
+          data: {
+            sortOrder: z.sortOrder,
+            // Guard against concurrent reorders: server rejects with 409 if
+            // another admin already changed this zone's sortOrder.
+            expectedSortOrder: originalById[z.id],
+          },
+        })
       )
     )
       .then(invalidate)
-      .catch(() => {
-        if (serverZones) setLocalZones(serverZones as Zone[]);
-        toast.error('Error al guardar el orden');
+      .catch((err: any) => {
+        // Re-fetch from server first so localZones reflects the true current
+        // state (which may include another admin's concurrent reorder).
+        queryClient.invalidateQueries({ queryKey: getGetZonesQueryKey({ all: true }) });
+
+        const isConflict = err?.response?.status === 409 ||
+          (Array.isArray(err?.errors) && err.errors.some((e: any) => e?.response?.status === 409));
+
+        if (isConflict) {
+          toast.error('Otro usuario reordenó las salas al mismo tiempo. Por favor, inténtalo de nuevo.');
+        } else {
+          if (serverZones) setLocalZones(serverZones as Zone[]);
+          toast.error('Error al guardar el orden');
+        }
       });
   };
 

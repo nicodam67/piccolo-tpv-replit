@@ -197,6 +197,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Sort order conflict – another user reordered zones since last fetch
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
     delete:
       operationId: deleteZone
       tags: [zones]
@@ -1640,6 +1646,12 @@ components:
           type: string
         sortOrder:
           type: integer
+        expectedSortOrder:
+          type: integer
+          description: >
+            Optimistic concurrency guard for reordering. When provided together
+            with sortOrder, the server only applies the update if the row's
+            current sortOrder still matches this value. Returns 409 if not.
         color:
           type: string
           nullable: true

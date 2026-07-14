@@ -240,10 +240,13 @@ describe("PATCH /api/zones/:zoneId — reordering with various sortOrder values"
 describe("DELETE /api/zones/:zoneId", () => {
   beforeEach(() => {
     process.env["SESSION_SECRET"] = "test-secret";
+    vi.clearAllMocks();
   });
 
   it("soft-deletes the zone (sets active=false) and returns 204", async () => {
-    mockDb.update.mockReturnValue(makeChain([{ ...ZONE_B, active: false }]));
+    // DELETE handler checks for active tables first, then soft-deletes
+    mockDb.select.mockReturnValueOnce(makeChain([])); // no active tables
+    mockDb.update.mockReturnValueOnce(makeChain([{ ...ZONE_B, active: false }]));
 
     const res = await request(app)
       .delete("/api/zones/zone-b")
@@ -253,7 +256,8 @@ describe("DELETE /api/zones/:zoneId", () => {
   });
 
   it("returns 404 when deleting a non-existent zone", async () => {
-    mockDb.update.mockReturnValue(makeChain([]));
+    mockDb.select.mockReturnValueOnce(makeChain([])); // no active tables
+    mockDb.update.mockReturnValueOnce(makeChain([])); // zone not found
 
     const res = await request(app)
       .delete("/api/zones/ghost")
@@ -331,7 +335,8 @@ describe("Reorder sequence: reorder after delete", () => {
 
   it("full sequence: delete middle zone then reorder remaining zones contiguously", async () => {
     // Initial state: A(sort=1), B(sort=2), C(sort=3)
-    // Step 1: Delete zone-b
+    // Step 1: Delete zone-b — handler checks tables first, then soft-deletes
+    mockDb.select.mockReturnValueOnce(makeChain([])); // no active tables on zone-b
     mockDb.update.mockReturnValueOnce(makeChain([{ ...ZONE_B, active: false }]));
 
     const deleteRes = await request(app)
@@ -460,5 +465,69 @@ describe("Reorder sequence: non-contiguous sortOrder values", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.sortOrder).toBe(1);
+  });
+});
+
+// ─── Concurrent reorder conflict (optimistic concurrency guard) ───────────────
+
+describe("PATCH /api/zones/:zoneId — optimistic concurrency (expectedSortOrder)", () => {
+  beforeEach(() => {
+    process.env["SESSION_SECRET"] = "test-secret";
+    vi.clearAllMocks(); // isolate mock queues so leftover state from other describes can't leak
+  });
+
+  it("returns 409 when expectedSortOrder does not match current sortOrder (concurrent reorder)", async () => {
+    // Admin A saw sortOrder=1 before dragging.  Admin B already changed it to 3.
+    // The conditional WHERE (id=zone-a AND sortOrder=1) finds no row → returns [].
+    // Server then checks the zone exists and replies 409 (not 404).
+    mockDb.update.mockReturnValueOnce(makeChain([]));
+    mockDb.select.mockReturnValueOnce(makeChain([{ id: "zone-a" }])); // existence check
+
+    const res = await request(app)
+      .patch("/api/zones/zone-a")
+      .set("Authorization", AUTH)
+      .send({ sortOrder: 2, expectedSortOrder: 1 }); // client snapshot was sortOrder=1
+
+    expect(res.status).toBe(409);
+    expect(res.body.error).toMatch(/conflicto/i);
+  });
+
+  it("returns 404 when expectedSortOrder is provided but the zone does not exist at all", async () => {
+    // Conditional update finds nothing; existence check also returns nothing.
+    mockDb.update.mockReturnValueOnce(makeChain([]));
+    mockDb.select.mockReturnValueOnce(makeChain([])); // zone truly absent
+
+    const res = await request(app)
+      .patch("/api/zones/nonexistent")
+      .set("Authorization", AUTH)
+      .send({ sortOrder: 1, expectedSortOrder: 1 });
+
+    expect(res.status).toBe(404);
+  });
+
+  it("applies update unconditionally when expectedSortOrder is absent (no guard)", async () => {
+    const updated = { ...ZONE_A, sortOrder: 2 };
+    mockDb.update.mockReturnValueOnce(makeChain([updated]));
+
+    const res = await request(app)
+      .patch("/api/zones/zone-a")
+      .set("Authorization", AUTH)
+      .send({ sortOrder: 2 }); // no expectedSortOrder → plain last-write-wins
+
+    expect(res.status).toBe(200);
+    expect(res.body.sortOrder).toBe(2);
+  });
+
+  it("succeeds (200) when expectedSortOrder matches the row's current sortOrder", async () => {
+    const updated = { ...ZONE_A, sortOrder: 3 };
+    mockDb.update.mockReturnValueOnce(makeChain([updated]));
+
+    const res = await request(app)
+      .patch("/api/zones/zone-a")
+      .set("Authorization", AUTH)
+      .send({ sortOrder: 3, expectedSortOrder: 1 }); // zone-a was at sortOrder=1
+
+    expect(res.status).toBe(200);
+    expect(res.body.sortOrder).toBe(3);
   });
 });
