@@ -694,7 +694,9 @@ export default function ZoneEditor() {
           className="w-9 h-9 flex items-center justify-center rounded-lg hover:bg-secondary text-muted-foreground shrink-0">
           <ChevronLeft size={20} />
         </button>
-        <span className="font-black text-base shrink-0">{zoneName}</span>
+        <span className="font-black text-base shrink-0">
+          {zone?.icon && <span className="mr-1">{zone.icon}</span>}{zoneName}
+        </span>
         <span className="text-muted-foreground text-sm font-semibold shrink-0 hidden sm:block">· Editor</span>
 
         <div className="w-px h-6 bg-border mx-1 shrink-0" />
