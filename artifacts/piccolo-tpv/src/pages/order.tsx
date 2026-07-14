@@ -56,6 +56,7 @@ export default function OrderPage() {
   const [showNotifications, setShowNotifications] = useState(false);
   const [activeAlert, setActiveAlert] = useState<any | null>(null);
   const [remotelyUpdated, setRemotelyUpdated] = useState(false);
+  const [remoteUpdatedBy, setRemoteUpdatedBy] = useState<string | null>(null);
   const suppressNextRefresh = useRef(false);
   const remotelyUpdatedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   
@@ -149,7 +150,11 @@ export default function OrderPage() {
           } else {
             if (remotelyUpdatedTimer.current) clearTimeout(remotelyUpdatedTimer.current);
             setRemotelyUpdated(true);
-            remotelyUpdatedTimer.current = setTimeout(() => setRemotelyUpdated(false), 2000);
+            setRemoteUpdatedBy(data?.employeeName ?? null);
+            remotelyUpdatedTimer.current = setTimeout(() => {
+              setRemotelyUpdated(false);
+              setRemoteUpdatedBy(null);
+            }, 2000);
           }
         }
       });
@@ -386,7 +391,7 @@ export default function OrderPage() {
                 : 'opacity-0 scale-95 pointer-events-none'
             }`}>
               <CheckCircle2 size={13} />
-              Actualizado
+              {remoteUpdatedBy ? `Actualizado por ${remoteUpdatedBy}` : 'Actualizado'}
             </span>
           </div>
           <span className="bg-primary text-primary-foreground px-3 py-1 rounded-lg text-sm font-black shadow-sm">

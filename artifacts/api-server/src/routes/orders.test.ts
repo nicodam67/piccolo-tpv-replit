@@ -126,7 +126,7 @@ describe("POST /api/orders/:orderId/items — add item emits orders:refresh", ()
 
     // The socket event must have fired exactly once with the right payload
     expect(mockEmit).toHaveBeenCalledTimes(1);
-    expect(mockEmit).toHaveBeenCalledWith("orders:refresh", { orderId: ORDER_ID });
+    expect(mockEmit).toHaveBeenCalledWith("orders:refresh", expect.objectContaining({ orderId: ORDER_ID }));
   });
 
   it("returns 404 and does NOT emit orders:refresh when the product is not found", async () => {
@@ -173,7 +173,7 @@ describe("DELETE /api/order-items/:itemId — remove item emits orders:refresh",
 
     // The socket event must have fired exactly once with the right orderId
     expect(mockEmit).toHaveBeenCalledTimes(1);
-    expect(mockEmit).toHaveBeenCalledWith("orders:refresh", { orderId: ORDER_ID });
+    expect(mockEmit).toHaveBeenCalledWith("orders:refresh", expect.objectContaining({ orderId: ORDER_ID }));
   });
 
   it("returns 404 and does NOT emit orders:refresh when the item is not found", async () => {
@@ -253,7 +253,7 @@ describe("POST /api/orders/:orderId/send — emits kds:refresh and orders:refres
     expect(res.status).toBe(200);
     // Both events must be emitted
     expect(mockEmit).toHaveBeenCalledWith("kds:refresh");
-    expect(mockEmit).toHaveBeenCalledWith("orders:refresh", { orderId: ORDER_ID });
+    expect(mockEmit).toHaveBeenCalledWith("orders:refresh", expect.objectContaining({ orderId: ORDER_ID }));
     expect(mockEmit).toHaveBeenCalledTimes(2);
   });
 
@@ -323,7 +323,7 @@ describe("Two-session live sync — end-to-end scenario", () => {
 
     // Socket server broadcasts the event — any connected client (Device B)
     // receives it and invalidates its React-Query cache for this order.
-    expect(mockEmit).toHaveBeenCalledWith("orders:refresh", { orderId: ORDER_ID });
+    expect(mockEmit).toHaveBeenCalledWith("orders:refresh", expect.objectContaining({ orderId: ORDER_ID }));
   });
 
   it("delete-item path: Device A removes an item, orders:refresh reaches Device B's listener", async () => {
@@ -335,6 +335,6 @@ describe("Two-session live sync — end-to-end scenario", () => {
       .set("Authorization", AUTH)
       .expect(204);
 
-    expect(mockEmit).toHaveBeenCalledWith("orders:refresh", { orderId: ORDER_ID });
+    expect(mockEmit).toHaveBeenCalledWith("orders:refresh", expect.objectContaining({ orderId: ORDER_ID }));
   });
 });

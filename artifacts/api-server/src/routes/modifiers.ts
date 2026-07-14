@@ -140,7 +140,7 @@ router.patch("/order-items/:itemId/details", requireAuth, async (req, res): Prom
     .where(eq(orderItemModifiersTable.orderItemId, itemId));
 
   try {
-    getIO().emit("orders:refresh", { orderId: item.orderId });
+    getIO().emit("orders:refresh", { orderId: item.orderId, employeeName: req.user?.name });
   } catch {
     // socket not initialised
   }
