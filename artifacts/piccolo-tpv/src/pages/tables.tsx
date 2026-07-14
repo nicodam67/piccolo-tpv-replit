@@ -27,6 +27,11 @@ const ZOOM_STORAGE_KEY = "piccolo_floor_zoom";
 // SVG grid background
 const GRID_BG = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40'%3E%3Cpath d='M 40 0 L 0 0 0 40' fill='none' stroke='rgba(255,255,255,0.04)' stroke-width='1'/%3E%3C/svg%3E")`;
 
+// Max pointer movement (in CSS px) between pointerdown and pointerup
+// that still counts as a deliberate tap. Anything larger is treated as a
+// scroll/drag and the click is suppressed.
+const TAP_SLOP = 8;
+
 function TableCard({ table, onClick, isBusy }: { table: Table; onClick: () => void; isBusy: boolean }) {
   const isFree   = table.status === "free";
   const isMerged = !!table.mergeGroup;
@@ -42,9 +47,32 @@ function TableCard({ table, onClick, isBusy }: { table: Table; onClick: () => vo
   const dotColor  = isFree ? "#61895f" : "#c05c4a";
   const radius    = table.shape === "round" ? "50%" : "10px";
 
+  // Track pointer position at press time so we can ignore drags / scrolls.
+  const pointerOrigin = useRef<{ x: number; y: number } | null>(null);
+
+  const handlePointerDown = (e: React.PointerEvent) => {
+    pointerOrigin.current = { x: e.clientX, y: e.clientY };
+  };
+
+  const handleClick = (e: React.MouseEvent) => {
+    if (isBusy) return;
+    if (pointerOrigin.current) {
+      const dx = e.clientX - pointerOrigin.current.x;
+      const dy = e.clientY - pointerOrigin.current.y;
+      if (Math.sqrt(dx * dx + dy * dy) > TAP_SLOP) {
+        // The pointer drifted — this is a scroll, not a tap. Ignore it.
+        pointerOrigin.current = null;
+        return;
+      }
+    }
+    pointerOrigin.current = null;
+    onClick();
+  };
+
   return (
     <div
-      onClick={!isBusy ? onClick : undefined}
+      onPointerDown={handlePointerDown}
+      onClick={handleClick}
       style={{
         position: "absolute",
         left: table.x,
