@@ -317,9 +317,12 @@ export default function Tables() {
     if (zones?.length && !activeZone) setActiveZone(zones[0].id);
   }, [zones, activeZone]);
 
-  const { data: tables, isLoading: loadingTables } = useGetZoneTables(activeZone!, {
-    query: { enabled: !!activeZone, queryKey: getGetZoneTablesQueryKey(activeZone!) }
-  });
+  // No explicit layout param — server returns tables for the zone's active layout
+  const { data: tables, isLoading: loadingTables } = useGetZoneTables(
+    activeZone!,
+    undefined,
+    { query: { enabled: !!activeZone, queryKey: getGetZoneTablesQueryKey(activeZone!) } }
+  );
 
   // Keep a ref to the active zone so the socket handler always reads the
   // latest value without needing to reconnect when the zone changes.
@@ -418,7 +421,7 @@ export default function Tables() {
                 <Settings size={14} />
                 <span className="hidden sm:inline">Config</span>
               </button>
-              <button onClick={() => setLocation("/kds")}
+              <button onClick={() => setLocation("/kds/cocina")}
                 className="h-9 px-3 flex items-center gap-1.5 rounded-lg border border-border bg-secondary/60 hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors active:scale-95 text-sm font-bold uppercase tracking-wider"
                 title="Pantalla de cocina">
                 <Monitor size={14} />

@@ -318,8 +318,8 @@ export default function Configuracion() {
 
   // Admin sees all zones including inactive
   const { data: serverZones, isLoading } = useGetZones(
-    { all: true } as any,
-    { query: { queryKey: [...getGetZonesQueryKey(), 'all'] } }
+    { all: true },
+    { query: { queryKey: getGetZonesQueryKey({ all: true }) } }
   );
 
   const [localZones, setLocalZones] = useState<Zone[]>([]);

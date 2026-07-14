@@ -10,14 +10,23 @@ import { toast } from 'sonner';
 import {
   useGetZoneTables,
   useGetZones,
+  useGetCanvasElements,
   useCreateTable,
   useUpdateTable,
   useDeleteTable,
   useDuplicateTable,
   useUpdateZone,
+  useCreateCanvasElement,
+  useUpdateCanvasElement,
+  useDeleteCanvasElement,
   getGetZoneTablesQueryKey,
   getGetZonesQueryKey,
+  getGetCanvasElementsQueryKey,
   type Table,
+  type CanvasElement as ApiCanvasElement,
+  type GetZoneTablesLayout,
+  type GetCanvasElementsLayout,
+  type CreateCanvasElementInputLayout,
 } from '@workspace/api-client-react';
 
 // ── Canvas constants ──────────────────────────────────────────────────────────
@@ -56,21 +65,8 @@ const ELEMENT_DEFAULTS: Record<ElementType, { w: number; h: number; color: strin
 // ── Local types ───────────────────────────────────────────────────────────────
 type Shape = 'square' | 'round' | 'rect';
 type LocalTable = Table & { _saving?: boolean };
-
-interface CanvasElement {
-  id: string;
-  zoneId: string;
-  layout: string;
-  type: ElementType;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  rotation: number;
-  color: string | null;
-  label: string | null;
-  active: boolean;
-}
+// Use the generated type directly — aliased for readability within this file
+type CanvasElement = ApiCanvasElement;
 
 type SelectionMode = 'tables' | 'elements';
 
@@ -147,7 +143,7 @@ function CanvasElementShape({ el, selected, locked, onPointerDown }: {
   el: CanvasElement; selected: boolean; locked?: boolean;
   onPointerDown: (e: React.PointerEvent) => void;
 }) {
-  const color  = el.color ?? ELEMENT_DEFAULTS[el.type]?.color ?? '#64748b';
+  const color  = el.color ?? ELEMENT_DEFAULTS[el.type as ElementType]?.color ?? '#64748b';
   const isCol  = el.type === 'column';
   const isDoor = el.type === 'door';
   const isBar  = el.type === 'bar';
@@ -303,15 +299,19 @@ export default function ZoneEditor() {
   const [activeLayout, setActiveLayout] = useState<string>('normal');
 
   // ── Zone / table data ─────────────────────────────────────────────────────
-  const { data: zones } = useGetZones({ all: true } as any, { query: { queryKey: [...getGetZonesQueryKey(), 'all'] } });
+  const { data: zones } = useGetZones(
+    { all: true },
+    { query: { queryKey: getGetZonesQueryKey({ all: true }) } }
+  );
   const zone    = zones?.find(z => z.id === zoneId);
   const zoneName = zone?.name ?? '…';
   const zoneActiveLayout = (zone as any)?.activeLayout ?? 'normal';
 
-  const tablesQueryKey = [...getGetZoneTablesQueryKey(zoneId!), activeLayout];
+  const layoutParam = activeLayout as GetZoneTablesLayout;
+  const tablesQueryKey = getGetZoneTablesQueryKey(zoneId!, { layout: layoutParam });
   const { data: serverTables, isLoading } = useGetZoneTables(
     zoneId!,
-    { layout: activeLayout } as any,
+    { layout: layoutParam },
     { query: { enabled: !!zoneId, queryKey: tablesQueryKey } }
   );
 
@@ -320,28 +320,19 @@ export default function ZoneEditor() {
     if (serverTables) setLocalTables(serverTables.map(t => ({ ...t })));
   }, [serverTables]);
 
-  // ── Canvas elements (fetched fresh on layout change) ─────────────────────
-  const [localElements, setLocalElements] = useState<CanvasElement[]>([]);
-  const [elementsLoading, setElementsLoading] = useState(false);
+  // ── Canvas elements — loaded via generated hook ───────────────────────────
+  const elementsLayoutParam = activeLayout as GetCanvasElementsLayout;
+  const elementsQueryKey = getGetCanvasElementsQueryKey(zoneId!, { layout: elementsLayoutParam });
+  const { data: serverElements, isLoading: elementsLoading } = useGetCanvasElements(
+    zoneId!,
+    { layout: elementsLayoutParam },
+    { query: { enabled: !!zoneId, queryKey: elementsQueryKey } }
+  );
 
-  const fetchElements = useCallback(async () => {
-    if (!zoneId) return;
-    setElementsLoading(true);
-    try {
-      const token = localStorage.getItem('token') ?? '';
-      const base = (import.meta as any).env?.BASE_URL?.replace(/\/$/, '') ?? '';
-      const res = await fetch(`${base}/api/zones/${zoneId}/elements?layout=${activeLayout}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setLocalElements(data);
-      }
-    } catch { /* ignore */ }
-    finally { setElementsLoading(false); }
-  }, [zoneId, activeLayout]);
-
-  useEffect(() => { fetchElements(); }, [fetchElements]);
+  const [localElements, setLocalElements] = useState<ApiCanvasElement[]>([]);
+  useEffect(() => {
+    if (serverElements) setLocalElements(serverElements.map(e => ({ ...e })));
+  }, [serverElements]);
 
   // ── Selection ─────────────────────────────────────────────────────────────
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -355,32 +346,22 @@ export default function ZoneEditor() {
   const [locked, setLocked] = useState(false);
 
   // ── Mutations ─────────────────────────────────────────────────────────────
-  const createTable    = useCreateTable();
-  const updateTable    = useUpdateTable();
-  const deleteTable    = useDeleteTable();
-  const duplicateTable = useDuplicateTable();
-  const updateZone     = useUpdateZone();
+  const createTable       = useCreateTable();
+  const updateTable       = useUpdateTable();
+  const deleteTable       = useDeleteTable();
+  const duplicateTable    = useDuplicateTable();
+  const updateZone        = useUpdateZone();
+  const createElementMut  = useCreateCanvasElement();
+  const updateElementMut  = useUpdateCanvasElement();
+  const deleteElementMut  = useDeleteCanvasElement();
 
   const invalidateTables = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: tablesQueryKey });
   }, [queryClient, tablesQueryKey]);
 
-  // ── Element API helpers ───────────────────────────────────────────────────
-  const apiCall = useCallback(async (method: string, url: string, body?: unknown) => {
-    const token = localStorage.getItem('token') ?? '';
-    const base = (import.meta as any).env?.BASE_URL?.replace(/\/$/, '') ?? '';
-    const res = await fetch(`${base}/api${url}`, {
-      method,
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: body ? JSON.stringify(body) : undefined,
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error ?? `Error ${res.status}`);
-    }
-    if (res.status === 204) return null;
-    return res.json();
-  }, []);
+  const invalidateElements = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: elementsQueryKey });
+  }, [queryClient, elementsQueryKey]);
 
   // ── Table drag ────────────────────────────────────────────────────────────
   const handleTablePointerDown = useCallback((e: React.PointerEvent, tableId: string) => {
@@ -470,12 +451,14 @@ export default function ZoneEditor() {
       if (el) {
         const orig = dragState.originPositions[id];
         if (el.x !== orig.x || el.y !== orig.y) {
-          apiCall('PATCH', `/elements/${id}`, { x: el.x, y: el.y })
-            .catch(() => toast.error('Error al guardar posición'));
+          updateElementMut.mutate(
+            { elementId: id, data: { x: el.x, y: el.y } },
+            { onError: () => toast.error('Error al guardar posición') }
+          );
         }
       }
     }
-  }, [dragState, localTables, localElements, updateTable, invalidateTables, apiCall]);
+  }, [dragState, localTables, localElements, updateTable, invalidateTables, updateElementMut]);
 
   const handleCanvasBgClick = (e: React.PointerEvent) => {
     if (e.target === canvasRef.current) { setSelectedIds(new Set()); setSelectedElementId(null); }
@@ -496,17 +479,25 @@ export default function ZoneEditor() {
     );
   };
 
-  const handleAddElement = async (type: ElementType) => {
+  const handleAddElement = (type: ElementType) => {
     const def = ELEMENT_DEFAULTS[type];
     const x = snap(CANVAS_W / 2 - def.w / 2 + Math.random() * 40, 0, CANVAS_W - def.w);
     const y = snap(CANVAS_H / 2 - def.h / 2 + Math.random() * 40, 0, CANVAS_H - def.h);
-    try {
-      const el = await apiCall('POST', `/zones/${zoneId}/elements`, {
-        type, layout: activeLayout, x, y, width: def.w, height: def.h, color: def.color,
-        label: type === 'bar' ? 'Barra' : null,
-      });
-      if (el) { setLocalElements(prev => [...prev, el]); setSelectedElementId(el.id); setSelectedIds(new Set()); }
-    } catch (err: any) { toast.error(err.message ?? 'Error al crear elemento'); }
+    createElementMut.mutate(
+      {
+        zoneId: zoneId!,
+        data: { type, layout: activeLayout as CreateCanvasElementInputLayout, x, y, width: def.w, height: def.h, color: def.color ?? null, label: type === 'bar' ? 'Barra' : null },
+      },
+      {
+        onSuccess: (el) => {
+          invalidateElements();
+          setLocalElements(prev => [...prev, el as ApiCanvasElement]);
+          setSelectedElementId(el.id);
+          setSelectedIds(new Set());
+        },
+        onError: () => toast.error('Error al crear elemento'),
+      }
+    );
   };
 
   const handleMerge = () => {
@@ -531,9 +522,19 @@ export default function ZoneEditor() {
 
   const handleDelete = () => {
     if (selectedElementId) {
-      apiCall('DELETE', `/elements/${selectedElementId}`)
-        .then(() => { setLocalElements(prev => prev.filter(el => el.id !== selectedElementId)); setSelectedElementId(null); toast.success('Elemento eliminado'); })
-        .catch((err: any) => toast.error(err.message ?? 'Error al eliminar'));
+      const idToDelete = selectedElementId;
+      deleteElementMut.mutate(
+        { elementId: idToDelete },
+        {
+          onSuccess: () => {
+            invalidateElements();
+            setLocalElements(prev => prev.filter(el => el.id !== idToDelete));
+            setSelectedElementId(null);
+            toast.success('Elemento eliminado');
+          },
+          onError: () => toast.error('Error al eliminar elemento'),
+        }
+      );
       return;
     }
     if (!selectedIds.size) return;
@@ -600,7 +601,7 @@ export default function ZoneEditor() {
       { zoneId: zoneId!, data: { activeLayout } as any },
       {
         onSuccess: () => {
-          queryClient.invalidateQueries({ queryKey: [...getGetZonesQueryKey(), 'all'] });
+          queryClient.invalidateQueries({ queryKey: getGetZonesQueryKey({ all: true }) });
           queryClient.invalidateQueries({ queryKey: getGetZonesQueryKey() });
           toast.success(`Distribución "${LAYOUTS.find(l => l.key === activeLayout)?.label}" activada`);
         },
@@ -611,17 +612,23 @@ export default function ZoneEditor() {
 
   const handleCancelChanges = () => {
     queryClient.invalidateQueries({ queryKey: tablesQueryKey });
-    fetchElements();
+    invalidateElements();
     setSelectedIds(new Set());
     setSelectedElementId(null);
     toast('Cambios cancelados — datos recargados del servidor');
   };
 
-  const handleUpdateElement = async (id: string, patch: Partial<CanvasElement>) => {
-    try {
-      await apiCall('PATCH', `/elements/${id}`, patch);
-      setLocalElements(prev => prev.map(el => el.id === id ? { ...el, ...patch } : el));
-    } catch (err: any) { toast.error(err.message ?? 'Error al actualizar'); }
+  const handleUpdateElement = (id: string, patch: Partial<ApiCanvasElement>) => {
+    updateElementMut.mutate(
+      { elementId: id, data: patch },
+      {
+        onSuccess: (updated) => {
+          invalidateElements();
+          setLocalElements(prev => prev.map(el => el.id === id ? { ...el, ...updated } : el));
+        },
+        onError: () => toast.error('Error al actualizar elemento'),
+      }
+    );
   };
 
   // ── Derived ───────────────────────────────────────────────────────────────
@@ -985,7 +992,7 @@ export default function ZoneEditor() {
 
               <PropField label="Color">
                 <input type="color"
-                  value={selectedElement.color ?? ELEMENT_DEFAULTS[selectedElement.type]?.color ?? '#64748b'}
+                  value={selectedElement.color ?? ELEMENT_DEFAULTS[selectedElement.type as ElementType]?.color ?? '#64748b'}
                   onChange={e => setLocalElements(prev => prev.map(el => el.id === selectedElement.id ? { ...el, color: e.target.value } : el))}
                   onBlur={e => handleUpdateElement(selectedElement.id, { color: e.target.value })}
                   className="w-full h-9 rounded-lg border border-border bg-background cursor-pointer" />
