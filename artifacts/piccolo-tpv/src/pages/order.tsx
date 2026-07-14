@@ -426,7 +426,8 @@ export default function OrderPage() {
       onSuccess: () => {
         invalidateOrder();
         queryClient.invalidateQueries({ queryKey: getGetAllTablesQueryKey() });
-        toast.success('Cuenta solicitada');
+        // Navigate to prefactura so staff can print the pre-bill before charging
+        setLocation(`/prefactura/${actualOrderId}`);
       },
       onError: () => { suppressNextRefresh.current = false; toast.error('Error al solicitar la cuenta'); }
     });

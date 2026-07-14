@@ -14,6 +14,7 @@ import Configuracion from './pages/configuracion';
 import ZoneEditor from './pages/zone-editor';
 import AdminDashboard from './pages/admin-dashboard';
 import Recogida from './pages/recogida';
+import Prefactura from './pages/prefactura';
 import NotFound from './pages/not-found';
 
 const queryClient = new QueryClient({
@@ -39,6 +40,7 @@ function Router() {
       <Route path="/configuracion" component={Configuracion} />
       <Route path="/configuracion/salas/:zoneId" component={ZoneEditor} />
       <Route path="/recogida" component={Recogida} />
+      <Route path="/prefactura/:orderId" component={Prefactura} />
       <Route component={NotFound} />
     </Switch>
   );
