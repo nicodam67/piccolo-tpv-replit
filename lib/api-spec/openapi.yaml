@@ -1489,6 +1489,9 @@ components:
         color:
           type: string
           nullable: true
+        icon:
+          type: string
+          nullable: true
         active:
           type: boolean
         activeLayout:
@@ -1638,6 +1641,9 @@ components:
         sortOrder:
           type: integer
         color:
+          type: string
+          nullable: true
+        icon:
           type: string
           nullable: true
         active:

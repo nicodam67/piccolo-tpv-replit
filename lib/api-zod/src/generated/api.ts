@@ -58,6 +58,7 @@ export const GetZonesResponseItem = zod.object({
   "type": zod.string(),
   "sortOrder": zod.number(),
   "color": zod.string().nullish(),
+  "icon": zod.string().nullish(),
   "active": zod.boolean().optional(),
   "activeLayout": zod.string().optional()
 })
@@ -78,6 +79,7 @@ export const CreateZoneResponse = zod.object({
   "type": zod.string(),
   "sortOrder": zod.number(),
   "color": zod.string().nullish(),
+  "icon": zod.string().nullish(),
   "active": zod.boolean().optional(),
   "activeLayout": zod.string().optional()
 })
@@ -94,6 +96,7 @@ export const UpdateZoneBody = zod.object({
   "name": zod.string().optional(),
   "sortOrder": zod.number().optional(),
   "color": zod.string().nullish(),
+  "icon": zod.string().nullish(),
   "active": zod.boolean().optional(),
   "activeLayout": zod.enum(['normal', 'verano', 'invierno', 'eventos']).optional()
 })
@@ -104,6 +107,7 @@ export const UpdateZoneResponse = zod.object({
   "type": zod.string(),
   "sortOrder": zod.number(),
   "color": zod.string().nullish(),
+  "icon": zod.string().nullish(),
   "active": zod.boolean().optional(),
   "activeLayout": zod.string().optional()
 })
@@ -132,6 +136,7 @@ export const DuplicateZoneResponse = zod.object({
   "type": zod.string(),
   "sortOrder": zod.number(),
   "color": zod.string().nullish(),
+  "icon": zod.string().nullish(),
   "active": zod.boolean().optional(),
   "activeLayout": zod.string().optional()
 })

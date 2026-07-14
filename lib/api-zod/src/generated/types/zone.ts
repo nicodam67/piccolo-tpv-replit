@@ -12,6 +12,7 @@ export interface Zone {
   type: string;
   sortOrder: number;
   color?: string | null;
+  icon?: string | null;
   active?: boolean;
   activeLayout?: string;
 }

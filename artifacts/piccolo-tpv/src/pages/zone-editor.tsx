@@ -669,11 +669,13 @@ export default function ZoneEditor() {
         <div className="w-px h-6 bg-border mx-1 shrink-0" />
 
         {/* Elements */}
+        <span className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider shrink-0 hidden sm:inline">Añadir:</span>
         {ELEMENT_DEFS.map(def => (
           <button key={def.type} onClick={() => handleAddElement(def.type)}
             title={`Añadir ${def.label}`}
-            className="h-8 px-2 rounded-lg border border-border bg-secondary text-muted-foreground hover:bg-secondary/80 hover:text-foreground text-xs font-bold active:scale-95 transition-all shrink-0">
-            {def.icon}
+            className="flex items-center gap-1 h-8 px-2.5 rounded-lg border border-border bg-secondary text-muted-foreground hover:bg-primary/20 hover:text-foreground hover:border-primary/40 text-xs font-bold active:scale-95 transition-all shrink-0">
+            <span>{def.icon}</span>
+            <span className="hidden lg:inline">{def.label}</span>
           </button>
         ))}
 
@@ -697,8 +699,10 @@ export default function ZoneEditor() {
 
         {/* Delete */}
         <button onClick={handleDelete} disabled={!selectedIds.size && !selectedElementId}
-          className="flex items-center gap-1 h-8 px-2.5 bg-destructive/10 text-destructive border border-destructive/30 rounded-lg text-xs font-bold hover:bg-destructive hover:text-destructive-foreground active:scale-95 transition-all disabled:opacity-30 disabled:pointer-events-none shrink-0">
+          className="flex items-center gap-1 h-8 px-2.5 bg-destructive/10 text-destructive border border-destructive/30 rounded-lg text-xs font-bold hover:bg-destructive hover:text-destructive-foreground active:scale-95 transition-all disabled:opacity-30 disabled:pointer-events-none shrink-0"
+          title="Eliminar selección (selecciona primero un elemento o mesa)">
           <Trash2 size={12} />
+          <span className="hidden sm:inline">Eliminar</span>
         </button>
 
         <div className="w-px h-6 bg-border mx-1 shrink-0" />
