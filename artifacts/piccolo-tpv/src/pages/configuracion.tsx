@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useLocation } from 'wouter';
 import { useQueryClient } from '@tanstack/react-query';
-import { ChevronLeft, Plus, Pencil, Trash2, LayoutDashboard, Check, X, Loader2, GripVertical, Palette, Copy, Eye, EyeOff } from 'lucide-react';
+import { ChevronLeft, Plus, Pencil, Trash2, LayoutDashboard, Check, X, Loader2, GripVertical, Palette, Copy, Eye, EyeOff, Smile } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   DndContext,
@@ -42,6 +42,14 @@ const ZONE_COLORS = [
   { label: 'Amarillo',value: '#eab308' },
 ];
 
+// ─── Emoji palette ─────────────────────────────────────────────────────────────
+const ZONE_EMOJIS = [
+  '🍕', '🍔', '🌮', '🥩', '🐟', '🦞',
+  '🍷', '🍺', '☕', '🧉', '🥂', '🍹',
+  '🌿', '🏖️', '🎉', '⭐', '🔥', '🌙',
+  '🎭', '🎸', '🌺', '❄️', '🏔️', '🌅',
+];
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Zone {
   id: string;
@@ -49,8 +57,56 @@ interface Zone {
   type: string;
   sortOrder: number;
   color?: string | null;
+  icon?: string | null;
   active?: boolean;
   activeLayout?: string;
+}
+
+// ─── Emoji picker popover ─────────────────────────────────────────────────────
+interface EmojiPickerProps {
+  currentIcon: string | null | undefined;
+  onSelect: (icon: string | null) => void;
+  onClose: () => void;
+}
+
+function EmojiPicker({ currentIcon, onSelect, onClose }: EmojiPickerProps) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+    }
+    const id = setTimeout(() => document.addEventListener('mousedown', handleClick), 0);
+    return () => { clearTimeout(id); document.removeEventListener('mousedown', handleClick); };
+  }, [onClose]);
+
+  return (
+    <div
+      ref={ref}
+      className="absolute right-0 top-full mt-2 z-50 bg-card border border-border rounded-2xl shadow-2xl p-3"
+      style={{ minWidth: 230 }}
+    >
+      <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-2 px-1">Icono de la sala</p>
+      <div className="grid grid-cols-6 gap-1 mb-2">
+        {ZONE_EMOJIS.map(emoji => (
+          <button
+            key={emoji}
+            onClick={() => { onSelect(emoji); onClose(); }}
+            className={`w-9 h-9 rounded-xl text-lg flex items-center justify-center transition-all active:scale-90 hover:bg-secondary ${currentIcon === emoji ? 'bg-primary/15 ring-2 ring-primary/40' : ''}`}
+          >
+            {emoji}
+          </button>
+        ))}
+      </div>
+      <button
+        onClick={() => { onSelect(null); onClose(); }}
+        className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-muted-foreground hover:bg-secondary transition-colors"
+      >
+        <div className="w-5 h-5 rounded-md border-2 border-dashed border-muted-foreground/40" />
+        Sin icono
+      </button>
+    </div>
+  );
 }
 
 // ─── Color picker popover ─────────────────────────────────────────────────────
@@ -109,6 +165,7 @@ interface SortableZoneCardProps {
   editingName: string;
   deletingId: string | null;
   colorPickerZoneId: string | null;
+  emojiPickerZoneId: string | null;
   onEditStart: (id: string, name: string) => void;
   onEditChange: (name: string) => void;
   onEditSave: (id: string) => void;
@@ -118,6 +175,9 @@ interface SortableZoneCardProps {
   onColorPickerToggle: (id: string) => void;
   onColorPickerClose: () => void;
   onColorSelect: (zoneId: string, color: string | null) => void;
+  onEmojiPickerToggle: (id: string) => void;
+  onEmojiPickerClose: () => void;
+  onIconSelect: (zoneId: string, icon: string | null) => void;
   onDuplicate: (id: string) => void;
   onToggleActive: (id: string, active: boolean) => void;
 }
@@ -127,6 +187,7 @@ function SortableZoneCard({
   editingId,
   editingName,
   colorPickerZoneId,
+  emojiPickerZoneId,
   onEditStart,
   onEditChange,
   onEditSave,
@@ -136,6 +197,9 @@ function SortableZoneCard({
   onColorPickerToggle,
   onColorPickerClose,
   onColorSelect,
+  onEmojiPickerToggle,
+  onEmojiPickerClose,
+  onIconSelect,
   onDuplicate,
   onToggleActive,
 }: SortableZoneCardProps) {
@@ -149,9 +213,10 @@ function SortableZoneCard({
     zIndex: isDragging ? 50 : undefined,
   };
 
-  const isEditing  = editingId === zone.id;
-  const isColorOpen = colorPickerZoneId === zone.id;
-  const isInactive  = zone.active === false;
+  const isEditing    = editingId === zone.id;
+  const isColorOpen  = colorPickerZoneId === zone.id;
+  const isEmojiOpen  = emojiPickerZoneId === zone.id;
+  const isInactive   = zone.active === false;
 
   const LAYOUT_LABELS: Record<string, string> = {
     normal: 'Normal', verano: 'Verano', invierno: 'Invierno', eventos: 'Eventos',
@@ -175,11 +240,15 @@ function SortableZoneCard({
         <GripVertical size={18} />
       </button>
 
-      {/* Color dot */}
-      <div
-        className="shrink-0 w-4 h-4 rounded-full border-2 border-border transition-all"
-        style={zone.color ? { backgroundColor: zone.color, borderColor: zone.color } : {}}
-      />
+      {/* Color dot / emoji badge */}
+      {zone.icon ? (
+        <span className="shrink-0 text-xl leading-none">{zone.icon}</span>
+      ) : (
+        <div
+          className="shrink-0 w-4 h-4 rounded-full border-2 border-border transition-all"
+          style={zone.color ? { backgroundColor: zone.color, borderColor: zone.color } : {}}
+        />
+      )}
 
       {/* Name / edit row */}
       <div className="flex-1 min-w-0">
@@ -245,6 +314,27 @@ function SortableZoneCard({
           >
             {isInactive ? <Eye size={14} /> : <EyeOff size={14} />}
           </button>
+
+          {/* Emoji picker trigger */}
+          <div className="relative">
+            <button
+              onClick={() => onEmojiPickerToggle(zone.id)}
+              className="w-9 h-9 flex items-center justify-center rounded-xl hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors active:scale-95"
+              title="Cambiar icono"
+            >
+              {zone.icon
+                ? <span className="text-lg leading-none">{zone.icon}</span>
+                : <Smile size={14} />
+              }
+            </button>
+            {isEmojiOpen && (
+              <EmojiPicker
+                currentIcon={zone.icon}
+                onSelect={(icon) => onIconSelect(zone.id, icon)}
+                onClose={onEmojiPickerClose}
+              />
+            )}
+          </div>
 
           {/* Color picker trigger */}
           <div className="relative">
@@ -338,6 +428,7 @@ export default function Configuracion() {
   const [editingName, setEditingName]           = useState('');
   const [deletingId, setDeletingId]             = useState<string | null>(null);
   const [colorPickerZoneId, setColorPickerZoneId] = useState<string | null>(null);
+  const [emojiPickerZoneId, setEmojiPickerZoneId] = useState<string | null>(null);
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: getGetZonesQueryKey() });
@@ -424,6 +515,20 @@ export default function Configuracion() {
     );
   };
 
+  const handleIconSelect = (zoneId: string, icon: string | null) => {
+    setLocalZones(prev => prev.map(z => z.id === zoneId ? { ...z, icon } : z));
+    updateZone.mutate(
+      { zoneId, data: { icon } },
+      {
+        onSuccess: () => invalidate(),
+        onError: () => {
+          if (serverZones) setLocalZones(serverZones as Zone[]);
+          toast.error('Error al guardar el icono');
+        },
+      }
+    );
+  };
+
   const handleColorSelect = (zoneId: string, color: string | null) => {
     setLocalZones(prev => prev.map(z => z.id === zoneId ? { ...z, color } : z));
     updateZone.mutate(
@@ -499,6 +604,7 @@ export default function Configuracion() {
                       editingName={editingName}
                       deletingId={deletingId}
                       colorPickerZoneId={colorPickerZoneId}
+                      emojiPickerZoneId={emojiPickerZoneId}
                       onEditStart={(id, name) => { setEditingId(id); setEditingName(name); }}
                       onEditChange={setEditingName}
                       onEditSave={handleRename}
@@ -508,6 +614,9 @@ export default function Configuracion() {
                       onColorPickerToggle={id => setColorPickerZoneId(prev => prev === id ? null : id)}
                       onColorPickerClose={() => setColorPickerZoneId(null)}
                       onColorSelect={handleColorSelect}
+                      onEmojiPickerToggle={id => setEmojiPickerZoneId(prev => prev === id ? null : id)}
+                      onEmojiPickerClose={() => setEmojiPickerZoneId(null)}
+                      onIconSelect={handleIconSelect}
                       onDuplicate={handleDuplicate}
                       onToggleActive={handleToggleActive}
                     />

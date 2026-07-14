@@ -21,6 +21,7 @@ router.get("/zones", requireAuth, async (req, res): Promise<void> => {
       type:         roomZonesTable.type,
       sortOrder:    roomZonesTable.sortOrder,
       color:        roomZonesTable.color,
+      icon:         roomZonesTable.icon,
       active:       roomZonesTable.active,
       activeLayout: roomZonesTable.activeLayout,
     })
@@ -72,7 +73,7 @@ router.post("/zones/:zoneId/duplicate", requireAuth, requireRole("admin"), async
 
   const [newZone] = await db
     .insert(roomZonesTable)
-    .values({ name: original.name + " (copia)", type: original.type, sortOrder: nextSort, color: original.color })
+    .values({ name: original.name + " (copia)", type: original.type, sortOrder: nextSort, color: original.color, icon: original.icon })
     .returning();
 
   // Copy all active tables from original zone
@@ -112,6 +113,7 @@ router.patch("/zones/:zoneId", requireAuth, requireRole("admin"), async (req, re
   if (typeof req.body?.name === "string" && req.body.name.trim()) updates.name         = req.body.name.trim();
   if (typeof req.body?.sortOrder === "number")                     updates.sortOrder    = req.body.sortOrder;
   if ("color" in (req.body ?? {}))                                  updates.color       = req.body.color ?? null;
+  if ("icon"  in (req.body ?? {}))                                  updates.icon        = req.body.icon  ?? null;
   if (typeof req.body?.active === "boolean")                        updates.active      = req.body.active;
   if (typeof req.body?.activeLayout === "string" && VALID_LAYOUTS.includes(req.body.activeLayout as any))
                                                                     updates.activeLayout = req.body.activeLayout;

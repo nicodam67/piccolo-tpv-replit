@@ -484,12 +484,14 @@ export default function Tables() {
                         ? "bg-background border-t-2 border-primary shadow-[0_-4px_10px_rgba(0,0,0,0.05)]"
                         : "bg-secondary/50 text-muted-foreground hover:bg-secondary hover:text-foreground"}`}
                   >
-                    {zoneColor && (
+                    {zone.icon ? (
+                      <span className="shrink-0 text-base leading-none">{zone.icon}</span>
+                    ) : zoneColor ? (
                       <span
                         className="shrink-0 w-2.5 h-2.5 rounded-full"
                         style={{ backgroundColor: zoneColor, boxShadow: isActive ? `0 0 6px ${zoneColor}88` : undefined }}
                       />
-                    )}
+                    ) : null}
                     {zone.name}
                   </button>
                 );

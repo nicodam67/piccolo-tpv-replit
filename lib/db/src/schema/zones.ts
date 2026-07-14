@@ -9,6 +9,7 @@ export const roomZonesTable = pgTable("room_zones", {
   sortOrder: integer("sort_order").notNull().default(0),
   active: boolean("active").notNull().default(true),
   color: text("color"),
+  icon: text("icon"),
   activeLayout: text("active_layout").notNull().default("normal"),
 });
 
