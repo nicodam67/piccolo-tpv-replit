@@ -8,15 +8,74 @@ import {
   useGetZoneTables,
   useGetCanvasElements,
   useOpenTable,
+  useUpdateZone,
   getGetZoneTablesQueryKey,
   getGetDashboardSummaryQueryKey,
   getGetAllTablesQueryKey,
   getGetCanvasElementsQueryKey,
+  getGetZonesQueryKey,
   type Table,
   type CanvasElement,
 } from "@workspace/api-client-react";
 import { LogOut, Loader2, Monitor, Settings, ZoomIn, ZoomOut, Maximize2, Package } from "lucide-react";
 import { toast } from "sonner";
+
+// ─── Emoji palette (shared with configuracion) ────────────────────────────────
+const ZONE_EMOJIS = [
+  '🍕', '🍔', '🌮', '🥩', '🐟', '🦞',
+  '🍷', '🍺', '☕', '🧉', '🥂', '🍹',
+  '🌿', '🏖️', '🎉', '⭐', '🔥', '🌙',
+  '🎭', '🎸', '🌺', '❄️', '🏔️', '🌅',
+];
+
+// ─── Mini emoji picker popover for zone tabs ──────────────────────────────────
+interface ZoneEmojiPickerProps {
+  currentIcon: string | null | undefined;
+  onSelect: (icon: string | null) => void;
+  onClose: () => void;
+}
+
+function ZoneEmojiPicker({ currentIcon, onSelect, onClose }: ZoneEmojiPickerProps) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+    }
+    const id = setTimeout(() => document.addEventListener('mousedown', handleClick), 0);
+    return () => { clearTimeout(id); document.removeEventListener('mousedown', handleClick); };
+  }, [onClose]);
+
+  return (
+    <div
+      ref={ref}
+      className="absolute left-0 top-full mt-1 z-50 bg-card border border-border rounded-2xl shadow-2xl p-3"
+      style={{ minWidth: 230 }}
+    >
+      <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-2 px-1">Icono de la sala</p>
+      <div className="grid grid-cols-6 gap-1 mb-2">
+        {ZONE_EMOJIS.map(emoji => (
+          <button
+            key={emoji}
+            onPointerDown={e => { e.stopPropagation(); }}
+            onClick={() => { onSelect(emoji); onClose(); }}
+            className={`w-9 h-9 rounded-xl text-lg flex items-center justify-center transition-all active:scale-90 hover:bg-secondary ${currentIcon === emoji ? 'bg-primary/15 ring-2 ring-primary/40' : ''}`}
+          >
+            {emoji}
+          </button>
+        ))}
+      </div>
+      <button
+        onPointerDown={e => e.stopPropagation()}
+        onClick={() => { onSelect(null); onClose(); }}
+        className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-muted-foreground hover:bg-secondary transition-colors"
+      >
+        <div className="w-5 h-5 rounded-md border-2 border-dashed border-muted-foreground/40" />
+        Sin icono
+      </button>
+    </div>
+  );
+}
 
 // Canvas constants — same as zone-editor so layouts match
 const CANVAS_W = 1600;
@@ -481,6 +540,27 @@ export default function Tables() {
   }, [queryClient]);
 
   const openTable = useOpenTable();
+  const updateZone = useUpdateZone();
+
+  // Emoji picker state (admin only — zone tab long-press)
+  const [emojiPickerZoneId, setEmojiPickerZoneId] = useState<string | null>(null);
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Flag set when a long-press fires the picker open; used to swallow the
+  // subsequent `click` event that the browser fires after pointerup.
+  const didLongPressRef = useRef(false);
+
+  const handleZoneEmojiSelect = (zoneId: string, icon: string | null) => {
+    updateZone.mutate(
+      { zoneId, data: { icon: icon === null ? null : icon } },
+      {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: getGetZonesQueryKey() });
+          toast.success(icon ? `Icono actualizado` : "Icono eliminado");
+        },
+        onError: () => toast.error("No se pudo actualizar el icono"),
+      }
+    );
+  };
 
   // Guest count dialog state
   const [guestCountTable, setGuestCountTable] = useState<Table | null>(null);
@@ -628,26 +708,74 @@ export default function Tables() {
               {zones?.map(zone => {
                 const isActive = activeZone === zone.id;
                 const zoneColor = zone.color ?? null;
+                const isEmojiOpen = isAdmin && emojiPickerZoneId === zone.id;
                 return (
-                  <button
-                    key={zone.id}
-                    onClick={() => switchZone(zone.id)}
-                    style={isActive && zoneColor ? { borderTopColor: zoneColor, color: zoneColor } : undefined}
-                    className={`flex items-center gap-2 px-5 py-3 rounded-t-xl font-semibold text-sm transition-all whitespace-nowrap
-                      ${isActive
-                        ? "bg-background border-t-2 border-primary shadow-[0_-4px_10px_rgba(0,0,0,0.05)]"
-                        : "bg-secondary/50 text-muted-foreground hover:bg-secondary hover:text-foreground"}`}
-                  >
-                    {zone.icon ? (
-                      <span className="shrink-0 text-base leading-none">{zone.icon}</span>
-                    ) : zoneColor ? (
-                      <span
-                        className="shrink-0 w-2.5 h-2.5 rounded-full"
-                        style={{ backgroundColor: zoneColor, boxShadow: isActive ? `0 0 6px ${zoneColor}88` : undefined }}
+                  <div key={zone.id} className="relative">
+                    <button
+                      onClick={() => {
+                        // Swallow the click that the browser fires right after a long-press pointerup
+                        if (didLongPressRef.current) { didLongPressRef.current = false; return; }
+                        // A tap while the picker is open just closes it without switching zones
+                        if (emojiPickerZoneId) { setEmojiPickerZoneId(null); return; }
+                        switchZone(zone.id);
+                      }}
+                      onPointerDown={() => {
+                        if (!isAdmin) return;
+                        longPressTimerRef.current = setTimeout(() => {
+                          longPressTimerRef.current = null;
+                          didLongPressRef.current = true;
+                          setEmojiPickerZoneId(zone.id);
+                        }, 500);
+                      }}
+                      onPointerUp={() => {
+                        if (longPressTimerRef.current) {
+                          clearTimeout(longPressTimerRef.current);
+                          longPressTimerRef.current = null;
+                        }
+                      }}
+                      onPointerLeave={() => {
+                        if (longPressTimerRef.current) {
+                          clearTimeout(longPressTimerRef.current);
+                          longPressTimerRef.current = null;
+                        }
+                      }}
+                      onPointerCancel={() => {
+                        if (longPressTimerRef.current) {
+                          clearTimeout(longPressTimerRef.current);
+                          longPressTimerRef.current = null;
+                        }
+                      }}
+                      onContextMenu={e => {
+                        if (!isAdmin) return;
+                        e.preventDefault();
+                        didLongPressRef.current = false;
+                        setEmojiPickerZoneId(prev => prev === zone.id ? null : zone.id);
+                      }}
+                      style={isActive && zoneColor ? { borderTopColor: zoneColor, color: zoneColor } : undefined}
+                      className={`flex items-center gap-2 px-5 py-3 rounded-t-xl font-semibold text-sm transition-all whitespace-nowrap
+                        ${isActive
+                          ? "bg-background border-t-2 border-primary shadow-[0_-4px_10px_rgba(0,0,0,0.05)]"
+                          : "bg-secondary/50 text-muted-foreground hover:bg-secondary hover:text-foreground"}
+                        ${isAdmin ? "select-none" : ""}`}
+                    >
+                      {zone.icon ? (
+                        <span className="shrink-0 text-base leading-none">{zone.icon}</span>
+                      ) : zoneColor ? (
+                        <span
+                          className="shrink-0 w-2.5 h-2.5 rounded-full"
+                          style={{ backgroundColor: zoneColor, boxShadow: isActive ? `0 0 6px ${zoneColor}88` : undefined }}
+                        />
+                      ) : null}
+                      {zone.name}
+                    </button>
+                    {isEmojiOpen && (
+                      <ZoneEmojiPicker
+                        currentIcon={zone.icon}
+                        onSelect={icon => handleZoneEmojiSelect(zone.id, icon)}
+                        onClose={() => setEmojiPickerZoneId(null)}
                       />
-                    ) : null}
-                    {zone.name}
-                  </button>
+                    )}
+                  </div>
                 );
               })}
             </div>
