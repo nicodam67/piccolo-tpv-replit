@@ -13,4 +13,5 @@ export interface Zone {
   sortOrder: number;
   color?: string | null;
   active?: boolean;
+  activeLayout?: string;
 }

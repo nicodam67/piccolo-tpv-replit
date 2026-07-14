@@ -46,15 +46,20 @@ export const AuthWithPinResponse = zod.object({
 
 
 /**
- * @summary Get all active zones
+ * @summary Get all active zones (admin can pass ?all=true to include inactive)
  */
+export const GetZonesQueryParams = zod.object({
+  "all": zod.coerce.boolean().optional()
+})
+
 export const GetZonesResponseItem = zod.object({
   "id": zod.string(),
   "name": zod.string(),
   "type": zod.string(),
   "sortOrder": zod.number(),
   "color": zod.string().nullish(),
-  "active": zod.boolean().optional()
+  "active": zod.boolean().optional(),
+  "activeLayout": zod.string().optional()
 })
 export const GetZonesResponse = zod.array(GetZonesResponseItem)
 
@@ -73,7 +78,8 @@ export const CreateZoneResponse = zod.object({
   "type": zod.string(),
   "sortOrder": zod.number(),
   "color": zod.string().nullish(),
-  "active": zod.boolean().optional()
+  "active": zod.boolean().optional(),
+  "activeLayout": zod.string().optional()
 })
 
 
@@ -88,7 +94,8 @@ export const UpdateZoneBody = zod.object({
   "name": zod.string().optional(),
   "sortOrder": zod.number().optional(),
   "color": zod.string().nullish(),
-  "active": zod.boolean().optional()
+  "active": zod.boolean().optional(),
+  "activeLayout": zod.enum(['normal', 'verano', 'invierno', 'eventos']).optional()
 })
 
 export const UpdateZoneResponse = zod.object({
@@ -97,7 +104,8 @@ export const UpdateZoneResponse = zod.object({
   "type": zod.string(),
   "sortOrder": zod.number(),
   "color": zod.string().nullish(),
-  "active": zod.boolean().optional()
+  "active": zod.boolean().optional(),
+  "activeLayout": zod.string().optional()
 })
 
 
@@ -124,8 +132,121 @@ export const DuplicateZoneResponse = zod.object({
   "type": zod.string(),
   "sortOrder": zod.number(),
   "color": zod.string().nullish(),
-  "active": zod.boolean().optional()
+  "active": zod.boolean().optional(),
+  "activeLayout": zod.string().optional()
 })
+
+
+/**
+ * @summary Get canvas elements (walls, doors, bar, columns) for a zone layout
+ */
+export const GetCanvasElementsParams = zod.object({
+  "zoneId": zod.coerce.string()
+})
+
+export const GetCanvasElementsQueryParams = zod.object({
+  "layout": zod.enum(['normal', 'verano', 'invierno', 'eventos']).optional()
+})
+
+export const getCanvasElementsResponseRotationDefault = 0;
+
+export const GetCanvasElementsResponseItem = zod.object({
+  "id": zod.string(),
+  "zoneId": zod.string(),
+  "layout": zod.string(),
+  "type": zod.string(),
+  "x": zod.number(),
+  "y": zod.number(),
+  "width": zod.number(),
+  "height": zod.number(),
+  "rotation": zod.number().default(getCanvasElementsResponseRotationDefault),
+  "color": zod.string().nullish(),
+  "label": zod.string().nullish(),
+  "active": zod.boolean()
+})
+export const GetCanvasElementsResponse = zod.array(GetCanvasElementsResponseItem)
+
+
+/**
+ * @summary Create a canvas element (admin only)
+ */
+export const CreateCanvasElementParams = zod.object({
+  "zoneId": zod.coerce.string()
+})
+
+export const CreateCanvasElementBody = zod.object({
+  "type": zod.enum(['wall', 'door', 'bar', 'column']),
+  "layout": zod.enum(['normal', 'verano', 'invierno', 'eventos']).optional(),
+  "x": zod.number().optional(),
+  "y": zod.number().optional(),
+  "width": zod.number().optional(),
+  "height": zod.number().optional(),
+  "rotation": zod.number().optional(),
+  "color": zod.string().nullish(),
+  "label": zod.string().nullish()
+})
+
+export const createCanvasElementResponseRotationDefault = 0;
+
+export const CreateCanvasElementResponse = zod.object({
+  "id": zod.string(),
+  "zoneId": zod.string(),
+  "layout": zod.string(),
+  "type": zod.string(),
+  "x": zod.number(),
+  "y": zod.number(),
+  "width": zod.number(),
+  "height": zod.number(),
+  "rotation": zod.number().default(createCanvasElementResponseRotationDefault),
+  "color": zod.string().nullish(),
+  "label": zod.string().nullish(),
+  "active": zod.boolean()
+})
+
+
+/**
+ * @summary Update a canvas element (admin only)
+ */
+export const UpdateCanvasElementParams = zod.object({
+  "elementId": zod.coerce.string()
+})
+
+export const UpdateCanvasElementBody = zod.object({
+  "x": zod.number().optional(),
+  "y": zod.number().optional(),
+  "width": zod.number().optional(),
+  "height": zod.number().optional(),
+  "rotation": zod.number().optional(),
+  "color": zod.string().nullish(),
+  "label": zod.string().nullish()
+})
+
+export const updateCanvasElementResponseRotationDefault = 0;
+
+export const UpdateCanvasElementResponse = zod.object({
+  "id": zod.string(),
+  "zoneId": zod.string(),
+  "layout": zod.string(),
+  "type": zod.string(),
+  "x": zod.number(),
+  "y": zod.number(),
+  "width": zod.number(),
+  "height": zod.number(),
+  "rotation": zod.number().default(updateCanvasElementResponseRotationDefault),
+  "color": zod.string().nullish(),
+  "label": zod.string().nullish(),
+  "active": zod.boolean()
+})
+
+
+/**
+ * @summary Delete a canvas element (admin only)
+ */
+export const DeleteCanvasElementParams = zod.object({
+  "elementId": zod.coerce.string()
+})
+
+export const DeleteCanvasElementResponse = zod.void()
 
 
 /**
@@ -135,7 +256,12 @@ export const GetZoneTablesParams = zod.object({
   "zoneId": zod.coerce.string()
 })
 
+export const GetZoneTablesQueryParams = zod.object({
+  "layout": zod.enum(['normal', 'verano', 'invierno', 'eventos']).optional()
+})
+
 export const getZoneTablesResponseRotationDefault = 0;
+export const getZoneTablesResponseLayoutDefault = `normal`;
 
 export const GetZoneTablesResponseItem = zod.object({
   "id": zod.string(),
@@ -149,6 +275,7 @@ export const GetZoneTablesResponseItem = zod.object({
   "height": zod.number(),
   "shape": zod.string(),
   "rotation": zod.number().default(getZoneTablesResponseRotationDefault),
+  "layout": zod.string().default(getZoneTablesResponseLayoutDefault),
   "mergeGroup": zod.string().nullish(),
   "currentOrderId": zod.string().nullish(),
   "openedAt": zod.coerce.date().nullish(),
@@ -173,10 +300,12 @@ export const CreateTableBody = zod.object({
   "width": zod.number().optional(),
   "height": zod.number().optional(),
   "shape": zod.string().optional(),
-  "rotation": zod.number().optional()
+  "rotation": zod.number().optional(),
+  "layout": zod.enum(['normal', 'verano', 'invierno', 'eventos']).optional()
 })
 
 export const createTableResponseRotationDefault = 0;
+export const createTableResponseLayoutDefault = `normal`;
 
 export const CreateTableResponse = zod.object({
   "id": zod.string(),
@@ -190,6 +319,7 @@ export const CreateTableResponse = zod.object({
   "height": zod.number(),
   "shape": zod.string(),
   "rotation": zod.number().default(createTableResponseRotationDefault),
+  "layout": zod.string().default(createTableResponseLayoutDefault),
   "mergeGroup": zod.string().nullish(),
   "currentOrderId": zod.string().nullish(),
   "openedAt": zod.coerce.date().nullish(),
@@ -215,10 +345,12 @@ export const UpdateTableBody = zod.object({
   "height": zod.number().optional(),
   "shape": zod.string().optional(),
   "rotation": zod.number().optional(),
+  "layout": zod.enum(['normal', 'verano', 'invierno', 'eventos']).optional(),
   "mergeGroup": zod.string().nullish()
 })
 
 export const updateTableResponseRotationDefault = 0;
+export const updateTableResponseLayoutDefault = `normal`;
 
 export const UpdateTableResponse = zod.object({
   "id": zod.string(),
@@ -232,6 +364,7 @@ export const UpdateTableResponse = zod.object({
   "height": zod.number(),
   "shape": zod.string(),
   "rotation": zod.number().default(updateTableResponseRotationDefault),
+  "layout": zod.string().default(updateTableResponseLayoutDefault),
   "mergeGroup": zod.string().nullish(),
   "currentOrderId": zod.string().nullish(),
   "openedAt": zod.coerce.date().nullish(),
@@ -254,6 +387,7 @@ export const DeleteTableResponse = zod.void()
  * @summary Get all tables across all zones
  */
 export const getAllTablesResponseRotationDefault = 0;
+export const getAllTablesResponseLayoutDefault = `normal`;
 
 export const GetAllTablesResponseItem = zod.object({
   "id": zod.string(),
@@ -267,6 +401,7 @@ export const GetAllTablesResponseItem = zod.object({
   "height": zod.number(),
   "shape": zod.string(),
   "rotation": zod.number().default(getAllTablesResponseRotationDefault),
+  "layout": zod.string().default(getAllTablesResponseLayoutDefault),
   "mergeGroup": zod.string().nullish(),
   "currentOrderId": zod.string().nullish(),
   "openedAt": zod.coerce.date().nullish(),
@@ -284,6 +419,7 @@ export const OpenTableParams = zod.object({
 })
 
 export const openTableResponseTableRotationDefault = 0;
+export const openTableResponseTableLayoutDefault = `normal`;
 
 export const OpenTableResponse = zod.object({
   "table": zod.object({
@@ -298,6 +434,7 @@ export const OpenTableResponse = zod.object({
   "height": zod.number(),
   "shape": zod.string(),
   "rotation": zod.number().default(openTableResponseTableRotationDefault),
+  "layout": zod.string().default(openTableResponseTableLayoutDefault),
   "mergeGroup": zod.string().nullish(),
   "currentOrderId": zod.string().nullish(),
   "openedAt": zod.coerce.date().nullish(),
@@ -343,6 +480,7 @@ export const DuplicateTableParams = zod.object({
 })
 
 export const duplicateTableResponseRotationDefault = 0;
+export const duplicateTableResponseLayoutDefault = `normal`;
 
 export const DuplicateTableResponse = zod.object({
   "id": zod.string(),
@@ -356,6 +494,7 @@ export const DuplicateTableResponse = zod.object({
   "height": zod.number(),
   "shape": zod.string(),
   "rotation": zod.number().default(duplicateTableResponseRotationDefault),
+  "layout": zod.string().default(duplicateTableResponseLayoutDefault),
   "mergeGroup": zod.string().nullish(),
   "currentOrderId": zod.string().nullish(),
   "openedAt": zod.coerce.date().nullish(),
@@ -372,6 +511,7 @@ export const CloseTableParams = zod.object({
 })
 
 export const closeTableResponseRotationDefault = 0;
+export const closeTableResponseLayoutDefault = `normal`;
 
 export const CloseTableResponse = zod.object({
   "id": zod.string(),
@@ -385,6 +525,7 @@ export const CloseTableResponse = zod.object({
   "height": zod.number(),
   "shape": zod.string(),
   "rotation": zod.number().default(closeTableResponseRotationDefault),
+  "layout": zod.string().default(closeTableResponseLayoutDefault),
   "mergeGroup": zod.string().nullish(),
   "currentOrderId": zod.string().nullish(),
   "openedAt": zod.coerce.date().nullish(),
@@ -401,6 +542,7 @@ export const GetTableOrderParams = zod.object({
 })
 
 export const getTableOrderResponseTableRotationDefault = 0;
+export const getTableOrderResponseTableLayoutDefault = `normal`;
 
 export const GetTableOrderResponse = zod.object({
   "table": zod.object({
@@ -415,6 +557,7 @@ export const GetTableOrderResponse = zod.object({
   "height": zod.number(),
   "shape": zod.string(),
   "rotation": zod.number().default(getTableOrderResponseTableRotationDefault),
+  "layout": zod.string().default(getTableOrderResponseTableLayoutDefault),
   "mergeGroup": zod.string().nullish(),
   "currentOrderId": zod.string().nullish(),
   "openedAt": zod.coerce.date().nullish(),

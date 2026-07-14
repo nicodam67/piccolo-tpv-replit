@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { restaurantTablesTable, roomZonesTable, ordersTable } from "@workspace/db";
-import { sql, eq, and, asc, inArray } from "drizzle-orm";
+import { sql, eq, and, asc } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
 
 const router: IRouter = Router();
@@ -9,6 +9,7 @@ const router: IRouter = Router();
 type Shape = "square" | "round" | "rect";
 const VALID_SHAPES: Shape[] = ["square", "round", "rect"];
 const VALID_STATUSES = ["free", "occupied", "waiting", "bill_requested", "out_of_service", "reserved"];
+const VALID_LAYOUTS = ["normal", "verano", "invierno", "eventos"];
 
 const CANVAS_W = 1600;
 const CANVAS_H = 900;
@@ -28,6 +29,7 @@ function rowToTable(r: Record<string, unknown>) {
     height:         r.height,
     shape:          r.shape,
     rotation:       Number(r.rotation ?? 0),
+    layout:         r.layout ?? "normal",
     mergeGroup:     r.merge_group ?? null,
     active:         r.active,
     currentOrderId: r.current_order_id ?? null,
@@ -52,6 +54,7 @@ function tableShape(t: typeof restaurantTablesTable.$inferSelect) {
     height:         t.height,
     shape:          t.shape,
     rotation:       t.rotation,
+    layout:         t.layout,
     mergeGroup:     t.mergeGroup ?? null,
     active:         t.active,
     currentOrderId: null,
@@ -61,15 +64,36 @@ function tableShape(t: typeof restaurantTablesTable.$inferSelect) {
   };
 }
 
-// ── GET /zones/:zoneId/tables — includes live order summary ────────────────────
+// ── GET /zones/:zoneId/tables ──────────────────────────────────────────────────
+// ?layout=xxx — admin editor passes explicit layout; waiter gets active layout
 
 router.get("/zones/:zoneId/tables", requireAuth, async (req, res): Promise<void> => {
   const zoneId = req.params.zoneId as string;
+  const isAdmin = (req as any).user?.role === "admin";
+
+  let layoutFilter: string | null = null;
+
+  if (typeof req.query.layout === "string" && VALID_LAYOUTS.includes(req.query.layout)) {
+    // Explicit layout requested (editor)
+    layoutFilter = req.query.layout;
+  } else if (!isAdmin) {
+    // Waiter: use zone's active layout
+    const [zone] = await db
+      .select({ activeLayout: roomZonesTable.activeLayout })
+      .from(roomZonesTable)
+      .where(eq(roomZonesTable.id, zoneId));
+    layoutFilter = zone?.activeLayout ?? "normal";
+  }
+  // Admin without ?layout: return all layouts (for zone duplication etc.)
+
+  const layoutClause = layoutFilter
+    ? sql` AND t.layout = ${layoutFilter}`
+    : sql``;
 
   const rows = await db.execute(sql`
     SELECT
       t.id, t.zone_id, t.name, t.capacity, t.status,
-      t.x, t.y, t.width, t.height, t.shape, t.merge_group, t.active, t.rotation,
+      t.x, t.y, t.width, t.height, t.shape, t.merge_group, t.active, t.rotation, t.layout,
       o.id             AS current_order_id,
       o.created_at     AS opened_at,
       e.name           AS employee_name,
@@ -78,7 +102,7 @@ router.get("/zones/:zoneId/tables", requireAuth, async (req, res): Promise<void>
     LEFT JOIN orders o        ON o.table_id = t.id AND o.status = 'open'
     LEFT JOIN employees e     ON e.id = o.employee_id
     LEFT JOIN order_items oi  ON oi.order_id = o.id
-    WHERE t.zone_id = ${zoneId} AND t.active = true
+    WHERE t.zone_id = ${zoneId} AND t.active = true${layoutClause}
     GROUP BY t.id, o.id, e.id
     ORDER BY t.name
   `);
@@ -86,7 +110,7 @@ router.get("/zones/:zoneId/tables", requireAuth, async (req, res): Promise<void>
   res.json((rows.rows as Record<string, unknown>[]).map(rowToTable));
 });
 
-// ── GET /tables — all active tables across zones ───────────────────────────────
+// ── GET /tables — all active tables across zones (waiter view) ────────────────
 
 router.get("/tables", requireAuth, async (_req, res): Promise<void> => {
   const tables = await db
@@ -113,10 +137,11 @@ router.post("/zones/:zoneId/tables", requireAuth, requireRole("admin"), async (r
   const height   = Number.isFinite(b.height) && b.height >= 20 ? Math.floor(b.height) : 80;
   const shape: Shape = VALID_SHAPES.includes(b.shape) ? b.shape : "square";
   const rotation = Number.isFinite(b.rotation) ? Math.round(b.rotation) % 360 : 0;
+  const layout   = VALID_LAYOUTS.includes(b.layout) ? b.layout : "normal";
 
   const [table] = await db
     .insert(restaurantTablesTable)
-    .values({ zoneId, name, capacity, x, y, width, height, shape, rotation })
+    .values({ zoneId, name, capacity, x, y, width, height, shape, rotation, layout })
     .returning();
 
   res.status(201).json(tableShape(table));
@@ -150,7 +175,8 @@ router.post("/tables/:tableId/duplicate", requireAuth, requireRole("admin"), asy
       height:     original.height,
       shape:      original.shape,
       rotation:   original.rotation,
-      mergeGroup: null,  // copies never inherit merge groups
+      layout:     original.layout,
+      mergeGroup: null,
       active:     true,
     })
     .returning();
@@ -174,6 +200,7 @@ router.patch("/tables/:tableId", requireAuth, requireRole("admin"), async (req, 
   if (VALID_SHAPES.includes(b.shape))                          updates.shape    = b.shape;
   if (Number.isFinite(b.rotation))                             updates.rotation = Math.round(b.rotation) % 360;
   if (VALID_STATUSES.includes(b.status))                       updates.status   = b.status;
+  if (VALID_LAYOUTS.includes(b.layout))                        updates.layout   = b.layout;
   if ("mergeGroup" in b)                                       updates.mergeGroup = b.mergeGroup ?? null;
 
   if (Object.keys(updates).length === 0) { res.status(400).json({ error: "Sin cambios" }); return; }
@@ -193,7 +220,6 @@ router.patch("/tables/:tableId", requireAuth, requireRole("admin"), async (req, 
 router.delete("/tables/:tableId", requireAuth, requireRole("admin"), async (req, res): Promise<void> => {
   const tableId = req.params.tableId as string;
 
-  // Block deletion if table has an open order
   const [openOrder] = await db
     .select({ id: ordersTable.id })
     .from(ordersTable)

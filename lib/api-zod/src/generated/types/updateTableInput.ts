@@ -5,6 +5,7 @@
  * Piccolo TPV API
  * OpenAPI spec version: 0.2.0
  */
+import type { UpdateTableInputLayout } from './updateTableInputLayout';
 
 export interface UpdateTableInput {
   name?: string;
@@ -16,5 +17,6 @@ export interface UpdateTableInput {
   height?: number;
   shape?: string;
   rotation?: number;
+  layout?: UpdateTableInputLayout;
   mergeGroup?: string | null;
 }

@@ -8,3 +8,4 @@ export * from "./modifiers";
 export * from "./order-item-modifiers";
 export * from "./notifications";
 export * from "./payments";
+export * from "./canvas-elements";

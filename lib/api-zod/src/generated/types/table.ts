@@ -18,6 +18,7 @@ export interface Table {
   height: number;
   shape: string;
   rotation: number;
+  layout: string;
   mergeGroup?: string | null;
   currentOrderId?: string | null;
   openedAt?: Date | null;

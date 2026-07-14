@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useLocation } from 'wouter';
 import { useQueryClient } from '@tanstack/react-query';
-import { ChevronLeft, Plus, Pencil, Trash2, LayoutDashboard, Check, X, Loader2, GripVertical, Palette, Copy } from 'lucide-react';
+import { ChevronLeft, Plus, Pencil, Trash2, LayoutDashboard, Check, X, Loader2, GripVertical, Palette, Copy, Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   DndContext,
@@ -49,6 +49,8 @@ interface Zone {
   type: string;
   sortOrder: number;
   color?: string | null;
+  active?: boolean;
+  activeLayout?: string;
 }
 
 // ─── Color picker popover ─────────────────────────────────────────────────────
@@ -65,7 +67,6 @@ function ColorPicker({ currentColor, onSelect, onClose }: ColorPickerProps) {
     function handleClick(e: MouseEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) onClose();
     }
-    // Small delay so the opening click doesn't immediately close it
     const id = setTimeout(() => document.addEventListener('mousedown', handleClick), 0);
     return () => { clearTimeout(id); document.removeEventListener('mousedown', handleClick); };
   }, [onClose]);
@@ -90,7 +91,6 @@ function ColorPicker({ currentColor, onSelect, onClose }: ColorPickerProps) {
           </button>
         ))}
       </div>
-      {/* None option */}
       <button
         onClick={() => { onSelect(null); onClose(); }}
         className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-muted-foreground hover:bg-secondary transition-colors"
@@ -119,6 +119,7 @@ interface SortableZoneCardProps {
   onColorPickerClose: () => void;
   onColorSelect: (zoneId: string, color: string | null) => void;
   onDuplicate: (id: string) => void;
+  onToggleActive: (id: string, active: boolean) => void;
 }
 
 function SortableZoneCard({
@@ -136,6 +137,7 @@ function SortableZoneCard({
   onColorPickerClose,
   onColorSelect,
   onDuplicate,
+  onToggleActive,
 }: SortableZoneCardProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: zone.id });
@@ -147,14 +149,21 @@ function SortableZoneCard({
     zIndex: isDragging ? 50 : undefined,
   };
 
-  const isEditing = editingId === zone.id;
+  const isEditing  = editingId === zone.id;
   const isColorOpen = colorPickerZoneId === zone.id;
+  const isInactive  = zone.active === false;
+
+  const LAYOUT_LABELS: Record<string, string> = {
+    normal: 'Normal', verano: 'Verano', invierno: 'Invierno', eventos: 'Eventos',
+  };
 
   return (
     <div
       ref={setNodeRef}
       style={style}
-      className="bg-card border border-border rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow flex items-center gap-3"
+      className={`bg-card border rounded-2xl p-5 shadow-sm hover:shadow-md transition-all flex items-center gap-3 ${
+        isInactive ? 'border-border/40 opacity-55' : 'border-border'
+      }`}
     >
       {/* Drag handle */}
       <button
@@ -201,8 +210,22 @@ function SortableZoneCard({
           </div>
         ) : (
           <div>
-            <h2 className="text-base font-black leading-tight truncate">{zone.name}</h2>
-            <span className="text-xs text-muted-foreground uppercase tracking-widest font-semibold">{zone.type}</span>
+            <div className="flex items-center gap-2">
+              <h2 className="text-base font-black leading-tight truncate">{zone.name}</h2>
+              {isInactive && (
+                <span className="px-2 py-0.5 rounded-full bg-secondary text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                  Inactiva
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-2 mt-0.5">
+              <span className="text-xs text-muted-foreground uppercase tracking-widest font-semibold">{zone.type}</span>
+              {zone.activeLayout && zone.activeLayout !== 'normal' && (
+                <span className="text-xs text-primary font-bold uppercase tracking-widest">
+                  · {LAYOUT_LABELS[zone.activeLayout] ?? zone.activeLayout}
+                </span>
+              )}
+            </div>
           </div>
         )}
       </div>
@@ -210,6 +233,19 @@ function SortableZoneCard({
       {/* Actions — hidden while editing */}
       {!isEditing && (
         <div className="flex items-center gap-2 shrink-0">
+          {/* Active toggle */}
+          <button
+            onClick={() => onToggleActive(zone.id, !isInactive)}
+            className={`w-9 h-9 flex items-center justify-center rounded-xl transition-colors active:scale-95 ${
+              isInactive
+                ? 'bg-green-500/10 text-green-400 hover:bg-green-500/20'
+                : 'hover:bg-secondary text-muted-foreground hover:text-foreground'
+            }`}
+            title={isInactive ? 'Activar sala' : 'Desactivar sala'}
+          >
+            {isInactive ? <Eye size={14} /> : <EyeOff size={14} />}
+          </button>
+
           {/* Color picker trigger */}
           <div className="relative">
             <button
@@ -231,13 +267,15 @@ function SortableZoneCard({
             )}
           </div>
 
-          <button
-            onClick={() => onNavigate(zone.id)}
-            className="flex items-center gap-1.5 px-3 py-2 bg-primary/10 text-primary border border-primary/30 rounded-xl font-bold text-sm hover:bg-primary hover:text-primary-foreground transition-all active:scale-95"
-          >
-            <LayoutDashboard size={13} />
-            <span className="hidden sm:inline">Plano</span>
-          </button>
+          {!isInactive && (
+            <button
+              onClick={() => onNavigate(zone.id)}
+              className="flex items-center gap-1.5 px-3 py-2 bg-primary/10 text-primary border border-primary/30 rounded-xl font-bold text-sm hover:bg-primary hover:text-primary-foreground transition-all active:scale-95"
+            >
+              <LayoutDashboard size={13} />
+              <span className="hidden sm:inline">Plano</span>
+            </button>
+          )}
           <button
             onClick={() => onDuplicate(zone.id)}
             className="w-9 h-9 flex items-center justify-center rounded-xl hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors active:scale-95"
@@ -278,9 +316,12 @@ export default function Configuracion() {
     } catch { setLocation('/'); }
   }, [setLocation]);
 
-  const { data: serverZones, isLoading } = useGetZones({ query: { queryKey: getGetZonesQueryKey() } });
+  // Admin sees all zones including inactive
+  const { data: serverZones, isLoading } = useGetZones(
+    { all: true } as any,
+    { query: { queryKey: [...getGetZonesQueryKey(), 'all'] } }
+  );
 
-  // Local ordered copy — kept in sync with server data; updated optimistically on drag
   const [localZones, setLocalZones] = useState<Zone[]>([]);
   useEffect(() => {
     if (serverZones) setLocalZones(serverZones as Zone[]);
@@ -298,9 +339,12 @@ export default function Configuracion() {
   const [deletingId, setDeletingId]             = useState<string | null>(null);
   const [colorPickerZoneId, setColorPickerZoneId] = useState<string | null>(null);
 
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: getGetZonesQueryKey() });
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: getGetZonesQueryKey() });
+    queryClient.invalidateQueries({ queryKey: [...getGetZonesQueryKey(), 'all'] });
+  };
 
-  // ─── DnD sensors (pointer + touch) ────────────────────────────────────────
+  // ─── DnD sensors ────────────────────────────────────────────────────────────
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(TouchSensor,   { activationConstraint: { delay: 200, tolerance: 8 } }),
@@ -315,11 +359,9 @@ export default function Configuracion() {
     if (oldIndex === -1 || newIndex === -1) return;
 
     const reordered = arrayMove(localZones, oldIndex, newIndex);
-    // Assign sequential sortOrder starting from 1
     const withOrder = reordered.map((z, i) => ({ ...z, sortOrder: i + 1 }));
-    setLocalZones(withOrder); // optimistic update
+    setLocalZones(withOrder);
 
-    // Persist only the zones whose sortOrder actually changed
     const originalById = Object.fromEntries(localZones.map(z => [z.id, z.sortOrder]));
     const changed = withOrder.filter(z => z.sortOrder !== originalById[z.id]);
 
@@ -330,7 +372,6 @@ export default function Configuracion() {
     )
       .then(invalidate)
       .catch(() => {
-        // Roll back on error
         if (serverZones) setLocalZones(serverZones as Zone[]);
         toast.error('Error al guardar el orden');
       });
@@ -377,23 +418,35 @@ export default function Configuracion() {
     duplicateZone.mutate(
       { zoneId },
       {
-        onSuccess: (zone) => { invalidate(); toast.success(`Sala "${zone.name}" creada`); },
+        onSuccess: (zone: any) => { invalidate(); toast.success(`Sala "${zone.name}" creada`); },
         onError: () => toast.error('Error al duplicar sala'),
       }
     );
   };
 
   const handleColorSelect = (zoneId: string, color: string | null) => {
-    // Optimistic local update
     setLocalZones(prev => prev.map(z => z.id === zoneId ? { ...z, color } : z));
     updateZone.mutate(
       { zoneId, data: { color } },
       {
         onSuccess: () => invalidate(),
         onError: () => {
-          // Roll back
           if (serverZones) setLocalZones(serverZones as Zone[]);
           toast.error('Error al guardar el color');
+        },
+      }
+    );
+  };
+
+  const handleToggleActive = (zoneId: string, makeActive: boolean) => {
+    setLocalZones(prev => prev.map(z => z.id === zoneId ? { ...z, active: makeActive } : z));
+    updateZone.mutate(
+      { zoneId, data: { active: makeActive } },
+      {
+        onSuccess: () => { invalidate(); toast.success(makeActive ? 'Sala activada' : 'Sala desactivada'); },
+        onError: () => {
+          if (serverZones) setLocalZones(serverZones as Zone[]);
+          toast.error('Error al cambiar estado de la sala');
         },
       }
     );
@@ -433,7 +486,7 @@ export default function Configuracion() {
           <>
             <p className="text-xs text-muted-foreground mb-4 flex items-center gap-1.5">
               <GripVertical size={13} className="opacity-60" />
-              Arrastra las salas para cambiar el orden en las pestañas
+              Arrastra las salas para cambiar el orden · El ojo activa o desactiva la sala
             </p>
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
               <SortableContext items={localZones.map(z => z.id)} strategy={verticalListSortingStrategy}>
@@ -456,6 +509,7 @@ export default function Configuracion() {
                       onColorPickerClose={() => setColorPickerZoneId(null)}
                       onColorSelect={handleColorSelect}
                       onDuplicate={handleDuplicate}
+                      onToggleActive={handleToggleActive}
                     />
                   ))}
                 </div>

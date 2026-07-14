@@ -24,17 +24,22 @@ import type {
   AddOrderItemInput,
   AddPaymentInput,
   AuthResponse,
+  CanvasElement,
   CashMovement,
   CashSession,
   CashSessionSummary,
   CashSessionWithEmployee,
   Category,
   CloseCashSessionInput,
+  CreateCanvasElementInput,
   CreateTableInput,
   CreateZoneInput,
   DashboardSummary,
   Employee,
   ErrorResponse,
+  GetCanvasElementsParams,
+  GetZoneTablesParams,
+  GetZonesParams,
   HealthStatus,
   KitchenTask,
   ModifierGroup,
@@ -49,6 +54,7 @@ import type {
   Table,
   TableWithOrder,
   TicketData,
+  UpdateCanvasElementInput,
   UpdateOrderItemDetailsInput,
   UpdateTableInput,
   UpdateTaskStatusInput,
@@ -309,20 +315,27 @@ export const useAuthWithPin = <TError = ErrorType<ErrorResponse>,
       return useMutation(getAuthWithPinMutationOptions(options));
     }
 
-export const getGetZonesUrl = () => {
+export const getGetZonesUrl = (params?: GetZonesParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/api/zones`
+  return stringifiedParams.length > 0 ? `/api/zones?${stringifiedParams}` : `/api/zones`
 }
 
 /**
- * @summary Get all active zones
+ * @summary Get all active zones (admin can pass ?all=true to include inactive)
  */
-export const getZones = async ( options?: RequestInit): Promise<Zone[]> => {
+export const getZones = async (params?: GetZonesParams, options?: RequestInit): Promise<Zone[]> => {
 
-  return customFetch<Zone[]>(getGetZonesUrl(),
+  return customFetch<Zone[]>(getGetZonesUrl(params),
   {
     ...options,
     method: 'GET'
@@ -335,23 +348,23 @@ export const getZones = async ( options?: RequestInit): Promise<Zone[]> => {
 
 
 
-export const getGetZonesQueryKey = () => {
+export const getGetZonesQueryKey = (params?: GetZonesParams,) => {
     return [
-    `/api/zones`
+    `/api/zones`, ...(params ? [params] : [])
     ] as const;
     }
 
 
-export const getGetZonesQueryOptions = <TData = Awaited<ReturnType<typeof getZones>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getZones>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getGetZonesQueryOptions = <TData = Awaited<ReturnType<typeof getZones>>, TError = ErrorType<ErrorResponse>>(params?: GetZonesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getZones>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
 
-  const queryKey =  queryOptions?.queryKey ?? getGetZonesQueryKey();
+  const queryKey =  queryOptions?.queryKey ?? getGetZonesQueryKey(params);
 
 
 
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof getZones>>> = ({ signal }) => getZones({ signal, ...requestOptions });
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getZones>>> = ({ signal }) => getZones(params, { signal, ...requestOptions });
 
 
 
@@ -365,15 +378,15 @@ export type GetZonesQueryError = ErrorType<ErrorResponse>
 
 
 /**
- * @summary Get all active zones
+ * @summary Get all active zones (admin can pass ?all=true to include inactive)
  */
 
 export function useGetZones<TData = Awaited<ReturnType<typeof getZones>>, TError = ErrorType<ErrorResponse>>(
-  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getZones>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+ params?: GetZonesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getZones>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
-  const queryOptions = getGetZonesQueryOptions(options)
+  const queryOptions = getGetZonesQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
@@ -671,20 +684,29 @@ export const useDuplicateZone = <TError = ErrorType<ErrorResponse>,
       return useMutation(getDuplicateZoneMutationOptions(options));
     }
 
-export const getGetZoneTablesUrl = (zoneId: string,) => {
+export const getGetCanvasElementsUrl = (zoneId: string,
+    params?: GetCanvasElementsParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/api/zones/${zoneId}/tables`
+  return stringifiedParams.length > 0 ? `/api/zones/${zoneId}/elements?${stringifiedParams}` : `/api/zones/${zoneId}/elements`
 }
 
 /**
- * @summary Get tables for a zone
+ * @summary Get canvas elements (walls, doors, bar, columns) for a zone layout
  */
-export const getZoneTables = async (zoneId: string, options?: RequestInit): Promise<Table[]> => {
+export const getCanvasElements = async (zoneId: string,
+    params?: GetCanvasElementsParams, options?: RequestInit): Promise<CanvasElement[]> => {
 
-  return customFetch<Table[]>(getGetZoneTablesUrl(zoneId),
+  return customFetch<CanvasElement[]>(getGetCanvasElementsUrl(zoneId,params),
   {
     ...options,
     method: 'GET'
@@ -697,23 +719,329 @@ export const getZoneTables = async (zoneId: string, options?: RequestInit): Prom
 
 
 
-export const getGetZoneTablesQueryKey = (zoneId: string,) => {
+export const getGetCanvasElementsQueryKey = (zoneId: string,
+    params?: GetCanvasElementsParams,) => {
     return [
-    `/api/zones/${zoneId}/tables`
+    `/api/zones/${zoneId}/elements`, ...(params ? [params] : [])
     ] as const;
     }
 
 
-export const getGetZoneTablesQueryOptions = <TData = Awaited<ReturnType<typeof getZoneTables>>, TError = ErrorType<ErrorResponse>>(zoneId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getZoneTables>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getGetCanvasElementsQueryOptions = <TData = Awaited<ReturnType<typeof getCanvasElements>>, TError = ErrorType<ErrorResponse>>(zoneId: string,
+    params?: GetCanvasElementsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCanvasElements>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
 
-  const queryKey =  queryOptions?.queryKey ?? getGetZoneTablesQueryKey(zoneId);
+  const queryKey =  queryOptions?.queryKey ?? getGetCanvasElementsQueryKey(zoneId,params);
 
 
 
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof getZoneTables>>> = ({ signal }) => getZoneTables(zoneId, { signal, ...requestOptions });
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getCanvasElements>>> = ({ signal }) => getCanvasElements(zoneId,params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: zoneId !== null && zoneId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getCanvasElements>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetCanvasElementsQueryResult = NonNullable<Awaited<ReturnType<typeof getCanvasElements>>>
+export type GetCanvasElementsQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get canvas elements (walls, doors, bar, columns) for a zone layout
+ */
+
+export function useGetCanvasElements<TData = Awaited<ReturnType<typeof getCanvasElements>>, TError = ErrorType<ErrorResponse>>(
+ zoneId: string,
+    params?: GetCanvasElementsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCanvasElements>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetCanvasElementsQueryOptions(zoneId,params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateCanvasElementUrl = (zoneId: string,) => {
+
+
+
+
+  return `/api/zones/${zoneId}/elements`
+}
+
+/**
+ * @summary Create a canvas element (admin only)
+ */
+export const createCanvasElement = async (zoneId: string,
+    createCanvasElementInput: CreateCanvasElementInput, options?: RequestInit): Promise<CanvasElement> => {
+
+  return customFetch<CanvasElement>(getCreateCanvasElementUrl(zoneId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createCanvasElementInput)
+  }
+);}
+
+
+
+
+
+export const getCreateCanvasElementMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createCanvasElement>>, TError,{zoneId: string;data: BodyType<CreateCanvasElementInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createCanvasElement>>, TError,{zoneId: string;data: BodyType<CreateCanvasElementInput>}, TContext> => {
+
+const mutationKey = ['createCanvasElement'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createCanvasElement>>, {zoneId: string;data: BodyType<CreateCanvasElementInput>}> = (props) => {
+          const {zoneId,data} = props ?? {};
+
+          return  createCanvasElement(zoneId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateCanvasElementMutationResult = NonNullable<Awaited<ReturnType<typeof createCanvasElement>>>
+    export type CreateCanvasElementMutationBody = BodyType<CreateCanvasElementInput>
+    export type CreateCanvasElementMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Create a canvas element (admin only)
+ */
+export const useCreateCanvasElement = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createCanvasElement>>, TError,{zoneId: string;data: BodyType<CreateCanvasElementInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createCanvasElement>>,
+        TError,
+        {zoneId: string;data: BodyType<CreateCanvasElementInput>},
+        TContext
+      > => {
+      return useMutation(getCreateCanvasElementMutationOptions(options));
+    }
+
+export const getUpdateCanvasElementUrl = (elementId: string,) => {
+
+
+
+
+  return `/api/elements/${elementId}`
+}
+
+/**
+ * @summary Update a canvas element (admin only)
+ */
+export const updateCanvasElement = async (elementId: string,
+    updateCanvasElementInput: UpdateCanvasElementInput, options?: RequestInit): Promise<CanvasElement> => {
+
+  return customFetch<CanvasElement>(getUpdateCanvasElementUrl(elementId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(updateCanvasElementInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateCanvasElementMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateCanvasElement>>, TError,{elementId: string;data: BodyType<UpdateCanvasElementInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateCanvasElement>>, TError,{elementId: string;data: BodyType<UpdateCanvasElementInput>}, TContext> => {
+
+const mutationKey = ['updateCanvasElement'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateCanvasElement>>, {elementId: string;data: BodyType<UpdateCanvasElementInput>}> = (props) => {
+          const {elementId,data} = props ?? {};
+
+          return  updateCanvasElement(elementId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateCanvasElementMutationResult = NonNullable<Awaited<ReturnType<typeof updateCanvasElement>>>
+    export type UpdateCanvasElementMutationBody = BodyType<UpdateCanvasElementInput>
+    export type UpdateCanvasElementMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Update a canvas element (admin only)
+ */
+export const useUpdateCanvasElement = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateCanvasElement>>, TError,{elementId: string;data: BodyType<UpdateCanvasElementInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateCanvasElement>>,
+        TError,
+        {elementId: string;data: BodyType<UpdateCanvasElementInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateCanvasElementMutationOptions(options));
+    }
+
+export const getDeleteCanvasElementUrl = (elementId: string,) => {
+
+
+
+
+  return `/api/elements/${elementId}`
+}
+
+/**
+ * @summary Delete a canvas element (admin only)
+ */
+export const deleteCanvasElement = async (elementId: string, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteCanvasElementUrl(elementId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteCanvasElementMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteCanvasElement>>, TError,{elementId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteCanvasElement>>, TError,{elementId: string}, TContext> => {
+
+const mutationKey = ['deleteCanvasElement'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteCanvasElement>>, {elementId: string}> = (props) => {
+          const {elementId} = props ?? {};
+
+          return  deleteCanvasElement(elementId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteCanvasElementMutationResult = NonNullable<Awaited<ReturnType<typeof deleteCanvasElement>>>
+
+    export type DeleteCanvasElementMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Delete a canvas element (admin only)
+ */
+export const useDeleteCanvasElement = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteCanvasElement>>, TError,{elementId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteCanvasElement>>,
+        TError,
+        {elementId: string},
+        TContext
+      > => {
+      return useMutation(getDeleteCanvasElementMutationOptions(options));
+    }
+
+export const getGetZoneTablesUrl = (zoneId: string,
+    params?: GetZoneTablesParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/zones/${zoneId}/tables?${stringifiedParams}` : `/api/zones/${zoneId}/tables`
+}
+
+/**
+ * @summary Get tables for a zone
+ */
+export const getZoneTables = async (zoneId: string,
+    params?: GetZoneTablesParams, options?: RequestInit): Promise<Table[]> => {
+
+  return customFetch<Table[]>(getGetZoneTablesUrl(zoneId,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetZoneTablesQueryKey = (zoneId: string,
+    params?: GetZoneTablesParams,) => {
+    return [
+    `/api/zones/${zoneId}/tables`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetZoneTablesQueryOptions = <TData = Awaited<ReturnType<typeof getZoneTables>>, TError = ErrorType<ErrorResponse>>(zoneId: string,
+    params?: GetZoneTablesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getZoneTables>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetZoneTablesQueryKey(zoneId,params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getZoneTables>>> = ({ signal }) => getZoneTables(zoneId,params, { signal, ...requestOptions });
 
 
 
@@ -731,11 +1059,12 @@ export type GetZoneTablesQueryError = ErrorType<ErrorResponse>
  */
 
 export function useGetZoneTables<TData = Awaited<ReturnType<typeof getZoneTables>>, TError = ErrorType<ErrorResponse>>(
- zoneId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getZoneTables>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+ zoneId: string,
+    params?: GetZoneTablesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getZoneTables>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
-  const queryOptions = getGetZoneTablesQueryOptions(zoneId,options)
+  const queryOptions = getGetZoneTablesQueryOptions(zoneId,params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

@@ -16,6 +16,7 @@ export const restaurantTablesTable = pgTable("restaurant_tables", {
   shape: text("shape").notNull().default("square"),
   mergeGroup: text("merge_group"),
   rotation: integer("rotation").notNull().default(0),
+  layout: text("layout").notNull().default("normal"),
   active: boolean("active").notNull().default(true),
 });
 

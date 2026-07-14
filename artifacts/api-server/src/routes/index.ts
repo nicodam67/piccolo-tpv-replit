@@ -11,6 +11,7 @@ import modifiersRouter from "./modifiers";
 import notificationsRouter from "./notifications";
 import cashRouter from "./cash";
 import paymentsRouter from "./payments";
+import canvasElementsRouter from "./canvas-elements";
 
 const router: IRouter = Router();
 
@@ -26,5 +27,6 @@ router.use(modifiersRouter);
 router.use(notificationsRouter);
 router.use(cashRouter);
 router.use(paymentsRouter);
+router.use(canvasElementsRouter);
 
 export default router;

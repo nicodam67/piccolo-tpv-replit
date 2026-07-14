@@ -5,16 +5,13 @@
  * Piccolo TPV API
  * OpenAPI spec version: 0.2.0
  */
-import type { CreateTableInputLayout } from './createTableInputLayout';
 
-export interface CreateTableInput {
-  name: string;
-  capacity?: number;
+export interface UpdateCanvasElementInput {
   x?: number;
   y?: number;
   width?: number;
   height?: number;
-  shape?: string;
   rotation?: number;
-  layout?: CreateTableInputLayout;
+  color?: string | null;
+  label?: string | null;
 }

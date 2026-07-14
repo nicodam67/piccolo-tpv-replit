@@ -5,10 +5,12 @@
  * Piccolo TPV API
  * OpenAPI spec version: 0.2.0
  */
+import type { UpdateZoneInputActiveLayout } from './updateZoneInputActiveLayout';
 
 export interface UpdateZoneInput {
   name?: string;
   sortOrder?: number;
   color?: string | null;
   active?: boolean;
+  activeLayout?: UpdateZoneInputActiveLayout;
 }

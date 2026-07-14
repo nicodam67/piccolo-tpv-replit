@@ -32,6 +32,7 @@ export interface Zone {
   sortOrder: number;
   color?: string | null;
   active?: boolean;
+  activeLayout?: string;
 }
 
 export interface Table {
@@ -46,6 +47,7 @@ export interface Table {
   height: number;
   shape: string;
   rotation: number;
+  layout: string;
   mergeGroup?: string | null;
   currentOrderId?: string | null;
   openedAt?: string | null;
@@ -53,17 +55,95 @@ export interface Table {
   currentTotal?: number | null;
 }
 
+export interface CanvasElement {
+  id: string;
+  zoneId: string;
+  layout: string;
+  type: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  rotation: number;
+  color?: string | null;
+  label?: string | null;
+  active: boolean;
+}
+
+export type CreateCanvasElementInputType = typeof CreateCanvasElementInputType[keyof typeof CreateCanvasElementInputType];
+
+
+export const CreateCanvasElementInputType = {
+  wall: 'wall',
+  door: 'door',
+  bar: 'bar',
+  column: 'column',
+} as const;
+
+export type CreateCanvasElementInputLayout = typeof CreateCanvasElementInputLayout[keyof typeof CreateCanvasElementInputLayout];
+
+
+export const CreateCanvasElementInputLayout = {
+  normal: 'normal',
+  verano: 'verano',
+  invierno: 'invierno',
+  eventos: 'eventos',
+} as const;
+
+export interface CreateCanvasElementInput {
+  type: CreateCanvasElementInputType;
+  layout?: CreateCanvasElementInputLayout;
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
+  rotation?: number;
+  color?: string | null;
+  label?: string | null;
+}
+
+export interface UpdateCanvasElementInput {
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
+  rotation?: number;
+  color?: string | null;
+  label?: string | null;
+}
+
 export interface CreateZoneInput {
   name: string;
   type?: string;
 }
+
+export type UpdateZoneInputActiveLayout = typeof UpdateZoneInputActiveLayout[keyof typeof UpdateZoneInputActiveLayout];
+
+
+export const UpdateZoneInputActiveLayout = {
+  normal: 'normal',
+  verano: 'verano',
+  invierno: 'invierno',
+  eventos: 'eventos',
+} as const;
 
 export interface UpdateZoneInput {
   name?: string;
   sortOrder?: number;
   color?: string | null;
   active?: boolean;
+  activeLayout?: UpdateZoneInputActiveLayout;
 }
+
+export type CreateTableInputLayout = typeof CreateTableInputLayout[keyof typeof CreateTableInputLayout];
+
+
+export const CreateTableInputLayout = {
+  normal: 'normal',
+  verano: 'verano',
+  invierno: 'invierno',
+  eventos: 'eventos',
+} as const;
 
 export interface CreateTableInput {
   name: string;
@@ -74,7 +154,18 @@ export interface CreateTableInput {
   height?: number;
   shape?: string;
   rotation?: number;
+  layout?: CreateTableInputLayout;
 }
+
+export type UpdateTableInputLayout = typeof UpdateTableInputLayout[keyof typeof UpdateTableInputLayout];
+
+
+export const UpdateTableInputLayout = {
+  normal: 'normal',
+  verano: 'verano',
+  invierno: 'invierno',
+  eventos: 'eventos',
+} as const;
 
 export interface UpdateTableInput {
   name?: string;
@@ -86,6 +177,7 @@ export interface UpdateTableInput {
   height?: number;
   shape?: string;
   rotation?: number;
+  layout?: UpdateTableInputLayout;
   mergeGroup?: string | null;
 }
 
@@ -426,4 +518,36 @@ export interface TicketData {
 export interface ErrorResponse {
   error: string;
 }
+
+export type GetZonesParams = {
+all?: boolean;
+};
+
+export type GetCanvasElementsParams = {
+layout?: GetCanvasElementsLayout;
+};
+
+export type GetCanvasElementsLayout = typeof GetCanvasElementsLayout[keyof typeof GetCanvasElementsLayout];
+
+
+export const GetCanvasElementsLayout = {
+  normal: 'normal',
+  verano: 'verano',
+  invierno: 'invierno',
+  eventos: 'eventos',
+} as const;
+
+export type GetZoneTablesParams = {
+layout?: GetZoneTablesLayout;
+};
+
+export type GetZoneTablesLayout = typeof GetZoneTablesLayout[keyof typeof GetZoneTablesLayout];
+
+
+export const GetZoneTablesLayout = {
+  normal: 'normal',
+  verano: 'verano',
+  invierno: 'invierno',
+  eventos: 'eventos',
+} as const;
 

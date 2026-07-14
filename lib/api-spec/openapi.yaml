@@ -91,9 +91,15 @@ paths:
     get:
       operationId: getZones
       tags: [zones]
-      summary: Get all active zones
+      summary: Get all active zones (admin can pass ?all=true to include inactive)
       security:
         - bearerAuth: []
+      parameters:
+        - name: all
+          in: query
+          required: false
+          schema:
+            type: boolean
       responses:
         "200":
           description: List of zones
@@ -264,6 +270,156 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /zones/{zoneId}/elements:
+    get:
+      operationId: getCanvasElements
+      tags: [tables]
+      summary: Get canvas elements (walls, doors, bar, columns) for a zone layout
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: zoneId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: layout
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [normal, verano, invierno, eventos]
+      responses:
+        "200":
+          description: List of canvas elements
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CanvasElement"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      operationId: createCanvasElement
+      tags: [tables]
+      summary: Create a canvas element (admin only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: zoneId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCanvasElementInput"
+      responses:
+        "201":
+          description: Element created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CanvasElement"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /elements/{elementId}:
+    patch:
+      operationId: updateCanvasElement
+      tags: [tables]
+      summary: Update a canvas element (admin only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: elementId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateCanvasElementInput"
+      responses:
+        "200":
+          description: Element updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CanvasElement"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteCanvasElement
+      tags: [tables]
+      summary: Delete a canvas element (admin only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: elementId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Element deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /zones/{zoneId}/tables:
     get:
       operationId: getZoneTables
@@ -277,6 +433,12 @@ paths:
           required: true
           schema:
             type: string
+        - name: layout
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [normal, verano, invierno, eventos]
       responses:
         "200":
           description: List of tables
@@ -1329,6 +1491,8 @@ components:
           nullable: true
         active:
           type: boolean
+        activeLayout:
+          type: string
       required: [id, name, type, sortOrder]
 
     Table:
@@ -1357,6 +1521,9 @@ components:
         rotation:
           type: integer
           default: 0
+        layout:
+          type: string
+          default: normal
         mergeGroup:
           type: string
           nullable: true
@@ -1373,7 +1540,86 @@ components:
         currentTotal:
           type: number
           nullable: true
-      required: [id, zoneId, name, capacity, status, x, y, width, height, shape, rotation]
+      required: [id, zoneId, name, capacity, status, x, y, width, height, shape, rotation, layout]
+
+    CanvasElement:
+      type: object
+      properties:
+        id:
+          type: string
+        zoneId:
+          type: string
+        layout:
+          type: string
+        type:
+          type: string
+        x:
+          type: integer
+        y:
+          type: integer
+        width:
+          type: integer
+        height:
+          type: integer
+        rotation:
+          type: integer
+          default: 0
+        color:
+          type: string
+          nullable: true
+        label:
+          type: string
+          nullable: true
+        active:
+          type: boolean
+      required: [id, zoneId, layout, type, x, y, width, height, rotation, active]
+
+    CreateCanvasElementInput:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [wall, door, bar, column]
+        layout:
+          type: string
+          enum: [normal, verano, invierno, eventos]
+        x:
+          type: integer
+        y:
+          type: integer
+        width:
+          type: integer
+        height:
+          type: integer
+        rotation:
+          type: integer
+        color:
+          type: string
+          nullable: true
+        label:
+          type: string
+          nullable: true
+      required: [type]
+
+    UpdateCanvasElementInput:
+      type: object
+      properties:
+        x:
+          type: integer
+        y:
+          type: integer
+        width:
+          type: integer
+        height:
+          type: integer
+        rotation:
+          type: integer
+        color:
+          type: string
+          nullable: true
+        label:
+          type: string
+          nullable: true
 
     CreateZoneInput:
       type: object
@@ -1396,6 +1642,9 @@ components:
           nullable: true
         active:
           type: boolean
+        activeLayout:
+          type: string
+          enum: [normal, verano, invierno, eventos]
 
     CreateTableInput:
       type: object
@@ -1416,6 +1665,9 @@ components:
           type: string
         rotation:
           type: integer
+        layout:
+          type: string
+          enum: [normal, verano, invierno, eventos]
       required: [name]
 
     UpdateTableInput:
@@ -1439,6 +1691,9 @@ components:
           type: string
         rotation:
           type: integer
+        layout:
+          type: string
+          enum: [normal, verano, invierno, eventos]
         mergeGroup:
           type: string
           nullable: true
