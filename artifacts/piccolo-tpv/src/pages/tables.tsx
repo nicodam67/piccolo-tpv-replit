@@ -194,6 +194,16 @@ export default function Tables() {
   const zoomRef = useRef(zoom);
   useEffect(() => { zoomRef.current = zoom; }, [zoom]);
 
+  // Single-finger pan state
+  const panRef = useRef<{
+    startX: number;
+    startY: number;
+    scrollLeft: number;
+    scrollTop: number;
+    /** Whether we've crossed TAP_SLOP and are actively panning */
+    active: boolean;
+  } | null>(null);
+
   useEffect(() => {
     const elOrNull = canvasContainerRef.current;
     if (!elOrNull) return;
@@ -206,7 +216,18 @@ export default function Tables() {
     }
 
     function onTouchStart(e: TouchEvent) {
-      if (e.touches.length === 2) {
+      if (e.touches.length === 1) {
+        // Begin tracking a potential single-finger pan
+        panRef.current = {
+          startX: e.touches[0].clientX,
+          startY: e.touches[0].clientY,
+          scrollLeft: el.scrollLeft,
+          scrollTop: el.scrollTop,
+          active: false,
+        };
+      } else if (e.touches.length === 2) {
+        // Cancel any in-progress pan when a second finger lands
+        panRef.current = null;
         const rect = el.getBoundingClientRect();
         const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
         const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
@@ -227,7 +248,21 @@ export default function Tables() {
     }
 
     function onTouchMove(e: TouchEvent) {
-      if (e.touches.length === 2 && pinchRef.current) {
+      if (e.touches.length === 1 && panRef.current) {
+        const dx = e.touches[0].clientX - panRef.current.startX;
+        const dy = e.touches[0].clientY - panRef.current.startY;
+        // Only start panning once the finger has moved beyond the tap slop
+        if (!panRef.current.active) {
+          if (Math.abs(dx) > TAP_SLOP || Math.abs(dy) > TAP_SLOP) {
+            panRef.current.active = true;
+          } else {
+            return; // still within tap threshold — do nothing yet
+          }
+        }
+        e.preventDefault(); // block native scroll while panning
+        el.scrollLeft = panRef.current.scrollLeft - dx;
+        el.scrollTop  = panRef.current.scrollTop  - dy;
+      } else if (e.touches.length === 2 && pinchRef.current) {
         e.preventDefault(); // prevent browser pan/zoom during pinch
         const scale = dist(e.touches) / pinchRef.current.startDist;
         const rawZoom = pinchRef.current.startZoom * scale;
@@ -242,6 +277,7 @@ export default function Tables() {
     }
 
     function onTouchEnd() {
+      panRef.current = null;
       pinchRef.current = null;
     }
 
