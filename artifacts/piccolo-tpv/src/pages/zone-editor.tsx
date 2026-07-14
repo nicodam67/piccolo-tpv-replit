@@ -169,6 +169,49 @@ export default function ZoneEditor() {
   const zoomRef = useRef(zoom);
   useEffect(() => { zoomRef.current = zoom; }, [zoom]);
 
+  // Pinch-to-zoom — non-passive so we can preventDefault and block scroll
+  const pinchRef = useRef<{ startDist: number; startZoom: number } | null>(null);
+
+  useEffect(() => {
+    const el = canvasContainerRef.current;
+    if (!el) return;
+
+    function dist(t: TouchList) {
+      const dx = t[0].clientX - t[1].clientX;
+      const dy = t[0].clientY - t[1].clientY;
+      return Math.sqrt(dx * dx + dy * dy);
+    }
+
+    function onTouchStart(e: TouchEvent) {
+      if (e.touches.length === 2) {
+        pinchRef.current = { startDist: dist(e.touches), startZoom: zoomRef.current };
+      }
+    }
+
+    function onTouchMove(e: TouchEvent) {
+      if (e.touches.length === 2 && pinchRef.current) {
+        e.preventDefault(); // prevent browser pan/zoom during pinch
+        const scale = dist(e.touches) / pinchRef.current.startDist;
+        persistZoom(pinchRef.current.startZoom * scale);
+      }
+    }
+
+    function onTouchEnd() {
+      pinchRef.current = null;
+    }
+
+    el.addEventListener('touchstart', onTouchStart, { passive: true });
+    el.addEventListener('touchmove', onTouchMove, { passive: false });
+    el.addEventListener('touchend', onTouchEnd, { passive: true });
+    el.addEventListener('touchcancel', onTouchEnd, { passive: true });
+    return () => {
+      el.removeEventListener('touchstart', onTouchStart);
+      el.removeEventListener('touchmove', onTouchMove);
+      el.removeEventListener('touchend', onTouchEnd);
+      el.removeEventListener('touchcancel', onTouchEnd);
+    };
+  }, [persistZoom]);
+
   useEffect(() => {
     if (serverTables) setLocalTables(serverTables.map(t => ({ ...t })));
   }, [serverTables]);
