@@ -28,7 +28,7 @@ export default function Login() {
           onSuccess: (res) => {
             localStorage.setItem("token", res.token);
             localStorage.setItem("employee", JSON.stringify(res.employee));
-            setLocation("/tables");
+            setLocation(res.employee?.role === "admin" ? "/admin" : "/tables");
           },
           onError: () => {
             setPin("");

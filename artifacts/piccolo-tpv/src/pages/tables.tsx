@@ -161,10 +161,14 @@ export default function Tables() {
     <div className="h-screen flex flex-col bg-background overflow-hidden">
       {/* Header */}
       <header className="h-16 flex items-center justify-between px-6 bg-card border-b border-border shadow-sm shrink-0 relative z-20">
-        <div className="flex items-center gap-3">
+        <button
+          onClick={() => isAdmin && setLocation("/admin")}
+          className={`flex items-center gap-3 ${isAdmin ? "hover:opacity-80 active:scale-95 transition-all cursor-pointer" : "cursor-default"}`}
+          title={isAdmin ? "Volver al Dashboard" : undefined}
+        >
           <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-primary-foreground font-bold shadow-sm">P</div>
           <span className="font-semibold text-lg tracking-tight hidden sm:inline-block">Piccolo</span>
-        </div>
+        </button>
 
         {summary && (
           <div className="flex items-center gap-5 text-sm font-medium bg-background px-4 py-2 rounded-full border border-border">
