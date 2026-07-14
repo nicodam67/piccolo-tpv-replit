@@ -45,6 +45,9 @@ router.post("/zones", requireAuth, requireRole("admin"), async (req, res): Promi
   const type = typeof req.body?.type === "string" ? req.body.type.trim() : "dining";
   if (!name) { res.status(400).json({ error: "Nombre requerido" }); return; }
 
+  const color = typeof req.body?.color === "string" ? req.body.color : null;
+  const icon  = typeof req.body?.icon  === "string" ? req.body.icon  : null;
+
   const [maxRow] = await db
     .select({ v: max(roomZonesTable.sortOrder) })
     .from(roomZonesTable)
@@ -53,7 +56,7 @@ router.post("/zones", requireAuth, requireRole("admin"), async (req, res): Promi
 
   const [zone] = await db
     .insert(roomZonesTable)
-    .values({ name, type, sortOrder: nextSort })
+    .values({ name, type, sortOrder: nextSort, color, icon })
     .returning();
 
   res.status(201).json(zone);

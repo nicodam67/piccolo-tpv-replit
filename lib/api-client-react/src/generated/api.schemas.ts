@@ -117,6 +117,8 @@ export interface UpdateCanvasElementInput {
 export interface CreateZoneInput {
   name: string;
   type?: string;
+  color?: string | null;
+  icon?: string | null;
 }
 
 export type UpdateZoneInputActiveLayout = typeof UpdateZoneInputActiveLayout[keyof typeof UpdateZoneInputActiveLayout];

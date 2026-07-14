@@ -1906,6 +1906,12 @@ components:
           type: string
         type:
           type: string
+        color:
+          type: string
+          nullable: true
+        icon:
+          type: string
+          nullable: true
       required: [name]
 
     UpdateZoneInput:

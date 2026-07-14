@@ -70,7 +70,9 @@ export const GetZonesResponse = zod.array(GetZonesResponseItem)
  */
 export const CreateZoneBody = zod.object({
   "name": zod.string(),
-  "type": zod.string().optional()
+  "type": zod.string().optional(),
+  "color": zod.string().nullish(),
+  "icon": zod.string().nullish()
 })
 
 export const CreateZoneResponse = zod.object({
