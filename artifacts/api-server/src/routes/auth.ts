@@ -1,12 +1,24 @@
 import { Router, type IRouter } from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import rateLimit from "express-rate-limit";
 import { db } from "@workspace/db";
 import { employeesTable, employeePinsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { AuthWithPinBody } from "@workspace/api-zod";
 
 const router: IRouter = Router();
+
+// Rate-limit PIN login attempts: max 10 attempts per IP per 15-minute window.
+// This prevents brute-forcing a 4-digit PIN space (10,000 combinations) —
+// an attacker is locked out after 10 failures and must wait before retrying.
+const pinLoginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Demasiados intentos. Inténtelo de nuevo más tarde." },
+});
 
 router.get("/employees/login-list", async (_req, res): Promise<void> => {
   // role is intentionally omitted: it is not needed by the PIN login UI and
@@ -24,8 +36,8 @@ router.get("/employees/login-list", async (_req, res): Promise<void> => {
   res.json(employees);
 });
 
-router.post("/auth/pin", async (req, res): Promise<void> => {
-  const parsed = PinLoginInput.safeParse(req.body);
+router.post("/auth/pin", pinLoginLimiter, async (req, res): Promise<void> => {
+  const parsed = AuthWithPinBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "Empleado y PIN son obligatorios" });
     return;
