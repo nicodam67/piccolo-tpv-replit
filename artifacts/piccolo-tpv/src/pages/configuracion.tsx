@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useLocation } from 'wouter';
 import { useQueryClient } from '@tanstack/react-query';
+import { io } from 'socket.io-client';
 import { ChevronLeft, Plus, Pencil, Trash2, LayoutDashboard, Check, X, Loader2, GripVertical, Palette, Copy, Eye, EyeOff, Smile } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -434,6 +435,15 @@ export default function Configuracion() {
     queryClient.invalidateQueries({ queryKey: getGetZonesQueryKey() });
     queryClient.invalidateQueries({ queryKey: [...getGetZonesQueryKey(), 'all'] });
   };
+
+  // ─── Live zone updates from other admin sessions ─────────────────────────────
+  useEffect(() => {
+    const socket = io({ path: '/api/socket.io' });
+    socket.on('zones:refresh', () => {
+      queryClient.invalidateQueries({ queryKey: getGetZonesQueryKey({ all: true }) });
+    });
+    return () => { socket.disconnect(); };
+  }, [queryClient]);
 
   // ─── DnD sensors ────────────────────────────────────────────────────────────
   const sensors = useSensors(

@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { roomZonesTable, restaurantTablesTable, ordersTable } from "@workspace/db";
 import { sql, eq, asc, max, and, inArray } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
+import { getIO } from "../lib/socket";
 
 const router: IRouter = Router();
 
@@ -65,6 +66,7 @@ router.post("/zones", requireAuth, requireRole("admin"), async (req, res): Promi
       .returning();
   });
 
+  getIO().emit("zones:refresh");
   res.status(201).json(zone);
 });
 
@@ -123,6 +125,7 @@ router.post("/zones/:zoneId/duplicate", requireAuth, requireRole("admin"), async
     );
   }
 
+  getIO().emit("zones:refresh");
   res.status(201).json(newZone);
 });
 
@@ -181,6 +184,7 @@ router.patch("/zones/:zoneId", requireAuth, requireRole("admin"), async (req, re
     return;
   }
 
+  getIO().emit("zones:refresh");
   res.json(zone);
 });
 
