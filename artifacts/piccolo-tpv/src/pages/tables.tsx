@@ -171,8 +171,23 @@ export default function Tables() {
     return clamped;
   }, []);
 
-  const handleZoomIn  = () => persistZoom(zoom + ZOOM_STEP);
-  const handleZoomOut = () => persistZoom(zoom - ZOOM_STEP);
+  /** Zoom in/out keeping the current viewport centre fixed on the canvas. */
+  const zoomAroundCenter = useCallback((delta: number) => {
+    const el = canvasContainerRef.current;
+    const newZoom = persistZoom(zoom + delta);
+    if (!el) return;
+    const { width: cw, height: ch } = el.getBoundingClientRect();
+    // Viewport centre in canvas-space coordinates (at the *old* zoom level)
+    const oldZoom = zoom;
+    const cx = (el.scrollLeft + cw / 2) / oldZoom;
+    const cy = (el.scrollTop  + ch / 2) / oldZoom;
+    // Reposition scroll so the same canvas point stays centred after zoom
+    el.scrollLeft = cx * newZoom - cw / 2;
+    el.scrollTop  = cy * newZoom - ch / 2;
+  }, [zoom, persistZoom]);
+
+  const handleZoomIn  = () => zoomAroundCenter(+ZOOM_STEP);
+  const handleZoomOut = () => zoomAroundCenter(-ZOOM_STEP);
 
   const handleFit = useCallback(() => {
     const el = canvasContainerRef.current;
