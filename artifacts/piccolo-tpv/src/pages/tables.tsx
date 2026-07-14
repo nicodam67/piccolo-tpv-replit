@@ -23,6 +23,7 @@ const ZOOM_STEP = 0.1;
 const ZOOM_MIN = 0.2;
 const ZOOM_MAX = 2.0;
 const ZOOM_STORAGE_KEY = "piccolo_floor_zoom";
+const SCROLL_STORAGE_PREFIX = "piccolo_floor_scroll_";
 
 // SVG grid background
 const GRID_BG = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40'%3E%3Cpath d='M 40 0 L 0 0 0 40' fill='none' stroke='rgba(255,255,255,0.04)' stroke-width='1'/%3E%3C/svg%3E")`;
@@ -332,6 +333,50 @@ export default function Tables() {
     if (zones?.length && !activeZone) setActiveZone(zones[0].id);
   }, [zones, activeZone]);
 
+  /** Save the current canvas scroll position for a given zone to sessionStorage. */
+  const saveScrollForZone = useCallback((zoneId: string) => {
+    const el = canvasContainerRef.current;
+    if (!el || !zoneId) return;
+    try {
+      sessionStorage.setItem(
+        SCROLL_STORAGE_PREFIX + zoneId,
+        JSON.stringify({ left: el.scrollLeft, top: el.scrollTop }),
+      );
+    } catch { /* ignore */ }
+  }, []);
+
+  /** Restore the saved scroll position for a zone (if any). Must be called after render. */
+  const restoreScrollForZone = useCallback((zoneId: string) => {
+    const el = canvasContainerRef.current;
+    if (!el || !zoneId) return;
+    try {
+      const raw = sessionStorage.getItem(SCROLL_STORAGE_PREFIX + zoneId);
+      if (raw) {
+        const { left, top } = JSON.parse(raw) as { left: number; top: number };
+        el.scrollLeft = left;
+        el.scrollTop  = top;
+      } else {
+        // No saved position → start at top-left
+        el.scrollLeft = 0;
+        el.scrollTop  = 0;
+      }
+    } catch { /* ignore */ }
+  }, []);
+
+  /** Switch zone: persist current scroll first, then change the active zone. */
+  const switchZone = useCallback((zoneId: string) => {
+    if (activeZone) saveScrollForZone(activeZone);
+    setActiveZone(zoneId);
+  }, [activeZone, saveScrollForZone]);
+
+  // After the active zone changes, restore the saved scroll position.
+  // We use rAF so the browser has painted the new zone's content first.
+  useEffect(() => {
+    if (!activeZone) return;
+    const id = requestAnimationFrame(() => restoreScrollForZone(activeZone));
+    return () => cancelAnimationFrame(id);
+  }, [activeZone, restoreScrollForZone]);
+
   // No explicit layout param — server returns tables for the zone's active layout
   const { data: tables, isLoading: loadingTables } = useGetZoneTables(
     activeZone!,
@@ -501,7 +546,7 @@ export default function Tables() {
                 return (
                   <button
                     key={zone.id}
-                    onClick={() => setActiveZone(zone.id)}
+                    onClick={() => switchZone(zone.id)}
                     style={isActive && zoneColor ? { borderTopColor: zoneColor, color: zoneColor } : undefined}
                     className={`flex items-center gap-2 px-5 py-3 rounded-t-xl font-semibold text-sm transition-all whitespace-nowrap
                       ${isActive
