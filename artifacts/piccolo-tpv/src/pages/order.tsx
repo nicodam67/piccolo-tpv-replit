@@ -94,7 +94,7 @@ export default function OrderPage() {
   }, [setLocation]);
 
   const { data: tableData, isLoading: loadingTable } = useGetTableOrder(tableId, {
-    query: { refetchInterval: 30000 }
+    query: { queryKey: getGetTableOrderQueryKey(tableId), refetchInterval: 30000 }
   });
   const table = tableData?.table;
   const order = tableData?.order;

@@ -494,10 +494,22 @@ export default function ZoneEditor() {
     );
   };
 
+  // ── Diagnostic overlay state (remove once all buttons confirmed working) ─────
+  const [diag, setDiag] = useState<{ type: string; status: 'sending' | 'ok' | 'error'; code?: number; error?: string } | null>(null);
+
   const handleAddElement = (type: ElementType) => {
     const def = ELEMENT_DEFAULTS[type];
-    const x = snap(CANVAS_W / 2 - def.w / 2 + Math.random() * 40, 0, CANVAS_W - def.w);
-    const y = snap(CANVAS_H / 2 - def.h / 2 + Math.random() * 40, 0, CANVAS_H - def.h);
+    const label = ELEMENT_DEFS.find(d => d.type === type)?.label ?? type;
+
+    // ── BUG FIX: clamp to visible viewport, same strategy as handleAddTable ──
+    // Canvas is 1600×900 but viewport is typically only 400–760px at zoom=1.
+    // CANVAS_W/2 ≈ 800px → always off-screen on phones/tablets.
+    // Clamp x to ≤300 and y to ≤200 so the element lands in the visible area.
+    const x = snap(Math.min(CANVAS_W / 2 - Math.floor(def.w / 2), 300) + Math.round(Math.random() * 40), 0, CANVAS_W - def.w);
+    const y = snap(Math.min(CANVAS_H / 2 - Math.floor(def.h / 2), 200) + Math.round(Math.random() * 40), 0, CANVAS_H - def.h);
+
+    setDiag({ type: label, status: 'sending' });
+
     createElementMut.mutate(
       {
         zoneId: zoneId!,
@@ -505,12 +517,32 @@ export default function ZoneEditor() {
       },
       {
         onSuccess: (el) => {
-          invalidateElements();
+          setDiag({ type: label, status: 'ok', code: 201 });
+          // Add optimistically then invalidate so server data catches up
           setLocalElements(prev => [...prev, el as ApiCanvasElement]);
           setSelectedElementId(el.id);
           setSelectedIds(new Set());
+          invalidateElements();
+          toast.success(`${label} añadida`);
+          // Auto-scroll canvas so the new element is centred in the viewport
+          requestAnimationFrame(() => {
+            const container = canvasContainerRef.current;
+            if (!container) return;
+            const z = zoomRef.current;
+            const { width: cw, height: ch } = container.getBoundingClientRect();
+            container.scrollTo({
+              left: Math.max(0, (el.x + el.width  / 2) * z - cw / 2),
+              top:  Math.max(0, (el.y + el.height / 2) * z - ch / 2),
+              behavior: 'smooth',
+            });
+          });
         },
-        onError: () => toast.error('Error al crear elemento'),
+        onError: (err: any) => {
+          const code  = (err as any)?.response?.status ?? 0;
+          const msg   = (err as any)?.response?.data?.error ?? (err as any)?.message ?? 'Error desconocido';
+          setDiag({ type: label, status: 'error', code, error: msg });
+          toast.error(`Error al añadir ${label} (HTTP ${code}): ${msg}`);
+        },
       }
     );
   };
@@ -690,9 +722,9 @@ export default function ZoneEditor() {
         <span className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider shrink-0 hidden sm:inline">Añadir:</span>
         {ELEMENT_DEFS.map(def => (
           <button key={def.type}
-            onPointerDown={e => { e.stopPropagation(); e.preventDefault(); handleAddElement(def.type); }}
+            onClick={() => handleAddElement(def.type)}
             title={`Añadir ${def.label}`}
-            style={{ touchAction: 'manipulation', userSelect: 'none' }}
+            style={{ touchAction: 'manipulation' }}
             className="flex items-center gap-1 h-8 px-2.5 rounded-lg border border-slate-500 bg-slate-700 text-slate-100 hover:bg-slate-500 hover:border-slate-400 hover:text-white text-xs font-bold active:scale-95 transition-all shrink-0 shadow-sm">
             <span>{def.icon}</span>
             <span className="hidden lg:inline">{def.label}</span>
@@ -864,6 +896,20 @@ export default function ZoneEditor() {
                   <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.2)', gap: 12 }}>
                     <div style={{ fontSize: 48 }}>🪑</div>
                     <p style={{ fontSize: 16, fontWeight: 700 }}>Sin mesas · Pulsa "+ Mesa" para añadir</p>
+                  </div>
+                )}
+
+                {/* ── Diagnostic overlay (temporary — remove once all element buttons confirmed working) ── */}
+                {diag && (
+                  <div style={{
+                    position: 'absolute', top: 12, left: 12, zIndex: 9999,
+                    background: diag.status === 'ok' ? 'rgba(34,197,94,0.9)' : diag.status === 'error' ? 'rgba(239,68,68,0.9)' : 'rgba(234,179,8,0.9)',
+                    color: '#fff', borderRadius: 8, padding: '8px 14px', fontSize: 13, fontWeight: 700,
+                    pointerEvents: 'none', maxWidth: 340, boxShadow: '0 4px 16px rgba(0,0,0,0.5)',
+                  }}>
+                    {diag.status === 'sending' && `⏳ Enviando ${diag.type}…`}
+                    {diag.status === 'ok' && `✓ ${diag.type} creada (HTTP 201)`}
+                    {diag.status === 'error' && `✗ Error al crear ${diag.type} (HTTP ${diag.code}): ${diag.error}`}
                   </div>
                 )}
               </div>
