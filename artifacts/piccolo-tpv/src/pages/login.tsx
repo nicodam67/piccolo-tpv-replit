@@ -1,8 +1,42 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useLocation } from "wouter";
 import { useGetEmployeeLoginList, useAuthWithPin } from "@workspace/api-client-react";
 import { Loader2, Delete } from "lucide-react";
 import { toast } from "sonner";
+
+// ── PinKey — reliable touch feedback via pointer events ───────────────────────
+function PinKey({
+  children,
+  onPress,
+  className,
+}: {
+  children: React.ReactNode;
+  onPress: () => void;
+  className?: string;
+}) {
+  const [pressed, setPressed] = useState(false);
+
+  const handlePointerDown = useCallback((e: React.PointerEvent) => {
+    e.preventDefault();        // prevents 300 ms click delay on some browsers
+    setPressed(true);
+    onPress();
+  }, [onPress]);
+
+  const handlePointerUp = useCallback(() => setPressed(false), []);
+  const handlePointerLeave = useCallback(() => setPressed(false), []);
+
+  return (
+    <button
+      onPointerDown={handlePointerDown}
+      onPointerUp={handlePointerUp}
+      onPointerLeave={handlePointerLeave}
+      style={{ touchAction: 'manipulation', userSelect: 'none' }}
+      className={`${className} transition-all duration-75 ${pressed ? 'scale-90 brightness-75' : 'scale-100 brightness-100'}`}
+    >
+      {children}
+    </button>
+  );
+}
 
 export default function Login() {
   const [, setLocation] = useLocation();
@@ -127,27 +161,27 @@ export default function Login() {
 
           <div className={`grid grid-cols-3 gap-4 transition-opacity duration-300 ${!selectedEmployee ? "opacity-30 pointer-events-none" : "opacity-100"}`}>
             {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => (
-              <button
+              <PinKey
                 key={num}
-                onClick={() => handlePinPress(num)}
-                className="aspect-square bg-secondary hover:bg-secondary/80 text-secondary-foreground rounded-2xl flex items-center justify-center text-3xl font-mono active:scale-90 transition-transform shadow-sm"
+                onPress={() => handlePinPress(num)}
+                className="aspect-square bg-secondary text-secondary-foreground rounded-2xl flex items-center justify-center text-3xl font-mono shadow-sm"
               >
                 {num}
-              </button>
+              </PinKey>
             ))}
-            <div className="aspect-square"></div>
-            <button
-              onClick={() => handlePinPress(0)}
-              className="aspect-square bg-secondary hover:bg-secondary/80 text-secondary-foreground rounded-2xl flex items-center justify-center text-3xl font-mono active:scale-90 transition-transform shadow-sm"
+            <div className="aspect-square" />
+            <PinKey
+              onPress={() => handlePinPress(0)}
+              className="aspect-square bg-secondary text-secondary-foreground rounded-2xl flex items-center justify-center text-3xl font-mono shadow-sm"
             >
               0
-            </button>
-            <button
-              onClick={handlePinDelete}
-              className="aspect-square bg-destructive/10 text-destructive hover:bg-destructive/20 rounded-2xl flex items-center justify-center active:scale-90 transition-transform shadow-sm"
+            </PinKey>
+            <PinKey
+              onPress={handlePinDelete}
+              className="aspect-square bg-destructive/10 text-destructive rounded-2xl flex items-center justify-center shadow-sm"
             >
               <Delete size={28} strokeWidth={2.5} />
-            </button>
+            </PinKey>
           </div>
           
           {auth.isPending && (
