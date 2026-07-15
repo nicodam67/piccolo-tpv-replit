@@ -14,6 +14,7 @@ import { alias } from "drizzle-orm/pg-core";
 // Alias for subrecipeItemsTable used in allergen JOIN (avoids column ambiguity)
 const subrecipeItemsTableAlias = alias(subrecipeItemsTable, "sr_items");
 import { requireAuth, requireRole } from "../middlewares/auth";
+import { recalculateProductAllergens } from "./allergens";
 
 const router: IRouter = Router();
 
@@ -139,6 +140,9 @@ async function syncProductAllergens(productId: string): Promise<void> {
     .update(productsTable)
     .set({ allergens: Array.from(allergenSet).sort().join(",") })
     .where(eq(productsTable.id, productId));
+
+  // Also update the structured allergen cache
+  try { await recalculateProductAllergens(productId); } catch { /* non-fatal */ }
 }
 
 // Helper: build a rich line object with computed cost fields

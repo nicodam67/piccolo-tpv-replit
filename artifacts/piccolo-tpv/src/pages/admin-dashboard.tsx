@@ -31,6 +31,7 @@ import {
   FileText,
   Star,
   Timer,
+  ShieldAlert,
 } from 'lucide-react';
 import { useGetDashboardSummary } from '@workspace/api-client-react';
 
@@ -427,6 +428,33 @@ const MODULES: ModuleCard[] = [
     iconBg: 'rgba(220,80,80,0.15)',
     iconColor: '#dc5050',
     glow: 'rgba(220,80,80,0.12)',
+  },
+  // ─── Allergens & Food Safety module ────────────────────────────────────────
+  {
+    id: 'trazabilidad-lotes',
+    icon: <Package size={28} />,
+    title: 'Trazabilidad de Lotes',
+    description: 'Búsqueda y traza completa de lotes',
+    href: '/admin/trazabilidad-lotes',
+    ready: true,
+    accent: 'rgba(245,158,11,0.07)',
+    border: 'rgba(245,158,11,0.28)',
+    iconBg: 'rgba(245,158,11,0.15)',
+    iconColor: '#f59e0b',
+    glow: 'rgba(245,158,11,0.12)',
+  },
+  {
+    id: 'retirada-lote',
+    icon: <ShieldAlert size={28} />,
+    title: 'Retirada de Lotes',
+    description: 'Bloqueo · recall · gestión de alertas',
+    href: '/admin/retirada-lote',
+    ready: true,
+    accent: 'rgba(239,68,68,0.07)',
+    border: 'rgba(239,68,68,0.28)',
+    iconBg: 'rgba(239,68,68,0.15)',
+    iconColor: '#ef4444',
+    glow: 'rgba(239,68,68,0.12)',
   },
   {
     id: 'escaner-facturas',

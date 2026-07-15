@@ -43,6 +43,8 @@ import LotesCaducidades from './pages/lotes-caducidades';
 import EscanerFacturas from './pages/escaner-facturas';
 import RevisionFactura from './pages/revision-factura';
 import ConciliacionFactura from './pages/conciliacion-factura';
+import TrazabilidadLotes from './pages/trazabilidad-lotes';
+import RetiradasLote from './pages/retirada-lote';
 import NotFound from './pages/not-found';
 
 const queryClient = new QueryClient({
@@ -97,6 +99,8 @@ function Router() {
       <Route path="/admin/escaner-facturas" component={EscanerFacturas} />
       <Route path="/admin/revision-factura/:id" component={RevisionFactura} />
       <Route path="/admin/conciliacion-factura/:id" component={ConciliacionFactura} />
+      <Route path="/admin/trazabilidad-lotes" component={TrazabilidadLotes} />
+      <Route path="/admin/retirada-lote" component={RetiradasLote} />
       <Route component={NotFound} />
     </Switch>
   );

@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useLocation } from 'wouter';
 import { toast } from 'sonner';
 import {
@@ -270,7 +270,11 @@ function IngredientSheet({
   onDelete?: () => Promise<void>;
   saving: boolean;
 }) {
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<{
+    name: string; internalCode: string; unit: string; purchaseCost: string;
+    currentStock: string; minStock: string; optimalStock: string; supplierName: string;
+    allergenTags: string[]; allergenTypes: Record<string, string>;
+  }>({
     name: initial?.name ?? '',
     internalCode: initial?.internalCode ?? '',
     unit: initial?.unit ?? 'ud',
@@ -280,9 +284,30 @@ function IngredientSheet({
     optimalStock: (initial as any)?.optimalStock ?? '0',
     supplierName: initial?.supplierName ?? '',
     allergenTags: (initial?.allergenTags ?? []) as string[],
+    allergenTypes: Object.fromEntries(((initial?.allergenTags ?? []) as string[]).map(c => [c, 'contains'])),
   });
 
   const set = (k: string, v: unknown) => setForm(f => ({ ...f, [k]: v }));
+
+  // Load structured allergens for edit mode
+  const BASE_URL = import.meta.env.BASE_URL.replace(/\/$/, '');
+  useEffect(() => {
+    if (!initial?.id) return;
+    const token = localStorage.getItem('token');
+    fetch(`${BASE_URL}/api/admin/ingredients/${initial.id}/allergens`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(r => r.ok ? r.json() : [])
+      .then((rows: { allergenCode: string; type: string }[]) => {
+        if (rows.length > 0) {
+          const types: Record<string, string> = {};
+          const tags: string[] = [];
+          rows.forEach(r => { types[r.allergenCode] = r.type; if (r.type === 'contains') tags.push(r.allergenCode); });
+          setForm(f => ({ ...f, allergenTypes: types, allergenTags: tags }));
+        }
+      })
+      .catch(() => {/* non-fatal */});
+  }, [initial?.id]);
 
   const handleSave = async () => {
     if (!form.name.trim()) { toast.error('El nombre es obligatorio'); return; }
@@ -297,6 +322,25 @@ function IngredientSheet({
       supplierName: form.supplierName || undefined,
       allergenTags: form.allergenTags,
     });
+
+    // Save structured allergens for edit mode (always send, even if empty — clears all allergens)
+    if (initial?.id) {
+      try {
+        const token = localStorage.getItem('token');
+        const res = await fetch(`${BASE_URL}/api/admin/ingredients/${initial.id}/allergens`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            allergens: Object.entries(form.allergenTypes).map(([allergenCode, type]) => ({ allergenCode, type })),
+            reviewNote: 'Actualizado desde TPV',
+          }),
+        });
+        if (!res.ok) throw new Error(`Allergen save failed: ${res.status}`);
+      } catch (err) {
+        console.error('[ingredientes] allergen PUT failed', err);
+        toast.error('Alérgenos no guardados en el servidor');
+      }
+    }
   };
 
   return (
@@ -357,25 +401,52 @@ function IngredientSheet({
               value={form.supplierName} onChange={e => set('supplierName', e.target.value)} placeholder="Nombre del proveedor" />
           </div>
           <div className="col-span-2">
-            <label className="text-xs font-bold text-muted-foreground mb-2 block">Alérgenos</label>
-            <div className="flex flex-wrap gap-1.5">
-              {ALLERGEN_OPTIONS.map(a => (
-                <button
-                  key={a.code}
-                  type="button"
-                  onClick={() => set('allergenTags', form.allergenTags.includes(a.code)
-                    ? form.allergenTags.filter(x => x !== a.code)
-                    : [...form.allergenTags, a.code])}
-                  className={`px-2 py-0.5 rounded-full text-[11px] font-bold border transition-colors ${
-                    form.allergenTags.includes(a.code)
-                      ? 'bg-orange-500/20 text-orange-400 border-orange-500/40'
-                      : 'bg-secondary text-muted-foreground border-border'
-                  }`}
-                >
-                  {a.label}
-                </button>
-              ))}
+            <label className="text-xs font-bold text-muted-foreground mb-2 block">Alérgenos (Reg. UE 1169/2011)</label>
+            <div className="flex flex-wrap gap-1.5 mb-2">
+              {ALLERGEN_OPTIONS.map(a => {
+                const type = form.allergenTypes[a.code];
+                const selected = !!type;
+                return (
+                  <button
+                    key={a.code}
+                    type="button"
+                    onClick={() => {
+                      const current = form.allergenTypes[a.code];
+                      if (!current) {
+                        // Not selected → select as "contains"
+                        set('allergenTypes', { ...form.allergenTypes, [a.code]: 'contains' });
+                        set('allergenTags', [...form.allergenTags.filter(x => x !== a.code), a.code]);
+                      } else if (current === 'contains') {
+                        // contains → traces
+                        set('allergenTypes', { ...form.allergenTypes, [a.code]: 'traces' });
+                        set('allergenTags', form.allergenTags.filter(x => x !== a.code));
+                      } else if (current === 'traces') {
+                        // traces → cross_contamination
+                        set('allergenTypes', { ...form.allergenTypes, [a.code]: 'cross_contamination' });
+                        set('allergenTags', form.allergenTags.filter(x => x !== a.code));
+                      } else {
+                        // cross_contamination → remove
+                        const nt = { ...form.allergenTypes };
+                        delete nt[a.code];
+                        set('allergenTypes', nt);
+                        set('allergenTags', form.allergenTags.filter(x => x !== a.code));
+                      }
+                    }}
+                    title={type === 'contains' ? 'Contiene — pulsa para cambiar a Trazas' : type === 'traces' ? 'Trazas — pulsa para cambiar a Contam. cruzada' : type === 'cross_contamination' ? 'Contam. cruzada — pulsa para eliminar' : 'No presente — pulsa para marcar como Contiene'}
+                    className={`px-2 py-0.5 rounded-full text-[11px] font-bold border transition-colors ${
+                      !selected ? 'bg-secondary text-muted-foreground border-border opacity-50'
+                      : type === 'contains' ? 'bg-orange-500/25 text-orange-400 border-orange-500/50'
+                      : type === 'traces' ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/40 border-dashed'
+                      : 'bg-yellow-500/10 text-yellow-500 border-yellow-600/30 border-dotted'
+                    }`}
+                  >
+                    {type === 'cross_contamination' ? `⚠ ${a.label}` : a.label}
+                    {type && <span className="ml-1 text-[9px] opacity-70">{type === 'contains' ? 'C' : type === 'traces' ? 'T' : 'X'}</span>}
+                  </button>
+                );
+              })}
             </div>
+            <p className="text-[10px] text-muted-foreground/60">C=Contiene · T=Trazas · ⚠X=Contaminación cruzada · Pulsa para ciclar entre estados</p>
           </div>
         </div>
 

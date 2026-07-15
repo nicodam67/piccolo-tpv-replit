@@ -2,7 +2,8 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useParams, Link } from 'wouter';
 import { useQueryClient } from '@tanstack/react-query';
 import { io } from 'socket.io-client';
-import { History, RefreshCw, AlertTriangle, X, Clock } from 'lucide-react';
+import { toast } from 'sonner';
+import { History, RefreshCw, AlertTriangle, X, Clock, CheckCircle, ShieldCheck } from 'lucide-react';
 import {
   useGetKdsTasks,
   useUpdateKitchenTaskStatus,
@@ -288,6 +289,8 @@ function ZoneTasksView({
   );
 }
 
+const BASE_URL = import.meta.env.BASE_URL.replace(/\/$/, '');
+
 function TaskCard({
   task,
   onUpdateStatus,
@@ -301,6 +304,33 @@ function TaskCard({
   const isPrep      = task.status === 'preparing';
   const isReady     = task.status === 'ready';
   const isCancelled = task.status === 'cancelled';
+
+  // Allergy confirmation local state
+  const [allergyConfirmed, setAllergyConfirmed] = useState(false);
+  const [showAllergyConfirm, setShowAllergyConfirm] = useState(false);
+  const [confirmNote, setConfirmNote] = useState('');
+  const [crossRisk, setCrossRisk] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+
+  const handleAllergyConfirm = async () => {
+    setConfirming(true);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${BASE_URL}/api/kitchen-tasks/${task.id}/allergy-confirm`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ notes: confirmNote, hasCrossContaminationRisk: crossRisk }),
+      });
+      if (!res.ok) throw new Error();
+      setAllergyConfirmed(true);
+      setShowAllergyConfirm(false);
+      toast.success('Preparación especial confirmada');
+    } catch {
+      toast.error('Error al confirmar');
+    } finally {
+      setConfirming(false);
+    }
+  };
 
   // Dynamic delay border for active tasks
   const [currentDelay, setCurrentDelay] = useState<DelayLevel>('normal');
@@ -344,7 +374,7 @@ function TaskCard({
     : 'bg-[#22c55e]/20 text-[#22c55e]';
 
   return (
-    <div className={`flex flex-col bg-card border-2 rounded-2xl overflow-hidden shadow-xl transition-all ${borderClass} ${delayBorder}`}>
+    <div className={`relative flex flex-col bg-card border-2 rounded-2xl overflow-hidden shadow-xl transition-all ${borderClass} ${delayBorder}`}>
       {/* Header */}
       <div className={`flex flex-col border-b-2 ${headerBg}`}>
         <div className="p-4 flex justify-between items-start">
@@ -360,11 +390,53 @@ function TaskCard({
 
         {/* Allergy banner */}
         {task.hasAllergy && (
-          <div className="animate-pulse border-t border-red-500/30">
-            <div className="bg-red-600 text-white font-black uppercase tracking-widest text-center py-2">ALERGIA</div>
-            {task.allergyNote && (
-              <div className="bg-red-600/20 text-red-300 text-sm px-3 py-1.5 text-center font-bold">{task.allergyNote}</div>
+          <div className="border-t border-red-500/30">
+            {allergyConfirmed ? (
+              <div className="bg-green-800/80 text-green-300 font-black uppercase tracking-widest text-center py-2 flex items-center justify-center gap-2">
+                <ShieldCheck size={14} /> Prep. especial confirmada
+              </div>
+            ) : (
+              <>
+                <div className="animate-pulse bg-red-600 text-white font-black uppercase tracking-widest text-center py-2 flex items-center justify-center gap-2">
+                  <AlertTriangle size={14} /> ALERGIA
+                </div>
+                {task.allergyNote && (
+                  <div className="bg-red-600/20 text-red-300 text-sm px-3 py-1.5 text-center font-bold">{task.allergyNote}</div>
+                )}
+                {!isCancelled && (
+                  <button
+                    onClick={() => setShowAllergyConfirm(true)}
+                    className="w-full py-2 bg-red-900/60 text-red-200 font-bold text-xs uppercase tracking-wider hover:bg-red-900/80 transition-colors flex items-center justify-center gap-1"
+                  >
+                    <CheckCircle size={12} /> Confirmar preparación especial
+                  </button>
+                )}
+              </>
             )}
+          </div>
+        )}
+
+        {/* Allergy confirmation overlay */}
+        {showAllergyConfirm && (
+          <div className="absolute inset-0 z-20 bg-card/95 backdrop-blur-sm flex flex-col p-4 gap-3">
+            <div className="flex items-center justify-between">
+              <span className="font-black text-sm text-red-400 flex items-center gap-1"><AlertTriangle size={14} /> Confirmar alergia</span>
+              <button onClick={() => setShowAllergyConfirm(false)} className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-secondary"><X size={13} /></button>
+            </div>
+            <p className="text-xs text-muted-foreground">{task.allergyNote ?? 'Preparación especial requerida'}</p>
+            <textarea
+              className="w-full px-2 py-1.5 rounded-lg bg-secondary border border-border text-xs focus:outline-none resize-none"
+              rows={2} placeholder="Nota (ej: utensilios limpios, zona aislada…)"
+              value={confirmNote} onChange={e => setConfirmNote(e.target.value)}
+            />
+            <label className="flex items-center gap-2 text-xs">
+              <input type="checkbox" checked={crossRisk} onChange={e => setCrossRisk(e.target.checked)} className="rounded" />
+              <span className="text-orange-400 font-bold">⚠ Riesgo de contaminación cruzada</span>
+            </label>
+            <button onClick={handleAllergyConfirm} disabled={confirming}
+              className="w-full py-2 rounded-lg bg-green-600 text-white text-sm font-black disabled:opacity-60">
+              {confirming ? 'Confirmando…' : '✓ Confirmar preparación'}
+            </button>
           </div>
         )}
 

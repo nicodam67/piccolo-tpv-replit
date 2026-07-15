@@ -31,6 +31,9 @@ import goodsReceiptsRouter from "./goods-receipts";
 import supplierInvoicesRouter from "./supplier-invoices";
 import purchaseReportsRouter from "./purchase-reports";
 import invoiceScannerRouter from "./invoice-scanner";
+import allergensRouter from "./allergens";
+import tableAllergiesRouter from "./table-allergies";
+import traceabilityRouter from "./traceability";
 
 const router: IRouter = Router();
 
@@ -66,5 +69,8 @@ router.use(goodsReceiptsRouter);
 router.use(supplierInvoicesRouter);
 router.use(purchaseReportsRouter);
 router.use(invoiceScannerRouter);
+router.use(allergensRouter);
+router.use(tableAllergiesRouter);
+router.use(traceabilityRouter);
 
 export default router;
