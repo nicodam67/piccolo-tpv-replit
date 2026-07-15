@@ -4402,6 +4402,37 @@ export function useGetPrefacturaStatus<TData = Awaited<ReturnType<typeof getPref
   return withQueryKey(query, queryOptions.queryKey);
 }
 
+// ─── X-Report (provisional) ───────────────────────────────────────────────────
+export const getGetCashSessionXReportUrl = (sessionId: string) => `/api/cash-sessions/${sessionId}/x-report`;
+export const getCashSessionXReport = async (sessionId: string, options?: RequestInit): Promise<import('./api.schemas').ZReport> =>
+  customFetch<import('./api.schemas').ZReport>(getGetCashSessionXReportUrl(sessionId), { ...options, method: 'GET' });
+export const getGetCashSessionXReportQueryKey = (sessionId: string) => [`/api/cash-sessions/${sessionId}/x-report`] as const;
+export const getGetCashSessionXReportQueryOptions = <TData = Awaited<ReturnType<typeof getCashSessionXReport>>, TError = ErrorType<ErrorResponse>>(sessionId: string, options?: { query?: UseQueryOptions<Awaited<ReturnType<typeof getCashSessionXReport>>, TError, TData>; request?: SecondParameter<typeof customFetch> }) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+  const queryKey = queryOptions?.queryKey ?? getGetCashSessionXReportQueryKey(sessionId);
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getCashSessionXReport>>> = ({ signal }) => getCashSessionXReport(sessionId, { signal, ...requestOptions });
+  return { queryKey, queryFn, enabled: !!sessionId, ...queryOptions } as UseQueryOptions<Awaited<ReturnType<typeof getCashSessionXReport>>, TError, TData> & { queryKey: QueryKey };
+};
+export function useGetCashSessionXReport<TData = Awaited<ReturnType<typeof getCashSessionXReport>>, TError = ErrorType<ErrorResponse>>(sessionId: string, options?: { query?: UseQueryOptions<Awaited<ReturnType<typeof getCashSessionXReport>>, TError, TData>; request?: SecondParameter<typeof customFetch> }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetCashSessionXReportQueryOptions(sessionId, options);
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+// ─── Reopen cash session (admin only) ─────────────────────────────────────────
+export const getReopenCashSessionUrl = (id: string) => `/api/cash-sessions/${id}/reopen`;
+export const reopenCashSession = async (id: string, options?: RequestInit): Promise<import('./api.schemas').CashSession> =>
+  customFetch<import('./api.schemas').CashSession>(getReopenCashSessionUrl(id), { ...options, method: 'POST', headers: { 'Content-Type': 'application/json', ...options?.headers } });
+export const getReopenCashSessionMutationOptions = <TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof reopenCashSession>>, TError, { id: string }, TContext>; request?: SecondParameter<typeof customFetch> }): UseMutationOptions<Awaited<ReturnType<typeof reopenCashSession>>, TError, { id: string }, TContext> => {
+  const mutationKey = ['reopenCashSession'];
+  const { mutation: mutationOptions, request: requestOptions } = options ? (options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ? options : { ...options, mutation: { ...options.mutation, mutationKey } }) : { mutation: { mutationKey }, request: undefined };
+  const mutationFn: MutationFunction<Awaited<ReturnType<typeof reopenCashSession>>, { id: string }> = (props) => reopenCashSession(props.id, requestOptions);
+  return { mutationFn, ...mutationOptions };
+};
+export function useReopenCashSession<TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof reopenCashSession>>, TError, { id: string }, TContext>; request?: SecondParameter<typeof customFetch> }): UseMutationResult<Awaited<ReturnType<typeof reopenCashSession>>, TError, { id: string }, TContext> {
+  return useMutation(getReopenCashSessionMutationOptions(options));
+}
+
 export const getGetCashSessionHistoryUrl = () => `/api/cash-sessions/history`;
 export const getCashSessionHistory = async (options?: RequestInit): Promise<import('./api.schemas').CashSessionHistoryItem[]> =>
   customFetch<import('./api.schemas').CashSessionHistoryItem[]>(getGetCashSessionHistoryUrl(), { ...options, method: 'GET' });

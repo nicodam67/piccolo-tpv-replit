@@ -28,6 +28,8 @@ export const cashSessionsTable = pgTable("cash_sessions", {
   notes: text("notes"),
   discrepancyReason: text("discrepancy_reason"),
   closingNotes: text("closing_notes"),
+  /** Bill/coin denomination breakdown used during the arqueo: { "50": 2, "20": 3, ... } */
+  denominationBreakdown: jsonb("denomination_breakdown"),
 });
 
 export const paymentsTable = pgTable("payments", {

@@ -10,6 +10,7 @@ import Kds from './pages/kds';
 import Payment from './pages/payment';
 import CashSession from './pages/cash-session';
 import ZReport from './pages/z-report';
+import XReport from './pages/x-report';
 import Ticket from './pages/ticket';
 import Configuracion from './pages/configuracion';
 import ZoneEditor from './pages/zone-editor';
@@ -45,6 +46,7 @@ function Router() {
       <Route path="/cobro/:orderId" component={Payment} />
       <Route path="/caja" component={CashSession} />
       <Route path="/caja/informe/:sessionId" component={ZReport} />
+      <Route path="/caja/x-informe/:sessionId" component={XReport} />
       <Route path="/ticket/:orderId" component={Ticket} />
       <Route path="/admin" component={AdminDashboard} />
       <Route path="/configuracion" component={Configuracion} />

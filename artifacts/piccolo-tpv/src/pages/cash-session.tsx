@@ -3,7 +3,8 @@ import { useLocation } from 'wouter';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   ChevronLeft, Loader2, Euro, ArrowUpRight, ArrowDownRight, Wallet,
-  CheckCircle2, AlertCircle, ClipboardList, History, Settings, Eye, EyeOff, X
+  CheckCircle2, AlertCircle, ClipboardList, History, Settings, Eye, EyeOff, X,
+  BarChart2, RefreshCw,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -13,9 +14,11 @@ import {
   useCloseCashSession,
   useGetCashSessionSummary,
   useGetCashSessionHistory,
+  useReopenCashSession,
   getGetCurrentCashSessionQueryKey,
   getGetCashSessionSummaryQueryKey,
   getGetCashSessionHistoryQueryKey,
+  AddCashMovementInputMovementType,
 } from '@workspace/api-client-react';
 
 function fmt(n: number | string) { return parseFloat(String(n)).toFixed(2); }
@@ -24,6 +27,88 @@ function fmtDate(d: string) {
 }
 
 const TERMINAL_PRESETS = ['Caja principal', 'Caja barra', 'Caja terraza', 'Caja sala'];
+
+const CASH_IN_TYPES = ['in', 'tip', 'change_added', 'correction'];
+const CASH_OUT_TYPES = ['out', 'supplier_payment'];
+
+const MOVEMENT_TYPE_OPTIONS = [
+  { value: 'in',               label: 'Entrada de efectivo',     isIn: true },
+  { value: 'out',              label: 'Retirada de efectivo',    isIn: false },
+  { value: 'supplier_payment', label: 'Pago a proveedor',        isIn: false },
+  { value: 'tip',              label: 'Propina',                 isIn: true },
+  { value: 'change_added',     label: 'Cambio añadido',          isIn: true },
+  { value: 'correction',       label: 'Corrección autorizada',   isIn: true },
+] as const;
+
+type MovementTypeValue = typeof MOVEMENT_TYPE_OPTIONS[number]['value'];
+
+// Denomination definitions: bills + coins
+const BILLS = [
+  { value: 500, label: '500€' }, { value: 200, label: '200€' },
+  { value: 100, label: '100€' }, { value: 50,  label: '50€'  },
+  { value: 20,  label: '20€'  }, { value: 10,  label: '10€'  },
+  { value: 5,   label: '5€'   },
+];
+const COINS = [
+  { value: 2,    label: '2€'  }, { value: 1,    label: '1€'  },
+  { value: 0.50, label: '50¢' }, { value: 0.20, label: '20¢' },
+  { value: 0.10, label: '10¢' }, { value: 0.05, label: '5¢'  },
+  { value: 0.02, label: '2¢'  }, { value: 0.01, label: '1¢'  },
+];
+const ALL_DENOMS = [...BILLS, ...COINS];
+
+function calcDenomTotal(qtys: Record<string, number>) {
+  return ALL_DENOMS.reduce((sum, d) => sum + d.value * (qtys[String(d.value)] ?? 0), 0);
+}
+
+// ─── Denomination Grid ─────────────────────────────────────────────────────────
+interface DenomGridProps {
+  qtys: Record<string, number>;
+  onChange: (key: string, val: number) => void;
+  total: number;
+}
+
+function DenomGrid({ qtys, onChange, total }: DenomGridProps) {
+  const renderRows = (denoms: typeof BILLS) =>
+    denoms.map(d => {
+      const qty = qtys[String(d.value)] ?? 0;
+      const sub = (d.value * qty).toFixed(2);
+      return (
+        <div key={d.value} className="flex items-center gap-2 py-1.5 border-b border-border/30 last:border-0">
+          <span className="w-10 text-right font-mono font-bold text-sm shrink-0">{d.label}</span>
+          <span className="text-muted-foreground text-xs">×</span>
+          <input
+            type="number" min="0" step="1" value={qty === 0 ? '' : qty}
+            placeholder="0"
+            onChange={e => onChange(String(d.value), Math.max(0, parseInt(e.target.value) || 0))}
+            className="w-16 bg-background border border-border rounded-lg px-2 py-1 text-center text-sm font-mono focus:outline-none focus:border-primary"
+          />
+          <span className="text-xs text-muted-foreground ml-auto font-mono">
+            {parseFloat(sub) > 0 ? `${sub}€` : ''}
+          </span>
+        </div>
+      );
+    });
+
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <p className="text-xs font-black text-muted-foreground uppercase tracking-widest mb-2">Billetes</p>
+          <div className="bg-background/50 rounded-xl p-3">{renderRows(BILLS)}</div>
+        </div>
+        <div>
+          <p className="text-xs font-black text-muted-foreground uppercase tracking-widest mb-2">Monedas</p>
+          <div className="bg-background/50 rounded-xl p-3">{renderRows(COINS)}</div>
+        </div>
+      </div>
+      <div className="bg-primary/10 border border-primary/30 rounded-xl p-3 flex justify-between items-center">
+        <span className="font-black text-sm">Total arqueo</span>
+        <span className="font-mono font-black text-xl text-primary">{total.toFixed(2)}€</span>
+      </div>
+    </div>
+  );
+}
 
 // ─── Closing Wizard ────────────────────────────────────────────────────────────
 interface CloseWizardProps {
@@ -38,19 +123,24 @@ function CloseWizard({ session, summary, onClose, onClosed }: CloseWizardProps) 
   const closeSession = useCloseCashSession();
 
   const [step, setStep] = useState(1); // 1=summary, 2=count, 3=confirm
-  const [countedCash, setCountedCash] = useState('');
+  const [denomQtys, setDenomQtys] = useState<Record<string, number>>({});
+  /** True once the user has changed at least one denomination field (allows zero-cash closure) */
+  const [hasInteracted, setHasInteracted] = useState(false);
   const [discrepancyReason, setDiscrepancyReason] = useState('');
   const [closingNotes, setClosingNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
+  const countedNum = calcDenomTotal(denomQtys);
+  const countedCash = countedNum.toFixed(2);
+
   const cashSales = parseFloat(summary?.salesByMethod?.find((m: any) => m.methodCode === 'cash')?.total ?? '0');
-  const movIn  = summary?.movements?.filter((m: any) => m.movementType === 'in').reduce((a: number, m: any) => a + parseFloat(m.amount), 0) ?? 0;
-  const movOut = summary?.movements?.filter((m: any) => m.movementType === 'out').reduce((a: number, m: any) => a + parseFloat(m.amount), 0) ?? 0;
+  const movIn  = summary?.movements?.filter((m: any) => CASH_IN_TYPES.includes(m.movementType)).reduce((a: number, m: any) => a + parseFloat(m.amount), 0) ?? 0;
+  const movOut = summary?.movements?.filter((m: any) => CASH_OUT_TYPES.includes(m.movementType)).reduce((a: number, m: any) => a + parseFloat(m.amount), 0) ?? 0;
   const expectedCash = parseFloat(session.openingFloat) + cashSales + movIn - movOut;
-  const countedNum   = parseFloat(countedCash) || 0;
   const difference   = countedNum - expectedCash;
   const diffAbs      = Math.abs(difference);
-  const needsReason  = diffAbs > 5;
+  // Require discrepancy reason once the user has touched the grid and there's any diff
+  const needsReason  = hasInteracted && diffAbs > 0.001;
 
   const salesTotal = summary?.salesByMethod?.reduce((a: number, m: any) => a + parseFloat(m.total ?? '0'), 0) ?? 0;
 
@@ -60,14 +150,34 @@ function CloseWizard({ session, summary, onClose, onClosed }: CloseWizardProps) 
     invitation: 'Invitación', other: 'Otro',
   };
 
+  const handleDenomChange = (key: string, val: number) => {
+    setDenomQtys(prev => ({ ...prev, [key]: val }));
+    setHasInteracted(true);
+  };
+
   const handleConfirm = async () => {
-    if (!countedCash) { toast.error('Introduce el efectivo contado'); return; }
-    if (needsReason && !discrepancyReason.trim()) { toast.error('Explica el descuadre'); return; }
+    if (!hasInteracted) {
+      toast.error('Introduce el arqueo de efectivo'); return;
+    }
+    if (needsReason && !discrepancyReason.trim()) {
+      toast.error('Explica el descuadre'); return;
+    }
     setSubmitting(true);
+    const denominationBreakdown = Object.fromEntries(
+      Object.entries(denomQtys).filter(([, v]) => v > 0).map(([k, v]) => [k, v])
+    );
     try {
       const res = await new Promise<any>((resolve, reject) => {
         closeSession.mutate(
-          { id: session.id, data: { countedCash, discrepancyReason: discrepancyReason || undefined, closingNotes: closingNotes || undefined } },
+          {
+            id: session.id,
+            data: {
+              countedCash,
+              discrepancyReason: discrepancyReason || undefined,
+              closingNotes: closingNotes || undefined,
+              denominationBreakdown: Object.keys(denominationBreakdown).length > 0 ? denominationBreakdown : undefined,
+            }
+          },
           { onSuccess: resolve, onError: reject }
         );
       });
@@ -76,20 +186,19 @@ function CloseWizard({ session, summary, onClose, onClosed }: CloseWizardProps) 
       onClosed(res.difference ?? '0', res.id);
     } catch (e: any) {
       const msg = e?.error ?? 'Error al cerrar caja';
-      if (msg.includes('explicación')) {
-        toast.error(msg);
-        setStep(3);
-      } else {
-        toast.error(msg);
-      }
+      toast.error(msg);
+      if (msg.includes('explicación') || msg.includes('descuadre')) setStep(3);
     } finally {
       setSubmitting(false);
     }
   };
 
+  // Allow proceeding once user has touched the grid; zero-cash closure is legitimate
+  const canProceedStep2 = hasInteracted && (!needsReason || discrepancyReason.trim().length > 0);
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-      <div className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col">
+      <div className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
           <div className="flex items-center gap-3">
@@ -97,7 +206,7 @@ function CloseWizard({ session, summary, onClose, onClosed }: CloseWizardProps) 
               {step}/3
             </div>
             <h2 className="text-lg font-black">
-              {step === 1 ? 'Resumen de turno' : step === 2 ? 'Recuento de efectivo' : 'Confirmar cierre'}
+              {step === 1 ? 'Resumen de turno' : step === 2 ? 'Recuento por denominaciones' : 'Confirmar cierre'}
             </h2>
           </div>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors">
@@ -143,8 +252,8 @@ function CloseWizard({ session, summary, onClose, onClosed }: CloseWizardProps) 
                   {summary.movements.map((m: any, i: number) => (
                     <div key={i} className="flex justify-between text-sm">
                       <span className="text-muted-foreground">{m.reason}</span>
-                      <span className={`font-mono ${m.movementType === 'in' ? 'text-green-400' : 'text-destructive'}`}>
-                        {m.movementType === 'in' ? '+' : '-'}{fmt(m.amount)}€
+                      <span className={`font-mono ${CASH_IN_TYPES.includes(m.movementType) ? 'text-green-400' : 'text-destructive'}`}>
+                        {CASH_IN_TYPES.includes(m.movementType) ? '+' : '-'}{fmt(m.amount)}€
                       </span>
                     </div>
                   ))}
@@ -164,36 +273,29 @@ function CloseWizard({ session, summary, onClose, onClosed }: CloseWizardProps) 
               {session.blindClose && (
                 <div className="bg-secondary/40 rounded-xl p-4 flex items-center gap-3">
                   <EyeOff size={20} className="text-muted-foreground" />
-                  <span className="text-sm font-semibold text-muted-foreground">Cierre ciego activado — el efectivo esperado está oculto</span>
+                  <span className="text-sm font-semibold text-muted-foreground">Cierre ciego — el efectivo esperado está oculto</span>
                 </div>
               )}
 
-              <div>
-                <label className="block text-sm font-black text-muted-foreground uppercase tracking-widest mb-2">Efectivo contado (€)</label>
-                <input
-                  type="number" step="0.01" min="0" placeholder="0.00" autoFocus
-                  value={countedCash} onChange={e => setCountedCash(e.target.value)}
-                  className="w-full bg-background border-2 border-border rounded-xl px-4 py-4 text-3xl font-black font-mono text-right focus:outline-none focus:border-primary transition-colors"
-                />
-              </div>
+              <DenomGrid qtys={denomQtys} onChange={handleDenomChange} total={countedNum} />
 
-              {countedCash !== '' && (
-                <div className={`rounded-xl p-4 border-2 ${Math.abs(difference) < 0.01 ? 'border-green-500/30 bg-green-500/5' : 'border-destructive/30 bg-destructive/5'}`}>
+              {hasInteracted && (
+                <div className={`rounded-xl p-4 border-2 ${diffAbs < 0.01 ? 'border-green-500/30 bg-green-500/5' : 'border-destructive/30 bg-destructive/5'}`}>
                   <div className="flex justify-between items-center">
                     <span className="font-black">Diferencia</span>
-                    <span className={`font-mono font-black text-2xl ${Math.abs(difference) < 0.01 ? 'text-green-400' : 'text-destructive'}`}>
+                    <span className={`font-mono font-black text-2xl ${diffAbs < 0.01 ? 'text-green-400' : 'text-destructive'}`}>
                       {difference > 0 ? '+' : ''}{fmt(difference)}€
                     </span>
                   </div>
                   {needsReason && (
                     <p className="text-xs text-destructive mt-2 font-semibold">
-                      ⚠ El descuadre supera 5€. Deberás explicarlo en el siguiente paso.
+                      ⚠ Hay descuadre. Debes explicarlo antes de cerrar.
                     </p>
                   )}
                 </div>
               )}
 
-              {needsReason && countedCash !== '' && (
+              {needsReason && hasInteracted && (
                 <div>
                   <label className="block text-sm font-black text-muted-foreground uppercase tracking-widest mb-2">Explicación del descuadre *</label>
                   <textarea rows={3} value={discrepancyReason} onChange={e => setDiscrepancyReason(e.target.value)}
@@ -220,10 +322,10 @@ function CloseWizard({ session, summary, onClose, onClosed }: CloseWizardProps) 
                 <div className="flex justify-between"><span className="text-muted-foreground">Fondo inicial</span><span className="font-mono font-bold">{fmt(session.openingFloat)}€</span></div>
                 <div className="flex justify-between"><span className="text-muted-foreground">Total ventas</span><span className="font-mono font-bold text-green-400">{fmt(salesTotal)}€</span></div>
                 <div className="flex justify-between"><span className="text-muted-foreground">Efectivo esperado</span><span className="font-mono font-bold">{fmt(expectedCash)}€</span></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">Efectivo contado</span><span className="font-mono font-bold">{fmt(countedCash)}€</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Efectivo contado</span><span className="font-mono font-bold">{fmt(countedNum)}€</span></div>
                 <div className="flex justify-between border-t border-border pt-2 font-black">
                   <span>Diferencia</span>
-                  <span className={`font-mono ${Math.abs(difference) < 0.01 ? 'text-green-400' : 'text-destructive'}`}>
+                  <span className={`font-mono ${diffAbs < 0.01 ? 'text-green-400' : 'text-destructive'}`}>
                     {difference > 0 ? '+' : ''}{fmt(difference)}€
                   </span>
                 </div>
@@ -243,7 +345,7 @@ function CloseWizard({ session, summary, onClose, onClosed }: CloseWizardProps) 
           )}
           {step < 3 && (
             <button onClick={() => setStep(s => s + 1)}
-              disabled={step === 2 && (!countedCash || (needsReason && !discrepancyReason.trim()))}
+              disabled={step === 2 && !canProceedStep2}
               className="flex-1 py-3 bg-primary text-primary-foreground font-black rounded-xl transition-all hover:bg-primary/90 disabled:opacity-50">
               Continuar
             </button>
@@ -261,7 +363,13 @@ function CloseWizard({ session, summary, onClose, onClosed }: CloseWizardProps) 
 }
 
 // ─── History Tab ───────────────────────────────────────────────────────────────
-function HistoryTab({ onViewReport }: { onViewReport: (id: string) => void }) {
+interface HistoryTabProps {
+  onViewReport: (id: string) => void;
+  isAdmin: boolean;
+  onReopen: (id: string, terminalName: string) => void;
+}
+
+function HistoryTab({ onViewReport, isAdmin, onReopen }: HistoryTabProps) {
   const { data: history = [], isLoading } = useGetCashSessionHistory({
     query: { queryKey: getGetCashSessionHistoryQueryKey() }
   });
@@ -293,10 +401,19 @@ function HistoryTab({ onViewReport }: { onViewReport: (id: string) => void }) {
                 </p>
               )}
             </div>
-            <button onClick={() => onViewReport(s.id)}
-              className="px-3 py-2 bg-secondary text-foreground font-bold rounded-xl text-sm shrink-0 hover:bg-primary hover:text-primary-foreground transition-colors">
-              <ClipboardList size={16} />
-            </button>
+            <div className="flex gap-2 shrink-0">
+              {isAdmin && s.status === 'closed' && (
+                <button onClick={() => onReopen(s.id, s.terminalName)}
+                  title="Reabrir caja"
+                  className="px-3 py-2 bg-secondary text-muted-foreground font-bold rounded-xl text-sm hover:bg-amber-500/20 hover:text-amber-400 transition-colors">
+                  <RefreshCw size={16} />
+                </button>
+              )}
+              <button onClick={() => onViewReport(s.id)}
+                className="px-3 py-2 bg-secondary text-foreground font-bold rounded-xl text-sm hover:bg-primary hover:text-primary-foreground transition-colors">
+                <ClipboardList size={16} />
+              </button>
+            </div>
           </div>
         );
       })}
@@ -336,18 +453,19 @@ export default function CashSession() {
     { query: { enabled: !!session?.id, queryKey: getGetCashSessionSummaryQueryKey(session?.id || '') } }
   );
 
-  const openSession  = useOpenCashSession();
-  const addMovement  = useAddCashMovement();
+  const openSession    = useOpenCashSession();
+  const addMovement    = useAddCashMovement();
+  const reopenSession  = useReopenCashSession();
 
   // Open form state
-  const [openingFloat,  setOpeningFloat]  = useState('100');
-  const [terminalName,  setTerminalName]  = useState('Caja principal');
+  const [openingFloat,   setOpeningFloat]   = useState('100');
+  const [terminalName,   setTerminalName]   = useState('Caja principal');
   const [customTerminal, setCustomTerminal] = useState('');
-  const [blindClose,    setBlindClose]    = useState(false);
-  const [openingNotes,  setOpeningNotes]  = useState('');
+  const [blindClose,     setBlindClose]     = useState(false);
+  const [openingNotes,   setOpeningNotes]   = useState('');
 
   // Movement state
-  const [movType,   setMovType]   = useState<'in' | 'out'>('in');
+  const [movType,   setMovType]   = useState<MovementTypeValue>('in');
   const [movAmount, setMovAmount] = useState('');
   const [movReason, setMovReason] = useState('');
 
@@ -367,7 +485,7 @@ export default function CashSession() {
     );
   }
 
-  // ─── Post-close screen ────────────────────────────────────────────────────
+  // ─── Post-close screen ──────────────────────────────────────────────────────
   if (closedDiff !== null && closedSessionId) {
     const diffNum = parseFloat(closedDiff);
     const isOk = Math.abs(diffNum) < 0.01;
@@ -397,10 +515,23 @@ export default function CashSession() {
     );
   }
 
-  // ─── No session → Open form ───────────────────────────────────────────────
+  // ─── No session → Open form ─────────────────────────────────────────────────
   if (!session) {
     const finalTerminal = terminalName === '__custom' ? customTerminal : terminalName;
     const canOpen = isAdmin || isManager;
+
+    const handleReopen = (id: string, terminalName: string) => {
+      reopenSession.mutate({ id }, {
+        onSuccess: () => {
+          // Invalidate both the generic key and the terminal-scoped key
+          queryClient.invalidateQueries({ queryKey: getGetCurrentCashSessionQueryKey() });
+          queryClient.invalidateQueries({ queryKey: getGetCurrentCashSessionQueryKey({ terminal: terminalName }) });
+          queryClient.invalidateQueries({ queryKey: getGetCashSessionHistoryQueryKey() });
+          toast.success('Sesión reabierta');
+        },
+        onError: (e: any) => toast.error(e?.error ?? 'Error al reabrir'),
+      });
+    };
 
     return (
       <div className="min-h-[100dvh] flex flex-col bg-background">
@@ -419,7 +550,11 @@ export default function CashSession() {
         </header>
 
         {tab === 'history' ? (
-          <HistoryTab onViewReport={id => setLocation(`/caja/informe/${id}`)} />
+          <HistoryTab
+            onViewReport={id => setLocation(`/caja/informe/${id}`)}
+            isAdmin={isAdmin}
+            onReopen={handleReopen}
+          />
         ) : !canOpen ? (
           <div className="flex-1 flex items-center justify-center p-6 flex-col gap-4">
             <AlertCircle size={48} className="text-muted-foreground" />
@@ -496,7 +631,6 @@ export default function CashSession() {
                     { data: { openingFloat, terminalName: finalTerminal, blindClose, notes: openingNotes || undefined } },
                     {
                       onSuccess: () => {
-                        // Persist terminal identity so all subsequent queries are scoped correctly
                         localStorage.setItem('cashTerminal', finalTerminal);
                         setStoredTerminal(finalTerminal);
                         const tp = { terminal: finalTerminal };
@@ -519,14 +653,17 @@ export default function CashSession() {
     );
   }
 
-  // ─── Open session ──────────────────────────────────────────────────────────
+  // ─── Open session ────────────────────────────────────────────────────────────
+  const movTypeOption = MOVEMENT_TYPE_OPTIONS.find(o => o.value === movType)!;
+  const isMovIn = movTypeOption?.isIn ?? true;
+
   const handleAddMovement = () => {
     const amountNum = parseFloat(movAmount);
     if (!amountNum || amountNum <= 0) { toast.error('Importe inválido'); return; }
     if (movReason.length < 3)         { toast.error('Indica un motivo válido'); return; }
 
     addMovement.mutate(
-      { id: session.id, data: { movementType: movType, amount: movAmount, reason: movReason } },
+      { id: session.id, data: { movementType: movType as AddCashMovementInputMovementType, amount: movAmount, reason: movReason } },
       {
         onSuccess: () => {
           setMovAmount(''); setMovReason('');
@@ -538,9 +675,21 @@ export default function CashSession() {
     );
   };
 
+  const handleReopen = (id: string, terminalName: string) => {
+    reopenSession.mutate({ id }, {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getGetCurrentCashSessionQueryKey() });
+        queryClient.invalidateQueries({ queryKey: getGetCurrentCashSessionQueryKey({ terminal: terminalName }) });
+        queryClient.invalidateQueries({ queryKey: getGetCashSessionHistoryQueryKey() });
+        toast.success('Sesión reabierta');
+      },
+      onError: (e: any) => toast.error(e?.error ?? 'Error al reabrir'),
+    });
+  };
+
   const cashTotal = parseFloat(summary?.salesByMethod.find((m: any) => m.methodCode === 'cash')?.total ?? '0');
-  const movIn  = summary?.movements.filter((m: any) => m.movementType === 'in').reduce((a: number, m: any) => a + parseFloat(m.amount), 0) ?? 0;
-  const movOut = summary?.movements.filter((m: any) => m.movementType === 'out').reduce((a: number, m: any) => a + parseFloat(m.amount), 0) ?? 0;
+  const movIn  = summary?.movements?.filter((m: any) => CASH_IN_TYPES.includes(m.movementType)).reduce((a: number, m: any) => a + parseFloat(m.amount), 0) ?? 0;
+  const movOut = summary?.movements?.filter((m: any) => CASH_OUT_TYPES.includes(m.movementType)).reduce((a: number, m: any) => a + parseFloat(m.amount), 0) ?? 0;
   const expectedCash = parseFloat(session.openingFloat) + cashTotal + movIn - movOut;
 
   const salesTotal = summary?.salesByMethod?.reduce((a: number, m: any) => a + parseFloat(m.total ?? '0'), 0) ?? 0;
@@ -549,6 +698,12 @@ export default function CashSession() {
     cash: 'Efectivo', card: 'Tarjeta', bizum: 'Bizum',
     transfer: 'Transferencia', cheque_rest: 'Cheque restaurante',
     invitation: 'Invitación', other: 'Otro',
+  };
+
+  const MOVEMENT_DISPLAY_LABELS: Record<string, string> = {
+    in: 'Entrada de efectivo', out: 'Retirada de efectivo',
+    supplier_payment: 'Pago a proveedor', tip: 'Propina',
+    change_added: 'Cambio añadido', correction: 'Corrección autorizada',
   };
 
   return (
@@ -585,6 +740,11 @@ export default function CashSession() {
           </div>
         </div>
         <div className="flex gap-2">
+          <button onClick={() => setLocation(`/caja/x-informe/${session.id}`)}
+            title="Informe X provisional"
+            className="w-10 h-10 flex items-center justify-center rounded-lg hover:bg-amber-500/20 text-muted-foreground hover:text-amber-400 transition-colors">
+            <BarChart2 size={20} />
+          </button>
           <button onClick={() => setLocation(`/caja/informe/${session.id}`)}
             title="Ver informe Z"
             className="w-10 h-10 flex items-center justify-center rounded-lg hover:bg-secondary text-muted-foreground transition-colors">
@@ -598,7 +758,11 @@ export default function CashSession() {
       </header>
 
       {tab === 'history' ? (
-        <HistoryTab onViewReport={id => setLocation(`/caja/informe/${id}`)} />
+        <HistoryTab
+          onViewReport={id => setLocation(`/caja/informe/${id}`)}
+          isAdmin={isAdmin}
+          onReopen={handleReopen}
+        />
       ) : (
         <div className="flex-1 overflow-y-auto p-4 lg:p-8 flex flex-col lg:flex-row gap-6 max-w-7xl mx-auto w-full">
 
@@ -609,15 +773,27 @@ export default function CashSession() {
                 <Euro className="text-primary" /> Registrar Movimiento
               </h2>
 
-              <div className="flex gap-2 mb-4 p-1 bg-secondary rounded-xl">
-                <button onClick={() => setMovType('in')}
-                  className={`flex-1 py-3 rounded-lg font-bold text-sm uppercase tracking-wider transition-all flex items-center justify-center gap-2 ${movType === 'in' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground'}`}>
-                  <ArrowUpRight size={18} className={movType === 'in' ? 'text-green-500' : ''} /> Entrada
-                </button>
-                <button onClick={() => setMovType('out')}
-                  className={`flex-1 py-3 rounded-lg font-bold text-sm uppercase tracking-wider transition-all flex items-center justify-center gap-2 ${movType === 'out' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground'}`}>
-                  <ArrowDownRight size={18} className={movType === 'out' ? 'text-destructive' : ''} /> Salida
-                </button>
+              {/* Movement type selector */}
+              <div className="mb-4">
+                <label className="block text-xs font-bold text-muted-foreground uppercase tracking-widest mb-1.5 ml-1">Tipo de movimiento</label>
+                <select
+                  value={movType}
+                  onChange={e => setMovType(e.target.value as MovementTypeValue)}
+                  className="w-full bg-background border border-border rounded-xl px-4 py-3 text-sm font-bold focus:outline-none focus:border-primary transition-colors cursor-pointer"
+                >
+                  {MOVEMENT_TYPE_OPTIONS.map(opt => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex items-center gap-2 mb-4 px-3 py-2 rounded-lg bg-secondary/50">
+                <div className={`w-6 h-6 rounded flex items-center justify-center ${isMovIn ? 'bg-green-500/20 text-green-400' : 'bg-destructive/20 text-destructive'}`}>
+                  {isMovIn ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}
+                </div>
+                <span className={`text-xs font-bold ${isMovIn ? 'text-green-400' : 'text-destructive'}`}>
+                  {isMovIn ? 'Entra efectivo a la caja' : 'Sale efectivo de la caja'}
+                </span>
               </div>
 
               <div className="space-y-4">
@@ -650,19 +826,25 @@ export default function CashSession() {
                 {loadingSummary ? (
                   <div className="flex justify-center p-4"><Loader2 className="animate-spin text-muted-foreground" /></div>
                 ) : summary?.movements && summary.movements.length > 0 ? (
-                  summary.movements.map((m: any, i: number) => (
-                    <div key={i} className="bg-background border border-border rounded-xl p-3 flex justify-between items-center">
-                      <div className="flex items-center gap-3">
-                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${m.movementType === 'in' ? 'bg-green-500/10 text-green-500' : 'bg-destructive/10 text-destructive'}`}>
-                          {m.movementType === 'in' ? <ArrowUpRight size={16} /> : <ArrowDownRight size={16} />}
+                  summary.movements.map((m: any, i: number) => {
+                    const isCashIn = CASH_IN_TYPES.includes(m.movementType);
+                    return (
+                      <div key={i} className="bg-background border border-border rounded-xl p-3 flex justify-between items-center">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${isCashIn ? 'bg-green-500/10 text-green-500' : 'bg-destructive/10 text-destructive'}`}>
+                            {isCashIn ? <ArrowUpRight size={16} /> : <ArrowDownRight size={16} />}
+                          </div>
+                          <div>
+                            <span className="font-semibold text-xs text-muted-foreground">{MOVEMENT_DISPLAY_LABELS[m.movementType] ?? m.movementType}</span>
+                            <p className="font-semibold text-sm line-clamp-1">{m.reason}</p>
+                          </div>
                         </div>
-                        <span className="font-semibold text-sm line-clamp-1">{m.reason}</span>
+                        <span className={`font-mono font-bold ${isCashIn ? 'text-green-500' : 'text-destructive'}`}>
+                          {isCashIn ? '+' : '-'}{fmt(m.amount)}€
+                        </span>
                       </div>
-                      <span className={`font-mono font-bold ${m.movementType === 'in' ? 'text-green-500' : 'text-destructive'}`}>
-                        {m.movementType === 'in' ? '+' : '-'}{fmt(m.amount)}€
-                      </span>
-                    </div>
-                  ))
+                    );
+                  })
                 ) : (
                   <div className="h-full flex items-center justify-center text-muted-foreground opacity-60 text-sm font-semibold uppercase">Sin movimientos</div>
                 )}

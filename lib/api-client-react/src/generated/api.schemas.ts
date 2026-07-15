@@ -645,6 +645,10 @@ export type CashMovementMovementType = typeof CashMovementMovementType[keyof typ
 export const CashMovementMovementType = {
   in: 'in',
   out: 'out',
+  supplier_payment: 'supplier_payment',
+  tip: 'tip',
+  change_added: 'change_added',
+  correction: 'correction',
 } as const;
 
 export interface CashMovement {
@@ -682,6 +686,10 @@ export type AddCashMovementInputMovementType = typeof AddCashMovementInputMoveme
 export const AddCashMovementInputMovementType = {
   in: 'in',
   out: 'out',
+  supplier_payment: 'supplier_payment',
+  tip: 'tip',
+  change_added: 'change_added',
+  correction: 'correction',
 } as const;
 
 export interface AddCashMovementInput {
@@ -694,7 +702,11 @@ export interface CloseCashSessionInput {
   countedCash: string;
   discrepancyReason?: string;
   closingNotes?: string;
+  denominationBreakdown?: Record<string, number>;
 }
+
+// ─── X-Report (provisional, same shape as Z-Report) ───────────────────────────
+export type XReport = ZReport & { isProvisional: true };
 
 export type PaymentSummaryOrder = {
   id: string;

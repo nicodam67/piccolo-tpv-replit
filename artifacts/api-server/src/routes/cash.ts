@@ -126,13 +126,14 @@ router.post(
     const id = req.params.id as string;
     const employeeId = (req as any).user?.id as string;
     const { movementType, amount, reason } = req.body as {
-      movementType: "in" | "out";
+      movementType: "in" | "out" | "supplier_payment" | "tip" | "change_added" | "correction";
       amount: string;
       reason: string;
     };
 
-    if (!["in", "out"].includes(movementType)) {
-      res.status(400).json({ error: "movementType debe ser 'in' o 'out'" });
+    const VALID_MOVEMENT_TYPES = ["in", "out", "supplier_payment", "tip", "change_added", "correction"];
+    if (!VALID_MOVEMENT_TYPES.includes(movementType)) {
+      res.status(400).json({ error: "movementType no válido" });
       return;
     }
     if (!reason?.trim()) {
@@ -156,7 +157,7 @@ router.post(
       .returning();
 
     await logDocumentAction({
-      action: movementType === "in" ? "cash_in" : "cash_out",
+      action: "cash_movement",
       documentType: "ticket",
       documentId: id,
       employeeId,
@@ -178,10 +179,11 @@ router.post(
   async (req, res): Promise<void> => {
     const id = req.params.id as string;
     const employeeId = (req as any).user?.id as string;
-    const { countedCash, discrepancyReason, closingNotes } = req.body as {
+    const { countedCash, discrepancyReason, closingNotes, denominationBreakdown } = req.body as {
       countedCash: string;
       discrepancyReason?: string;
       closingNotes?: string;
+      denominationBreakdown?: Record<string, number>;
     };
 
     if (!countedCash) {
@@ -229,15 +231,17 @@ router.post(
       .where(eq(cashMovementsTable.cashSessionId, id))
       .groupBy(cashMovementsTable.movementType);
 
-    const movIn  = parseFloat(movementsResult.find((m) => m.type === "in")?.total  ?? "0");
-    const movOut = parseFloat(movementsResult.find((m) => m.type === "out")?.total ?? "0");
+    const CASH_IN_TYPES = ["in", "tip", "change_added", "correction"];
+    const CASH_OUT_TYPES = ["out", "supplier_payment"];
+    const movIn  = movementsResult.filter((m) => CASH_IN_TYPES.includes(m.type!)).reduce((a, m) => a + parseFloat(m.total ?? "0"), 0);
+    const movOut = movementsResult.filter((m) => CASH_OUT_TYPES.includes(m.type!)).reduce((a, m) => a + parseFloat(m.total ?? "0"), 0);
 
     const expectedCash = (parseFloat(session.openingFloat) + cashSales + movIn - movOut).toFixed(2);
     const difference   = (parseFloat(countedCash) - parseFloat(expectedCash)).toFixed(2);
 
-    // Require discrepancy reason if |diff| > 5€
+    // Require discrepancy reason for any non-zero difference
     const diffAbs = Math.abs(parseFloat(difference));
-    if (diffAbs > 5 && !discrepancyReason?.trim()) {
+    if (diffAbs > 0.001 && !discrepancyReason?.trim()) {
       res.status(422).json({
         error: "Se requiere explicación para el descuadre",
         expectedCash,
@@ -256,6 +260,7 @@ router.post(
         difference,
         discrepancyReason: discrepancyReason ?? null,
         closingNotes: closingNotes ?? null,
+        denominationBreakdown: denominationBreakdown ?? null,
       })
       .where(eq(cashSessionsTable.id, id))
       .returning();
@@ -406,8 +411,10 @@ router.get(
     // Aggregated totals
     const totalSales = salesByMethod.reduce((a, m) => a + parseFloat(m.total ?? "0"), 0);
     const totalTips  = tips.reduce((a, t) => a + parseFloat(t.amount), 0);
-    const movIn  = movements.filter((m) => m.movementType === "in").reduce((a, m) => a + parseFloat(m.amount), 0);
-    const movOut = movements.filter((m) => m.movementType === "out").reduce((a, m) => a + parseFloat(m.amount), 0);
+    const CASH_IN_TYPES_R = ["in", "tip", "change_added", "correction"];
+    const CASH_OUT_TYPES_R = ["out", "supplier_payment"];
+    const movIn  = movements.filter((m) => CASH_IN_TYPES_R.includes(m.movementType)).reduce((a, m) => a + parseFloat(m.amount), 0);
+    const movOut = movements.filter((m) => CASH_OUT_TYPES_R.includes(m.movementType)).reduce((a, m) => a + parseFloat(m.amount), 0);
 
     // Tax breakdown: aggregate from tickets whose cashSessionId matches this session.
     // For tickets issued before the cashSessionId column was added (null), fall back
@@ -462,6 +469,224 @@ router.get(
       paymentsCount: paymentsInSession.length,
       taxBreakdown,
     });
+  },
+);
+
+// GET /cash-sessions/:id/x-report — provisional report (works on open sessions, no state change)
+router.get(
+  "/cash-sessions/:id/x-report",
+  requireAuth,
+  requireRole(...CASH_MANAGER_ROLES),
+  async (req, res): Promise<void> => {
+    const id = req.params.id as string;
+
+    const [session] = await db
+      .select()
+      .from(cashSessionsTable)
+      .where(eq(cashSessionsTable.id, id));
+
+    if (!session) {
+      res.status(404).json({ error: "Sesión no encontrada" });
+      return;
+    }
+
+    const [emp] = await db
+      .select({ name: employeesTable.name })
+      .from(employeesTable)
+      .where(eq(employeesTable.id, session.employeeId));
+
+    const salesByMethod = await db
+      .select({
+        methodCode: paymentMethodsTable.code,
+        methodName: paymentMethodsTable.name,
+        total: sum(paymentsTable.amount),
+      })
+      .from(paymentsTable)
+      .innerJoin(paymentMethodsTable, eq(paymentsTable.paymentMethodId, paymentMethodsTable.id))
+      .where(and(eq(paymentsTable.cashSessionId, id), eq(paymentsTable.status, "completed")))
+      .groupBy(paymentMethodsTable.code, paymentMethodsTable.name);
+
+    const movements = await db
+      .select({
+        id: cashMovementsTable.id,
+        movementType: cashMovementsTable.movementType,
+        amount: cashMovementsTable.amount,
+        reason: cashMovementsTable.reason,
+        createdAt: cashMovementsTable.createdAt,
+        employeeName: employeesTable.name,
+      })
+      .from(cashMovementsTable)
+      .leftJoin(employeesTable, eq(cashMovementsTable.employeeId, employeesTable.id))
+      .where(eq(cashMovementsTable.cashSessionId, id))
+      .orderBy(cashMovementsTable.createdAt);
+
+    const tips = await db
+      .select({ amount: tipsTable.amount, method: tipsTable.method })
+      .from(tipsTable)
+      .where(eq(tipsTable.cashSessionId, id));
+
+    const paymentsInSession = await db
+      .select()
+      .from(paymentsTable)
+      .where(and(eq(paymentsTable.cashSessionId, id), eq(paymentsTable.status, "completed")));
+
+    const voids = await db
+      .select({
+        id: paymentVoidsTable.id,
+        reason: paymentVoidsTable.reason,
+        createdAt: paymentVoidsTable.createdAt,
+        originalPaymentId: paymentVoidsTable.originalPaymentId,
+        employeeName: employeesTable.name,
+      })
+      .from(paymentVoidsTable)
+      .leftJoin(employeesTable, eq(paymentVoidsTable.authorizedBy, employeesTable.id))
+      .where(eq(paymentVoidsTable.cashSessionId, id));
+
+    const totalSales = salesByMethod.reduce((a, m) => a + parseFloat(m.total ?? "0"), 0);
+    const totalTips  = tips.reduce((a, t) => a + parseFloat(t.amount), 0);
+    const CASH_IN_X  = ["in", "tip", "change_added", "correction"];
+    const CASH_OUT_X = ["out", "supplier_payment"];
+    const movInX  = movements.filter((m) => CASH_IN_X.includes(m.movementType)).reduce((a, m) => a + parseFloat(m.amount), 0);
+    const movOutX = movements.filter((m) => CASH_OUT_X.includes(m.movementType)).reduce((a, m) => a + parseFloat(m.amount), 0);
+
+    const orderIds = [...new Set(paymentsInSession.map((p) => p.orderId))];
+    let taxBreakdown: TaxBreakdownItem[] = [];
+    {
+      const ticketWhere =
+        orderIds.length > 0
+          ? or(
+              eq(ticketsTable.cashSessionId, id),
+              and(isNull(ticketsTable.cashSessionId), inArray(ticketsTable.orderId, orderIds)),
+            )
+          : eq(ticketsTable.cashSessionId, id);
+      const sessionTickets = await db
+        .select({ taxBreakdown: ticketsTable.taxBreakdown })
+        .from(ticketsTable)
+        .where(ticketWhere);
+
+      const byRate = new Map<number, { base: number; cuota: number }>();
+      for (const row of sessionTickets) {
+        const breakdown = row.taxBreakdown as TaxBreakdownItem[] | null;
+        if (!breakdown) continue;
+        for (const b of breakdown) {
+          const entry = byRate.get(b.rate) ?? { base: 0, cuota: 0 };
+          entry.base += parseFloat(b.base);
+          entry.cuota += parseFloat(b.cuota);
+          byRate.set(b.rate, entry);
+        }
+      }
+      taxBreakdown = Array.from(byRate.entries())
+        .sort((a, b) => a[0] - b[0])
+        .map(([rate, { base, cuota }]) => ({
+          rate,
+          base: base.toFixed(2),
+          cuota: cuota.toFixed(2),
+        }));
+    }
+
+    // Compute expected cash so it can appear in the provisional report
+    const cashMethodRow = await db
+      .select({ id: paymentMethodsTable.id })
+      .from(paymentMethodsTable)
+      .where(eq(paymentMethodsTable.code, "cash"))
+      .limit(1);
+    const cashMethodId = cashMethodRow[0]?.id;
+    const cashSalesResult = cashMethodId
+      ? await db
+          .select({ total: sum(paymentsTable.amount) })
+          .from(paymentsTable)
+          .where(and(eq(paymentsTable.cashSessionId, id), eq(paymentsTable.paymentMethodId, cashMethodId), eq(paymentsTable.status, "completed")))
+      : [{ total: "0" }];
+    const cashSales = parseFloat(cashSalesResult[0]?.total ?? "0");
+    const expectedCash = (parseFloat(session.openingFloat) + cashSales + movInX - movOutX).toFixed(2);
+
+    res.json({
+      session: { ...session, employeeName: emp?.name ?? "", expectedCash },
+      salesByMethod,
+      movements,
+      tips,
+      voids,
+      totalSales: totalSales.toFixed(2),
+      totalTips: totalTips.toFixed(2),
+      movIn: movInX.toFixed(2),
+      movOut: movOutX.toFixed(2),
+      paymentsCount: paymentsInSession.length,
+      taxBreakdown,
+      isProvisional: true,
+    });
+  },
+);
+
+// POST /cash-sessions/:id/reopen — admin only
+router.post(
+  "/cash-sessions/:id/reopen",
+  requireAuth,
+  requireRole("admin"),
+  async (req, res): Promise<void> => {
+    const id = req.params.id as string;
+    const employeeId = (req as any).user?.id as string;
+
+    const [session] = await db
+      .select()
+      .from(cashSessionsTable)
+      .where(eq(cashSessionsTable.id, id));
+
+    if (!session) {
+      res.status(404).json({ error: "Sesión no encontrada" });
+      return;
+    }
+    if (session.status === "open") {
+      res.status(409).json({ error: "La sesión ya está abierta" });
+      return;
+    }
+
+    // Guard: block reopen if another session on the same terminal is already open
+    const [conflictingSession] = await db
+      .select({ id: cashSessionsTable.id })
+      .from(cashSessionsTable)
+      .where(
+        and(
+          eq(cashSessionsTable.terminalName, session.terminalName),
+          eq(cashSessionsTable.status, "open"),
+        ),
+      )
+      .limit(1);
+
+    if (conflictingSession) {
+      res.status(409).json({
+        error: `El terminal "${session.terminalName}" ya tiene una sesión abierta. Ciérrala antes de reabrir esta.`,
+      });
+      return;
+    }
+
+    // Clear all closure-derived fields to avoid stale state
+    const [reopened] = await db
+      .update(cashSessionsTable)
+      .set({
+        status: "open",
+        closedAt: null,
+        countedCash: null,
+        difference: null,
+        expectedCash: null,
+        discrepancyReason: null,
+        closingNotes: null,
+        denominationBreakdown: null,
+      })
+      .where(eq(cashSessionsTable.id, id))
+      .returning();
+
+    await logDocumentAction({
+      action: "reopen_cash_session",
+      documentType: "ticket",
+      documentId: id,
+      employeeId,
+      employeeName: (req as any).user?.name ?? "",
+      terminal: session.terminalName,
+      amount: "0",
+      details: `Reapertura de sesión en ${session.terminalName}`,
+    });
+
+    res.json(reopened);
   },
 );
 
