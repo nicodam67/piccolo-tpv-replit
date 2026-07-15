@@ -20,6 +20,7 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  ImportResult,
   Ingredient,
   CreateIngredientInput,
   UpdateIngredientInput,
@@ -4147,6 +4148,55 @@ export const getDeleteAdminModifierMutationOptions = <TError = ErrorType<ErrorRe
   return { mutationFn, ...mutationOptions };
 };
 export const useDeleteAdminModifier = <TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof deleteAdminModifier>>, TError, { id: string }, TContext>; request?: SecondParameter<typeof customFetch> }): UseMutationResult<Awaited<ReturnType<typeof deleteAdminModifier>>, TError, { id: string }, TContext> => useMutation(getDeleteAdminModifierMutationOptions(options));
+
+// ============================================================
+// PRODUCT EXPORT / IMPORT
+// ============================================================
+
+export const getExportProductsUrl = (format: 'csv' | 'xlsx') => `/api/admin/products/export?format=${format}`;
+
+/** Trigger an authenticated file download for the product catalogue export. */
+export async function downloadProductExport(format: 'csv' | 'xlsx'): Promise<void> {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+  const res = await fetch(getExportProductsUrl(format), {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) throw new Error(`Export failed: ${res.status}`);
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `productos_${new Date().toISOString().slice(0, 10)}.${format}`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+export const getImportProductsUrl = () => `/api/admin/products/import`;
+export const importProducts = async (file: File, options?: RequestInit): Promise<ImportResult> => {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+  const form = new FormData();
+  form.append('file', file);
+  const res = await fetch(getImportProductsUrl(), {
+    method: 'POST',
+    headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(options?.headers as Record<string, string> | undefined) },
+    body: form,
+    signal: options?.signal,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Import failed' }));
+    throw new Error(err.error ?? 'Import failed');
+  }
+  return res.json();
+};
+export const getImportProductsMutationOptions = <TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof importProducts>>, TError, { file: File }, TContext> }): UseMutationOptions<Awaited<ReturnType<typeof importProducts>>, TError, { file: File }, TContext> => {
+  const mutationKey = ['importProducts'];
+  const { mutation: mutationOptions } = options ? (options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ? options : { ...options, mutation: { ...options.mutation, mutationKey } }) : { mutation: { mutationKey } };
+  const mutationFn: MutationFunction<Awaited<ReturnType<typeof importProducts>>, { file: File }> = (props) => importProducts(props.file);
+  return { mutationFn, ...mutationOptions };
+};
+export const useImportProducts = <TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof importProducts>>, TError, { file: File }, TContext> }): UseMutationResult<Awaited<ReturnType<typeof importProducts>>, TError, { file: File }, TContext> => useMutation(getImportProductsMutationOptions(options));
 
 // ============================================================
 // ADMIN INGREDIENTS & STOCK

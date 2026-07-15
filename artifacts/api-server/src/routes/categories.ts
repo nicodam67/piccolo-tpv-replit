@@ -87,6 +87,64 @@ router.get("/categories/:categoryId/products", requireAuth, async (req, res): Pr
   );
 });
 
+// ── Public QR menu — no auth required ────────────────────────────────────────
+
+router.get("/public/menu", async (_req, res): Promise<void> => {
+  const categories = await db
+    .select({ id: categoriesTable.id, name: categoriesTable.name, icon: categoriesTable.icon, color: categoriesTable.color, sortOrder: categoriesTable.sortOrder })
+    .from(categoriesTable)
+    .where(eq(categoriesTable.active, true))
+    .orderBy(asc(categoriesTable.sortOrder));
+
+  const allProducts = await db
+    .select({
+      id: productsTable.id,
+      categoryId: productsTable.categoryId,
+      name: productsTable.name,
+      description: productsTable.description,
+      price: productsTable.price,
+      allergens: productsTable.allergens,
+      imageUrl: productsTable.imageUrl,
+      outOfStock: productsTable.outOfStock,
+    })
+    .from(productsTable)
+    .where(and(eq(productsTable.active, true), eq(productsTable.qrVisible, true)))
+    .orderBy(asc(productsTable.sortOrder), asc(productsTable.name));
+
+  const productIds = allProducts.map((p) => p.id);
+  const formats = productIds.length
+    ? await db
+        .select({ productId: productFormatsTable.productId, id: productFormatsTable.id, name: productFormatsTable.name, price: productFormatsTable.price })
+        .from(productFormatsTable)
+        .where(and(inArray(productFormatsTable.productId, productIds), eq(productFormatsTable.active, true)))
+        .orderBy(asc(productFormatsTable.sortOrder))
+    : [];
+
+  const formatsByProduct = new Map<string, typeof formats>();
+  for (const f of formats) {
+    if (!formatsByProduct.has(f.productId)) formatsByProduct.set(f.productId, []);
+    formatsByProduct.get(f.productId)!.push(f);
+  }
+
+  const productsByCategory = new Map<string, typeof allProducts>();
+  for (const p of allProducts) {
+    if (!productsByCategory.has(p.categoryId)) productsByCategory.set(p.categoryId, []);
+    productsByCategory.get(p.categoryId)!.push(p);
+  }
+
+  res.json(
+    categories
+      .filter((c) => (productsByCategory.get(c.id) ?? []).length > 0)
+      .map((c) => ({
+        ...c,
+        products: (productsByCategory.get(c.id) ?? []).map((p) => ({
+          ...p,
+          formats: formatsByProduct.get(p.id) ?? [],
+        })),
+      }))
+  );
+});
+
 // ── Admin category routes ─────────────────────────────────────────────────────
 
 // GET /admin/categories — all categories with subcategories

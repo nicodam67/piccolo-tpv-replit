@@ -31,6 +31,30 @@ import {
   type ModifierGroup,
 } from '@workspace/api-client-react';
 import { EditItemModal } from '../components/EditItemModal';
+import { EU_ALLERGENS, parseAllergens } from '../lib/allergens';
+
+// ── Allergen chips — small colored pills per allergen code ────────────────────
+function AllergenChips({ allergens }: { allergens: string }) {
+  const codes = parseAllergens(allergens);
+  if (!codes.length) return null;
+  return (
+    <>
+      {codes.map((code) => {
+        const a = EU_ALLERGENS.find(x => x.code === code)!;
+        return (
+          <span
+            key={code}
+            title={a.label}
+            className="font-black px-1 py-0.5 rounded text-[9px] leading-none"
+            style={{ color: a.color, background: a.bg, border: `1px solid ${a.color}40` }}
+          >
+            {a.short}
+          </span>
+        );
+      })}
+    </>
+  );
+}
 
 const TAP_SLOP = 8;
 
@@ -755,9 +779,7 @@ export default function OrderPage() {
                           <span className="text-[9px] font-black uppercase tracking-wider bg-secondary text-muted-foreground px-1.5 py-0.5 rounded">+Mod</span>
                         )}
                         {allergens && (
-                          <span className="text-[9px] font-black uppercase tracking-wider bg-amber-500/10 text-amber-400 border border-amber-500/20 px-1.5 py-0.5 rounded flex items-center gap-0.5">
-                            <AlertTriangle size={9} />Alerg
-                          </span>
+                          <AllergenChips allergens={allergens} />
                         )}
                       </div>
                       <div className="flex w-full justify-between items-center">

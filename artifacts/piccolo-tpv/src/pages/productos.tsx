@@ -18,6 +18,8 @@ import {
   useUpdateRecipeLine,
   useDeleteRecipeLine,
   useGetAdminIngredients,
+  useImportProducts,
+  downloadProductExport,
   getGetAdminProductsQueryKey,
   getGetProductRecipeQueryKey,
 } from '@workspace/api-client-react';
@@ -26,7 +28,7 @@ import {
   ArrowLeft, Package, Plus, Search, X, Check, Pencil, Trash2,
   ChevronRight, Eye, EyeOff, Tag, Sliders, ImageIcon, Save,
   ToggleLeft, ToggleRight, CircleOff, CircleCheck,
-  FlaskConical, TrendingUp,
+  FlaskConical, TrendingUp, Download, Upload, FileDown, FileUp,
 } from 'lucide-react';
 
 const TAX_RATES = [4, 10, 21] as const;
@@ -724,6 +726,7 @@ function RecipeLineRow({
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function ProductosPage() {
   const [, setLocation] = useLocation();
+  const qc = useQueryClient();
   const { data: products = [], isLoading } = useGetAdminProducts({});
   const { data: categories = [] } = useGetAdminCategories();
   const { data: modifierGroups = [] } = useGetAdminModifierGroups();
@@ -732,6 +735,7 @@ export default function ProductosPage() {
   const [filterCat, setFilterCat] = useState('');
   const [showArchived, setShowArchived] = useState(false);
   const [editingProduct, setEditingProduct] = useState<AdminProduct | null | 'new'>(null);
+  const [showImportExport, setShowImportExport] = useState(false);
 
   const filtered = products.filter((p) => {
     if (!showArchived && !p.active) return false;
@@ -757,7 +761,14 @@ export default function ProductosPage() {
           <h1 className="font-black text-base leading-tight">Productos</h1>
           <p className="text-xs text-muted-foreground leading-none">{products.filter((p) => p.active).length} activos</p>
         </div>
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-2">
+          <button
+            onClick={() => setShowImportExport(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-secondary text-foreground text-sm font-semibold hover:bg-secondary/80 transition-colors border border-border"
+            title="Importar / Exportar"
+          >
+            <FileDown size={15} /> <span className="hidden sm:inline">Importar / Exportar</span>
+          </button>
           <button
             onClick={() => setEditingProduct('new')}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors"
@@ -819,6 +830,151 @@ export default function ProductosPage() {
           onDelete={() => setEditingProduct(null)}
         />
       )}
+
+      {/* Import / Export sheet */}
+      {showImportExport && (
+        <ImportExportSheet
+          onClose={() => setShowImportExport(false)}
+          onImportDone={() => qc.invalidateQueries({ queryKey: getGetAdminProductsQueryKey() })}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── Import / Export sheet ─────────────────────────────────────────────────────
+function ImportExportSheet({ onClose, onImportDone }: { onClose: () => void; onImportDone: () => void }) {
+  const importMut = useImportProducts();
+  const [file, setFile] = useState<File | null>(null);
+  const [result, setResult] = useState<{ imported: number; skipped: number; errors: string[] } | null>(null);
+  const [exporting, setExporting] = useState<'csv' | 'xlsx' | null>(null);
+
+  const handleExport = async (fmt: 'csv' | 'xlsx') => {
+    setExporting(fmt);
+    try {
+      await downloadProductExport(fmt);
+    } catch { toast.error('Error al exportar'); }
+    finally { setExporting(null); }
+  };
+
+  const handleImport = async () => {
+    if (!file) { toast.error('Selecciona un archivo primero'); return; }
+    try {
+      const res = await importMut.mutateAsync({ file });
+      setResult(res);
+      onImportDone();
+      toast.success(`${res.imported} productos importados`);
+    } catch (e: any) {
+      toast.error(e?.message ?? 'Error al importar');
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
+      <div
+        className="w-full sm:max-w-md max-h-[85vh] flex flex-col bg-card border border-border rounded-t-2xl sm:rounded-2xl overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center gap-3 px-4 py-3 border-b border-border shrink-0">
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-secondary transition-colors">
+            <X size={16} />
+          </button>
+          <h2 className="font-black text-base flex-1">Importar / Exportar</h2>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4 space-y-5">
+          {/* Export */}
+          <section>
+            <p className="text-xs font-black text-muted-foreground uppercase tracking-wide mb-2">Exportar catálogo</p>
+            <p className="text-xs text-muted-foreground mb-3">
+              Descarga todos los productos con nombre, categoría, precio, coste, IVA y alérgenos.
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => handleExport('csv')}
+                disabled={!!exporting}
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border border-border bg-secondary text-sm font-semibold hover:bg-secondary/80 disabled:opacity-60 transition-colors"
+              >
+                <Download size={14} />
+                {exporting === 'csv' ? 'Descargando…' : 'CSV'}
+              </button>
+              <button
+                onClick={() => handleExport('xlsx')}
+                disabled={!!exporting}
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border border-border bg-secondary text-sm font-semibold hover:bg-secondary/80 disabled:opacity-60 transition-colors"
+              >
+                <Download size={14} />
+                {exporting === 'xlsx' ? 'Descargando…' : 'Excel (.xlsx)'}
+              </button>
+            </div>
+          </section>
+
+          <div className="border-t border-border" />
+
+          {/* Import */}
+          <section>
+            <p className="text-xs font-black text-muted-foreground uppercase tracking-wide mb-2">Importar desde archivo</p>
+            <p className="text-xs text-muted-foreground mb-3">
+              Sube un CSV o Excel (.xlsx) con las columnas: <span className="font-bold text-foreground">nombre</span>, <span className="font-bold text-foreground">precio</span> (obligatorias) y opcionalmente: codigo, categoria, coste, iva, zona_prep, alergenos.
+            </p>
+
+            {/* File picker */}
+            <label className="flex flex-col items-center justify-center gap-2 w-full py-6 rounded-xl border-2 border-dashed border-border cursor-pointer hover:border-primary/40 hover:bg-primary/5 transition-colors">
+              <Upload size={20} className="text-muted-foreground" />
+              <span className="text-sm text-muted-foreground">
+                {file ? file.name : 'Seleccionar archivo CSV o XLSX'}
+              </span>
+              <input
+                type="file"
+                accept=".csv,.xlsx,.xls"
+                className="sr-only"
+                onChange={(e) => { setFile(e.target.files?.[0] ?? null); setResult(null); }}
+              />
+            </label>
+
+            {file && !result && (
+              <button
+                onClick={handleImport}
+                disabled={importMut.isPending}
+                className="mt-3 w-full py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-bold hover:bg-primary/90 disabled:opacity-60 transition-colors flex items-center justify-center gap-2"
+              >
+                <FileUp size={14} />
+                {importMut.isPending ? 'Importando…' : 'Importar productos'}
+              </button>
+            )}
+
+            {/* Result summary */}
+            {result && (
+              <div className="mt-3 rounded-xl border border-border bg-secondary/30 p-3 space-y-2">
+                <div className="flex items-center gap-4">
+                  <div className="text-center">
+                    <p className="text-2xl font-black text-green-400">{result.imported}</p>
+                    <p className="text-[10px] text-muted-foreground font-bold uppercase">Importados</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-2xl font-black text-amber-400">{result.skipped}</p>
+                    <p className="text-[10px] text-muted-foreground font-bold uppercase">Omitidos</p>
+                  </div>
+                </div>
+                {result.errors.length > 0 && (
+                  <div className="rounded-lg bg-amber-500/10 border border-amber-500/20 p-2 max-h-32 overflow-y-auto">
+                    {result.errors.map((e, i) => (
+                      <p key={i} className="text-[11px] text-amber-400 leading-relaxed">{e}</p>
+                    ))}
+                  </div>
+                )}
+                <button
+                  onClick={() => { setFile(null); setResult(null); }}
+                  className="w-full py-2 rounded-lg bg-secondary text-xs font-semibold text-muted-foreground hover:text-foreground"
+                >
+                  Nueva importación
+                </button>
+              </div>
+            )}
+          </section>
+        </div>
+      </div>
     </div>
   );
 }

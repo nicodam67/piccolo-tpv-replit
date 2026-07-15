@@ -22,6 +22,28 @@ function computeLineCost(
   return cost * qty * (1 + waste / 100);
 }
 
+// Helper: recompute and persist product allergens from its recipe ingredients.
+// Reads all current recipe lines for the product, unions ingredient allergenTags,
+// and writes the comma-separated result back to productsTable.allergens.
+async function syncProductAllergens(productId: string): Promise<void> {
+  const lines = await db
+    .select({ allergenTags: ingredientsTable.allergenTags })
+    .from(recipeItemsTable)
+    .innerJoin(ingredientsTable, eq(recipeItemsTable.ingredientId, ingredientsTable.id))
+    .where(eq(recipeItemsTable.productId, productId));
+
+  const allergenSet = new Set<string>();
+  for (const line of lines) {
+    const tags = Array.isArray(line.allergenTags) ? line.allergenTags as string[] : [];
+    for (const tag of tags) allergenSet.add(tag);
+  }
+
+  await db
+    .update(productsTable)
+    .set({ allergens: Array.from(allergenSet).sort().join(",") })
+    .where(eq(productsTable.id, productId));
+}
+
 // ── GET /admin/products/:productId/recipe ─────────────────────────────────────
 router.get("/admin/products/:productId/recipe", requireAuth, requireRole("admin"), async (req, res): Promise<void> => {
   const productId = req.params.productId as string;
@@ -93,6 +115,9 @@ router.post("/admin/products/:productId/recipe/lines", requireAuth, requireRole(
     wastePercent: String(wastePercent),
   }).returning();
 
+  // Sync allergens after adding a new ingredient to the recipe
+  await syncProductAllergens(productId);
+
   const lineCost = computeLineCost(ingredient.purchaseCost, line.quantity, line.wastePercent);
   res.status(201).json({
     ...line,
@@ -127,6 +152,11 @@ router.patch("/admin/recipe-lines/:lineId", requireAuth, requireRole("admin"), a
   const [ingredient] = await db.select().from(ingredientsTable).where(eq(ingredientsTable.id, effectiveIngredientId));
   const lineCost = computeLineCost(ingredient.purchaseCost, updated.quantity, updated.wastePercent);
 
+  // Sync allergens after ingredient change (ingredient swap may change allergen set)
+  if (ingredientId != null) {
+    await syncProductAllergens(existing.productId);
+  }
+
   res.json({
     ...updated,
     ingredientName: ingredient.name,
@@ -139,7 +169,14 @@ router.patch("/admin/recipe-lines/:lineId", requireAuth, requireRole("admin"), a
 // ── DELETE /admin/recipe-lines/:lineId ───────────────────────────────────────
 router.delete("/admin/recipe-lines/:lineId", requireAuth, requireRole("admin"), async (req, res): Promise<void> => {
   const lineId = req.params.lineId as string;
+
+  // Fetch productId before deletion so we can sync allergens afterwards
+  const [line] = await db.select({ productId: recipeItemsTable.productId }).from(recipeItemsTable).where(eq(recipeItemsTable.id, lineId));
   await db.delete(recipeItemsTable).where(eq(recipeItemsTable.id, lineId));
+
+  // Sync allergens after removal (union may shrink)
+  if (line) await syncProductAllergens(line.productId);
+
   res.json({ ok: true });
 });
 
@@ -167,6 +204,9 @@ router.put("/admin/products/:productId/recipe", requireAuth, requireRole("admin"
       }
     }
   });
+
+  // Sync allergens from fresh recipe set
+  await syncProductAllergens(productId);
 
   // Return the full recipe after replacement
   const lines2 = await db

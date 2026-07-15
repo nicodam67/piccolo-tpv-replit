@@ -1146,6 +1146,12 @@ export interface VoidPaymentInput {
 
 // ─── Ingredients & stock ──────────────────────────────────────────────────────
 
+export interface ImportResult {
+  imported: number;
+  skipped: number;
+  errors: string[];
+}
+
 export interface Ingredient {
   id: string;
   name: string;
