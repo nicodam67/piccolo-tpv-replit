@@ -285,13 +285,21 @@ export default function Tables() {
     const newZoom = persistZoom(zoom + delta);
     if (!el) return;
     const { width: cw, height: ch } = el.getBoundingClientRect();
-    // Viewport centre in canvas-space coordinates (at the *old* zoom level)
     const oldZoom = zoom;
-    const cx = (el.scrollLeft + cw / 2) / oldZoom;
-    const cy = (el.scrollTop  + ch / 2) / oldZoom;
+    // When the canvas is smaller than the viewport it is centred via flex —
+    // account for that offset so the canvas-space point under the viewport
+    // centre is computed correctly.
+    const oldOffsetX = Math.max(0, (cw - CANVAS_W * oldZoom) / 2);
+    const oldOffsetY = Math.max(0, (ch - CANVAS_H * oldZoom) / 2);
+    // Viewport centre in canvas-space coordinates (at the *old* zoom level)
+    const cx = (el.scrollLeft + cw / 2 - oldOffsetX) / oldZoom;
+    const cy = (el.scrollTop  + ch / 2 - oldOffsetY) / oldZoom;
+    // Centering offsets at the new zoom level
+    const newOffsetX = Math.max(0, (cw - CANVAS_W * newZoom) / 2);
+    const newOffsetY = Math.max(0, (ch - CANVAS_H * newZoom) / 2);
     // Reposition scroll so the same canvas point stays centred after zoom
-    el.scrollLeft = cx * newZoom - cw / 2;
-    el.scrollTop  = cy * newZoom - ch / 2;
+    el.scrollLeft = cx * newZoom - cw / 2 + newOffsetX;
+    el.scrollTop  = cy * newZoom - ch / 2 + newOffsetY;
   }, [zoom, persistZoom]);
 
   const handleZoomIn  = () => zoomAroundCenter(+ZOOM_STEP);
@@ -303,9 +311,15 @@ export default function Tables() {
     const { width: cw, height: ch } = el.getBoundingClientRect();
     const fitZoom = Math.min(cw / CANVAS_W, ch / CANVAS_H) * 0.95;
     persistZoom(fitZoom);
-    // Reset scroll so the whole canvas is visible from the top-left
-    el.scrollLeft = 0;
-    el.scrollTop  = 0;
+    // Reset scroll via rAF so it runs after React re-renders the canvas at the
+    // new zoom level. At fit zoom the canvas is always smaller than the viewport,
+    // so (0,0) is the correct scroll — the flex centering wrapper handles the
+    // visual centering via CSS.
+    requestAnimationFrame(() => {
+      if (!canvasContainerRef.current) return;
+      canvasContainerRef.current.scrollLeft = 0;
+      canvasContainerRef.current.scrollTop  = 0;
+    });
   }, [persistZoom]);
 
   // Pinch-to-zoom — non-passive so we can preventDefault and block scroll
@@ -316,6 +330,8 @@ export default function Tables() {
     canvasPoint: { x: number; y: number };
     /** Pinch midpoint position relative to the container's top-left edge */
     midScreen: { x: number; y: number };
+    /** Container viewport size captured at gesture start for offset maths */
+    containerSize: { w: number; h: number };
   } | null>(null);
   const zoomRef = useRef(zoom);
   useEffect(() => { zoomRef.current = zoom; }, [zoom]);
@@ -361,14 +377,19 @@ export default function Tables() {
         const relX = midX - rect.left;
         const relY = midY - rect.top;
         const z = zoomRef.current;
+        // When canvas < viewport it is flex-centred — subtract that offset so
+        // we get the correct canvas-space coordinate under the pinch midpoint.
+        const offsetX = Math.max(0, (rect.width  - CANVAS_W * z) / 2);
+        const offsetY = Math.max(0, (rect.height - CANVAS_H * z) / 2);
         // Canvas coordinates under the midpoint (inverse of scale+scroll transform)
-        const cx = (el.scrollLeft + relX) / z;
-        const cy = (el.scrollTop + relY) / z;
+        const cx = (el.scrollLeft + relX - offsetX) / z;
+        const cy = (el.scrollTop  + relY - offsetY) / z;
         pinchRef.current = {
           startDist: dist(e.touches),
           startZoom: z,
           canvasPoint: { x: cx, y: cy },
           midScreen: { x: relX, y: relY },
+          containerSize: { w: rect.width, h: rect.height },
         };
       }
     }
@@ -394,10 +415,13 @@ export default function Tables() {
         const rawZoom = pinchRef.current.startZoom * scale;
         // Clamp (mirror persistZoom logic so scroll uses the final value)
         const newZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, parseFloat(rawZoom.toFixed(2))));
+        // Centering offsets at the new zoom (canvas < viewport → flex-centred)
+        const { canvasPoint, midScreen, containerSize } = pinchRef.current;
+        const newOffsetX = Math.max(0, (containerSize.w - CANVAS_W * newZoom) / 2);
+        const newOffsetY = Math.max(0, (containerSize.h - CANVAS_H * newZoom) / 2);
         // Reposition scroll so the pinch midpoint stays fixed on screen
-        const { canvasPoint, midScreen } = pinchRef.current;
-        el.scrollLeft = canvasPoint.x * newZoom - midScreen.x;
-        el.scrollTop  = canvasPoint.y * newZoom - midScreen.y;
+        el.scrollLeft = canvasPoint.x * newZoom - midScreen.x + newOffsetX;
+        el.scrollTop  = canvasPoint.y * newZoom - midScreen.y + newOffsetY;
         persistZoom(newZoom);
       }
     }
@@ -904,7 +928,12 @@ export default function Tables() {
             )}
           </div>
         ) : (
-          /* Outer wrapper occupies exactly the scaled canvas size so scrollbars appear correctly */
+          /* Centering wrapper — always fills the scroll container so the canvas
+             is centred via flex when it is smaller than the viewport (e.g. at
+             fit zoom). When the canvas is larger it overflows and the browser
+             shows scrollbars as usual. */
+          <div style={{ minWidth: '100%', minHeight: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          {/* Outer wrapper occupies exactly the scaled canvas size so scrollbars appear correctly */}
           <div style={{ width: CANVAS_W * zoom, height: CANVAS_H * zoom, position: "relative", flexShrink: 0 }}>
             <div
               style={{
@@ -947,6 +976,7 @@ export default function Tables() {
                 />
               ))}
             </div>
+          </div>
           </div>
         )}
       </main>
