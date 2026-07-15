@@ -228,6 +228,36 @@ export default function OrderPage() {
     try { const emp = JSON.parse(empStr); setEmployeeId(emp.id); setEmployeeName(emp.name); } catch {}
   }, [setLocation]);
 
+  // When a different employee logs in on another tab (or the current tab after
+  // a logout/login cycle that updates localStorage), keep the displayed name in
+  // sync and discard any "remotely updated by <old-name>" banner that would now
+  // be misleading.
+  useEffect(() => {
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key !== 'employee') return;
+      if (!e.newValue) {
+        // Employee was cleared — treat as logged out and redirect.
+        setLocation('/');
+        return;
+      }
+      try {
+        const emp = JSON.parse(e.newValue);
+        setEmployeeId(emp.id);
+        setEmployeeName(emp.name);
+        // Discard any stale "updated by <previous-employee>" banner so the new
+        // employee never sees a name that belongs to the previous session.
+        setRemotelyUpdated(false);
+        setRemoteUpdatedBy(null);
+        if (remotelyUpdatedTimer.current) {
+          clearTimeout(remotelyUpdatedTimer.current);
+          remotelyUpdatedTimer.current = null;
+        }
+      } catch {}
+    };
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
+  }, [setLocation]);
+
   const { data: tableData, isLoading: loadingTable } = useGetTableOrder(tableId, {
     query: { queryKey: getGetTableOrderQueryKey(tableId), refetchInterval: 15000 }
   });
