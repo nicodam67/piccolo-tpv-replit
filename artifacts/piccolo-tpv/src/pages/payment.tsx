@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useLocation, Link } from 'wouter';
 import { useQueryClient } from '@tanstack/react-query';
+import { io } from 'socket.io-client';
 import {
   ChevronLeft, Check, Loader2, Euro, CreditCard, Smartphone, FileText, X,
   Printer, Percent, Scissors, Wallet, Gift, Plus, Minus, ArrowRight, AlertCircle,
@@ -893,6 +894,82 @@ export default function Payment() {
   const [splitGroups, setSplitGroups]     = useState<SplitGroupWithItems[] | null>(null);
   const [tipPaymentId, setTipPaymentId]   = useState<string | null>(null);
 
+  // "Remotely updated" banner — shown when another staff member changes this
+  // order while the payment screen is open.
+  const [remotelyUpdated, setRemotelyUpdated]   = useState(false);
+  const [remoteUpdatedBy, setRemoteUpdatedBy]   = useState<string | null>(null);
+  const remotelyUpdatedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Suppress the banner when returning from background (same pattern as order.tsx).
+  // A 500 ms grace window prevents the socket reconnect / window-focus refetch
+  // from firing a stale flash.
+  const suppressNextRefresh = useRef(false);
+  const suppressTimeoutRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        suppressNextRefresh.current = true;
+        if (suppressTimeoutRef.current) clearTimeout(suppressTimeoutRef.current);
+        suppressTimeoutRef.current = setTimeout(() => {
+          suppressNextRefresh.current = false;
+          suppressTimeoutRef.current  = null;
+        }, 500);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      if (suppressTimeoutRef.current) clearTimeout(suppressTimeoutRef.current);
+    };
+  }, []);
+
+  // Socket — listen for remote order changes so the payment summary stays live
+  // and the staff member is informed if the order was modified by a colleague.
+  useEffect(() => {
+    if (!orderId) return;
+    const socket = io({
+      path: '/api/socket.io',
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 30000,
+    });
+
+    // After any reconnect, suppress the banner and re-fetch fresh data.
+    const handleReconnect = () => {
+      suppressNextRefresh.current = true;
+      if (suppressTimeoutRef.current) clearTimeout(suppressTimeoutRef.current);
+      suppressTimeoutRef.current = setTimeout(() => {
+        suppressNextRefresh.current = false;
+        suppressTimeoutRef.current  = null;
+      }, 500);
+      queryClient.invalidateQueries({ queryKey: getGetOrderPaymentSummaryQueryKey(orderId) });
+    };
+    socket.on('reconnect', handleReconnect);
+
+    socket.on('orders:refresh', (data: any) => {
+      if (data?.orderId !== orderId) return;
+      queryClient.invalidateQueries({ queryKey: getGetOrderPaymentSummaryQueryKey(orderId) });
+      if (suppressNextRefresh.current) {
+        suppressNextRefresh.current = false;
+      } else {
+        if (remotelyUpdatedTimer.current) clearTimeout(remotelyUpdatedTimer.current);
+        setRemotelyUpdated(true);
+        setRemoteUpdatedBy(data?.employeeName ?? null);
+        remotelyUpdatedTimer.current = setTimeout(() => {
+          setRemotelyUpdated(false);
+          setRemoteUpdatedBy(null);
+        }, 2000);
+      }
+    });
+
+    return () => {
+      if (remotelyUpdatedTimer.current) clearTimeout(remotelyUpdatedTimer.current);
+      socket.disconnect();
+    };
+  }, [orderId, queryClient]);
+
   const initialised = useRef(false);
   useEffect(() => {
     if (!summary || !paymentMethods.length || initialised.current) return;
@@ -1077,6 +1154,15 @@ export default function Payment() {
           </div>
           <Link href="/tables" className="w-10 h-10 flex items-center justify-center rounded-lg hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"><ChevronLeft size={24} /></Link>
         </div>
+
+        {/* Remote-update banner — shown when a colleague modifies this order
+            while the payment screen is open. Suppressed on background restore. */}
+        {remotelyUpdated && (
+          <div className="px-4 py-2 bg-amber-500/10 border-b border-amber-500/20 flex items-center gap-2 text-xs font-semibold text-amber-400 shrink-0">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse shrink-0" />
+            {remoteUpdatedBy ? `Actualizado por ${remoteUpdatedBy}` : 'Pedido actualizado'}
+          </div>
+        )}
 
         <div className="flex-1 overflow-y-auto p-4 space-y-2" onPointerDown={handlePointerDown}>
           {items.map((item, i) => (
