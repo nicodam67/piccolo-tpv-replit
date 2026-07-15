@@ -419,6 +419,21 @@ export default function Tables() {
     };
   }, [persistZoom]);
 
+  // Reset gesture refs when the page is hidden (screen lock, home button, tab
+  // switch). Some iOS/Android versions suppress touchcancel in these cases,
+  // leaving stale finger positions in the refs and causing position jumps on
+  // return. visibilitychange fires reliably in both scenarios.
+  useEffect(() => {
+    function handleVisibilityChange() {
+      if (document.visibilityState === "hidden") {
+        pinchRef.current = null;
+        panRef.current = null;
+      }
+    }
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, []);
+
   useEffect(() => {
     const token = localStorage.getItem("token");
     const empStr = localStorage.getItem("employee");
