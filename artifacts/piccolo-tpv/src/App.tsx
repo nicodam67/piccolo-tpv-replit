@@ -18,6 +18,9 @@ import Recogida from './pages/recogida';
 import Prefactura from './pages/prefactura';
 import Documentos from './pages/documentos';
 import Fiscal from './pages/fiscal';
+import Categorias from './pages/categorias';
+import Productos from './pages/productos';
+import Modificadores from './pages/modificadores';
 import NotFound from './pages/not-found';
 
 const queryClient = new QueryClient({
@@ -45,6 +48,9 @@ function Router() {
       <Route path="/configuracion/salas/:zoneId" component={ZoneEditor} />
       <Route path="/configuracion/documentos" component={Documentos} />
       <Route path="/fiscal" component={Fiscal} />
+      <Route path="/categorias" component={Categorias} />
+      <Route path="/productos" component={Productos} />
+      <Route path="/modificadores" component={Modificadores} />
       <Route path="/recogida" component={Recogida} />
       <Route path="/prefactura/:orderId" component={Prefactura} />
       <Route component={NotFound} />

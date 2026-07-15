@@ -1,0 +1,589 @@
+import { useState, useCallback } from 'react';
+import { useLocation } from 'wouter';
+import { toast } from 'sonner';
+import { useQueryClient } from '@tanstack/react-query';
+import {
+  useGetAdminProducts,
+  useGetAdminCategories,
+  useGetAdminModifierGroups,
+  useCreateAdminProduct,
+  useUpdateAdminProduct,
+  useDeleteAdminProduct,
+  useCreateProductFormatFull,
+  useUpdateProductFormatFull,
+  useDeleteProductFormat,
+  useAssignProductModifierGroups,
+  getGetAdminProductsQueryKey,
+} from '@workspace/api-client-react';
+import type { AdminProduct, AdminCategory, AdminModifierGroup, ProductFormat } from '@workspace/api-client-react';
+import {
+  ArrowLeft, Package, Plus, Search, X, Check, Pencil, Trash2,
+  ChevronRight, Eye, EyeOff, Tag, Sliders, ImageIcon, Save,
+  ToggleLeft, ToggleRight, CircleOff, CircleCheck,
+} from 'lucide-react';
+
+const TAX_RATES = [4, 10, 21] as const;
+const PREP_ZONES = ['cocina', 'barra', 'frío', 'postres', 'sala'];
+
+const RATE_COLOR: Record<number, string> = {
+  4: 'bg-green-500/15 text-green-400 border-green-500/30',
+  10: 'bg-blue-500/15 text-blue-400 border-blue-500/30',
+  21: 'bg-orange-500/15 text-orange-400 border-orange-500/30',
+};
+
+function ToggleField({ label, value, onChange }: { label: string; value: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <div className="flex items-center justify-between py-2">
+      <span className="text-sm text-muted-foreground">{label}</span>
+      <button onClick={() => onChange(!value)} className="flex items-center gap-1.5 text-sm">
+        {value
+          ? <ToggleRight size={20} className="text-primary" />
+          : <ToggleLeft size={20} className="text-muted-foreground" />}
+        <span className={value ? 'text-foreground font-semibold' : 'text-muted-foreground'}>{value ? 'Sí' : 'No'}</span>
+      </button>
+    </div>
+  );
+}
+
+// ── Product card in grid ──────────────────────────────────────────────────────
+function ProductCard({ product, onEdit }: { product: AdminProduct; onEdit: () => void }) {
+  const margin = product.cost && product.price
+    ? ((parseFloat(product.price) - parseFloat(product.cost)) / parseFloat(product.price) * 100).toFixed(0)
+    : null;
+
+  return (
+    <button
+      onClick={onEdit}
+      className={`group relative text-left rounded-xl border p-3.5 flex flex-col gap-2 transition-all hover:border-primary/50 hover:shadow-lg ${!product.active ? 'opacity-50' : ''}`}
+      style={{ background: 'hsl(var(--card))', borderColor: 'hsl(var(--border))' }}
+    >
+      {!product.active && (
+        <span className="absolute top-2 right-2 text-[9px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-full bg-secondary/80 text-muted-foreground border border-border/60">
+          Archivado
+        </span>
+      )}
+      {product.imageUrl && (
+        <div className="w-full h-20 rounded-lg overflow-hidden bg-secondary/30">
+          <img src={product.imageUrl} alt={product.name} className="w-full h-full object-cover" />
+        </div>
+      )}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-start justify-between gap-1">
+          <div className="min-w-0">
+            <p className="font-semibold text-sm leading-tight truncate">{product.name}</p>
+            {product.internalCode && <p className="text-[10px] text-muted-foreground font-mono">{product.internalCode}</p>}
+          </div>
+          <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-full border shrink-0 ${RATE_COLOR[product.taxRate] ?? ''}`}>
+            {product.taxRate}%
+          </span>
+        </div>
+      </div>
+      <div className="flex items-center justify-between">
+        <span className="text-base font-black">{parseFloat(product.price).toFixed(2)}€</span>
+        <div className="flex items-center gap-1.5">
+          {margin && <span className="text-[10px] text-muted-foreground">M:{margin}%</span>}
+          <div className="flex items-center gap-0.5">
+            {product.tpvVisible ? <Eye size={11} className="text-muted-foreground" /> : <EyeOff size={11} className="text-muted-foreground/30" />}
+            {product.formats.length > 0 && <span className="text-[9px] text-muted-foreground ml-0.5">{product.formats.length}f</span>}
+            {product.modifierGroups.length > 0 && <Sliders size={11} className="text-muted-foreground ml-0.5" />}
+          </div>
+        </div>
+      </div>
+      <ChevronRight size={12} className="absolute right-2.5 bottom-3.5 text-muted-foreground opacity-0 group-hover:opacity-50" />
+    </button>
+  );
+}
+
+// ── Format row ────────────────────────────────────────────────────────────────
+function FormatRow({ fmt, productTaxRate, onUpdate, onDelete }: {
+  fmt: ProductFormat & { cost?: string | null; prepTime?: number | null; kdsDestination?: string | null };
+  productTaxRate: number;
+  onUpdate: (id: string, data: Record<string, unknown>) => void;
+  onDelete: (id: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(fmt.name);
+  const [price, setPrice] = useState(fmt.price);
+  const [cost, setCost] = useState(fmt.cost ?? '');
+  const [taxRate, setTaxRate] = useState<number | null>(fmt.taxRate ?? null);
+
+  if (!editing) return (
+    <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-secondary/30 hover:bg-secondary/50 transition-colors">
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-semibold truncate">{fmt.name}</span>
+          {fmt.taxRate == null && <span className="text-[9px] text-muted-foreground/50 italic">IVA {productTaxRate}%</span>}
+          {fmt.taxRate != null && <span className={`text-[9px] px-1 rounded border ${RATE_COLOR[fmt.taxRate] ?? ''}`}>{fmt.taxRate}%</span>}
+        </div>
+        <span className="text-xs text-muted-foreground font-mono">{parseFloat(fmt.price).toFixed(2)}€{fmt.cost ? ` · coste ${parseFloat(fmt.cost).toFixed(2)}€` : ''}</span>
+      </div>
+      <button onClick={() => setEditing(true)} className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-secondary text-muted-foreground hover:text-foreground">
+        <Pencil size={12} />
+      </button>
+      <button onClick={() => onDelete(fmt.id)} className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-destructive/10 text-muted-foreground hover:text-destructive">
+        <Trash2 size={12} />
+      </button>
+    </div>
+  );
+
+  return (
+    <div className="p-3 rounded-lg border border-primary bg-secondary/10 space-y-2">
+      <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nombre" className="w-full bg-secondary rounded-lg px-3 py-1.5 text-sm outline-none" />
+      <div className="flex gap-2">
+        <input value={price} onChange={(e) => setPrice(e.target.value)} placeholder="PVP €" className="flex-1 bg-secondary rounded-lg px-3 py-1.5 text-sm outline-none" />
+        <input value={cost} onChange={(e) => setCost(e.target.value)} placeholder="Coste €" className="flex-1 bg-secondary rounded-lg px-3 py-1.5 text-sm outline-none" />
+      </div>
+      <div className="flex items-center gap-1 flex-wrap">
+        <span className="text-xs text-muted-foreground">IVA:</span>
+        {TAX_RATES.map((r) => (
+          <button key={r} onClick={() => setTaxRate(taxRate === r ? null : r)}
+            className={`text-xs px-2 py-0.5 rounded-lg border transition-all ${taxRate === r ? RATE_COLOR[r] : 'bg-secondary/30 text-muted-foreground border-border'}`}>
+            {r}%
+          </button>
+        ))}
+        {taxRate != null && <button onClick={() => setTaxRate(null)} className="text-[10px] text-muted-foreground hover:text-foreground">heredar</button>}
+      </div>
+      <div className="flex gap-2">
+        <button onClick={() => { onUpdate(fmt.id, { name, price, cost: cost || null, taxRate }); setEditing(false); }}
+          className="flex-1 py-1.5 rounded-lg bg-primary text-primary-foreground text-sm font-semibold flex items-center justify-center gap-1">
+          <Check size={13} /> Guardar
+        </button>
+        <button onClick={() => setEditing(false)} className="px-3 py-1.5 rounded-lg bg-secondary text-sm text-muted-foreground">Cancelar</button>
+      </div>
+    </div>
+  );
+}
+
+// ── Product edit sheet ────────────────────────────────────────────────────────
+function ProductSheet({
+  product,
+  categories,
+  modifierGroups,
+  onClose,
+  onSave,
+  onDelete,
+}: {
+  product: AdminProduct | null;
+  categories: AdminCategory[];
+  modifierGroups: AdminModifierGroup[];
+  onClose: () => void;
+  onSave: () => void;
+  onDelete?: (id: string) => void;
+}) {
+  const qc = useQueryClient();
+  const createProduct = useCreateAdminProduct();
+  const updateProduct = useUpdateAdminProduct();
+  const deleteProduct = useDeleteAdminProduct();
+  const createFormat = useCreateProductFormatFull();
+  const updateFormat = useUpdateProductFormatFull();
+  const deleteFormat = useDeleteProductFormat();
+  const assignGroups = useAssignProductModifierGroups();
+
+  const isNew = !product;
+  const [tab, setTab] = useState<'info' | 'formats' | 'modifiers'>('info');
+
+  // Form state
+  const [name, setName] = useState(product?.name ?? '');
+  const [internalCode, setInternalCode] = useState(product?.internalCode ?? '');
+  const [description, setDescription] = useState(product?.description ?? '');
+  const [categoryId, setCategoryId] = useState(product?.categoryId ?? '');
+  const [price, setPrice] = useState(product?.price ?? '');
+  const [cost, setCost] = useState(product?.cost ?? '');
+  const [taxRate, setTaxRate] = useState<number>(product?.taxRate ?? 10);
+  const [prepZone, setPrepZone] = useState(product?.prepZone ?? 'cocina');
+  const [tpvVisible, setTpvVisible] = useState(product?.tpvVisible ?? true);
+  const [qrVisible, setQrVisible] = useState(product?.qrVisible ?? true);
+  const [deliveryVisible, setDeliveryVisible] = useState(product?.deliveryVisible ?? false);
+  const [active, setActive] = useState(product?.active ?? true);
+  const [allergens, setAllergens] = useState(product?.allergens ?? '');
+  const [imageUrl, setImageUrl] = useState(product?.imageUrl ?? '');
+
+  // Formats state
+  const [formats, setFormats] = useState(product?.formats ?? []);
+  const [newFmtName, setNewFmtName] = useState('');
+  const [newFmtPrice, setNewFmtPrice] = useState('');
+  const [addingFmt, setAddingFmt] = useState(false);
+
+  // Modifier groups state
+  const [selectedGroupIds, setSelectedGroupIds] = useState<Set<string>>(
+    new Set(product?.modifierGroups?.map((g) => g.groupId) ?? [])
+  );
+
+  const invalidate = () => qc.invalidateQueries({ queryKey: getGetAdminProductsQueryKey() });
+
+  const margin = price && cost
+    ? ((parseFloat(price) - parseFloat(cost)) / parseFloat(price) * 100).toFixed(1)
+    : null;
+
+  const handleSave = async () => {
+    if (!name.trim() || !price || !categoryId) { toast.error('Nombre, categoría y precio son obligatorios'); return; }
+
+    try {
+      if (isNew) {
+        await createProduct.mutateAsync({ data: { name: name.trim(), categoryId, price, cost: cost || undefined, taxRate, prepZone, tpvVisible, qrVisible, deliveryVisible, internalCode: internalCode || undefined, description: description || undefined, allergens } });
+      } else {
+        await updateProduct.mutateAsync({
+          productId: product.id,
+          data: { name: name.trim(), categoryId, price, cost: cost || null, taxRate, prepZone, tpvVisible, qrVisible, deliveryVisible, active, internalCode: internalCode || null, description: description || null, allergens, imageUrl: imageUrl || null },
+        });
+        // Assign modifier groups
+        await assignGroups.mutateAsync({ productId: product.id, data: { modifierGroupIds: Array.from(selectedGroupIds) } });
+      }
+      invalidate(); onSave(); toast.success(isNew ? 'Producto creado' : 'Producto actualizado');
+    } catch { toast.error('Error al guardar el producto'); }
+  };
+
+  const handleDelete = async () => {
+    if (!product || !onDelete) return;
+    if (!confirm(`¿Archivar "${product.name}"?`)) return;
+    try {
+      await deleteProduct.mutateAsync({ productId: product.id });
+      invalidate(); onDelete(product.id); toast.success('Producto archivado');
+    } catch { toast.error('Error al archivar'); }
+  };
+
+  const handleAddFormat = async () => {
+    if (!product || !newFmtName.trim() || !newFmtPrice) return;
+    try {
+      const fmt = await createFormat.mutateAsync({ productId: product.id, data: { name: newFmtName, price: newFmtPrice, sortOrder: formats.length } });
+      setFormats((prev) => [...prev, fmt as any]);
+      setNewFmtName(''); setNewFmtPrice(''); setAddingFmt(false);
+      invalidate(); toast.success('Formato añadido');
+    } catch { toast.error('Error al añadir formato'); }
+  };
+
+  const handleUpdateFormat = useCallback(async (fmtId: string, data: Record<string, unknown>) => {
+    if (!product) return;
+    try {
+      const updated = await updateFormat.mutateAsync({ formatId: fmtId, data: data as any });
+      setFormats((prev) => prev.map((f) => f.id === fmtId ? { ...f, ...(updated as any) } : f));
+      invalidate();
+    } catch { toast.error('Error al actualizar formato'); }
+  }, [product, updateFormat, invalidate]);
+
+  const handleDeleteFormat = useCallback(async (fmtId: string) => {
+    if (!product) return;
+    try {
+      await deleteFormat.mutateAsync({ formatId: fmtId });
+      setFormats((prev) => prev.filter((f) => f.id !== fmtId));
+      invalidate();
+    } catch { toast.error('Error al eliminar formato'); }
+  }, [product, deleteFormat, invalidate]);
+
+  const toggleGroup = (id: string) => setSelectedGroupIds((prev) => {
+    const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n;
+  });
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
+      <div
+        className="w-full sm:max-w-lg max-h-[92vh] flex flex-col bg-card border border-border rounded-t-2xl sm:rounded-2xl overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Sheet header */}
+        <div className="flex items-center gap-3 px-4 py-3 border-b border-border shrink-0">
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-secondary transition-colors">
+            <X size={16} />
+          </button>
+          <h2 className="font-black text-base flex-1">{isNew ? 'Nuevo producto' : 'Editar producto'}</h2>
+          {!isNew && product?.active && (
+            <button onClick={handleDelete} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-destructive/10 text-muted-foreground hover:text-destructive">
+              <Trash2 size={15} />
+            </button>
+          )}
+          <button onClick={handleSave} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90">
+            <Save size={13} /> Guardar
+          </button>
+        </div>
+
+        {/* Tabs (only for existing products) */}
+        {!isNew && (
+          <div className="flex border-b border-border shrink-0">
+            {(['info', 'formats', 'modifiers'] as const).map((t) => (
+              <button key={t} onClick={() => setTab(t)}
+                className={`flex-1 py-2 text-xs font-semibold transition-colors ${tab === t ? 'text-primary border-b-2 border-primary' : 'text-muted-foreground hover:text-foreground'}`}>
+                {t === 'info' ? 'Información' : t === 'formats' ? `Formatos (${formats.length})` : `Modificadores (${selectedGroupIds.size})`}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+          {/* ── Info tab ── */}
+          {(tab === 'info' || isNew) && (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="col-span-2">
+                  <label className="text-xs text-muted-foreground font-semibold block mb-1">Nombre *</label>
+                  <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nombre del producto"
+                    className="w-full bg-secondary rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-1 focus:ring-primary" />
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground font-semibold block mb-1">Código interno</label>
+                  <input value={internalCode} onChange={(e) => setInternalCode(e.target.value)} placeholder="Ej: 001"
+                    className="w-full bg-secondary rounded-xl px-3 py-2.5 text-sm outline-none font-mono focus:ring-1 focus:ring-primary" />
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground font-semibold block mb-1">Categoría *</label>
+                  <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)}
+                    className="w-full bg-secondary rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-1 focus:ring-primary">
+                    <option value="">Seleccionar…</option>
+                    {categories.filter((c) => c.active).map((c) => (
+                      <option key={c.id} value={c.id}>{c.icon} {c.name}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs text-muted-foreground font-semibold block mb-1">Descripción</label>
+                <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} placeholder="Descripción corta…"
+                  className="w-full bg-secondary rounded-xl px-3 py-2 text-sm outline-none resize-none focus:ring-1 focus:ring-primary" />
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="text-xs text-muted-foreground font-semibold block mb-1">Precio (PVP) *</label>
+                  <input type="number" step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="0.00"
+                    className="w-full bg-secondary rounded-xl px-3 py-2.5 text-sm outline-none font-mono focus:ring-1 focus:ring-primary" />
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground font-semibold block mb-1">Coste</label>
+                  <input type="number" step="0.01" value={cost} onChange={(e) => setCost(e.target.value)} placeholder="0.00"
+                    className="w-full bg-secondary rounded-xl px-3 py-2.5 text-sm outline-none font-mono focus:ring-1 focus:ring-primary" />
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground font-semibold block mb-1">Margen</label>
+                  <div className="w-full bg-secondary/50 rounded-xl px-3 py-2.5 text-sm font-mono text-muted-foreground">
+                    {margin ? `${margin}%` : '—'}
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs text-muted-foreground font-semibold block mb-1">IVA</label>
+                <div className="flex gap-2">
+                  {TAX_RATES.map((r) => (
+                    <button key={r} onClick={() => setTaxRate(r)}
+                      className={`flex-1 py-2 rounded-xl border text-sm font-black transition-all ${taxRate === r ? RATE_COLOR[r] : 'bg-secondary/30 text-muted-foreground border-border hover:bg-secondary'}`}>
+                      {r}%
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs text-muted-foreground font-semibold block mb-1">Zona de preparación</label>
+                <div className="flex gap-1.5 flex-wrap">
+                  {PREP_ZONES.map((z) => (
+                    <button key={z} onClick={() => setPrepZone(z)}
+                      className={`px-3 py-1.5 rounded-lg border text-xs font-semibold capitalize transition-all ${prepZone === z ? 'bg-primary/15 text-primary border-primary/30' : 'bg-secondary/30 text-muted-foreground border-border hover:bg-secondary'}`}>
+                      {z}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="border border-border rounded-xl px-3 divide-y divide-border/50">
+                <ToggleField label="Visible en TPV" value={tpvVisible} onChange={setTpvVisible} />
+                <ToggleField label="Visible en QR" value={qrVisible} onChange={setQrVisible} />
+                <ToggleField label="Visible en Delivery" value={deliveryVisible} onChange={setDeliveryVisible} />
+                {!isNew && <ToggleField label="Activo" value={active} onChange={setActive} />}
+              </div>
+
+              {!isNew && (
+                <div>
+                  <label className="text-xs text-muted-foreground font-semibold block mb-1">URL de imagen</label>
+                  <div className="flex gap-2">
+                    <input value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder="https://…"
+                      className="flex-1 bg-secondary rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-1 focus:ring-primary" />
+                    {imageUrl && <img src={imageUrl} alt="" className="w-10 h-10 rounded-lg object-cover border border-border" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />}
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <label className="text-xs text-muted-foreground font-semibold block mb-1">Alérgenos (lista separada por comas)</label>
+                <input value={allergens} onChange={(e) => setAllergens(e.target.value)} placeholder="gluten, leche, huevos…"
+                  className="w-full bg-secondary rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-1 focus:ring-primary" />
+              </div>
+            </>
+          )}
+
+          {/* ── Formats tab ── */}
+          {tab === 'formats' && !isNew && (
+            <div className="space-y-2">
+              {formats.filter((f) => f.active).map((fmt) => (
+                <FormatRow
+                  key={fmt.id}
+                  fmt={fmt as any}
+                  productTaxRate={taxRate}
+                  onUpdate={handleUpdateFormat}
+                  onDelete={handleDeleteFormat}
+                />
+              ))}
+
+              {addingFmt ? (
+                <div className="p-3 rounded-xl border border-primary bg-secondary/10 space-y-2">
+                  <input value={newFmtName} onChange={(e) => setNewFmtName(e.target.value)} autoFocus
+                    placeholder="Nombre del formato (ej: Ración)"
+                    className="w-full bg-secondary rounded-lg px-3 py-1.5 text-sm outline-none" />
+                  <div className="flex gap-2">
+                    <input type="number" step="0.01" value={newFmtPrice} onChange={(e) => setNewFmtPrice(e.target.value)}
+                      placeholder="Precio €"
+                      className="flex-1 bg-secondary rounded-lg px-3 py-1.5 text-sm outline-none font-mono" />
+                    <button onClick={handleAddFormat} className="px-4 py-1.5 bg-primary text-primary-foreground rounded-lg text-sm font-semibold flex items-center gap-1">
+                      <Check size={13} /> Añadir
+                    </button>
+                    <button onClick={() => setAddingFmt(false)} className="px-3 py-1.5 bg-secondary rounded-lg text-sm text-muted-foreground">
+                      <X size={13} />
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button onClick={() => setAddingFmt(true)}
+                  className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border border-dashed border-border text-sm text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors">
+                  <Plus size={14} /> Añadir formato
+                </button>
+              )}
+
+              {formats.filter((f) => f.active).length === 0 && !addingFmt && (
+                <p className="text-center text-xs text-muted-foreground py-6">Sin formatos — el producto se vende a precio único</p>
+              )}
+            </div>
+          )}
+
+          {/* ── Modifiers tab ── */}
+          {tab === 'modifiers' && !isNew && (
+            <div className="space-y-2">
+              <p className="text-xs text-muted-foreground mb-3">Selecciona los grupos de modificadores que aplican a este producto.</p>
+              {modifierGroups.filter((g) => g.active).map((g) => {
+                const selected = selectedGroupIds.has(g.id);
+                return (
+                  <button key={g.id} onClick={() => toggleGroup(g.id)}
+                    className={`w-full flex items-center gap-3 p-3 rounded-xl border text-left transition-all ${selected ? 'border-primary bg-primary/5' : 'border-border bg-secondary/20 hover:bg-secondary/40'}`}>
+                    <div className={`w-5 h-5 rounded-md flex items-center justify-center border shrink-0 transition-all ${selected ? 'bg-primary border-primary' : 'border-border'}`}>
+                      {selected && <Check size={11} className="text-primary-foreground" />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold">{g.name}</p>
+                      <p className="text-[10px] text-muted-foreground">
+                        {g.required ? '⚠ Obligatorio · ' : ''}{g.maxSelect} selección máx · {g.modifiers.filter((m) => m.active).length} opciones
+                      </p>
+                    </div>
+                  </button>
+                );
+              })}
+              {modifierGroups.filter((g) => g.active).length === 0 && (
+                <p className="text-center text-xs text-muted-foreground py-6">No hay grupos de modificadores creados todavía.</p>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Main page ─────────────────────────────────────────────────────────────────
+export default function ProductosPage() {
+  const [, setLocation] = useLocation();
+  const { data: products = [], isLoading } = useGetAdminProducts({});
+  const { data: categories = [] } = useGetAdminCategories();
+  const { data: modifierGroups = [] } = useGetAdminModifierGroups();
+
+  const [search, setSearch] = useState('');
+  const [filterCat, setFilterCat] = useState('');
+  const [showArchived, setShowArchived] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<AdminProduct | null | 'new'>(null);
+
+  const filtered = products.filter((p) => {
+    if (!showArchived && !p.active) return false;
+    if (filterCat && p.categoryId !== filterCat) return false;
+    if (search) {
+      const s = search.toLowerCase();
+      return p.name.toLowerCase().includes(s) || (p.internalCode ?? '').toLowerCase().includes(s);
+    }
+    return true;
+  });
+
+  const activeCategories = (categories as AdminCategory[]).filter((c) => c.active);
+
+  return (
+    <div className="min-h-screen bg-background flex flex-col">
+      {/* Header */}
+      <header className="h-14 flex items-center gap-3 px-4 border-b border-border bg-card shrink-0">
+        <button onClick={() => setLocation('/admin')} className="w-9 h-9 flex items-center justify-center rounded-lg hover:bg-secondary transition-colors">
+          <ArrowLeft size={18} />
+        </button>
+        <Package size={20} className="text-primary" />
+        <div>
+          <h1 className="font-black text-base leading-tight">Productos</h1>
+          <p className="text-xs text-muted-foreground leading-none">{products.filter((p) => p.active).length} activos</p>
+        </div>
+        <div className="ml-auto">
+          <button
+            onClick={() => setEditingProduct('new')}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors"
+          >
+            <Plus size={15} /> Nuevo
+          </button>
+        </div>
+      </header>
+
+      {/* Filter bar */}
+      <div className="px-4 py-2.5 border-b border-border bg-card/50 flex items-center gap-2 shrink-0">
+        <div className="relative flex-1">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <input
+            value={search} onChange={(e) => setSearch(e.target.value)}
+            placeholder="Buscar por nombre o código…"
+            className="w-full pl-8 pr-3 py-2 bg-secondary rounded-xl text-sm outline-none focus:ring-1 focus:ring-primary"
+          />
+        </div>
+        <select value={filterCat} onChange={(e) => setFilterCat(e.target.value)}
+          className="bg-secondary rounded-xl px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-primary">
+          <option value="">Todas las cat.</option>
+          {activeCategories.map((c) => <option key={c.id} value={c.id}>{c.icon} {c.name}</option>)}
+        </select>
+        <button onClick={() => setShowArchived(!showArchived)}
+          className={`w-9 h-9 flex items-center justify-center rounded-xl border transition-colors ${showArchived ? 'bg-amber-500/15 border-amber-500/30 text-amber-400' : 'bg-secondary border-border text-muted-foreground hover:text-foreground'}`}
+          title={showArchived ? 'Ocultar archivados' : 'Mostrar archivados'}>
+          {showArchived ? <CircleCheck size={16} /> : <CircleOff size={16} />}
+        </button>
+      </div>
+
+      {/* Grid */}
+      <main className="flex-1 overflow-y-auto p-4">
+        {isLoading && <p className="text-center text-muted-foreground py-16 text-sm">Cargando…</p>}
+        {!isLoading && filtered.length === 0 && (
+          <div className="text-center text-muted-foreground py-16 text-sm">
+            <Package size={40} className="mx-auto mb-3 opacity-20" />
+            <p>{search || filterCat ? 'Sin resultados para este filtro.' : 'No hay productos todavía.'}</p>
+            {!search && !filterCat && (
+              <button onClick={() => setEditingProduct('new')} className="mt-2 text-primary underline">Crear el primero</button>
+            )}
+          </div>
+        )}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+          {filtered.map((p) => (
+            <ProductCard key={p.id} product={p} onEdit={() => setEditingProduct(p)} />
+          ))}
+        </div>
+      </main>
+
+      {/* Edit sheet */}
+      {editingProduct !== null && (
+        <ProductSheet
+          product={editingProduct === 'new' ? null : editingProduct}
+          categories={activeCategories}
+          modifierGroups={modifierGroups as AdminModifierGroup[]}
+          onClose={() => setEditingProduct(null)}
+          onSave={() => setEditingProduct(null)}
+          onDelete={() => setEditingProduct(null)}
+        />
+      )}
+    </div>
+  );
+}

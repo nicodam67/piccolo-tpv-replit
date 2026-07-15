@@ -391,13 +391,178 @@ export interface UpdateProductTaxRateInput {
 export interface AdminProduct {
   id: string;
   name: string;
+  internalCode?: string | null;
+  description?: string | null;
   price: string;
+  cost?: string | null;
   taxRate: number;
   categoryId: string;
   categoryName: string;
+  subcategoryId?: string | null;
+  prepZone: string;
   active: boolean;
   tpvVisible: boolean;
+  qrVisible: boolean;
+  deliveryVisible: boolean;
+  outOfStock: boolean;
+  allergens: string;
+  sortOrder: number;
+  imageUrl?: string | null;
+  videoUrl?: string | null;
   formats: ProductFormat[];
+  modifierGroups: { productId: string; groupId: string; groupName: string; required: boolean }[];
+}
+
+export interface Subcategory {
+  id: string;
+  categoryId: string;
+  name: string;
+  sortOrder: number;
+  active: boolean;
+}
+
+export interface AdminCategory {
+  id: string;
+  name: string;
+  sortOrder: number;
+  active: boolean;
+  color?: string | null;
+  icon?: string | null;
+  subcategories: Subcategory[];
+}
+
+export interface CreateCategoryInput {
+  name: string;
+  color?: string | null;
+  icon?: string | null;
+  sortOrder?: number;
+}
+
+export interface UpdateCategoryInput {
+  name?: string;
+  color?: string | null;
+  icon?: string | null;
+  active?: boolean;
+  sortOrder?: number;
+}
+
+export interface CreateSubcategoryInput {
+  categoryId: string;
+  name: string;
+  sortOrder?: number;
+}
+
+export interface UpdateSubcategoryInput {
+  name?: string;
+  active?: boolean;
+  sortOrder?: number;
+}
+
+export interface CreateProductInput {
+  categoryId: string;
+  subcategoryId?: string;
+  name: string;
+  internalCode?: string;
+  description?: string;
+  price: string;
+  cost?: string;
+  prepZone?: string;
+  active?: boolean;
+  tpvVisible?: boolean;
+  qrVisible?: boolean;
+  deliveryVisible?: boolean;
+  taxRate?: number;
+  sortOrder?: number;
+  allergens?: string;
+}
+
+export interface UpdateProductInput {
+  categoryId?: string;
+  subcategoryId?: string | null;
+  name?: string;
+  internalCode?: string | null;
+  description?: string | null;
+  price?: string;
+  cost?: string | null;
+  prepZone?: string;
+  active?: boolean;
+  tpvVisible?: boolean;
+  qrVisible?: boolean;
+  deliveryVisible?: boolean;
+  outOfStock?: boolean;
+  taxRate?: number;
+  sortOrder?: number;
+  allergens?: string;
+  imageUrl?: string | null;
+  videoUrl?: string | null;
+}
+
+export interface CreateProductFormatFullInput {
+  name: string;
+  price: string;
+  cost?: string;
+  prepTime?: number;
+  kdsDestination?: string;
+  sortOrder?: number;
+  taxRate?: number;
+}
+
+export interface UpdateProductFormatFullInput {
+  name?: string;
+  price?: string;
+  cost?: string | null;
+  prepTime?: number | null;
+  kdsDestination?: string | null;
+  sortOrder?: number;
+  active?: boolean;
+  taxRate?: number | null;
+}
+
+export interface AdminModifier {
+  id: string;
+  groupId: string;
+  name: string;
+  priceDelta: string;
+  sortOrder: number;
+  active: boolean;
+}
+
+export interface AdminModifierGroup {
+  id: string;
+  name: string;
+  required: boolean;
+  maxSelect: number;
+  sortOrder: number;
+  active: boolean;
+  modifiers: AdminModifier[];
+}
+
+export interface CreateModifierGroupInput {
+  name: string;
+  required?: boolean;
+  maxSelect?: number;
+  sortOrder?: number;
+}
+
+export interface UpdateModifierGroupInput {
+  name?: string;
+  required?: boolean;
+  maxSelect?: number;
+  active?: boolean;
+  sortOrder?: number;
+}
+
+export interface CreateModifierInput {
+  name: string;
+  priceDelta?: string;
+  sortOrder?: number;
+}
+
+export interface UpdateModifierInput {
+  name?: string;
+  priceDelta?: string;
+  active?: boolean;
+  sortOrder?: number;
 }
 
 export interface AuditLogEntry {
