@@ -269,13 +269,25 @@ export default function OrderPage() {
   // Socket
   useEffect(() => {
     if (!order?.id && !employeeId) return;
-    const socket = io({ path: '/api/socket.io' });
-    socket.on('reconnect', () => {
+    const socket = io({
+      path: '/api/socket.io',
+      // Ensure the client always tries to reconnect, even after long idle gaps.
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 30000,
+    });
+
+    // After any reconnect, suppress the "remotely updated" banner (it's our own
+    // reconnect) and re-fetch fresh data.
+    const handleReconnect = () => {
       suppressNextRefresh.current = true;
       if (suppressTimeoutRef.current) clearTimeout(suppressTimeoutRef.current);
       suppressTimeoutRef.current = setTimeout(() => { suppressNextRefresh.current = false; suppressTimeoutRef.current = null; }, 500);
       queryClient.invalidateQueries({ queryKey: getGetTableOrderQueryKey(tableId) });
-    });
+    };
+    socket.on('reconnect', handleReconnect);
+
     if (order?.id) {
       socket.on('waiter:order-ready', (data: any) => {
         if (data.orderId === order.id) {
@@ -306,7 +318,56 @@ export default function OrderPage() {
         setTimeout(() => setActiveAlert((curr: any) => curr?.id === data.id ? null : curr), 8000);
       });
     }
-    return () => { socket.disconnect(); };
+
+    // ── Application-level heartbeat ──────────────────────────────────────────
+    // Send a custom ping every 60 s. If no pong arrives within 5 s we assume
+    // the connection is silently dead and force a reconnect. This catches cases
+    // where Socket.IO's transport-level ping/pong has stopped (e.g. after a
+    // long idle overnight, a server restart, or token expiry).
+    const HEARTBEAT_INTERVAL = 60_000;
+    const HEARTBEAT_TIMEOUT  =  5_000;
+    let pongTimeoutId: ReturnType<typeof setTimeout> | null = null;
+
+    const sendHeartbeat = () => {
+      // Don't bother if the socket already knows it's disconnected.
+      if (!socket.connected) return;
+
+      // Arm a timeout; cancel it when pong arrives.
+      pongTimeoutId = setTimeout(() => {
+        // No pong — the connection is silently dead. Force a full reconnect and
+        // re-fetch data so the page is fresh when the connection comes back.
+        socket.disconnect();
+        socket.connect();
+        queryClient.invalidateQueries({ queryKey: getGetTableOrderQueryKey(tableId) });
+      }, HEARTBEAT_TIMEOUT);
+
+      socket.emit('ping');
+    };
+
+    const handlePong = () => {
+      if (pongTimeoutId !== null) { clearTimeout(pongTimeoutId); pongTimeoutId = null; }
+    };
+
+    socket.on('pong', handlePong);
+    const heartbeatInterval = setInterval(sendHeartbeat, HEARTBEAT_INTERVAL);
+
+    // Also re-fetch whenever the tab becomes visible again after being hidden
+    // (the socket may have been idle for a long time).
+    const handleVisibilityResume = () => {
+      if (!document.hidden && socket.connected) {
+        queryClient.invalidateQueries({ queryKey: getGetTableOrderQueryKey(tableId) });
+      } else if (!document.hidden && !socket.connected) {
+        socket.connect();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityResume);
+
+    return () => {
+      clearInterval(heartbeatInterval);
+      if (pongTimeoutId !== null) clearTimeout(pongTimeoutId);
+      document.removeEventListener('visibilitychange', handleVisibilityResume);
+      socket.disconnect();
+    };
   }, [order?.id, employeeId, queryClient, tableId]);
 
   const dismissAlert = () => { if (activeAlert?.id) handleMarkRead(activeAlert.id); setActiveAlert(null); };
