@@ -156,7 +156,7 @@ export default function Prefactura() {
                   PREFACTURA
                 </div>
                 <div className="text-[10px] text-amber-800 font-bold mt-1 leading-tight">
-                  NO VÁLIDA COMO FACTURA FISCAL
+                  DOCUMENTO NO VÁLIDO COMO FACTURA
                 </div>
               </div>
 
@@ -242,7 +242,7 @@ export default function Prefactura() {
               <div className="text-center space-y-1 text-gray-500 text-[10px] font-semibold">
                 {footerText && <div>{footerText}</div>}
                 <div className="font-black text-amber-700 uppercase tracking-wide text-[9px]">
-                  NO VÁLIDA COMO FACTURA FISCAL
+                  DOCUMENTO NO VÁLIDO COMO FACTURA
                 </div>
                 <div className="mt-2 text-gray-400 text-[9px]">
                   Solicite factura oficial al finalizar el pago.
@@ -270,7 +270,7 @@ export default function Prefactura() {
         <div className="border border-dashed border-black px-2 py-1 mb-2 mt-1 text-center">
           <div className="font-black text-sm uppercase tracking-widest">PREFACTURA</div>
           <div className="text-[9px] font-bold leading-tight mt-0.5">
-            NO VÁLIDA COMO FACTURA FISCAL
+            DOCUMENTO NO VÁLIDO COMO FACTURA
           </div>
         </div>
 
@@ -329,7 +329,7 @@ export default function Prefactura() {
         <div className="text-center text-[9px] leading-snug">
           {footerText && <div className="font-bold mb-0.5">{footerText}</div>}
           <div className="font-black uppercase tracking-wide">
-            NO VÁLIDA COMO FACTURA FISCAL
+            DOCUMENTO NO VÁLIDO COMO FACTURA
           </div>
           <div className="mt-1">Solicite factura oficial al pagar.</div>
         </div>

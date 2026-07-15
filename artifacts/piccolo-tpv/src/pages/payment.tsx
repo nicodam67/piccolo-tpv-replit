@@ -655,8 +655,8 @@ function InvoiceResult({ invoice, onClose }: { invoice: Invoice; onClose: () => 
           <div className="bg-secondary/30 rounded-xl p-4 space-y-2 text-sm">
             <div className="flex justify-between"><span className="text-muted-foreground">Número</span><span className="font-bold">{invoice.serie}-{invoice.invoiceNumber?.toString().padStart(4, '0')}</span></div>
             <div className="flex justify-between"><span className="text-muted-foreground">Cliente</span><span className="font-bold truncate ml-4 max-w-[60%] text-right">{invoice.clientName}</span></div>
-            <div className="flex justify-between border-t border-border pt-2"><span className="text-muted-foreground">Base imponible</span><span className="font-bold">{parseFloat(invoice.subtotal).toFixed(2)}€</span></div>
-            <div className="flex justify-between"><span className="text-muted-foreground">IVA</span><span className="font-bold">{parseFloat(invoice.taxTotal).toFixed(2)}€</span></div>
+            <div className="flex justify-between border-t border-border pt-2"><span className="text-muted-foreground">Base imponible 10%</span><span className="font-bold">{parseFloat(invoice.subtotal).toFixed(2)}€</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">Cuota IVA 10%</span><span className="font-bold">{parseFloat(invoice.taxTotal).toFixed(2)}€</span></div>
             <div className="flex justify-between text-lg font-black"><span>TOTAL</span><span>{parseFloat(invoice.total).toFixed(2)}€</span></div>
           </div>
         </div>
