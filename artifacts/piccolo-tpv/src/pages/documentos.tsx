@@ -180,12 +180,16 @@ function DocumentPreview({ config, format, businessName, docType, businessConfig
       {!isComanda && (
         <>
           <div style={{ padding: '2px 8px', overflow: 'hidden', color: '#888', fontSize: fs - 3 }}>{sep}</div>
-          {/* Locked totals */}
+          {/* Locked totals — multi-rate sample (10% food + 21% alcohol) */}
           <div style={{ padding: '2px 8px', fontSize: fs - 1 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Subtotal</span><span>43.40€</span></div>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>IVA 10%</span><span>4.34€</span></div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Base 10%</span><span>14.00€</span></div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>IVA 10%</span><span>1.40€</span></div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Base 21%</span><span>10.00€</span></div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>IVA 21%</span><span>2.10€</span></div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px dashed #ccc', marginTop: 2, paddingTop: 2 }}><span>Subtotal</span><span>24.00€</span></div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Total IVA</span><span>3.50€</span></div>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 900, fontSize: fs + 2, marginTop: 4, paddingTop: 4, borderTop: '1px solid #ccc' }}>
-              <span>TOTAL</span><span>47.74€</span>
+              <span>TOTAL</span><span>27.50€</span>
             </div>
           </div>
         </>

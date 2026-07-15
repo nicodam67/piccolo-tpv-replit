@@ -11,6 +11,7 @@ import {
   cashSessionsTable,
   ticketsTable,
   businessConfigTable,
+  discountsTable,
 } from "@workspace/db";
 import { eq, and, sum, inArray } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
@@ -60,12 +61,19 @@ router.get("/orders/:id/payment-summary", requireAuth, async (req, res): Promise
         .where(eq(employeesTable.id, order.employeeId))
     : [{ name: "—" }];
 
-  // Compute VAT breakdown per line, then aggregate
+  // Sum all discounts applied to this order (percentage, fixed, invitation)
+  const discountResult = await db
+    .select({ total: sum(discountsTable.discountAmount) })
+    .from(discountsTable)
+    .where(eq(discountsTable.orderId, id as string));
+  const discountTotal = parseFloat(discountResult[0]?.total ?? "0");
+
+  // Compute VAT breakdown per line, then aggregate (discount distributed proportionally)
   const lineTotals = items.map((it) => ({
     lineTotal: parseFloat(it.unitPrice) * it.quantity,
     taxRate: it.taxRate ?? 10,
   }));
-  const { taxBreakdown, subtotal, taxTotal, total } = calcMultiRateBreakdown(lineTotals);
+  const { taxBreakdown, subtotal, taxTotal, total } = calcMultiRateBreakdown(lineTotals, discountTotal);
 
   // Paid so far
   const paidResult = await db
@@ -108,6 +116,7 @@ router.get("/orders/:id/payment-summary", requireAuth, async (req, res): Promise
       ...it,
       lineTotal: (parseFloat(it.unitPrice) * it.quantity).toFixed(2),
     })),
+    ...(discountTotal > 0 && { discount: discountTotal.toFixed(2) }),
     taxBreakdown,
     subtotal,
     taxTotal,
@@ -172,11 +181,17 @@ router.post("/orders/:id/payments", requireAuth, requireRole(...PAYMENT_ROLES), 
     .from(orderItemsTable)
     .where(eq(orderItemsTable.orderId, orderId));
 
+  const discountResultPay = await db
+    .select({ total: sum(discountsTable.discountAmount) })
+    .from(discountsTable)
+    .where(eq(discountsTable.orderId, orderId));
+  const discountForOrder = parseFloat(discountResultPay[0]?.total ?? "0");
+
   const lineTotals = items.map((it) => ({
     lineTotal: parseFloat(it.unitPrice) * it.quantity,
     taxRate: it.taxRate ?? 10,
   }));
-  const { total } = calcMultiRateBreakdown(lineTotals);
+  const { total } = calcMultiRateBreakdown(lineTotals, discountForOrder);
   const totalNum = parseFloat(total);
 
   const paidResult = await db
@@ -266,7 +281,7 @@ router.post("/orders/:id/payments", requireAuth, requireRole(...PAYMENT_ROLES), 
     let ticket = null;
     if (newRemaining <= 0.001) {
       // Issue ticket + close order + free table
-      const { taxBreakdown, subtotal, taxTotal } = calcMultiRateBreakdown(lineTotals);
+      const { taxBreakdown, subtotal, taxTotal } = calcMultiRateBreakdown(lineTotals, discountForOrder);
 
       // Copy emisor fields from business_config (snapshot at issuance time)
       const [bizConfig] = await db.select().from(businessConfigTable).limit(1);

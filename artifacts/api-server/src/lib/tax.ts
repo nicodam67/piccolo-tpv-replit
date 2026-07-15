@@ -27,44 +27,69 @@ export function isValidTaxRate(v: unknown): v is TaxRate {
 /**
  * Given a list of {lineTotal (VAT-inclusive), taxRate} items, compute:
  *  - taxBreakdown: one entry per rate with base imponible + cuota
- *  - aggregate subtotal, taxTotal, total
+ *  - aggregate subtotal (sum of bases), taxTotal (sum of cuotas), total
  *
- * Formula: base = priceWithVAT / (1 + rate/100), cuota = priceWithVAT - base
+ * Formula: base = priceWithVAT / (1 + rate/100), cuota = priceWithVAT − base
+ *
+ * Rounding strategy (cent-level):
+ *   • baseCents  = round(groupNet / (1 + r/100) × 100)
+ *   • cuotaCents = round(groupNet × 100) − baseCents
+ *   This guarantees base + cuota = groupNet exactly (to the cent).
+ *
+ * Discount distribution:
+ *   When discountTotal > 0 each rate-group's gross is reduced proportionally:
+ *   groupDiscount = discountTotal × (groupGross / grossTotal)
+ *   Negative lineTotals (refunds/cancellations) are handled transparently.
+ *
+ * Zero-amount lines are returned; callers that "must not show zero IVA lines"
+ * should filter `b => parseFloat(b.base) !== 0 || parseFloat(b.cuota) !== 0`.
  */
 export function calcMultiRateBreakdown(
-  items: { lineTotal: number; taxRate: number }[]
+  items: { lineTotal: number; taxRate: number }[],
+  discountTotal = 0,
 ): TaxTotals {
   const byRate = new Map<number, number>();
-  let totalWithVat = 0;
+  let grossTotal = 0;
 
   for (const item of items) {
-    const existing = byRate.get(item.taxRate) ?? 0;
-    byRate.set(item.taxRate, existing + item.lineTotal);
-    totalWithVat += item.lineTotal;
+    byRate.set(item.taxRate, (byRate.get(item.taxRate) ?? 0) + item.lineTotal);
+    grossTotal += item.lineTotal;
   }
 
   const breakdown: TaxBreakdownItem[] = [];
-  let subtotalSum = 0;
-  let taxTotalSum = 0;
+  let subtotalCents = 0;
+  let taxTotalCents = 0;
 
-  for (const [rate, lineTotal] of Array.from(byRate.entries()).sort(
-    (a, b) => a[0] - b[0]
+  for (const [rate, groupGross] of Array.from(byRate.entries()).sort(
+    (a, b) => a[0] - b[0],
   )) {
-    const base = lineTotal / (1 + rate / 100);
-    const cuota = lineTotal - base;
-    subtotalSum += base;
-    taxTotalSum += cuota;
-    breakdown.push({ rate, base: base.toFixed(4), cuota: cuota.toFixed(4) });
+    // Distribute discount proportionally (no intermediate rounding to preserve precision)
+    const proportion = grossTotal !== 0 ? groupGross / grossTotal : 0;
+    const groupNet = groupGross - discountTotal * proportion;
+
+    // Cents-based: cuotaCents = groupNetCents − baseCents guarantees base + cuota = groupNet
+    const groupNetCents = Math.round(groupNet * 100);
+    const baseCents = Math.round((groupNet / (1 + rate / 100)) * 100);
+    const cuotaCents = groupNetCents - baseCents;
+
+    subtotalCents += baseCents;
+    taxTotalCents += cuotaCents;
+
+    breakdown.push({
+      rate,
+      base: (baseCents / 100).toFixed(2),
+      cuota: (cuotaCents / 100).toFixed(2),
+    });
   }
 
+  // Effective total = gross − discount; computed from inputs (not from accumulated cents)
+  // to match the amount actually charged, avoiding proportional distribution drift.
+  const effectiveTotalCents = Math.round((grossTotal - discountTotal) * 100);
+
   return {
-    taxBreakdown: breakdown.map((b) => ({
-      ...b,
-      base: parseFloat(b.base).toFixed(2),
-      cuota: parseFloat(b.cuota).toFixed(2),
-    })),
-    subtotal: subtotalSum.toFixed(2),
-    taxTotal: taxTotalSum.toFixed(2),
-    total: totalWithVat.toFixed(2),
+    taxBreakdown: breakdown,
+    subtotal: (subtotalCents / 100).toFixed(2),
+    taxTotal: (taxTotalCents / 100).toFixed(2),
+    total: (effectiveTotalCents / 100).toFixed(2),
   };
 }

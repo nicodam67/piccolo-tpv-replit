@@ -10,6 +10,7 @@ import {
   getGetDocumentTemplatesQueryKey,
 } from '@workspace/api-client-react';
 import { Loader2, ChevronLeft, Printer, CreditCard, RefreshCw } from 'lucide-react';
+import type { TaxBreakdownItem } from '@workspace/api-client-react';
 import { toast } from 'sonner';
 
 // Helper: parse employee id from localStorage
@@ -72,7 +73,7 @@ export default function Prefactura() {
     );
   }
 
-  const { order, items, subtotal, taxTotal, total } = summary;
+  const { order, items, subtotal, taxTotal, total, taxBreakdown = [] as TaxBreakdownItem[], discount } = summary;
   const billableItems = items;
   const bizName = businessConfig?.nombreComercial || 'Piccolo';
   const bizNif   = businessConfig?.nif;
@@ -194,14 +195,41 @@ export default function Prefactura() {
 
               {/* Totals — MANDATORY */}
               <div className="space-y-1 text-gray-800 font-semibold mb-4">
-                <div className="flex justify-between">
-                  <span>Subtotal (base imponible)</span>
-                  <span>{parseFloat(subtotal).toFixed(2)}€</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>IVA 10%</span>
-                  <span>{parseFloat(taxTotal).toFixed(2)}€</span>
-                </div>
+                {/* Descuento (sólo si hay alguno) */}
+                {discount && parseFloat(discount) > 0 && (
+                  <div className="flex justify-between text-red-600 text-sm">
+                    <span>Descuento aplicado</span>
+                    <span>-{parseFloat(discount).toFixed(2)}€</span>
+                  </div>
+                )}
+                {/* Desglose por tipo de IVA — nunca mostramos líneas a cero */}
+                {taxBreakdown
+                  .filter(b => parseFloat(b.base) !== 0 || parseFloat(b.cuota) !== 0)
+                  .map(b => (
+                    <div key={b.rate}>
+                      <div className="flex justify-between text-sm">
+                        <span>Base imponible {b.rate}%</span>
+                        <span>{parseFloat(b.base).toFixed(2)}€</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span>Cuota IVA {b.rate}%</span>
+                        <span>{parseFloat(b.cuota).toFixed(2)}€</span>
+                      </div>
+                    </div>
+                  ))}
+                {/* Subtotales agregados sólo cuando hay más de un tipo */}
+                {taxBreakdown.filter(b => parseFloat(b.base) !== 0).length > 1 && (
+                  <>
+                    <div className="flex justify-between pt-1 border-t border-gray-200 text-sm">
+                      <span>Total base imponible</span>
+                      <span>{parseFloat(subtotal).toFixed(2)}€</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span>Total cuota IVA</span>
+                      <span>{parseFloat(taxTotal).toFixed(2)}€</span>
+                    </div>
+                  </>
+                )}
                 <div className="flex justify-between text-xl font-black mt-2 pt-2 border-t-2 border-gray-300 text-black">
                   <span>TOTAL</span>
                   <span>{parseFloat(total).toFixed(2)}€</span>
@@ -272,14 +300,24 @@ export default function Prefactura() {
         <div className="border-b border-dashed border-black mb-2" />
 
         <div className="mb-2">
-          <div className="flex justify-between">
-            <span>Subtotal</span>
-            <span>{parseFloat(subtotal).toFixed(2)}€</span>
-          </div>
-          <div className="flex justify-between">
-            <span>IVA 10%</span>
-            <span>{parseFloat(taxTotal).toFixed(2)}€</span>
-          </div>
+          {/* Vista de impresión: desglose completo por tipo de IVA */}
+          {discount && parseFloat(discount) > 0 && (
+            <div className="flex justify-between"><span>Descuento</span><span>-{parseFloat(discount).toFixed(2)}€</span></div>
+          )}
+          {taxBreakdown
+            .filter(b => parseFloat(b.base) !== 0 || parseFloat(b.cuota) !== 0)
+            .map(b => (
+              <div key={b.rate}>
+                <div className="flex justify-between"><span>Base {b.rate}%</span><span>{parseFloat(b.base).toFixed(2)}€</span></div>
+                <div className="flex justify-between"><span>IVA {b.rate}%</span><span>{parseFloat(b.cuota).toFixed(2)}€</span></div>
+              </div>
+            ))}
+          {taxBreakdown.filter(b => parseFloat(b.base) !== 0).length > 1 && (
+            <>
+              <div className="flex justify-between"><span>Subtotal</span><span>{parseFloat(subtotal).toFixed(2)}€</span></div>
+              <div className="flex justify-between"><span>Total IVA</span><span>{parseFloat(taxTotal).toFixed(2)}€</span></div>
+            </>
+          )}
           <div className="flex justify-between font-black text-base mt-1 border-t border-black pt-1">
             <span>TOTAL</span>
             <span>{parseFloat(total).toFixed(2)}€</span>

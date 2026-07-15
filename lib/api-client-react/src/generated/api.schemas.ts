@@ -724,6 +724,8 @@ export type PaymentSummaryPaymentsItem = {
 export interface PaymentSummary {
   order: PaymentSummaryOrder;
   items: PaymentSummaryItemsItem[];
+  /** Sum of all discounts applied to this order, in euros (omitted when 0). */
+  discount?: string;
   taxBreakdown: TaxBreakdownItem[];
   subtotal: string;
   taxTotal: string;
