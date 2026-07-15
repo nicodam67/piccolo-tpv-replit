@@ -1,0 +1,67 @@
+No eliminar tablas antiguas hasta verificar que todos los datos se han migrado correctamente.
+
+Navegación
+
+Añadir al menú:
+
+Panel diario.
+Fichar.
+Registros.
+Turnos.
+Incidencias.
+Importar Anviz.
+Informes.
+Configuración.
+
+En teléfono y tablet debe conservarse una navegación cómoda y adaptable.
+
+Permisos
+Empleado: fichar y consultar sus registros.
+Encargado: consultar el equipo y resolver incidencias.
+Administrador: gestionar empleados, importaciones, correcciones e informes.
+
+Los datos personales y laborales no deben aparecer en comandas, KDS, tickets o facturas.
+
+Integración con el TPV
+
+Relacionar al empleado con:
+
+Apertura de mesas.
+Comandas.
+Anulaciones.
+Descuentos.
+Cobros.
+Aperturas y cierres de caja.
+
+Cerrar sesión en el TPV no debe registrar automáticamente una salida laboral.
+
+Implementación por fases
+Auditoría de ambos proyectos.
+Copia de seguridad.
+Unificación del modelo de empleados.
+Migración de datos.
+Integración de autenticación y permisos.
+Integración visual en el menú.
+Pruebas de escritorio, tablet y móvil.
+Eliminación de duplicidades solo después de validar todo.
+Pruebas obligatorias
+Empleado existente puede iniciar sesión.
+Sus fichajes históricos siguen visibles.
+Nuevo fichaje desde el TPV.
+Nuevo fichaje desde móvil/PWA.
+Importación CSV de Anviz.
+No se duplican empleados.
+No se duplican registros.
+Los permisos funcionan correctamente.
+Las acciones del TPV quedan asociadas al empleado correcto.
+El resto del TPV continúa funcionando.
+
+No reconstruyas la app de fichaje desde cero. Reutiliza el código existente, migra los datos de forma segura y no elimines nada hasta completar las pruebas. Antes de ejecutar cambios, muéstrame el plan de integración y los archivos que vas a modificar.
+
+Importante
+
+Si la app de fichaje y el TPV usan bases de datos distintas, primero hay que decidir cuál será la principal. Para Piccolo, normalmente conviene que el TPV sea el proyecto principal y que fichaje quede como módulo, pero manteniendo la pantalla móvil de fichar accesible mediante una ruta como:
+
+/fichaje
+
+La integración debe hacerse primero en una copia del proyecto, nunca directamente sobre la versión publicada.
