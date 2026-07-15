@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useScrollGuard } from '../hooks/use-scroll-guard';
 import { useParams, useLocation, Link } from 'wouter';
 import { useQueryClient } from '@tanstack/react-query';
 import { io } from 'socket.io-client';
@@ -36,7 +37,6 @@ import {
 } from '@workspace/api-client-react';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
-const TAP_SLOP = 8;
 function fmt(n: number | string) { return parseFloat(String(n)).toFixed(2); }
 function parseAmt(s: string) { const n = parseFloat(s); return isNaN(n) ? 0 : n; }
 
@@ -862,16 +862,7 @@ export default function Payment() {
   }, []);
 
   // Pointer slop guard
-  const pointerOriginRef = useRef<{ x: number; y: number } | null>(null);
-  const handlePointerDown = (e: React.PointerEvent) => { pointerOriginRef.current = { x: e.clientX, y: e.clientY }; };
-  const guardedClick = (handler: () => void) => (e: React.MouseEvent) => {
-    if (pointerOriginRef.current) {
-      const dx = e.clientX - pointerOriginRef.current.x, dy = e.clientY - pointerOriginRef.current.y;
-      if (Math.sqrt(dx*dx + dy*dy) > TAP_SLOP) { pointerOriginRef.current = null; return; }
-    }
-    pointerOriginRef.current = null;
-    handler();
-  };
+  const { onPointerDown: handlePointerDown, guard: guardedClick } = useScrollGuard();
 
   // Data fetching
   const terminalParam = terminal ? { terminal } : undefined;

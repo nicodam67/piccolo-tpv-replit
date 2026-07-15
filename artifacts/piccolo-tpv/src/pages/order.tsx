@@ -32,6 +32,7 @@ import {
 } from '@workspace/api-client-react';
 import { EditItemModal } from '../components/EditItemModal';
 import { EU_ALLERGENS, parseAllergens } from '../lib/allergens';
+import { useScrollGuard } from '../hooks/use-scroll-guard';
 
 // ── Allergen chips — small colored pills per allergen code ────────────────────
 function AllergenChips({ allergens }: { allergens: string }) {
@@ -55,8 +56,6 @@ function AllergenChips({ allergens }: { allergens: string }) {
     </>
   );
 }
-
-const TAP_SLOP = 8;
 
 // ── Format Picker Modal ───────────────────────────────────────────────────────
 interface FormatPickerProps {
@@ -203,19 +202,7 @@ export default function OrderPage() {
   const queryClient = useQueryClient();
   const tableId = params.tableId!;
 
-  const pointerOriginRef = useRef<{ x: number; y: number } | null>(null);
-  const handlePointerDown = (e: React.PointerEvent) => {
-    pointerOriginRef.current = { x: e.clientX, y: e.clientY };
-  };
-  const guardedClick = (handler: () => void) => (e: React.MouseEvent) => {
-    if (pointerOriginRef.current) {
-      const dx = e.clientX - pointerOriginRef.current.x;
-      const dy = e.clientY - pointerOriginRef.current.y;
-      if (Math.sqrt(dx * dx + dy * dy) > TAP_SLOP) { pointerOriginRef.current = null; return; }
-    }
-    pointerOriginRef.current = null;
-    handler();
-  };
+  const { onPointerDown: handlePointerDown, guard: guardedClick } = useScrollGuard();
 
   const [employeeId, setEmployeeId] = useState<string>('');
   const [employeeName, setEmployeeName] = useState<string>('');

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import { useScrollGuard } from "../hooks/use-scroll-guard";
 import { useLocation } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import { io } from "socket.io-client";
@@ -169,18 +170,8 @@ function TableCard({ table, onClick, isBusy }: { table: Table; onClick: () => vo
   const hasAmount  = (table as any).currentTotal != null && (table as any).currentTotal > 0;
   const amountStr  = hasAmount ? `${Number((table as any).currentTotal).toFixed(2)}€` : '';
 
-  const pointerOrigin = useRef<{ x: number; y: number } | null>(null);
-  const handlePointerDown = (e: React.PointerEvent) => { pointerOrigin.current = { x: e.clientX, y: e.clientY }; };
-  const handleClick = (e: React.MouseEvent) => {
-    if (isBusy) return;
-    if (pointerOrigin.current) {
-      const dx = e.clientX - pointerOrigin.current.x;
-      const dy = e.clientY - pointerOrigin.current.y;
-      if (Math.sqrt(dx * dx + dy * dy) > TAP_SLOP) { pointerOrigin.current = null; return; }
-    }
-    pointerOrigin.current = null;
-    onClick();
-  };
+  const { onPointerDown: handlePointerDown, guard } = useScrollGuard();
+  const handleClick = guard(() => { if (!isBusy) onClick(); });
 
   return (
     <div
