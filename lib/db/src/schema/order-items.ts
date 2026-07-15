@@ -40,11 +40,14 @@ export const kitchenTasksTable = pgTable("kitchen_tasks", {
   status: text("status").notNull().default("new"),
   allergyNote: text("allergy_note").notNull().default(""),
   hasAllergy: boolean("has_allergy").notNull().default(false),
+  /** Modifier text + item notes combined at send time (e.g. "[Half] | Sin cebolla | Extra queso") */
+  notes: text("notes").notNull().default(""),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   readyAt: timestamp("ready_at", { withTimezone: true }),
   collectedAt: timestamp("collected_at", { withTimezone: true }),
   servedAt: timestamp("served_at", { withTimezone: true }),
+  cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
 });
 
 export type OrderItem = typeof orderItemsTable.$inferSelect;

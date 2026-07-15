@@ -6,14 +6,16 @@ import {
   restaurantTablesTable,
   employeesTable,
   waiterNotificationsTable,
+  auditLogTable,
 } from "@workspace/db";
-import { eq, and, inArray } from "drizzle-orm";
+import { eq, and, inArray, desc } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import { getIO } from "../lib/socket";
 
 const router: IRouter = Router();
 
-const ZONE_STATUSES = ["new", "preparing", "ready"];
+// Zones: active/in-progress statuses + cancelled so cooks see void notifications
+const ZONE_STATUSES = ["new", "preparing", "ready", "cancelled"];
 const PASE_STATUSES = ["ready"];
 
 const TASK_FIELDS = {
@@ -24,6 +26,7 @@ const TASK_FIELDS = {
   productName: kitchenTasksTable.productName,
   quantity: kitchenTasksTable.quantity,
   status: kitchenTasksTable.status,
+  notes: kitchenTasksTable.notes,
   allergyNote: kitchenTasksTable.allergyNote,
   hasAllergy: kitchenTasksTable.hasAllergy,
   createdAt: kitchenTasksTable.createdAt,
@@ -31,10 +34,32 @@ const TASK_FIELDS = {
   readyAt: kitchenTasksTable.readyAt,
   collectedAt: kitchenTasksTable.collectedAt,
   servedAt: kitchenTasksTable.servedAt,
+  cancelledAt: kitchenTasksTable.cancelledAt,
   tableName: restaurantTablesTable.name,
   employeeName: employeesTable.name,
   employeeId: ordersTable.employeeId,
 };
+
+// ── GET /kds/history — recent completed/cancelled tasks (last 8 hours) ─────────
+// IMPORTANT: this must come BEFORE GET /kds/:zone so "history" isn't treated as a zone name.
+
+router.get("/kds/history", requireAuth, async (req, res): Promise<void> => {
+  const cutoff = new Date(Date.now() - 8 * 60 * 60 * 1000);
+
+  const tasks = await db
+    .select(TASK_FIELDS)
+    .from(kitchenTasksTable)
+    .innerJoin(ordersTable, eq(kitchenTasksTable.orderId, ordersTable.id))
+    .innerJoin(restaurantTablesTable, eq(ordersTable.tableId, restaurantTablesTable.id))
+    .leftJoin(employeesTable, eq(ordersTable.employeeId, employeesTable.id))
+    .where(inArray(kitchenTasksTable.status, ["collected", "served", "cancelled"]))
+    .orderBy(desc(kitchenTasksTable.updatedAt))
+    .limit(200);
+
+  // Only tasks updated in the last 8 h
+  const filtered = tasks.filter(t => new Date(t.updatedAt) >= cutoff);
+  res.json(filtered);
+});
 
 // GET /kds/:zone
 router.get("/kds/:zone", requireAuth, async (req, res): Promise<void> => {
@@ -172,6 +197,55 @@ router.patch("/kitchen-tasks/:taskId/status", requireAuth, async (req, res): Pro
   }
 
   res.json(task);
+});
+
+// ── POST /kitchen-tasks/:taskId/resend ────────────────────────────────────────
+// Resets a kitchen task to "new" so the cook can re-prepare it.
+// Clears all completion timestamps and records an audit entry.
+
+router.post("/kitchen-tasks/:taskId/resend", requireAuth, async (req, res): Promise<void> => {
+  const { taskId } = req.params;
+
+  const [existing] = await db
+    .select({ id: kitchenTasksTable.id, orderId: kitchenTasksTable.orderId, productName: kitchenTasksTable.productName })
+    .from(kitchenTasksTable)
+    .where(eq(kitchenTasksTable.id, taskId))
+    .limit(1);
+
+  if (!existing) {
+    res.status(404).json({ error: "Tarea no encontrada" });
+    return;
+  }
+
+  const now = new Date();
+  const [updated] = await db
+    .update(kitchenTasksTable)
+    .set({
+      status: "new",
+      updatedAt: now,
+      createdAt: now,       // reset timer so the card shows fresh elapsed time
+      readyAt: null,
+      collectedAt: null,
+      servedAt: null,
+      cancelledAt: null,
+    })
+    .where(eq(kitchenTasksTable.id, taskId))
+    .returning();
+
+  // Audit trail
+  await db.insert(auditLogTable).values({
+    orderId:      existing.orderId,
+    employeeId:   req.user?.id ?? null,
+    employeeName: req.user?.name ?? "",
+    action:       "resend_kds",
+    details:      `Reenviado a cocina: ${existing.productName}`,
+  });
+
+  try {
+    getIO().emit("kds:refresh", { employeeName: req.user?.name ?? null });
+  } catch { /* ignore */ }
+
+  res.json(updated);
 });
 
 export default router;

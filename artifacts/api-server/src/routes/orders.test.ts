@@ -217,17 +217,24 @@ describe("DELETE /api/order-items/:itemId — remove item emits orders:refresh",
     expect(mockEmit).not.toHaveBeenCalled();
   });
 
-  it("returns 400 and does NOT emit orders:refresh when the item is already sent (not draft)", async () => {
-    // innerJoin shape with status: "sent"
+  it("cancels the kitchen task and returns 204 when the item is already sent", async () => {
+    // Sent items now propagate to KDS (cancel the kitchen task) instead of blocking deletion.
     const sentItemRow = { order_items: { ...ORDER_ITEM, status: "sent" }, products: PRODUCT };
     mockDb.select.mockReturnValueOnce(makeChain([sentItemRow]));
+    mockDb.update.mockReturnValue(makeChain([]));   // cancel kitchen task
+    mockDb.delete.mockReturnValue(makeChain([]));   // delete the item
+    mockDb.insert.mockReturnValue(makeChain([]));   // audit log
 
     const res = await request(app)
       .delete(`/api/order-items/${ITEM_ID}`)
       .set("Authorization", AUTH);
 
-    expect(res.status).toBe(400);
-    expect(mockEmit).not.toHaveBeenCalled();
+    expect(res.status).toBe(204);
+    // kds:refresh must be emitted so KDS screens update immediately
+    expect(mockEmit).toHaveBeenCalledWith(
+      "kds:refresh",
+      expect.objectContaining({ employeeName: expect.any(String) }),
+    );
   });
 });
 

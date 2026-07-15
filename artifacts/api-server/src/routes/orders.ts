@@ -501,8 +501,31 @@ router.delete("/order-items/:itemId", requireAuth, async (req, res): Promise<voi
     .where(eq(orderItemsTable.id, itemId));
 
   if (!item) { res.status(404).json({ error: "Línea no encontrada" }); return; }
-  if (item.order_items.status !== "draft") {
-    res.status(400).json({ error: "Solo se pueden eliminar líneas en borrador" });
+
+  const itemStatus = item.order_items.status;
+
+  if (itemStatus === "sent") {
+    // Item already sent to KDS — cancel the kitchen task and propagate to KDS displays
+    const now = new Date();
+    await db
+      .update(kitchenTasksTable)
+      .set({ status: "cancelled", cancelledAt: now, updatedAt: now })
+      .where(eq(kitchenTasksTable.orderItemId, itemId));
+
+    await db.delete(orderItemsTable).where(eq(orderItemsTable.id, itemId));
+
+    await writeAudit(item.order_items.orderId, req.user?.id, req.user?.name ?? "", "cancel_sent_item",
+      `Anulado tras envío a cocina: ${item.products.name}`);
+
+    // Notify KDS displays immediately
+    try { getIO().emit("kds:refresh", { employeeName: req.user?.name ?? null }); } catch { /* ignore */ }
+    emitRefresh(item.order_items.orderId, req.user?.name);
+    res.status(204).send();
+    return;
+  }
+
+  if (itemStatus !== "draft") {
+    res.status(400).json({ error: "Solo se pueden eliminar líneas en borrador o enviadas" });
     return;
   }
 
@@ -585,6 +608,7 @@ router.post("/orders/:orderId/send", requireAuth, async (req, res): Promise<void
         productName: product.name + (item.formatName ? ` (${item.formatName})` : ""),
         quantity: item.quantity,
         status: "new",
+        notes: fullNote,
         allergyNote: item.allergyNote,
         hasAllergy: item.hasAllergy,
       });

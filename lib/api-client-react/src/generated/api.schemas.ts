@@ -319,6 +319,8 @@ export interface KitchenTask {
   productName: string;
   quantity: number;
   status: string;
+  /** Modifiers + format + item notes combined at send time (e.g. "[Half] | Sin cebolla | Extra queso") */
+  notes: string;
   allergyNote: string;
   hasAllergy: boolean;
   tableName: string;
@@ -329,6 +331,11 @@ export interface KitchenTask {
   readyAt?: string;
   collectedAt?: string;
   servedAt?: string;
+  cancelledAt?: string;
+}
+
+export interface ResendKitchenTaskInput {
+  reason?: string;
 }
 
 export type AddOrderItemInputModifiersItem = {

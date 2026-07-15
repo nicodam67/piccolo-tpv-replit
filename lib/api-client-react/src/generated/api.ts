@@ -4657,6 +4657,68 @@ export function useTransferWaiter<TError = ErrorType<ErrorResponse>, TContext = 
   return useMutation(getTransferWaiterMutationOptions(options));
 }
 
+// ── KDS resend ────────────────────────────────────────────────────────────────
+
+export const getResendKitchenTaskUrl = (taskId: string) => `/api/kitchen-tasks/${taskId}/resend`;
+
+export const resendKitchenTask = async (taskId: string, body?: import('./api.schemas').ResendKitchenTaskInput, options?: RequestInit): Promise<import('./api.schemas').KitchenTask> =>
+  customFetch<import('./api.schemas').KitchenTask>(getResendKitchenTaskUrl(taskId), {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(body ?? {}),
+  });
+
+export const getResendKitchenTaskMutationOptions = <TError = ErrorType<import('./api.schemas').ErrorResponse>, TContext = unknown>(
+  options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof resendKitchenTask>>, TError, { taskId: string; data?: import('./api.schemas').ResendKitchenTaskInput }, TContext>; request?: SecondParameter<typeof customFetch> }
+): UseMutationOptions<Awaited<ReturnType<typeof resendKitchenTask>>, TError, { taskId: string; data?: import('./api.schemas').ResendKitchenTaskInput }, TContext> => {
+  const mutationKey = ['resendKitchenTask'];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+  const mutationFn: MutationFunction<Awaited<ReturnType<typeof resendKitchenTask>>, { taskId: string; data?: import('./api.schemas').ResendKitchenTaskInput }> = (props) => {
+    const { taskId, data } = props ?? {};
+    return resendKitchenTask(taskId, data, requestOptions);
+  };
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ResendKitchenTaskMutationResult = NonNullable<Awaited<ReturnType<typeof resendKitchenTask>>>;
+export type ResendKitchenTaskMutationError = ErrorType<import('./api.schemas').ErrorResponse>;
+
+export const useResendKitchenTask = <TError = ErrorType<import('./api.schemas').ErrorResponse>, TContext = unknown>(
+  options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof resendKitchenTask>>, TError, { taskId: string; data?: import('./api.schemas').ResendKitchenTaskInput }, TContext> }
+): UseMutationResult<Awaited<ReturnType<typeof resendKitchenTask>>, TError, { taskId: string; data?: import('./api.schemas').ResendKitchenTaskInput }, TContext> =>
+  useMutation(getResendKitchenTaskMutationOptions(options));
+
+// ── KDS history ───────────────────────────────────────────────────────────────
+
+export const getGetKdsHistoryUrl = () => `/api/kds/history`;
+
+export const getKdsHistory = async (options?: RequestInit): Promise<import('./api.schemas').KitchenTask[]> =>
+  customFetch<import('./api.schemas').KitchenTask[]>(getGetKdsHistoryUrl(), { ...options, method: 'GET' });
+
+export const getGetKdsHistoryQueryKey = () => [`/api/kds/history`] as const;
+
+export const getGetKdsHistoryQueryOptions = <TData = Awaited<ReturnType<typeof getKdsHistory>>, TError = ErrorType<import('./api.schemas').ErrorResponse>>(
+  options?: { query?: UseQueryOptions<Awaited<ReturnType<typeof getKdsHistory>>, TError, TData>; request?: SecondParameter<typeof customFetch> }
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+  const queryKey = queryOptions?.queryKey ?? getGetKdsHistoryQueryKey();
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getKdsHistory>>> = ({ signal }) => getKdsHistory({ signal, ...requestOptions });
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<Awaited<ReturnType<typeof getKdsHistory>>, TError, TData> & { queryKey: QueryKey };
+};
+
+export function useGetKdsHistory<TData = Awaited<ReturnType<typeof getKdsHistory>>, TError = ErrorType<import('./api.schemas').ErrorResponse>>(
+  options?: { query?: UseQueryOptions<Awaited<ReturnType<typeof getKdsHistory>>, TError, TData>; request?: SecondParameter<typeof customFetch> }
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetKdsHistoryQueryOptions(options);
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
 export const getGetCashSessionHistoryUrl = () => `/api/cash-sessions/history`;
 export const getCashSessionHistory = async (options?: RequestInit): Promise<import('./api.schemas').CashSessionHistoryItem[]> =>
   customFetch<import('./api.schemas').CashSessionHistoryItem[]>(getGetCashSessionHistoryUrl(), { ...options, method: 'GET' });
