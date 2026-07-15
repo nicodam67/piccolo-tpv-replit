@@ -33,6 +33,13 @@ import InformesStock from './pages/informes-stock';
 import Subrecetas from './pages/subrecetas';
 import Rentabilidad from './pages/rentabilidad';
 import SimuladorPrecios from './pages/simulador-precios';
+import Proveedores from './pages/proveedores';
+import ComparacionPrecios from './pages/comparacion-precios';
+import PedidosCompra from './pages/pedidos-compra';
+import RecepcionMercancia from './pages/recepcion-mercancia';
+import FacturasProveedor from './pages/facturas-proveedor';
+import ConciliacionDocumental from './pages/conciliacion-documental';
+import LotesCaducidades from './pages/lotes-caducidades';
 import NotFound from './pages/not-found';
 
 const queryClient = new QueryClient({
@@ -77,6 +84,13 @@ function Router() {
       <Route path="/admin/subrecetas" component={Subrecetas} />
       <Route path="/admin/rentabilidad" component={Rentabilidad} />
       <Route path="/admin/simulador-precios" component={SimuladorPrecios} />
+      <Route path="/admin/proveedores" component={Proveedores} />
+      <Route path="/admin/comparacion-precios" component={ComparacionPrecios} />
+      <Route path="/admin/pedidos-compra" component={PedidosCompra} />
+      <Route path="/admin/recepcion-mercancia" component={RecepcionMercancia} />
+      <Route path="/admin/facturas-proveedor" component={FacturasProveedor} />
+      <Route path="/admin/conciliacion" component={ConciliacionDocumental} />
+      <Route path="/admin/lotes-caducidades" component={LotesCaducidades} />
       <Route component={NotFound} />
     </Switch>
   );

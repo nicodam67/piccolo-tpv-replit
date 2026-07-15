@@ -1809,3 +1809,186 @@ export interface PriceSimulatorResult {
   inputTargetMarginPct: number | null;
   inputMaxFoodCostPct: number | null;
 }
+
+// ─── Purchasing module types ──────────────────────────────────────────────────
+
+export interface Supplier {
+  id: string;
+  commercialName: string;
+  legalName: string | null;
+  nif: string | null;
+  address: string | null;
+  phone: string | null;
+  email: string | null;
+  contactPerson: string | null;
+  paymentTerms: string | null;
+  deliveryDays: string | null;
+  minOrder: string | null;
+  leadTimeDays: number | null;
+  notes: string | null;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SupplierCatalogItem {
+  id: string;
+  supplierId: string;
+  ingredientId: string;
+  ingredientName?: string;
+  ingredientUnit?: string;
+  supplierRef: string | null;
+  purchaseFormat: string | null;
+  unitsPerPack: string | null;
+  purchaseUnit: string | null;
+  price: string;
+  vatPct: string | null;
+  discount: string | null;
+  transportCost: string | null;
+  isPreferred: boolean;
+  updatedAt: string;
+}
+
+export interface SupplierWithCatalogue extends Supplier {
+  catalogue: SupplierCatalogItem[];
+}
+
+export interface PurchaseOrderItem {
+  id: string;
+  ingredientId: string;
+  ingredientName?: string;
+  ingredientUnit?: string;
+  currentStock?: string | null;
+  minStock?: string | null;
+  supplierCatalogItemId: string | null;
+  quantity: string;
+  unit: string;
+  unitPrice: string;
+  vatPct: string | null;
+  discount: string | null;
+  notes: string | null;
+}
+
+export interface PurchaseOrder {
+  id: string;
+  supplierId: string;
+  supplierName?: string;
+  status: string;
+  orderDate: string;
+  expectedDeliveryDate: string | null;
+  notes: string | null;
+  totalAmount: string | null;
+  cancelReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+  sentAt: string | null;
+  confirmedAt: string | null;
+  cancelledAt: string | null;
+  items?: PurchaseOrderItem[];
+}
+
+export interface GoodsReceiptItem {
+  id: string;
+  ingredientId: string;
+  ingredientName?: string;
+  ingredientUnit?: string;
+  orderItemId: string | null;
+  qtyOrdered: string | null;
+  qtyReceived: string;
+  qtyRejected: string | null;
+  unitPrice: string;
+  lotNumber: string | null;
+  expiryDate: string | null;
+  temperature: string | null;
+  incidents: string | null;
+  substitution: string | null;
+}
+
+export interface GoodsReceipt {
+  id: string;
+  orderId: string | null;
+  supplierId: string;
+  supplierName?: string;
+  receiptNumber: string | null;
+  receiptDate: string;
+  totalAmount: string | null;
+  incidents: string | null;
+  attachmentUrl: string | null;
+  createdAt: string;
+  items?: GoodsReceiptItem[];
+}
+
+export interface SupplierInvoice {
+  id: string;
+  supplierId: string;
+  supplierName?: string;
+  invoiceNumber: string;
+  invoiceDate: string;
+  taxableBase: string;
+  vatAmount: string;
+  total: string;
+  dueDate: string | null;
+  paymentStatus: string;
+  paidAt: string | null;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+  receipts?: { id: string; receiptId: string; receiptNumber: string | null; receiptDate: string; totalAmount: string | null }[];
+  orders?: { id: string; orderId: string; status: string; orderDate: string; totalAmount: string | null }[];
+}
+
+export interface IngredientLot {
+  id: string;
+  ingredientId: string;
+  ingredientName?: string;
+  ingredientUnit?: string;
+  lotNumber: string;
+  expiryDate: string | null;
+  initialQty: string;
+  remainingQty: string;
+  supplierId: string | null;
+  supplierName: string | null;
+  receiptId: string | null;
+  createdAt: string;
+  isExpired?: boolean;
+  daysUntilExpiry?: number | null;
+}
+
+export interface PriceComparisonEntry {
+  catalogItemId: string;
+  supplierId: string;
+  supplierName: string;
+  leadTimeDays: number | null;
+  minOrder: string | null;
+  supplierRef: string | null;
+  purchaseFormat: string | null;
+  unitsPerPack: string | null;
+  purchaseUnit: string | null;
+  price: string;
+  vatPct: string | null;
+  discount: string | null;
+  transportCost: string | null;
+  isPreferred: boolean;
+  unitPrice: string;
+  effectivePrice: string;
+  pctVsAvg: string;
+  pctVsMin: string;
+}
+
+export interface PurchaseProposalItem {
+  ingredientId: string;
+  ingredientName: string;
+  unit: string;
+  currentStock: string;
+  minStock: string;
+  optimalStock: string;
+  pendingQty: string;
+  dailyConsumption: string;
+  projectedConsumption: string;
+  effectiveStock: string;
+  suggestedQty: string;
+  supplierId: string | null;
+  supplierName: string | null;
+  unitPrice: string | null;
+  catalogueItemId: string | null;
+}

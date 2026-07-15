@@ -5122,3 +5122,131 @@ export function useSimulatePrice<TError = ErrorType<ErrorResponse>, TContext = u
   const mutationFn: MutationFunction<Awaited<ReturnType<typeof simulatePrice>>, { data: BodyType<PriceSimulatorInput> }> = ({ data }) => simulatePrice(data);
   return useMutation({ mutationFn, ...options?.mutation });
 }
+
+// ─── Purchasing module hooks ──────────────────────────────────────────────────
+
+export const getAdminSuppliersUrl = (params?: { search?: string; active?: string }) => {
+  const url = new URL('/api/admin/suppliers', 'http://x');
+  if (params?.search) url.searchParams.set('search', params.search);
+  if (params?.active) url.searchParams.set('active', params.active);
+  return url.pathname + url.search;
+};
+export const getAdminSuppliers = async (params?: { search?: string; active?: string }, options?: RequestInit): Promise<import('./api.schemas').Supplier[]> =>
+  customFetch<import('./api.schemas').Supplier[]>(getAdminSuppliersUrl(params), { ...options, method: 'GET' });
+export const getGetAdminSuppliersQueryKey = (params?: { search?: string; active?: string }) => [`/api/admin/suppliers`, params] as const;
+export function useGetAdminSuppliers<TData = Awaited<ReturnType<typeof getAdminSuppliers>>, TError = ErrorType<ErrorResponse>>(params?: { search?: string; active?: string }, options?: { query?: UseQueryOptions<Awaited<ReturnType<typeof getAdminSuppliers>>, TError, TData> }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryKey = getGetAdminSuppliersQueryKey(params);
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getAdminSuppliers>>> = () => getAdminSuppliers(params);
+  const query = useQuery({ queryKey, queryFn, ...options?.query }) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
+  return withQueryKey(query, queryKey);
+}
+
+export const createSupplier = async (data: BodyType<Partial<import('./api.schemas').Supplier>>, options?: RequestInit): Promise<import('./api.schemas').Supplier> =>
+  customFetch<import('./api.schemas').Supplier>('/api/admin/suppliers', { ...options, method: 'POST', body: JSON.stringify(data) });
+export function useCreateSupplier<TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof createSupplier>>, TError, { data: BodyType<Partial<import('./api.schemas').Supplier>> }, TContext> }): UseMutationResult<Awaited<ReturnType<typeof createSupplier>>, TError, { data: BodyType<Partial<import('./api.schemas').Supplier>> }, TContext> {
+  const mutationFn: MutationFunction<Awaited<ReturnType<typeof createSupplier>>, { data: BodyType<Partial<import('./api.schemas').Supplier>> }> = ({ data }) => createSupplier(data);
+  return useMutation({ mutationFn, ...options?.mutation });
+}
+
+export const getAdminSuppliersIdUrl = (id: string) => `/api/admin/suppliers/${id}`;
+export const getAdminSuppliersId = async (id: string, options?: RequestInit): Promise<import('./api.schemas').SupplierWithCatalogue> =>
+  customFetch<import('./api.schemas').SupplierWithCatalogue>(getAdminSuppliersIdUrl(id), { ...options, method: 'GET' });
+export const getGetAdminSuppliersIdQueryKey = (id: string) => [`/api/admin/suppliers/${id}`] as const;
+export function useGetAdminSuppliersId<TData = Awaited<ReturnType<typeof getAdminSuppliersId>>, TError = ErrorType<ErrorResponse>>(id: string, options?: { query?: UseQueryOptions<Awaited<ReturnType<typeof getAdminSuppliersId>>, TError, TData> }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryKey = getGetAdminSuppliersIdQueryKey(id);
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getAdminSuppliersId>>> = () => getAdminSuppliersId(id);
+  const query = useQuery({ queryKey, queryFn, enabled: !!id, ...options?.query }) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
+  return withQueryKey(query, queryKey);
+}
+
+export const getAdminPurchaseOrdersUrl = (params?: { status?: string; supplierId?: string }) => {
+  const url = new URL('/api/admin/purchase-orders', 'http://x');
+  if (params?.status) url.searchParams.set('status', params.status);
+  if (params?.supplierId) url.searchParams.set('supplierId', params.supplierId);
+  return url.pathname + url.search;
+};
+export const getAdminPurchaseOrders = async (params?: { status?: string; supplierId?: string }, options?: RequestInit): Promise<import('./api.schemas').PurchaseOrder[]> =>
+  customFetch<import('./api.schemas').PurchaseOrder[]>(getAdminPurchaseOrdersUrl(params), { ...options, method: 'GET' });
+export const getGetAdminPurchaseOrdersQueryKey = (params?: { status?: string; supplierId?: string }) => [`/api/admin/purchase-orders`, params] as const;
+export function useGetAdminPurchaseOrders<TData = Awaited<ReturnType<typeof getAdminPurchaseOrders>>, TError = ErrorType<ErrorResponse>>(params?: { status?: string; supplierId?: string }, options?: { query?: UseQueryOptions<Awaited<ReturnType<typeof getAdminPurchaseOrders>>, TError, TData> }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryKey = getGetAdminPurchaseOrdersQueryKey(params);
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getAdminPurchaseOrders>>> = () => getAdminPurchaseOrders(params);
+  const query = useQuery({ queryKey, queryFn, ...options?.query }) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
+  return withQueryKey(query, queryKey);
+}
+
+export const createPurchaseOrder = async (data: BodyType<Partial<import('./api.schemas').PurchaseOrder>>, options?: RequestInit): Promise<import('./api.schemas').PurchaseOrder> =>
+  customFetch<import('./api.schemas').PurchaseOrder>('/api/admin/purchase-orders', { ...options, method: 'POST', body: JSON.stringify(data) });
+export function useCreatePurchaseOrder<TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof createPurchaseOrder>>, TError, { data: BodyType<Partial<import('./api.schemas').PurchaseOrder>> }, TContext> }): UseMutationResult<Awaited<ReturnType<typeof createPurchaseOrder>>, TError, { data: BodyType<Partial<import('./api.schemas').PurchaseOrder>> }, TContext> {
+  const mutationFn: MutationFunction<Awaited<ReturnType<typeof createPurchaseOrder>>, { data: BodyType<Partial<import('./api.schemas').PurchaseOrder>> }> = ({ data }) => createPurchaseOrder(data);
+  return useMutation({ mutationFn, ...options?.mutation });
+}
+
+export const getAdminGoodsReceiptsUrl = (params?: { orderId?: string; supplierId?: string }) => {
+  const url = new URL('/api/admin/goods-receipts', 'http://x');
+  if (params?.orderId) url.searchParams.set('orderId', params.orderId);
+  if (params?.supplierId) url.searchParams.set('supplierId', params.supplierId);
+  return url.pathname + url.search;
+};
+export const getAdminGoodsReceipts = async (params?: { orderId?: string; supplierId?: string }, options?: RequestInit): Promise<import('./api.schemas').GoodsReceipt[]> =>
+  customFetch<import('./api.schemas').GoodsReceipt[]>(getAdminGoodsReceiptsUrl(params), { ...options, method: 'GET' });
+export const getGetAdminGoodsReceiptsQueryKey = (params?: { orderId?: string; supplierId?: string }) => [`/api/admin/goods-receipts`, params] as const;
+export function useGetAdminGoodsReceipts<TData = Awaited<ReturnType<typeof getAdminGoodsReceipts>>, TError = ErrorType<ErrorResponse>>(params?: { orderId?: string; supplierId?: string }, options?: { query?: UseQueryOptions<Awaited<ReturnType<typeof getAdminGoodsReceipts>>, TError, TData> }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryKey = getGetAdminGoodsReceiptsQueryKey(params);
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getAdminGoodsReceipts>>> = () => getAdminGoodsReceipts(params);
+  const query = useQuery({ queryKey, queryFn, ...options?.query }) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
+  return withQueryKey(query, queryKey);
+}
+
+export const createGoodsReceipt = async (data: BodyType<Partial<import('./api.schemas').GoodsReceipt>>, options?: RequestInit): Promise<import('./api.schemas').GoodsReceipt> =>
+  customFetch<import('./api.schemas').GoodsReceipt>('/api/admin/goods-receipts', { ...options, method: 'POST', body: JSON.stringify(data) });
+export function useCreateGoodsReceipt<TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof createGoodsReceipt>>, TError, { data: BodyType<Partial<import('./api.schemas').GoodsReceipt>> }, TContext> }): UseMutationResult<Awaited<ReturnType<typeof createGoodsReceipt>>, TError, { data: BodyType<Partial<import('./api.schemas').GoodsReceipt>> }, TContext> {
+  const mutationFn: MutationFunction<Awaited<ReturnType<typeof createGoodsReceipt>>, { data: BodyType<Partial<import('./api.schemas').GoodsReceipt>> }> = ({ data }) => createGoodsReceipt(data);
+  return useMutation({ mutationFn, ...options?.mutation });
+}
+
+export const getAdminSupplierInvoicesUrl = (params?: { supplierId?: string; paymentStatus?: string }) => {
+  const url = new URL('/api/admin/supplier-invoices', 'http://x');
+  if (params?.supplierId) url.searchParams.set('supplierId', params.supplierId);
+  if (params?.paymentStatus) url.searchParams.set('paymentStatus', params.paymentStatus);
+  return url.pathname + url.search;
+};
+export const getAdminSupplierInvoices = async (params?: { supplierId?: string; paymentStatus?: string }, options?: RequestInit): Promise<import('./api.schemas').SupplierInvoice[]> =>
+  customFetch<import('./api.schemas').SupplierInvoice[]>(getAdminSupplierInvoicesUrl(params), { ...options, method: 'GET' });
+export const getGetAdminSupplierInvoicesQueryKey = (params?: { supplierId?: string; paymentStatus?: string }) => [`/api/admin/supplier-invoices`, params] as const;
+export function useGetAdminSupplierInvoices<TData = Awaited<ReturnType<typeof getAdminSupplierInvoices>>, TError = ErrorType<ErrorResponse>>(params?: { supplierId?: string; paymentStatus?: string }, options?: { query?: UseQueryOptions<Awaited<ReturnType<typeof getAdminSupplierInvoices>>, TError, TData> }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryKey = getGetAdminSupplierInvoicesQueryKey(params);
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getAdminSupplierInvoices>>> = () => getAdminSupplierInvoices(params);
+  const query = useQuery({ queryKey, queryFn, ...options?.query }) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
+  return withQueryKey(query, queryKey);
+}
+
+export const getAdminPurchaseReportsBySupplierUrl = () => `/api/admin/purchase-reports/by-supplier`;
+export const getAdminPurchaseReportsBySupplier = async (params?: { from?: string; to?: string }, options?: RequestInit): Promise<any> => {
+  const url = new URL(getAdminPurchaseReportsBySupplierUrl(), 'http://x');
+  if (params?.from) url.searchParams.set('from', params.from);
+  if (params?.to) url.searchParams.set('to', params.to);
+  return customFetch<any>(url.pathname + url.search, { ...options, method: 'GET' });
+};
+export const getGetAdminPurchaseReportsBySupplierQueryKey = (params?: { from?: string; to?: string }) => [`/api/admin/purchase-reports/by-supplier`, params] as const;
+export function useGetAdminPurchaseReportsBySupplier<TData = any, TError = ErrorType<ErrorResponse>>(params?: { from?: string; to?: string }, options?: { query?: UseQueryOptions<TData, TError, TData> }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryKey = getGetAdminPurchaseReportsBySupplierQueryKey(params);
+  const queryFn: QueryFunction<TData> = () => getAdminPurchaseReportsBySupplier(params) as unknown as TData;
+  const query = useQuery({ queryKey, queryFn, ...options?.query }) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
+  return withQueryKey(query, queryKey);
+}
+
+export const getAdminExpiringLotsUrl = (params?: { days?: string }) => {
+  const url = new URL('/api/admin/purchase-reports/expiring-lots', 'http://x');
+  if (params?.days) url.searchParams.set('days', params.days);
+  return url.pathname + url.search;
+};
+export const getAdminExpiringLots = async (params?: { days?: string }, options?: RequestInit): Promise<{ days: number; lots: import('./api.schemas').IngredientLot[] }> =>
+  customFetch<{ days: number; lots: import('./api.schemas').IngredientLot[] }>(getAdminExpiringLotsUrl(params), { ...options, method: 'GET' });
+export const getGetAdminExpiringLotsQueryKey = (params?: { days?: string }) => [`/api/admin/purchase-reports/expiring-lots`, params] as const;
+export function useGetAdminExpiringLots<TData = Awaited<ReturnType<typeof getAdminExpiringLots>>, TError = ErrorType<ErrorResponse>>(params?: { days?: string }, options?: { query?: UseQueryOptions<Awaited<ReturnType<typeof getAdminExpiringLots>>, TError, TData> }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryKey = getGetAdminExpiringLotsQueryKey(params);
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getAdminExpiringLots>>> = () => getAdminExpiringLots(params);
+  const query = useQuery({ queryKey, queryFn, ...options?.query }) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
+  return withQueryKey(query, queryKey);
+}

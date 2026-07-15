@@ -18,3 +18,4 @@ export * from "./caja";
 export * from "./stock";
 export * from "./reservations";
 export * from "./cash-machine";
+export * from "./suppliers";

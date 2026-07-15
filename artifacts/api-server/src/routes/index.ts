@@ -25,6 +25,11 @@ import profitabilityRouter from "./profitability";
 import tableOperationsRouter from "./table-operations";
 import reservationsRouter from "./reservations";
 import cashMachineRouter from "./cash-machine";
+import suppliersRouter from "./suppliers";
+import purchaseOrdersRouter from "./purchase-orders";
+import goodsReceiptsRouter from "./goods-receipts";
+import supplierInvoicesRouter from "./supplier-invoices";
+import purchaseReportsRouter from "./purchase-reports";
 
 const router: IRouter = Router();
 
@@ -54,5 +59,10 @@ router.use(recipesRouter);
 router.use(subrecipesRouter);
 router.use(profitabilityRouter);
 router.use(cashMachineRouter);
+router.use(suppliersRouter);
+router.use(purchaseOrdersRouter);
+router.use(goodsReceiptsRouter);
+router.use(supplierInvoicesRouter);
+router.use(purchaseReportsRouter);
 
 export default router;
