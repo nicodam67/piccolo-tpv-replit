@@ -1144,6 +1144,111 @@ export interface VoidPaymentInput {
   reason: string;
 }
 
+// ─── Ingredients & stock ──────────────────────────────────────────────────────
+
+export interface Ingredient {
+  id: string;
+  name: string;
+  internalCode: string | null;
+  unit: string;
+  purchaseCost: string;
+  currentStock: string;
+  minStock: string;
+  supplierName: string | null;
+  allergenTags: string[];
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateIngredientInput {
+  name: string;
+  internalCode?: string;
+  unit?: string;
+  purchaseCost?: string;
+  currentStock?: string;
+  minStock?: string;
+  supplierName?: string;
+  allergenTags?: string[];
+}
+
+export interface UpdateIngredientInput {
+  name?: string;
+  internalCode?: string | null;
+  unit?: string;
+  purchaseCost?: string;
+  currentStock?: string;
+  minStock?: string;
+  supplierName?: string | null;
+  allergenTags?: string[];
+  active?: boolean;
+}
+
+export interface StockInInput {
+  quantity: string;
+  unitCost?: string;
+  reason?: string;
+}
+
+export interface StockMovementEntry {
+  id: string;
+  ingredientId: string;
+  ingredientName: string;
+  ingredientUnit: string;
+  movementType: 'purchase' | 'sale' | 'adjustment' | 'waste';
+  quantity: string;
+  unitCost: string | null;
+  reason: string;
+  employeeId: string | null;
+  orderItemId: string | null;
+  createdAt: string;
+}
+
+export interface CreateStockMovementInput {
+  ingredientId: string;
+  movementType: 'purchase' | 'adjustment' | 'waste';
+  quantity: string;
+  unitCost?: string;
+  reason?: string;
+}
+
+export interface RecipeLine {
+  id: string;
+  productId: string;
+  ingredientId: string;
+  ingredientName: string;
+  ingredientUnit: string;
+  ingredientCost: string;
+  quantity: string;
+  unit: string;
+  wastePercent: string;
+  lineCost: string;
+}
+
+export interface RecipeResponse {
+  productId: string;
+  productName?: string;
+  price?: string;
+  lines: RecipeLine[];
+  totalCost: string;
+  grossMargin: string;
+  marginPct: string;
+}
+
+export interface CreateRecipeLineInput {
+  ingredientId: string;
+  quantity: string;
+  unit?: string;
+  wastePercent?: string;
+}
+
+export interface UpdateRecipeLineInput {
+  ingredientId?: string;
+  quantity?: string;
+  unit?: string;
+  wastePercent?: string;
+}
+
 // ─── Cash session history ─────────────────────────────────────────────────────
 export type CashSessionHistoryItem = {
   id: string;

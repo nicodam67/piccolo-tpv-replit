@@ -18,6 +18,8 @@ import documentsRouter from "./documents";
 import discountsRouter from "./discounts";
 import tipsRouter from "./tips";
 import splitsRouter from "./splits";
+import ingredientsRouter from "./ingredients";
+import recipesRouter from "./recipes";
 
 const router: IRouter = Router();
 
@@ -40,5 +42,7 @@ router.use(documentsRouter);
 router.use(discountsRouter);
 router.use(tipsRouter);
 router.use(splitsRouter);
+router.use(ingredientsRouter);
+router.use(recipesRouter);
 
 export default router;

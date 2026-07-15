@@ -13,13 +13,20 @@ import {
   useUpdateProductFormatFull,
   useDeleteProductFormat,
   useAssignProductModifierGroups,
+  useGetProductRecipe,
+  useCreateRecipeLine,
+  useUpdateRecipeLine,
+  useDeleteRecipeLine,
+  useGetAdminIngredients,
   getGetAdminProductsQueryKey,
+  getGetProductRecipeQueryKey,
 } from '@workspace/api-client-react';
-import type { AdminProduct, AdminCategory, AdminModifierGroup, ProductFormat } from '@workspace/api-client-react';
+import type { AdminProduct, AdminCategory, AdminModifierGroup, ProductFormat, RecipeLine, Ingredient } from '@workspace/api-client-react';
 import {
   ArrowLeft, Package, Plus, Search, X, Check, Pencil, Trash2,
   ChevronRight, Eye, EyeOff, Tag, Sliders, ImageIcon, Save,
   ToggleLeft, ToggleRight, CircleOff, CircleCheck,
+  FlaskConical, TrendingUp,
 } from 'lucide-react';
 
 const TAX_RATES = [4, 10, 21] as const;
@@ -180,7 +187,7 @@ function ProductSheet({
   const assignGroups = useAssignProductModifierGroups();
 
   const isNew = !product;
-  const [tab, setTab] = useState<'info' | 'formats' | 'modifiers'>('info');
+  const [tab, setTab] = useState<'info' | 'formats' | 'modifiers' | 'recipe'>('info');
 
   // Form state
   const [name, setName] = useState(product?.name ?? '');
@@ -298,11 +305,11 @@ function ProductSheet({
 
         {/* Tabs (only for existing products) */}
         {!isNew && (
-          <div className="flex border-b border-border shrink-0">
-            {(['info', 'formats', 'modifiers'] as const).map((t) => (
+          <div className="flex border-b border-border shrink-0 overflow-x-auto">
+            {(['info', 'formats', 'modifiers', 'recipe'] as const).map((t) => (
               <button key={t} onClick={() => setTab(t)}
-                className={`flex-1 py-2 text-xs font-semibold transition-colors ${tab === t ? 'text-primary border-b-2 border-primary' : 'text-muted-foreground hover:text-foreground'}`}>
-                {t === 'info' ? 'Información' : t === 'formats' ? `Formatos (${formats.length})` : `Modificadores (${selectedGroupIds.size})`}
+                className={`flex-none px-3 py-2 text-xs font-semibold transition-colors whitespace-nowrap ${tab === t ? 'text-primary border-b-2 border-primary' : 'text-muted-foreground hover:text-foreground'}`}>
+                {t === 'info' ? 'Información' : t === 'formats' ? `Formatos (${formats.length})` : t === 'modifiers' ? `Modificadores (${selectedGroupIds.size})` : '🧪 Receta'}
               </button>
             ))}
           </div>
@@ -480,8 +487,236 @@ function ProductSheet({
               )}
             </div>
           )}
+
+          {/* ── Recipe tab ── */}
+          {tab === 'recipe' && !isNew && product && (
+            <RecipeTab productId={product.id} productPrice={product.price} />
+          )}
         </div>
       </div>
+    </div>
+  );
+}
+
+// ── Recipe tab component ──────────────────────────────────────────────────────
+function RecipeTab({ productId, productPrice }: { productId: string; productPrice: string }) {
+  const qc = useQueryClient();
+  const { data: recipe, isLoading } = useGetProductRecipe(productId);
+  const { data: allIngredients = [] } = useGetAdminIngredients();
+  const createLine = useCreateRecipeLine();
+  const updateLine = useUpdateRecipeLine();
+  const deleteLine = useDeleteRecipeLine();
+
+  const [addIngId, setAddIngId] = useState('');
+  const [addQty, setAddQty] = useState('');
+  const [addWaste, setAddWaste] = useState('0');
+  const [adding, setAdding] = useState(false);
+  const [ingSearch, setIngSearch] = useState('');
+
+  const invalidate = () => qc.invalidateQueries({ queryKey: getGetProductRecipeQueryKey(productId) });
+
+  const activeIngredients = (allIngredients as Ingredient[]).filter(i => i.active);
+  const filteredIng = activeIngredients.filter(i =>
+    !ingSearch || i.name.toLowerCase().includes(ingSearch.toLowerCase())
+  );
+
+  const selectedIng = activeIngredients.find(i => i.id === addIngId);
+
+  const handleAddLine = async () => {
+    if (!addIngId || !addQty || parseFloat(addQty) <= 0) {
+      toast.error('Selecciona un ingrediente e introduce la cantidad'); return;
+    }
+    try {
+      await createLine.mutateAsync({
+        productId,
+        data: { ingredientId: addIngId, quantity: addQty, wastePercent: addWaste },
+      });
+      invalidate();
+      setAddIngId(''); setAddQty(''); setAddWaste('0'); setIngSearch(''); setAdding(false);
+    } catch { toast.error('Error al añadir línea'); }
+  };
+
+  const handleDeleteLine = async (lineId: string) => {
+    try {
+      await deleteLine.mutateAsync({ lineId });
+      invalidate();
+    } catch { toast.error('Error al eliminar línea'); }
+  };
+
+  const handleUpdateLine = async (lineId: string, field: string, value: string) => {
+    try {
+      await updateLine.mutateAsync({ lineId, data: { [field]: value } });
+      invalidate();
+    } catch { toast.error('Error al actualizar línea'); }
+  };
+
+  if (isLoading) return <div className="flex items-center justify-center py-10 text-muted-foreground text-sm">Cargando receta…</div>;
+
+  const lines = recipe?.lines ?? [];
+  const totalCost = parseFloat(recipe?.totalCost ?? '0');
+  const grossMargin = parseFloat(recipe?.grossMargin ?? '0');
+  const marginPct = parseFloat(recipe?.marginPct ?? '0');
+  const price = parseFloat(productPrice);
+  const marginColor = marginPct >= 60 ? '#3caa78' : marginPct >= 30 ? '#d2a032' : '#dc3c3c';
+
+  return (
+    <div className="space-y-4">
+      {/* Summary bar */}
+      {lines.length > 0 && (
+        <div className="rounded-xl border border-border bg-secondary/30 p-3 grid grid-cols-3 gap-2 text-center">
+          <div>
+            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide mb-0.5">Coste total</p>
+            <p className="text-base font-black">{totalCost.toFixed(3)}€</p>
+          </div>
+          <div>
+            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide mb-0.5">Margen bruto</p>
+            <p className="text-base font-black" style={{ color: marginColor }}>{grossMargin.toFixed(2)}€</p>
+          </div>
+          <div>
+            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide mb-0.5">Margen %</p>
+            <p className="text-base font-black" style={{ color: marginColor }}>{marginPct.toFixed(1)}%</p>
+          </div>
+        </div>
+      )}
+
+      {/* Ingredient lines */}
+      {lines.length === 0 && !adding && (
+        <div className="flex flex-col items-center justify-center py-8 gap-2 text-muted-foreground">
+          <FlaskConical size={28} strokeWidth={1.2} />
+          <p className="text-sm">Sin receta. Añade ingredientes para calcular el coste.</p>
+        </div>
+      )}
+
+      {lines.map((line: RecipeLine) => (
+        <RecipeLineRow key={line.id} line={line} onDelete={handleDeleteLine} onUpdate={handleUpdateLine} />
+      ))}
+
+      {/* Add ingredient form */}
+      {adding ? (
+        <div className="rounded-xl border border-primary/30 bg-primary/5 p-3 space-y-2">
+          <p className="text-xs font-bold text-primary">Nuevo ingrediente</p>
+
+          {/* Ingredient search */}
+          <div className="relative">
+            <input
+              type="text"
+              placeholder="Buscar ingrediente…"
+              value={ingSearch || (selectedIng?.name ?? '')}
+              onChange={e => { setIngSearch(e.target.value); setAddIngId(''); }}
+              className="w-full px-3 py-2 rounded-lg bg-card border border-border text-sm focus:outline-none focus:border-primary/50"
+            />
+            {ingSearch && !addIngId && (
+              <div className="absolute top-full left-0 right-0 z-10 bg-card border border-border rounded-lg shadow-lg max-h-32 overflow-y-auto mt-0.5">
+                {filteredIng.slice(0, 8).map(i => (
+                  <button key={i.id} className="w-full text-left px-3 py-1.5 text-sm hover:bg-secondary flex items-center justify-between"
+                    onClick={() => { setAddIngId(i.id); setIngSearch(''); }}>
+                    <span>{i.name}</span>
+                    <span className="text-[10px] text-muted-foreground">{parseFloat(i.purchaseCost).toFixed(3)}€/{i.unit}</span>
+                  </button>
+                ))}
+                {filteredIng.length === 0 && <p className="px-3 py-2 text-xs text-muted-foreground">Sin resultados</p>}
+              </div>
+            )}
+          </div>
+
+          <div className="flex gap-2">
+            <div className="flex-1">
+              <label className="text-[10px] font-bold text-muted-foreground mb-0.5 block">
+                Cantidad {selectedIng ? `(${selectedIng.unit})` : ''}
+              </label>
+              <input type="number" step="0.001" min="0" value={addQty} onChange={e => setAddQty(e.target.value)}
+                placeholder="0.000"
+                className="w-full px-3 py-2 rounded-lg bg-card border border-border text-sm focus:outline-none focus:border-primary/50" />
+            </div>
+            <div className="w-20">
+              <label className="text-[10px] font-bold text-muted-foreground mb-0.5 block">Merma %</label>
+              <input type="number" step="1" min="0" max="100" value={addWaste} onChange={e => setAddWaste(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg bg-card border border-border text-sm focus:outline-none focus:border-primary/50" />
+            </div>
+          </div>
+
+          {/* Preview cost */}
+          {selectedIng && addQty && parseFloat(addQty) > 0 && (
+            <div className="text-xs text-muted-foreground">
+              Coste línea ≈ <span className="font-bold text-foreground">
+                {(parseFloat(selectedIng.purchaseCost) * parseFloat(addQty) * (1 + parseFloat(addWaste || '0') / 100)).toFixed(4)}€
+              </span>
+            </div>
+          )}
+
+          <div className="flex gap-2">
+            <button onClick={() => { setAdding(false); setAddIngId(''); setAddQty(''); setAddWaste('0'); setIngSearch(''); }}
+              className="flex-1 py-2 rounded-lg bg-secondary text-xs font-semibold">Cancelar</button>
+            <button onClick={handleAddLine} disabled={createLine.isPending}
+              className="flex-1 py-2 rounded-lg bg-primary text-primary-foreground text-xs font-bold disabled:opacity-60">
+              {createLine.isPending ? 'Añadiendo…' : 'Añadir'}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button onClick={() => setAdding(true)}
+          className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl border border-dashed border-border text-muted-foreground text-sm hover:border-primary/40 hover:text-primary transition-colors">
+          <Plus size={14} /> Añadir ingrediente
+        </button>
+      )}
+    </div>
+  );
+}
+
+function RecipeLineRow({
+  line, onDelete, onUpdate,
+}: {
+  line: RecipeLine;
+  onDelete: (id: string) => void;
+  onUpdate: (id: string, field: string, value: string) => void;
+}) {
+  const [editQty, setEditQty] = useState(false);
+  const [editWaste, setEditWaste] = useState(false);
+  const [qty, setQty] = useState(line.quantity);
+  const [waste, setWaste] = useState(line.wastePercent);
+
+  return (
+    <div className="flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-2.5">
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-semibold truncate">{line.ingredientName}</p>
+        <div className="flex items-center gap-2 mt-0.5">
+          {/* Quantity */}
+          {editQty ? (
+            <input autoFocus type="number" step="0.001" min="0" value={qty}
+              className="w-20 px-1.5 py-0.5 rounded-md bg-secondary border border-primary/40 text-xs focus:outline-none"
+              onChange={e => setQty(e.target.value)}
+              onBlur={() => { onUpdate(line.id, 'quantity', qty); setEditQty(false); }}
+              onKeyDown={e => e.key === 'Enter' && (onUpdate(line.id, 'quantity', qty), setEditQty(false))} />
+          ) : (
+            <button onClick={() => setEditQty(true)} className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-0.5">
+              {parseFloat(line.quantity).toFixed(3)} {line.unit}
+              <Pencil size={9} className="opacity-50" />
+            </button>
+          )}
+          <span className="text-muted-foreground text-[10px]">·</span>
+          {/* Waste */}
+          {editWaste ? (
+            <input autoFocus type="number" step="1" min="0" max="100" value={waste}
+              className="w-14 px-1.5 py-0.5 rounded-md bg-secondary border border-primary/40 text-xs focus:outline-none"
+              onChange={e => setWaste(e.target.value)}
+              onBlur={() => { onUpdate(line.id, 'wastePercent', waste); setEditWaste(false); }}
+              onKeyDown={e => e.key === 'Enter' && (onUpdate(line.id, 'wastePercent', waste), setEditWaste(false))} />
+          ) : (
+            <button onClick={() => setEditWaste(true)} className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-0.5">
+              merma {parseFloat(line.wastePercent).toFixed(0)}%
+              <Pencil size={9} className="opacity-50" />
+            </button>
+          )}
+        </div>
+      </div>
+      <div className="text-right shrink-0">
+        <p className="text-sm font-bold">{parseFloat(line.lineCost).toFixed(4)}€</p>
+        <p className="text-[10px] text-muted-foreground">{parseFloat(line.ingredientCost).toFixed(4)}€/{line.ingredientUnit}</p>
+      </div>
+      <button onClick={() => onDelete(line.id)}
+        className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors shrink-0">
+        <X size={13} />
+      </button>
     </div>
   );
 }

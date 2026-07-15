@@ -21,6 +21,8 @@ import Fiscal from './pages/fiscal';
 import Categorias from './pages/categorias';
 import Productos from './pages/productos';
 import Modificadores from './pages/modificadores';
+import Ingredientes from './pages/ingredientes';
+import Stock from './pages/stock';
 import NotFound from './pages/not-found';
 
 const queryClient = new QueryClient({
@@ -51,6 +53,8 @@ function Router() {
       <Route path="/categorias" component={Categorias} />
       <Route path="/productos" component={Productos} />
       <Route path="/modificadores" component={Modificadores} />
+      <Route path="/ingredientes" component={Ingredientes} />
+      <Route path="/stock" component={Stock} />
       <Route path="/recogida" component={Recogida} />
       <Route path="/prefactura/:orderId" component={Prefactura} />
       <Route component={NotFound} />

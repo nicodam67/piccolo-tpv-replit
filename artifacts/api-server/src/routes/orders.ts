@@ -12,9 +12,11 @@ import {
   waiterNotificationsTable,
   auditLogTable,
 } from "@workspace/db";
-import { eq, and, inArray, desc } from "drizzle-orm";
+import { eq, and, inArray, desc, sql } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
+import { recipeItemsTable, ingredientsTable, stockMovementsTable } from "@workspace/db";
 import { getIO } from "../lib/socket";
+import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
 
@@ -257,6 +259,73 @@ router.post("/orders/:orderId/items", requireAuth, async (req, res): Promise<voi
   const itemModifiers = modifiers?.length
     ? await db.select().from(orderItemModifiersTable).where(eq(orderItemModifiersTable.orderItemId, item.id))
     : [];
+
+  // ── Stock decrement: consume recipe ingredients ────────────────────────────
+  // Fire-and-forget — stock failure must NOT break the order insert.
+  // Uses atomic SQL GREATEST(0, current_stock - consumed) to avoid lost-update
+  // races under concurrent order inserts. Consumption is aggregated per
+  // ingredient before updating so duplicate recipe lines are summed correctly.
+  try {
+    const recipeLines = await db
+      .select({
+        ingredientId: recipeItemsTable.ingredientId,
+        quantity: recipeItemsTable.quantity,
+        wastePercent: recipeItemsTable.wastePercent,
+        purchaseCost: ingredientsTable.purchaseCost,
+      })
+      .from(recipeItemsTable)
+      .innerJoin(ingredientsTable, eq(recipeItemsTable.ingredientId, ingredientsTable.id))
+      .where(eq(recipeItemsTable.productId, productId));
+
+    if (recipeLines.length > 0) {
+      // Aggregate consumed quantity per ingredient (handles duplicate lines)
+      const consumptionMap = new Map<string, { consumed: number; purchaseCost: string }>();
+      for (const line of recipeLines) {
+        const consumed =
+          parseFloat(line.quantity) *
+          (1 + parseFloat(line.wastePercent) / 100) *
+          quantity;
+        const existing = consumptionMap.get(line.ingredientId);
+        if (existing) {
+          existing.consumed += consumed;
+        } else {
+          consumptionMap.set(line.ingredientId, { consumed, purchaseCost: line.purchaseCost });
+        }
+      }
+
+      await db.transaction(async (tx) => {
+        for (const [ingredientId, { consumed, purchaseCost }] of consumptionMap) {
+          // Atomic decrement — DB computes new value, no lost-update race
+          await tx
+            .update(ingredientsTable)
+            .set({
+              currentStock: sql`GREATEST(0, (${ingredientsTable.currentStock})::numeric - ${consumed}::numeric)`,
+              updatedAt: new Date(),
+            })
+            .where(eq(ingredientsTable.id, ingredientId));
+
+          await tx.insert(stockMovementsTable).values({
+            ingredientId,
+            movementType: "sale",
+            quantity: String(-consumed),
+            unitCost: purchaseCost,
+            reason: `Venta: ${product.name}${resolvedFormatName ? ` [${resolvedFormatName}]` : ""}`,
+            employeeId: req.user?.id ?? null,
+            orderItemId: item.id,
+          });
+        }
+      });
+    }
+  } catch (err) {
+    // Non-fatal — order already committed. Log for operational visibility.
+    logger.error({
+      msg: "Stock decrement failed after order-item insert",
+      orderId,
+      orderItemId: item.id,
+      productId,
+      err: err instanceof Error ? { message: err.message, stack: err.stack } : String(err),
+    });
+  }
 
   await writeAudit(orderId, req.user?.id, req.user?.name ?? "", "add_item",
     `Añadido: ${product.name}${resolvedFormatName ? ` [${resolvedFormatName}]` : ""}`);
