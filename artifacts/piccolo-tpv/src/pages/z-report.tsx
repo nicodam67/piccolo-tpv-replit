@@ -2,6 +2,7 @@ import React, { useRef } from 'react';
 import { useParams, useLocation } from 'wouter';
 import { ChevronLeft, Printer, FileDown, Loader2, CheckCircle2, AlertCircle, Wallet, TrendingUp, TrendingDown, Receipt } from 'lucide-react';
 import { useGetCashSessionReport } from '@workspace/api-client-react';
+import type { ZReport, TaxBreakdownItem } from '@workspace/api-client-react';
 
 function fmt(n: number | string) { return parseFloat(String(n)).toFixed(2); }
 function fmtDate(d: string) {
@@ -44,7 +45,9 @@ export default function ZReport() {
     );
   }
 
-  const { session, salesByMethod, movements, tips, voids, totalSales, totalTips, movIn, movOut, paymentsCount } = report;
+  const typedReport = report as ZReport;
+  const { session, salesByMethod, movements, tips, voids, totalSales, totalTips, movIn, movOut, paymentsCount } = typedReport;
+  const taxBreakdown: TaxBreakdownItem[] = typedReport.taxBreakdown ?? [];
   const totalSalesNum = parseFloat(totalSales);
   const totalTipsNum = parseFloat(totalTips);
   const movInNum = parseFloat(movIn);
@@ -100,7 +103,7 @@ export default function ZReport() {
             </div>
             <p className="text-muted-foreground font-semibold">{session.terminalName || 'Caja principal'}</p>
             <p className="text-sm text-muted-foreground mt-1">
-              Empleado: <span className="font-bold text-foreground">{(session as any).employeeName}</span>
+              Empleado: <span className="font-bold text-foreground">{session.employeeName}</span>
             </p>
             <div className="flex justify-center gap-8 mt-3 text-sm">
               <div>
@@ -151,6 +154,45 @@ export default function ZReport() {
               </div>
             </div>
           </div>
+
+          {/* Desglose IVA */}
+          {taxBreakdown.length > 0 && (
+            <div className="bg-card border border-border rounded-2xl p-5">
+              <h3 className="text-sm font-black uppercase tracking-widest text-muted-foreground mb-4">Desglose fiscal (IVA)</h3>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-xs text-muted-foreground uppercase tracking-wide border-b border-border">
+                    <th className="text-left pb-2">Tipo IVA</th>
+                    <th className="text-right pb-2">Base imponible</th>
+                    <th className="text-right pb-2">Cuota IVA</th>
+                    <th className="text-right pb-2">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {taxBreakdown.map((b) => (
+                    <tr key={b.rate} className="border-b border-border/40 last:border-0">
+                      <td className="py-2 font-semibold">{b.rate}%</td>
+                      <td className="py-2 text-right font-mono">{parseFloat(b.base).toFixed(2)}€</td>
+                      <td className="py-2 text-right font-mono text-blue-400">{parseFloat(b.cuota).toFixed(2)}€</td>
+                      <td className="py-2 text-right font-mono">{(parseFloat(b.base) + parseFloat(b.cuota)).toFixed(2)}€</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr className="font-black border-t-2 border-border">
+                    <td className="pt-2">TOTAL</td>
+                    <td className="pt-2 text-right font-mono">
+                      {taxBreakdown.reduce((s, b) => s + parseFloat(b.base), 0).toFixed(2)}€
+                    </td>
+                    <td className="pt-2 text-right font-mono text-blue-400">
+                      {taxBreakdown.reduce((s, b) => s + parseFloat(b.cuota), 0).toFixed(2)}€
+                    </td>
+                    <td className="pt-2 text-right font-mono text-green-400">{fmt(totalSalesNum)}€</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          )}
 
           {/* Ventas por método */}
           <div className="bg-card border border-border rounded-2xl p-5">

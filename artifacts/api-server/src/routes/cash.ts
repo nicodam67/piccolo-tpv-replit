@@ -9,8 +9,10 @@ import {
   discountsTable,
   tipsTable,
   paymentVoidsTable,
+  ticketsTable,
 } from "@workspace/db";
-import { eq, and, desc, sum, sql } from "drizzle-orm";
+import { eq, and, or, desc, sum, sql, inArray, isNull } from "drizzle-orm";
+import type { TaxBreakdownItem } from "../lib/tax";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { logDocumentAction } from "../lib/document-audit";
 
@@ -407,6 +409,46 @@ router.get(
     const movIn  = movements.filter((m) => m.movementType === "in").reduce((a, m) => a + parseFloat(m.amount), 0);
     const movOut = movements.filter((m) => m.movementType === "out").reduce((a, m) => a + parseFloat(m.amount), 0);
 
+    // Tax breakdown: aggregate from tickets whose cashSessionId matches this session.
+    // For tickets issued before the cashSessionId column was added (null), fall back
+    // to orderId matching — safe because a ticket is only issued on full settlement
+    // and each order has at most one ticket.
+    const orderIds = [...new Set(paymentsInSession.map((p) => p.orderId))];
+    let taxBreakdown: TaxBreakdownItem[] = [];
+    {
+      const ticketWhere =
+        orderIds.length > 0
+          ? or(
+              eq(ticketsTable.cashSessionId, id),
+              and(isNull(ticketsTable.cashSessionId), inArray(ticketsTable.orderId, orderIds)),
+            )
+          : eq(ticketsTable.cashSessionId, id);
+      const sessionTickets = await db
+        .select({ taxBreakdown: ticketsTable.taxBreakdown })
+        .from(ticketsTable)
+        .where(ticketWhere);
+
+      // Merge per-rate totals across all tickets
+      const byRate = new Map<number, { base: number; cuota: number }>();
+      for (const row of sessionTickets) {
+        const breakdown = row.taxBreakdown as TaxBreakdownItem[] | null;
+        if (!breakdown) continue;
+        for (const b of breakdown) {
+          const entry = byRate.get(b.rate) ?? { base: 0, cuota: 0 };
+          entry.base += parseFloat(b.base);
+          entry.cuota += parseFloat(b.cuota);
+          byRate.set(b.rate, entry);
+        }
+      }
+      taxBreakdown = Array.from(byRate.entries())
+        .sort((a, b) => a[0] - b[0])
+        .map(([rate, { base, cuota }]) => ({
+          rate,
+          base: base.toFixed(2),
+          cuota: cuota.toFixed(2),
+        }));
+    }
+
     res.json({
       session: { ...session, employeeName: emp?.name ?? "" },
       salesByMethod,
@@ -418,6 +460,7 @@ router.get(
       movIn: movIn.toFixed(2),
       movOut: movOut.toFixed(2),
       paymentsCount: paymentsInSession.length,
+      taxBreakdown,
     });
   },
 );

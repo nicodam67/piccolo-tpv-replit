@@ -16,22 +16,12 @@ import { eq, and, sum, inArray } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { getIO } from "../lib/socket";
 import { logDocumentAction } from "../lib/document-audit";
+import { calcMultiRateBreakdown } from "../lib/tax";
 
 // Roles allowed to process payments (excludes kitchen staff)
 const PAYMENT_ROLES = ["waiter", "cashier", "manager", "admin"];
 
 const router: IRouter = Router();
-
-// TAX_RATE: Spain reduced VAT (10%) for food/beverage, prices are VAT-inclusive
-const TAX_RATE = 0.10;
-
-function calcTotals(itemTotal: number) {
-  // Prices are VAT-inclusive. Tax = total * rate / (1 + rate)
-  const total = itemTotal;
-  const taxTotal = parseFloat((total * TAX_RATE / (1 + TAX_RATE)).toFixed(2));
-  const subtotal = parseFloat((total - taxTotal).toFixed(2));
-  return { subtotal, taxTotal, total };
-}
 
 // GET /orders/:id/payment-summary
 router.get("/orders/:id/payment-summary", requireAuth, async (req, res): Promise<void> => {
@@ -49,6 +39,7 @@ router.get("/orders/:id/payment-summary", requireAuth, async (req, res): Promise
       productName: productsTable.name,
       quantity: orderItemsTable.quantity,
       unitPrice: orderItemsTable.unitPrice,
+      taxRate: orderItemsTable.taxRate,
       status: orderItemsTable.status,
     })
     .from(orderItemsTable)
@@ -69,12 +60,12 @@ router.get("/orders/:id/payment-summary", requireAuth, async (req, res): Promise
         .where(eq(employeesTable.id, order.employeeId))
     : [{ name: "—" }];
 
-  // Item total (all non-draft items contribute to bill; draft items still in process)
-  const itemTotal = items.reduce(
-    (acc, it) => acc + parseFloat(it.unitPrice) * it.quantity,
-    0,
-  );
-  const { subtotal, taxTotal, total } = calcTotals(itemTotal);
+  // Compute VAT breakdown per line, then aggregate
+  const lineTotals = items.map((it) => ({
+    lineTotal: parseFloat(it.unitPrice) * it.quantity,
+    taxRate: it.taxRate ?? 10,
+  }));
+  const { taxBreakdown, subtotal, taxTotal, total } = calcMultiRateBreakdown(lineTotals);
 
   // Paid so far
   const paidResult = await db
@@ -83,7 +74,7 @@ router.get("/orders/:id/payment-summary", requireAuth, async (req, res): Promise
     .where(and(eq(paymentsTable.orderId, id), eq(paymentsTable.status, "completed")));
 
   const paid = parseFloat(paidResult[0]?.paid ?? "0");
-  const remaining = parseFloat((total - paid).toFixed(2));
+  const remaining = parseFloat((parseFloat(total) - paid).toFixed(2));
 
   // Payment methods
   const methods = await db
@@ -117,9 +108,10 @@ router.get("/orders/:id/payment-summary", requireAuth, async (req, res): Promise
       ...it,
       lineTotal: (parseFloat(it.unitPrice) * it.quantity).toFixed(2),
     })),
-    subtotal: subtotal.toFixed(2),
-    taxTotal: taxTotal.toFixed(2),
-    total: total.toFixed(2),
+    taxBreakdown,
+    subtotal,
+    taxTotal,
+    total,
     paid: paid.toFixed(2),
     remaining: remaining.toFixed(2),
     methods,
@@ -174,17 +166,18 @@ router.post("/orders/:id/payments", requireAuth, requireRole(...PAYMENT_ROLES), 
     }
   }
 
-  // Calculate remaining
+  // Fetch items with taxRate for accurate total
   const items = await db
-    .select({ unitPrice: orderItemsTable.unitPrice, quantity: orderItemsTable.quantity })
+    .select({ unitPrice: orderItemsTable.unitPrice, quantity: orderItemsTable.quantity, taxRate: orderItemsTable.taxRate })
     .from(orderItemsTable)
     .where(eq(orderItemsTable.orderId, orderId));
 
-  const itemTotal = items.reduce(
-    (acc, it) => acc + parseFloat(it.unitPrice) * it.quantity,
-    0,
-  );
-  const { total } = calcTotals(itemTotal);
+  const lineTotals = items.map((it) => ({
+    lineTotal: parseFloat(it.unitPrice) * it.quantity,
+    taxRate: it.taxRate ?? 10,
+  }));
+  const { total } = calcMultiRateBreakdown(lineTotals);
+  const totalNum = parseFloat(total);
 
   const paidResult = await db
     .select({ paid: sum(paymentsTable.amount) })
@@ -192,7 +185,7 @@ router.post("/orders/:id/payments", requireAuth, requireRole(...PAYMENT_ROLES), 
     .where(and(eq(paymentsTable.orderId, orderId), eq(paymentsTable.status, "completed")));
 
   const alreadyPaid = parseFloat(paidResult[0]?.paid ?? "0");
-  const remaining = parseFloat((total - alreadyPaid).toFixed(2));
+  const remaining = parseFloat((totalNum - alreadyPaid).toFixed(2));
 
   // Only cash can exceed remaining (for change)
   if (methodCode !== "cash" && amountNum > remaining + 0.001) {
@@ -268,12 +261,12 @@ router.post("/orders/:id/payments", requireAuth, requireRole(...PAYMENT_ROLES), 
 
     // Recalculate remaining after this payment
     const newPaid = alreadyPaid + parseFloat(effectiveAmount);
-    const newRemaining = parseFloat((total - newPaid).toFixed(2));
+    const newRemaining = parseFloat((totalNum - newPaid).toFixed(2));
 
     let ticket = null;
     if (newRemaining <= 0.001) {
       // Issue ticket + close order + free table
-      const { subtotal, taxTotal } = calcTotals(itemTotal);
+      const { taxBreakdown, subtotal, taxTotal } = calcMultiRateBreakdown(lineTotals);
 
       // Copy emisor fields from business_config (snapshot at issuance time)
       const [bizConfig] = await db.select().from(businessConfigTable).limit(1);
@@ -289,15 +282,17 @@ router.post("/orders/:id/payments", requireAuth, requireRole(...PAYMENT_ROLES), 
         .insert(ticketsTable)
         .values({
           orderId,
+          cashSessionId: openSession?.id ?? null,
           serie: "T",
           nifEmisor: bizConfig?.nif ?? "",
           razonSocialEmisor: bizConfig?.razonSocial ?? "",
           direccionEmisor: bizConfig?.direccionFiscal ?? "",
           formaPago: pmRow?.name ?? method.name,
           verifactuStatus: "pending",
-          subtotal: subtotal.toFixed(2),
-          taxTotal: taxTotal.toFixed(2),
-          total: total.toFixed(2),
+          subtotal,
+          taxTotal,
+          total,
+          taxBreakdown: taxBreakdown as any,
           employeeId,
         })
         .returning();
@@ -311,7 +306,7 @@ router.post("/orders/:id/payments", requireAuth, requireRole(...PAYMENT_ROLES), 
         employeeId,
         employeeName: (req as any).user?.name ?? "",
         terminal: (req.headers["x-forwarded-for"] as string) ?? req.socket?.remoteAddress ?? "",
-        amount: total.toFixed(2),
+        amount: total,
         details: `Ticket T-${t.ticketNumber} emitido para pedido ${orderId}`,
       });
 
@@ -357,6 +352,7 @@ router.get("/orders/:id/ticket", requireAuth, async (req, res): Promise<void> =>
       productName: productsTable.name,
       quantity: orderItemsTable.quantity,
       unitPrice: orderItemsTable.unitPrice,
+      taxRate: orderItemsTable.taxRate,
     })
     .from(orderItemsTable)
     .innerJoin(productsTable, eq(orderItemsTable.productId, productsTable.id))
@@ -383,6 +379,15 @@ router.get("/orders/:id/ticket", requireAuth, async (req, res): Promise<void> =>
     .innerJoin(paymentMethodsTable, eq(paymentsTable.paymentMethodId, paymentMethodsTable.id))
     .where(and(eq(paymentsTable.orderId, id), eq(paymentsTable.status, "completed")));
 
+  // Build taxBreakdown from stored ticket data or recompute from items
+  const storedBreakdown = (ticket as any).taxBreakdown;
+  const taxBreakdown = storedBreakdown ?? calcMultiRateBreakdown(
+    items.map((it) => ({
+      lineTotal: parseFloat(it.unitPrice) * it.quantity,
+      taxRate: it.taxRate ?? 10,
+    }))
+  ).taxBreakdown;
+
   res.json({
     ticket,
     order: { id: order?.id, tableName: tableRow?.name, createdAt: order?.createdAt },
@@ -390,6 +395,7 @@ router.get("/orders/:id/ticket", requireAuth, async (req, res): Promise<void> =>
       ...it,
       lineTotal: (parseFloat(it.unitPrice) * it.quantity).toFixed(2),
     })),
+    taxBreakdown,
     payments,
     employeeName: emp?.name,
   });

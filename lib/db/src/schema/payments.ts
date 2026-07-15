@@ -1,4 +1,4 @@
-import { boolean, numeric, pgTable, text, timestamp, uuid, integer, bigserial } from "drizzle-orm/pg-core";
+import { boolean, jsonb, numeric, pgTable, text, timestamp, uuid, integer, bigserial } from "drizzle-orm/pg-core";
 import { employeesTable } from "./employees";
 import { ordersTable } from "./orders";
 
@@ -68,7 +68,11 @@ export const ticketsTable = pgTable("tickets", {
   subtotal: numeric("subtotal", { precision: 10, scale: 2 }).notNull(),
   taxTotal: numeric("tax_total", { precision: 10, scale: 2 }).notNull().default("0"),
   total: numeric("total", { precision: 10, scale: 2 }).notNull(),
+  /** JSON array: [{rate:number, base:string, cuota:string}] — one entry per VAT rate */
+  taxBreakdown: jsonb("tax_breakdown"),
   issuedAt: timestamp("issued_at", { withTimezone: true }).notNull().defaultNow(),
+  /** The cash session that was open when this ticket was issued (null if no session was open). */
+  cashSessionId: uuid("cash_session_id").references(() => cashSessionsTable.id),
   employeeId: uuid("employee_id")
     .notNull()
     .references(() => employeesTable.id),

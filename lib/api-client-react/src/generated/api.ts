@@ -82,7 +82,13 @@ import type {
   DocumentAuditLog,
   CreateReprintInput,
   GetDocumentTemplatesParams,
-  GetDocumentAuditLogParams
+  GetDocumentAuditLogParams,
+  AdminProduct,
+  UpdateProductTaxRateInput,
+  CashSessionHistoryItem,
+  MarkSplitGroupPaidInput,
+  ZReport,
+  VoidPaymentInput
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -3324,6 +3330,57 @@ export function useGetProductFormats<TData = Awaited<ReturnType<typeof getProduc
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
   return withQueryKey(query, queryOptions.queryKey);
 }
+
+// ============================================================
+// ADMIN — Products & tax-rate management
+// ============================================================
+
+// getAdminProducts — GET /admin/products
+export const getGetAdminProductsUrl = () => `/api/admin/products`;
+export const getAdminProducts = async (options?: RequestInit): Promise<AdminProduct[]> =>
+  customFetch<AdminProduct[]>(getGetAdminProductsUrl(), { ...options, method: 'GET' });
+export const getGetAdminProductsQueryKey = () => [`/api/admin/products`] as const;
+export const getGetAdminProductsQueryOptions = <TData = Awaited<ReturnType<typeof getAdminProducts>>, TError = ErrorType<ErrorResponse>>(options?: { query?: UseQueryOptions<Awaited<ReturnType<typeof getAdminProducts>>, TError, TData>; request?: SecondParameter<typeof customFetch> }) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+  const queryKey = queryOptions?.queryKey ?? getGetAdminProductsQueryKey();
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getAdminProducts>>> = ({ signal }) => getAdminProducts({ signal, ...requestOptions });
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<Awaited<ReturnType<typeof getAdminProducts>>, TError, TData> & { queryKey: QueryKey };
+};
+export type GetAdminProductsQueryResult = NonNullable<Awaited<ReturnType<typeof getAdminProducts>>>;
+export type GetAdminProductsQueryError = ErrorType<ErrorResponse>;
+export function useGetAdminProducts<TData = Awaited<ReturnType<typeof getAdminProducts>>, TError = ErrorType<ErrorResponse>>(options?: { query?: UseQueryOptions<Awaited<ReturnType<typeof getAdminProducts>>, TError, TData>; request?: SecondParameter<typeof customFetch> }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetAdminProductsQueryOptions(options);
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+// updateAdminProductTaxRate — PATCH /admin/products/:productId
+export const getUpdateAdminProductTaxRateUrl = (productId: string) => `/api/admin/products/${productId}`;
+export const updateAdminProductTaxRate = async (productId: string, updateProductTaxRateInput: BodyType<UpdateProductTaxRateInput>, options?: RequestInit): Promise<Product> =>
+  customFetch<Product>(getUpdateAdminProductTaxRateUrl(productId), { ...options, method: 'PATCH', headers: { 'Content-Type': 'application/json', ...options?.headers }, body: JSON.stringify(updateProductTaxRateInput) });
+export const getUpdateAdminProductTaxRateMutationOptions = <TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof updateAdminProductTaxRate>>, TError, { productId: string; data: BodyType<UpdateProductTaxRateInput> }, TContext>; request?: SecondParameter<typeof customFetch> }): UseMutationOptions<Awaited<ReturnType<typeof updateAdminProductTaxRate>>, TError, { productId: string; data: BodyType<UpdateProductTaxRateInput> }, TContext> => {
+  const mutationKey = ['updateAdminProductTaxRate'];
+  const { mutation: mutationOptions, request: requestOptions } = options ? (options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ? options : { ...options, mutation: { ...options.mutation, mutationKey } }) : { mutation: { mutationKey }, request: undefined };
+  const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateAdminProductTaxRate>>, { productId: string; data: BodyType<UpdateProductTaxRateInput> }> = (props) => { const { productId, data } = props ?? {}; return updateAdminProductTaxRate(productId, data, requestOptions); };
+  return { mutationFn, ...mutationOptions };
+};
+export type UpdateAdminProductTaxRateMutationResult = NonNullable<Awaited<ReturnType<typeof updateAdminProductTaxRate>>>;
+export type UpdateAdminProductTaxRateMutationError = ErrorType<ErrorResponse>;
+export const useUpdateAdminProductTaxRate = <TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof updateAdminProductTaxRate>>, TError, { productId: string; data: BodyType<UpdateProductTaxRateInput> }, TContext>; request?: SecondParameter<typeof customFetch> }): UseMutationResult<Awaited<ReturnType<typeof updateAdminProductTaxRate>>, TError, { productId: string; data: BodyType<UpdateProductTaxRateInput> }, TContext> => useMutation(getUpdateAdminProductTaxRateMutationOptions(options));
+
+// updateProductFormatTaxRate — PATCH /products/formats/:formatId
+export const getUpdateProductFormatTaxRateUrl = (formatId: string) => `/api/products/formats/${formatId}`;
+export const updateProductFormatTaxRate = async (formatId: string, updateProductFormatInput: BodyType<UpdateProductFormatInput>, options?: RequestInit): Promise<ProductFormat> =>
+  customFetch<ProductFormat>(getUpdateProductFormatTaxRateUrl(formatId), { ...options, method: 'PATCH', headers: { 'Content-Type': 'application/json', ...options?.headers }, body: JSON.stringify(updateProductFormatInput) });
+export const getUpdateProductFormatTaxRateMutationOptions = <TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof updateProductFormatTaxRate>>, TError, { formatId: string; data: BodyType<UpdateProductFormatInput> }, TContext>; request?: SecondParameter<typeof customFetch> }): UseMutationOptions<Awaited<ReturnType<typeof updateProductFormatTaxRate>>, TError, { formatId: string; data: BodyType<UpdateProductFormatInput> }, TContext> => {
+  const mutationKey = ['updateProductFormatTaxRate'];
+  const { mutation: mutationOptions, request: requestOptions } = options ? (options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ? options : { ...options, mutation: { ...options.mutation, mutationKey } }) : { mutation: { mutationKey }, request: undefined };
+  const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateProductFormatTaxRate>>, { formatId: string; data: BodyType<UpdateProductFormatInput> }> = (props) => { const { formatId, data } = props ?? {}; return updateProductFormatTaxRate(formatId, data, requestOptions); };
+  return { mutationFn, ...mutationOptions };
+};
+export type UpdateProductFormatTaxRateMutationResult = NonNullable<Awaited<ReturnType<typeof updateProductFormatTaxRate>>>;
+export type UpdateProductFormatTaxRateMutationError = ErrorType<ErrorResponse>;
+export const useUpdateProductFormatTaxRate = <TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof updateProductFormatTaxRate>>, TError, { formatId: string; data: BodyType<UpdateProductFormatInput> }, TContext>; request?: SecondParameter<typeof customFetch> }): UseMutationResult<Awaited<ReturnType<typeof updateProductFormatTaxRate>>, TError, { formatId: string; data: BodyType<UpdateProductFormatInput> }, TContext> => useMutation(getUpdateProductFormatTaxRateMutationOptions(options));
 
 // ============================================================
 // CONFIG — Business configuration

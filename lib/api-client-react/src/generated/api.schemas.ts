@@ -196,6 +196,12 @@ export interface OrderItemModifier {
   priceDelta: string;
 }
 
+export interface TaxBreakdownItem {
+  rate: number;
+  base: string;
+  cuota: string;
+}
+
 export interface OrderItem {
   id: string;
   orderId: string;
@@ -205,6 +211,8 @@ export interface OrderItem {
   formatName?: string | null;
   quantity: number;
   unitPrice: string;
+  /** VAT rate captured at order time: 4 | 10 | 21 */
+  taxRate?: number;
   status: string;
   notes: string;
   allergyNote: string;
@@ -282,6 +290,8 @@ export interface ProductFormat {
   price: string;
   sortOrder: number;
   active: boolean;
+  /** Overrides product taxRate when set. null means inherit from product. */
+  taxRate?: number | null;
 }
 
 export interface Product {
@@ -289,6 +299,8 @@ export interface Product {
   categoryId: string;
   name: string;
   price: string;
+  /** VAT rate for this product: 4 | 10 | 21. Default 10. */
+  taxRate?: number;
   prepZone: string;
   tpvVisible?: boolean;
   outOfStock?: boolean;
@@ -361,6 +373,7 @@ export interface CreateProductFormatInput {
   name: string;
   price: string;
   sortOrder?: number;
+  taxRate?: number;
 }
 
 export interface UpdateProductFormatInput {
@@ -368,6 +381,23 @@ export interface UpdateProductFormatInput {
   price?: string;
   sortOrder?: number;
   active?: boolean;
+  taxRate?: number | null;
+}
+
+export interface UpdateProductTaxRateInput {
+  taxRate: number;
+}
+
+export interface AdminProduct {
+  id: string;
+  name: string;
+  price: string;
+  taxRate: number;
+  categoryId: string;
+  categoryName: string;
+  active: boolean;
+  tpvVisible: boolean;
+  formats: ProductFormat[];
 }
 
 export interface AuditLogEntry {
@@ -514,6 +544,7 @@ export type PaymentSummaryItemsItem = {
   quantity: number;
   unitPrice: string;
   lineTotal: string;
+  taxRate?: number;
 };
 
 export type PaymentSummaryPaymentsItem = {
@@ -528,6 +559,7 @@ export type PaymentSummaryPaymentsItem = {
 export interface PaymentSummary {
   order: PaymentSummaryOrder;
   items: PaymentSummaryItemsItem[];
+  taxBreakdown: TaxBreakdownItem[];
   subtotal: string;
   taxTotal: string;
   total: string;
@@ -598,6 +630,7 @@ export type TicketDataItemsItem = {
   quantity: number;
   unitPrice: string;
   lineTotal: string;
+  taxRate?: number;
 };
 
 export type TicketDataPaymentsItem = {
@@ -609,6 +642,7 @@ export interface TicketData {
   ticket: TicketDataTicket;
   order: TicketDataOrder;
   items: TicketDataItemsItem[];
+  taxBreakdown: TaxBreakdownItem[];
   payments: TicketDataPaymentsItem[];
   employeeName?: string;
 }
@@ -936,6 +970,7 @@ export interface ZReport {
   movIn: string;
   movOut: string;
   paymentsCount: number;
+  taxBreakdown: TaxBreakdownItem[];
 }
 
 // ─── Void payment ─────────────────────────────────────────────────────────────

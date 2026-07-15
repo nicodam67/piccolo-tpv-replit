@@ -21,8 +21,9 @@ import { requireAuth, requireRole } from "../middlewares/auth";
 import { logDocumentAction } from "../lib/document-audit";
 import { getNextNumber } from "../lib/invoice-series";
 
+import { calcMultiRateBreakdown } from "../lib/tax";
+
 const router: IRouter = Router();
-const TAX_RATE = 0.10;
 
 function getTerminal(req: Request): string {
   return (req.headers["x-forwarded-for"] as string) ?? req.socket?.remoteAddress ?? "";
@@ -393,17 +394,15 @@ router.post(
     }
 
     const items = await db
-      .select({ unitPrice: orderItemsTable.unitPrice, quantity: orderItemsTable.quantity })
+      .select({ unitPrice: orderItemsTable.unitPrice, quantity: orderItemsTable.quantity, taxRate: orderItemsTable.taxRate })
       .from(orderItemsTable)
       .where(eq(orderItemsTable.orderId, orderId));
 
-    const itemTotal = items.reduce(
-      (acc, it) => acc + parseFloat(it.unitPrice) * it.quantity,
-      0
-    );
-    const total = itemTotal;
-    const taxTotal = parseFloat((total * TAX_RATE / (1 + TAX_RATE)).toFixed(2));
-    const subtotal = parseFloat((total - taxTotal).toFixed(2));
+    const lineTotals = items.map((it) => ({
+      lineTotal: parseFloat(it.unitPrice) * it.quantity,
+      taxRate: it.taxRate ?? 10,
+    }));
+    const { taxBreakdown, subtotal, taxTotal, total } = calcMultiRateBreakdown(lineTotals);
 
     // Get payment method used
     const [paymentRow] = await db
@@ -438,9 +437,10 @@ router.post(
         clientEmail: clientEmail ?? "",
         clientPhone: clientPhone ?? "",
         orderId,
-        subtotal: subtotal.toFixed(2),
-        taxTotal: taxTotal.toFixed(2),
-        total: total.toFixed(2),
+        subtotal,
+        taxTotal,
+        total,
+        taxBreakdown: taxBreakdown as any,
         paymentMethod: paymentRow?.methodName ?? "",
         notes: notes ?? "",
         status: "issued",
@@ -456,7 +456,7 @@ router.post(
       employeeId: user.id,
       employeeName: user.name,
       terminal: getTerminal(req),
-      amount: total.toFixed(2),
+      amount: total,
       details: `Factura F-${invoiceNum} emitida`,
     });
 

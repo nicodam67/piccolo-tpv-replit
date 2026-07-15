@@ -105,6 +105,8 @@ export const invoicesTable = pgTable("invoices", {
   subtotal: numeric("subtotal", { precision: 10, scale: 2 }).notNull(),
   taxTotal: numeric("tax_total", { precision: 10, scale: 2 }).notNull().default("0"),
   total: numeric("total", { precision: 10, scale: 2 }).notNull(),
+  /** JSON array: [{rate:number, base:string, cuota:string}] — one entry per VAT rate */
+  taxBreakdown: jsonb("tax_breakdown"),
   paymentMethod: text("payment_method").notNull().default(""),
   notes: text("notes").notNull().default(""),
   // Status

@@ -197,10 +197,12 @@ router.post("/orders/:orderId/items", requireAuth, async (req, res): Promise<voi
 
   if (!product) { res.status(404).json({ error: "Producto no encontrado" }); return; }
 
-  // Resolve unit price: use format price if formatId given
+  // Resolve unit price and taxRate: format overrides product
   let unitPrice = product.price;
   let resolvedFormatId: string | null = null;
   let resolvedFormatName: string | null = null;
+  // taxRate: format.taxRate (if set) overrides product.taxRate; default 10
+  let taxRate: number = product.taxRate ?? 10;
 
   if (formatId) {
     const [fmt] = await db
@@ -211,6 +213,8 @@ router.post("/orders/:orderId/items", requireAuth, async (req, res): Promise<voi
       unitPrice = fmt.price;
       resolvedFormatId = fmt.id;
       resolvedFormatName = fmt.name;
+      // Format taxRate overrides product taxRate when explicitly set
+      if (fmt.taxRate != null) taxRate = fmt.taxRate;
     }
   }
 
@@ -229,6 +233,7 @@ router.post("/orders/:orderId/items", requireAuth, async (req, res): Promise<voi
       formatName: resolvedFormatName,
       quantity,
       unitPrice,
+      taxRate,
       status: "draft",
       notes: notes ?? "",
       allergyNote: "",
@@ -359,6 +364,7 @@ router.post("/order-items/:itemId/duplicate", requireAuth, async (req, res): Pro
       formatName: srcItem.formatName,
       quantity: 1,
       unitPrice: srcItem.unitPrice,
+      taxRate: srcItem.taxRate,
       status: "draft",
       notes: srcItem.notes,
       allergyNote: srcItem.allergyNote,

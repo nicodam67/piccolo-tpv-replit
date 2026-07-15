@@ -14,6 +14,8 @@ export const orderItemsTable = pgTable("order_items", {
   formatName: text("format_name"),
   quantity: integer("quantity").notNull().default(1),
   unitPrice: numeric("unit_price", { precision: 10, scale: 2 }).notNull(),
+  /** VAT rate captured at the moment the item was added: 4 | 10 | 21 */
+  taxRate: integer("tax_rate").notNull().default(10),
   status: text("status").notNull().default("draft"),
   notes: text("notes").notNull().default(""),
   allergyNote: text("allergy_note").notNull().default(""),

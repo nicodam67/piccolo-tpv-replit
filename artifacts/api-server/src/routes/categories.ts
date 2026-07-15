@@ -30,6 +30,7 @@ router.get("/categories/:categoryId/products", requireAuth, async (req, res): Pr
       categoryId: productsTable.categoryId,
       name: productsTable.name,
       price: productsTable.price,
+      taxRate: productsTable.taxRate,
       prepZone: productsTable.prepZone,
       tpvVisible: productsTable.tpvVisible,
       outOfStock: productsTable.outOfStock,

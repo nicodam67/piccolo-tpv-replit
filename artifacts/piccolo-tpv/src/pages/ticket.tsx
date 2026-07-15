@@ -9,6 +9,7 @@ import {
   getGetBusinessConfigQueryKey,
   getGetDocumentTemplatesQueryKey,
 } from '@workspace/api-client-react';
+import type { TaxBreakdownItem } from '@workspace/api-client-react';
 import { Loader2, ChevronLeft, Printer, Mail, RefreshCw, Download } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -209,14 +210,42 @@ export default function Ticket() {
             <div className="border-b-2 border-dashed border-gray-400 mb-4"></div>
 
             <div className="space-y-1 mb-4 text-gray-800 font-semibold">
-              <div className="flex justify-between">
-                <span>Subtotal (base imponible)</span>
-                <span>{parseFloat(ticket.subtotal).toFixed(2)}€</span>
-              </div>
-              <div className="flex justify-between">
-                <span>IVA 10%</span>
-                <span>{parseFloat(ticket.taxTotal).toFixed(2)}€</span>
-              </div>
+              {/* Multi-rate VAT breakdown */}
+              {(data.taxBreakdown ?? []).length > 1 ? (
+                <>
+                  {(data.taxBreakdown ?? []).map((b: TaxBreakdownItem) => (
+                    <div key={b.rate}>
+                      <div className="flex justify-between text-xs text-gray-600">
+                        <span>Base imponible {b.rate}%</span>
+                        <span>{parseFloat(b.base).toFixed(2)}€</span>
+                      </div>
+                      <div className="flex justify-between text-xs text-gray-600">
+                        <span>Cuota IVA {b.rate}%</span>
+                        <span>{parseFloat(b.cuota).toFixed(2)}€</span>
+                      </div>
+                    </div>
+                  ))}
+                  <div className="flex justify-between pt-1 border-t border-gray-200">
+                    <span>Subtotal (base total)</span>
+                    <span>{parseFloat(ticket.subtotal).toFixed(2)}€</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Total IVA</span>
+                    <span>{parseFloat(ticket.taxTotal).toFixed(2)}€</span>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="flex justify-between">
+                    <span>Subtotal (base imponible)</span>
+                    <span>{parseFloat(ticket.subtotal).toFixed(2)}€</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>IVA {(data.taxBreakdown ?? [])[0]?.rate ?? 10}%</span>
+                    <span>{parseFloat(ticket.taxTotal).toFixed(2)}€</span>
+                  </div>
+                </>
+              )}
               <div className="flex justify-between text-xl font-black mt-2 pt-2 border-t border-gray-300 text-black">
                 <span>TOTAL</span>
                 <span>{parseFloat(ticket.total).toFixed(2)}€</span>
@@ -238,7 +267,16 @@ export default function Ticket() {
 
             <div className="text-center text-xs space-y-2 text-gray-600">
               {footerText && <div className="font-bold text-gray-900 text-sm">{footerText}</div>}
-              <div>IVA incluido al tipo reducido del 10%</div>
+              {(data.taxBreakdown ?? []).length > 0 ? (
+                <div>
+                  IVA incluido:{' '}
+                  {(data.taxBreakdown ?? []).map((b: TaxBreakdownItem, i: number) => (
+                    <span key={b.rate}>{i > 0 ? ' · ' : ''}{b.rate}%</span>
+                  ))}
+                </div>
+              ) : (
+                <div>IVA incluido al tipo reducido del 10%</div>
+              )}
             </div>
           </div>
         </div>
@@ -272,8 +310,23 @@ export default function Ticket() {
         <div className="border-b border-dashed border-black mb-2"></div>
 
         <div className="mb-2">
-          <div className="flex justify-between"><span>Subtotal</span><span>{parseFloat(ticket.subtotal).toFixed(2)}€</span></div>
-          <div className="flex justify-between"><span>IVA 10%</span><span>{parseFloat(ticket.taxTotal).toFixed(2)}€</span></div>
+          {(data.taxBreakdown ?? []).length > 1 ? (
+            <>
+              {(data.taxBreakdown ?? []).map((b: TaxBreakdownItem) => (
+                <div key={b.rate}>
+                  <div className="flex justify-between text-[9px]"><span>Base {b.rate}%</span><span>{parseFloat(b.base).toFixed(2)}€</span></div>
+                  <div className="flex justify-between text-[9px]"><span>IVA {b.rate}%</span><span>{parseFloat(b.cuota).toFixed(2)}€</span></div>
+                </div>
+              ))}
+              <div className="flex justify-between text-[9px]"><span>Subtotal</span><span>{parseFloat(ticket.subtotal).toFixed(2)}€</span></div>
+              <div className="flex justify-between text-[9px]"><span>Total IVA</span><span>{parseFloat(ticket.taxTotal).toFixed(2)}€</span></div>
+            </>
+          ) : (
+            <>
+              <div className="flex justify-between"><span>Subtotal</span><span>{parseFloat(ticket.subtotal).toFixed(2)}€</span></div>
+              <div className="flex justify-between"><span>IVA {(data.taxBreakdown ?? [])[0]?.rate ?? 10}%</span><span>{parseFloat(ticket.taxTotal).toFixed(2)}€</span></div>
+            </>
+          )}
           <div className="flex justify-between font-bold text-sm mt-1 border-t border-black pt-1">
             <span>TOTAL</span><span>{parseFloat(ticket.total).toFixed(2)}€</span>
           </div>
@@ -294,7 +347,11 @@ export default function Ticket() {
 
         <div className="text-center text-[10px]">
           {footerText && <div className="font-bold mb-0.5">{footerText}</div>}
-          <div>IVA incluido al tipo reducido del 10%</div>
+          {(data.taxBreakdown ?? []).length > 0 ? (
+            <div>IVA: {(data.taxBreakdown ?? []).map((b: TaxBreakdownItem, i: number) => `${i > 0 ? ' · ' : ''}${b.rate}%`).join('')}</div>
+          ) : (
+            <div>IVA incluido al tipo reducido del 10%</div>
+          )}
         </div>
       </div>
     </div>
