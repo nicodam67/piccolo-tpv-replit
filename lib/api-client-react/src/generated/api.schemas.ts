@@ -1189,6 +1189,7 @@ export interface Ingredient {
   purchaseCost: string;
   currentStock: string;
   minStock: string;
+  optimalStock: string;
   supplierName: string | null;
   allergenTags: string[];
   active: boolean;
@@ -1203,6 +1204,7 @@ export interface CreateIngredientInput {
   purchaseCost?: string;
   currentStock?: string;
   minStock?: string;
+  optimalStock?: string;
   supplierName?: string;
   allergenTags?: string[];
 }
@@ -1214,6 +1216,7 @@ export interface UpdateIngredientInput {
   purchaseCost?: string;
   currentStock?: string;
   minStock?: string;
+  optimalStock?: string;
   supplierName?: string | null;
   allergenTags?: string[];
   active?: boolean;
@@ -1230,7 +1233,7 @@ export interface StockMovementEntry {
   ingredientId: string;
   ingredientName: string;
   ingredientUnit: string;
-  movementType: 'purchase' | 'sale' | 'adjustment' | 'waste';
+  movementType: 'purchase' | 'sale' | 'adjustment' | 'waste' | 'inventory';
   quantity: string;
   unitCost: string | null;
   reason: string;
@@ -1245,6 +1248,63 @@ export interface CreateStockMovementInput {
   quantity: string;
   unitCost?: string;
   reason?: string;
+}
+
+// ─── Physical inventory count ─────────────────────────────────────────────────
+export interface InventoryCountLine {
+  ingredientId: string;
+  actualQty: string;
+  note?: string;
+}
+
+export interface InventoryCountInput {
+  lines: InventoryCountLine[];
+}
+
+export interface InventoryCountResultLine {
+  ingredientId: string;
+  name: string;
+  before: number;
+  after: number;
+  diff: number;
+}
+
+export interface InventoryCountResult {
+  ok: boolean;
+  adjusted: number;
+  results: InventoryCountResultLine[];
+}
+
+// ─── Product stock availability ───────────────────────────────────────────────
+export interface ProductAvailabilityEntry {
+  productId: string;
+  hasRecipe: boolean;
+  lowStock: boolean;
+  zeroIngredients: string[];
+}
+
+// ─── Stock reports ────────────────────────────────────────────────────────────
+export interface StockReportIngredient {
+  id: string;
+  name: string;
+  unit: string;
+  currentStock: string;
+  minStock: string;
+  optimalStock: string;
+  purchaseCost: string;
+  stockValue: number;
+  dailyConsumption: number;
+  wasteTotal: number;
+  daysRemaining: number | null;
+}
+
+export interface StockReportsResult {
+  warehouseValue: number;
+  currency: string;
+  ingredients: StockReportIngredient[];
+  periodDays: number;
+  from: string;
+  to: string;
 }
 
 export interface RecipeLine {

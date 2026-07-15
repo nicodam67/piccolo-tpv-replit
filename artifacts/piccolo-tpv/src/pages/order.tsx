@@ -24,6 +24,7 @@ import {
   useGetProductFormats,
   useGetPrefacturaStatus,
   useGetOrderAudit,
+  useGetProductAvailability,
   getGetTableOrderQueryKey,
   getGetCategoryProductsQueryKey,
   getGetAllTablesQueryKey,
@@ -319,6 +320,15 @@ export default function OrderPage() {
   const { data: products, isLoading: loadingProducts } = useGetCategoryProducts(activeCategoryId!, {
     query: { enabled: !!activeCategoryId, queryKey: activeCategoryId ? getGetCategoryProductsQueryKey(activeCategoryId) : [] }
   });
+
+  // Stock availability: fetch once on mount so we can show a low-stock warning
+  // on product buttons without blocking the sale.
+  const { data: stockAvailability } = useGetProductAvailability();
+  const lowStockProductIds = useMemo(() => {
+    const s = new Set<string>();
+    (stockAvailability ?? []).forEach(e => { if (e.lowStock) s.add(e.productId); });
+    return s;
+  }, [stockAvailability]);
 
   // Prefetch formats/modifiers for the picker when a product is selected
   const pickerProductId = (formatPickerProduct ?? modifierPickerState?.product)?.id ?? '';
@@ -764,6 +774,7 @@ export default function OrderPage() {
               {products?.map(p => {
                 const isAdding = addOrderItem.isPending && addOrderItem.variables?.data?.productId === p.id;
                 const isOutOfStock = (p as any).outOfStock === true;
+                const hasLowStock = !isOutOfStock && lowStockProductIds.has(p.id);
                 const hasFormats = (p as any).formats?.length > 0;
                 const hasModifiers = p.hasModifiers;
                 const allergens = (p as any).allergens;
@@ -771,17 +782,30 @@ export default function OrderPage() {
                   <button
                     key={p.id}
                     onPointerDown={handlePointerDown}
-                    onClick={guardedClick(() => !isOutOfStock && handleAddProduct(p))}
+                    onClick={guardedClick(() => {
+                      if (isOutOfStock) return;
+                      if (hasLowStock) {
+                        const missing = stockAvailability?.find(e => e.productId === p.id)?.zeroIngredients ?? [];
+                        toast.warning(`⚠️ Stock bajo en: ${missing.join(', ') || 'ingredientes'}`, { duration: 3000 });
+                      }
+                      handleAddProduct(p);
+                    })}
                     disabled={!actualOrderId || isAdding || isOutOfStock}
-                    className={`bg-card border-2 border-border rounded-2xl p-4 flex flex-col items-start text-left transition-all active:scale-[0.96] aspect-[4/3] justify-between group shadow-sm relative overflow-hidden
+                    className={`bg-card border-2 rounded-2xl p-4 flex flex-col items-start text-left transition-all active:scale-[0.96] aspect-[4/3] justify-between group shadow-sm relative overflow-hidden
                       ${isAdding ? 'opacity-70' : ''}
-                      ${isOutOfStock ? 'opacity-50 cursor-not-allowed' : 'hover:border-primary/50 hover:bg-secondary/30'}
+                      ${isOutOfStock ? 'border-border opacity-50 cursor-not-allowed' : hasLowStock ? 'border-orange-500/40 hover:border-orange-500/60 hover:bg-orange-500/5' : 'border-border hover:border-primary/50 hover:bg-secondary/30'}
                     `}
                   >
                     {/* Out of stock overlay */}
                     {isOutOfStock && (
                       <div className="absolute inset-0 flex items-center justify-center bg-background/40 rounded-2xl">
                         <span className="text-[10px] font-black uppercase tracking-widest bg-red-500/20 text-red-400 border border-red-500/30 px-2 py-1 rounded-lg">Agotado</span>
+                      </div>
+                    )}
+                    {/* Low stock warning badge */}
+                    {hasLowStock && (
+                      <div className="absolute top-2 right-2 w-5 h-5 flex items-center justify-center rounded-full bg-orange-500/20 border border-orange-500/40">
+                        <AlertTriangle size={10} className="text-orange-400" />
                       </div>
                     )}
                     <span className="font-bold text-foreground text-lg leading-tight group-hover:text-primary transition-colors line-clamp-3">{p.name}</span>

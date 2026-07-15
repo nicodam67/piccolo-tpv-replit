@@ -4,8 +4,9 @@ import {
   ingredientsTable,
   recipeItemsTable,
   stockMovementsTable,
+  productsTable,
 } from "@workspace/db";
-import { eq, and, ilike, or, desc, asc, gt, lte } from "drizzle-orm";
+import { eq, and, ilike, or, desc, asc, gt, lte, sum, gte, sql } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
 
 const router: IRouter = Router();
@@ -33,11 +34,11 @@ router.get("/admin/ingredients", requireAuth, requireRole("admin"), async (req, 
 router.post("/admin/ingredients", requireAuth, requireRole("admin"), async (req, res): Promise<void> => {
   const {
     name, internalCode, unit = "ud", purchaseCost = "0",
-    currentStock = "0", minStock = "0", supplierName, allergenTags = [],
+    currentStock = "0", minStock = "0", optimalStock = "0", supplierName, allergenTags = [],
   } = req.body as {
     name: string; internalCode?: string; unit?: string;
     purchaseCost?: string; currentStock?: string; minStock?: string;
-    supplierName?: string; allergenTags?: string[];
+    optimalStock?: string; supplierName?: string; allergenTags?: string[];
   };
 
   if (!name?.trim()) { res.status(400).json({ error: "name es obligatorio" }); return; }
@@ -46,6 +47,7 @@ router.post("/admin/ingredients", requireAuth, requireRole("admin"), async (req,
     name: name.trim(), internalCode: internalCode ?? null,
     unit, purchaseCost: String(purchaseCost),
     currentStock: String(currentStock), minStock: String(minStock),
+    optimalStock: String(optimalStock),
     supplierName: supplierName ?? null,
     allergenTags: allergenTags,
   }).returning();
@@ -71,7 +73,7 @@ router.patch("/admin/ingredients/:id", requireAuth, requireRole("admin"), async 
   const id = req.params.id as string;
   const {
     name, internalCode, unit, purchaseCost,
-    currentStock, minStock, supplierName, allergenTags, active,
+    currentStock, minStock, optimalStock, supplierName, allergenTags, active,
   } = req.body as Record<string, unknown>;
 
   const [existing] = await db.select().from(ingredientsTable).where(eq(ingredientsTable.id, id));
@@ -83,6 +85,7 @@ router.patch("/admin/ingredients/:id", requireAuth, requireRole("admin"), async 
   if (unit != null) updates.unit = unit;
   if (purchaseCost !== undefined) updates.purchaseCost = String(purchaseCost);
   if (minStock !== undefined) updates.minStock = String(minStock);
+  if (optimalStock !== undefined) updates.optimalStock = String(optimalStock);
   if (supplierName !== undefined) updates.supplierName = supplierName;
   if (allergenTags !== undefined) updates.allergenTags = allergenTags;
   if (active != null) updates.active = active;
@@ -219,7 +222,7 @@ router.post("/admin/stock/movements", requireAuth, requireRole("admin"), async (
     unitCost?: string; reason?: string;
   };
 
-  const VALID_TYPES = ["purchase", "adjustment", "waste"];
+  const VALID_TYPES = ["purchase", "adjustment", "waste", "inventory"];
   if (!ingredientId || !movementType || quantity == null) {
     res.status(400).json({ error: "ingredientId, movementType y quantity son obligatorios" }); return;
   }
@@ -249,6 +252,161 @@ router.post("/admin/stock/movements", requireAuth, requireRole("admin"), async (
   });
 
   res.status(201).json({ ok: true });
+});
+
+// ── POST /admin/stock/inventory-count ─────────────────────────────────────────
+// Guided physical count: accepts actual quantities, generates 'inventory' movements.
+router.post("/admin/stock/inventory-count", requireAuth, requireRole("admin"), async (req, res): Promise<void> => {
+  const { lines } = req.body as {
+    lines: { ingredientId: string; actualQty: string; note?: string }[];
+  };
+  if (!Array.isArray(lines) || lines.length === 0) {
+    res.status(400).json({ error: "lines is required and must be non-empty" }); return;
+  }
+
+  const user = (req as any).user;
+  const results: { ingredientId: string; name: string; before: number; after: number; diff: number }[] = [];
+
+  await db.transaction(async (tx) => {
+    for (const line of lines) {
+      const [ing] = await tx.select().from(ingredientsTable).where(eq(ingredientsTable.id, line.ingredientId));
+      if (!ing) continue;
+      const before = parseFloat(String(ing.currentStock));
+      const after = parseFloat(String(line.actualQty));
+      if (isNaN(after)) continue;
+      const diff = after - before;
+      if (Math.abs(diff) < 0.001) continue; // no meaningful change
+
+      await tx.update(ingredientsTable)
+        .set({ currentStock: String(after), updatedAt: new Date() })
+        .where(eq(ingredientsTable.id, line.ingredientId));
+
+      await tx.insert(stockMovementsTable).values({
+        ingredientId: line.ingredientId,
+        movementType: "inventory",
+        quantity: String(diff),
+        unitCost: String(ing.purchaseCost),
+        reason: line.note ?? "Inventario físico",
+        employeeId: user?.id ?? null,
+      });
+
+      results.push({ ingredientId: ing.id, name: ing.name, before, after, diff });
+    }
+  });
+
+  res.status(201).json({ ok: true, adjusted: results.length, results });
+});
+
+// ── GET /admin/stock/product-availability ─────────────────────────────────────
+// Returns each product's stock availability (all recipe ingredients > 0).
+router.get("/admin/stock/product-availability", requireAuth, async (req, res): Promise<void> => {
+  // Fetch all recipe ingredient requirements joined with current stock
+  const recipeRows = await db
+    .select({
+      productId: recipeItemsTable.productId,
+      ingredientId: ingredientsTable.id,
+      ingredientName: ingredientsTable.name,
+      currentStock: ingredientsTable.currentStock,
+      quantity: recipeItemsTable.quantity,
+    })
+    .from(recipeItemsTable)
+    .innerJoin(ingredientsTable, eq(recipeItemsTable.ingredientId, ingredientsTable.id));
+
+  // Group by product
+  const map = new Map<string, { hasLowStock: boolean; zeroIngredients: string[] }>();
+  for (const row of recipeRows) {
+    const cur = parseFloat(String(row.currentStock));
+    const existing = map.get(row.productId) ?? { hasLowStock: false, zeroIngredients: [] };
+    if (cur <= 0) {
+      existing.hasLowStock = true;
+      existing.zeroIngredients.push(row.ingredientName);
+    }
+    map.set(row.productId, existing);
+  }
+
+  const result: { productId: string; hasRecipe: boolean; lowStock: boolean; zeroIngredients: string[] }[] = [];
+  for (const [productId, info] of map.entries()) {
+    result.push({ productId, hasRecipe: true, lowStock: info.hasLowStock, zeroIngredients: info.zeroIngredients });
+  }
+
+  res.json(result);
+});
+
+// ── GET /admin/stock/reports ──────────────────────────────────────────────────
+// Returns stock value, daily consumption, and waste totals for the given period.
+router.get("/admin/stock/reports", requireAuth, requireRole("admin"), async (req, res): Promise<void> => {
+  const { from, to } = req.query as { from?: string; to?: string };
+  const toDate = to ? new Date(to) : new Date();
+  const fromDate = from ? new Date(from) : new Date(Date.now() - 30 * 86400_000);
+  const periodDays = Math.max(1, Math.round((toDate.getTime() - fromDate.getTime()) / 86400_000));
+
+  // All active ingredients
+  const ingredients = await db
+    .select()
+    .from(ingredientsTable)
+    .where(eq(ingredientsTable.active, true))
+    .orderBy(asc(ingredientsTable.name));
+
+  // Aggregate sale and waste movements in the period per ingredient
+  const movRows = await db
+    .select({
+      ingredientId: stockMovementsTable.ingredientId,
+      movementType: stockMovementsTable.movementType,
+      totalQty: sum(stockMovementsTable.quantity).mapWith(Number),
+    })
+    .from(stockMovementsTable)
+    .where(
+      and(
+        gte(stockMovementsTable.createdAt, fromDate),
+        lte(stockMovementsTable.createdAt, toDate),
+      ),
+    )
+    .groupBy(stockMovementsTable.ingredientId, stockMovementsTable.movementType);
+
+  // Build maps
+  const saleMap = new Map<string, number>();
+  const wasteMap = new Map<string, number>();
+  for (const row of movRows) {
+    if (row.movementType === "sale") {
+      saleMap.set(row.ingredientId, Math.abs(row.totalQty ?? 0));
+    } else if (row.movementType === "waste") {
+      wasteMap.set(row.ingredientId, Math.abs(row.totalQty ?? 0));
+    }
+  }
+
+  let warehouseValue = 0;
+  const ingredientReports = ingredients.map((ing) => {
+    const cur = parseFloat(String(ing.currentStock));
+    const cost = parseFloat(String(ing.purchaseCost));
+    const stockValue = cur * cost;
+    warehouseValue += stockValue;
+    const saleTotal = saleMap.get(ing.id) ?? 0;
+    const dailyConsumption = saleTotal / periodDays;
+    const wasteTotal = wasteMap.get(ing.id) ?? 0;
+    const daysRemaining = dailyConsumption > 0 ? Math.floor(cur / dailyConsumption) : null;
+    return {
+      id: ing.id,
+      name: ing.name,
+      unit: ing.unit,
+      currentStock: ing.currentStock,
+      minStock: ing.minStock,
+      optimalStock: (ing as any).optimalStock ?? "0",
+      purchaseCost: ing.purchaseCost,
+      stockValue,
+      dailyConsumption,
+      wasteTotal,
+      daysRemaining,
+    };
+  });
+
+  res.json({
+    warehouseValue,
+    currency: "EUR",
+    ingredients: ingredientReports,
+    periodDays,
+    from: fromDate.toISOString(),
+    to: toDate.toISOString(),
+  });
 });
 
 export default router;

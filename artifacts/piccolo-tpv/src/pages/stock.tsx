@@ -22,13 +22,14 @@ import {
 import type { Ingredient } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 
-type MovType = 'purchase' | 'sale' | 'adjustment' | 'waste';
+type MovType = 'purchase' | 'sale' | 'adjustment' | 'waste' | 'inventory';
 
 const MOV_LABELS: Record<MovType, { label: string; color: string; icon: React.ReactNode }> = {
-  purchase: { label: 'Compra', color: '#3caa78', icon: <TrendingUp size={12} /> },
-  sale:     { label: 'Venta', color: '#6082dc', icon: <TrendingDown size={12} /> },
+  purchase:   { label: 'Compra', color: '#3caa78', icon: <TrendingUp size={12} /> },
+  sale:       { label: 'Venta', color: '#6082dc', icon: <TrendingDown size={12} /> },
   adjustment: { label: 'Ajuste', color: '#d2a032', icon: <RefreshCw size={12} /> },
-  waste:    { label: 'Merma', color: '#dc3c3c', icon: <TrendingDown size={12} /> },
+  waste:      { label: 'Merma', color: '#dc3c3c', icon: <TrendingDown size={12} /> },
+  inventory:  { label: 'Inventario', color: '#9060dc', icon: <RefreshCw size={12} /> },
 };
 
 export default function StockPage() {
@@ -199,6 +200,7 @@ function MovementsPanel({
           <option value="sale">Venta</option>
           <option value="adjustment">Ajuste</option>
           <option value="waste">Merma</option>
+          <option value="inventory">Inventario</option>
         </select>
         <select
           className="flex-1 px-3 py-1.5 rounded-xl bg-secondary border border-border text-xs font-semibold focus:outline-none"

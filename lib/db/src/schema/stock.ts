@@ -33,6 +33,9 @@ export const ingredientsTable = pgTable("ingredients", {
   minStock: numeric("min_stock", { precision: 10, scale: 4 })
     .notNull()
     .default("0"),
+  optimalStock: numeric("optimal_stock", { precision: 10, scale: 4 })
+    .notNull()
+    .default("0"),
   supplierName: text("supplier_name"),
   allergenTags: jsonb("allergen_tags").$type<string[]>().default([]),
   active: boolean("active").notNull().default(true),

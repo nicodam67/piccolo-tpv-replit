@@ -44,16 +44,19 @@ const ALLERGEN_OPTIONS = [
 
 type Sheet = { kind: 'new' } | { kind: 'edit'; ingredient: Ingredient } | { kind: 'stock-in'; ingredient: Ingredient } | null;
 
-function stockStatus(ing: Ingredient): 'ok' | 'low' | 'zero' {
+function stockStatus(ing: Ingredient): 'ok' | 'warn' | 'low' | 'zero' {
   const cur = parseFloat(ing.currentStock);
   const min = parseFloat(ing.minStock);
+  const opt = parseFloat(ing.optimalStock ?? '0');
   if (cur <= 0) return 'zero';
   if (cur <= min) return 'low';
+  if (opt > 0 && cur <= opt) return 'warn';
   return 'ok';
 }
 
 const STATUS_COLORS = {
   ok: { bg: 'rgba(60,170,120,0.12)', text: '#3caa78', border: 'rgba(60,170,120,0.25)' },
+  warn: { bg: 'rgba(250,200,50,0.12)', text: '#c8a830', border: 'rgba(250,200,50,0.30)' },
   low: { bg: 'rgba(237,135,76,0.12)', text: '#ed874c', border: 'rgba(237,135,76,0.3)' },
   zero: { bg: 'rgba(220,60,60,0.12)', text: '#dc3c3c', border: 'rgba(220,60,60,0.3)' },
 };
@@ -81,7 +84,7 @@ export default function Ingredientes() {
     (i.internalCode ?? '').toLowerCase().includes(search.toLowerCase())
   );
 
-  const alertCount = ingredients.filter(i => stockStatus(i) !== 'ok').length;
+  const alertCount = ingredients.filter(i => stockStatus(i) === 'low' || stockStatus(i) === 'zero').length;
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -205,7 +208,7 @@ export default function Ingredientes() {
           title="Nuevo ingrediente"
           onClose={() => setSheet(null)}
           onSave={async data => {
-            await createMut.mutateAsync({ data });
+            await createMut.mutateAsync({ data: data as any });
             invalidate();
             toast.success('Ingrediente creado');
             setSheet(null);
@@ -219,7 +222,7 @@ export default function Ingredientes() {
           initial={sheet.ingredient}
           onClose={() => setSheet(null)}
           onSave={async data => {
-            await updateMut.mutateAsync({ id: sheet.ingredient.id, data });
+            await updateMut.mutateAsync({ id: sheet.ingredient.id, data: data as any });
             invalidate();
             toast.success('Guardado');
             setSheet(null);
@@ -262,7 +265,7 @@ function IngredientSheet({
   onClose: () => void;
   onSave: (data: {
     name: string; internalCode?: string; unit: string; purchaseCost: string;
-    currentStock: string; minStock: string; supplierName?: string; allergenTags: string[];
+    currentStock: string; minStock: string; optimalStock: string; supplierName?: string; allergenTags: string[];
   }) => Promise<void>;
   onDelete?: () => Promise<void>;
   saving: boolean;
@@ -274,6 +277,7 @@ function IngredientSheet({
     purchaseCost: initial?.purchaseCost ?? '0',
     currentStock: initial?.currentStock ?? '0',
     minStock: initial?.minStock ?? '0',
+    optimalStock: (initial as any)?.optimalStock ?? '0',
     supplierName: initial?.supplierName ?? '',
     allergenTags: (initial?.allergenTags ?? []) as string[],
   });
@@ -289,6 +293,7 @@ function IngredientSheet({
       purchaseCost: form.purchaseCost,
       currentStock: form.currentStock,
       minStock: form.minStock,
+      optimalStock: form.optimalStock,
       supplierName: form.supplierName || undefined,
       allergenTags: form.allergenTags,
     });
@@ -340,6 +345,11 @@ function IngredientSheet({
             <label className="text-xs font-bold text-muted-foreground mb-1 block">Stock mínimo ({form.unit})</label>
             <input type="number" step="0.01" min="0" className="w-full px-3 py-2 rounded-xl bg-secondary border border-border text-sm focus:outline-none focus:border-primary/50"
               value={form.minStock} onChange={e => set('minStock', e.target.value)} />
+          </div>
+          <div>
+            <label className="text-xs font-bold text-muted-foreground mb-1 block">Stock óptimo ({form.unit})</label>
+            <input type="number" step="0.01" min="0" className="w-full px-3 py-2 rounded-xl bg-secondary border border-border text-sm focus:outline-none focus:border-primary/50"
+              value={form.optimalStock} onChange={e => set('optimalStock', e.target.value)} />
           </div>
           <div className="col-span-2">
             <label className="text-xs font-bold text-muted-foreground mb-1 block">Proveedor principal</label>

@@ -28,6 +28,8 @@ import Carta from './pages/carta';
 import Reservations from './pages/reservations';
 import CajaAutomatica from './pages/caja-automatica';
 import CajaAutomaticaEstado from './pages/caja-automatica-estado';
+import InventarioFisico from './pages/inventario-fisico';
+import InformesStock from './pages/informes-stock';
 import NotFound from './pages/not-found';
 
 const queryClient = new QueryClient({
@@ -67,6 +69,8 @@ function Router() {
       <Route path="/reservas" component={Reservations} />
       <Route path="/admin/caja-automatica" component={CajaAutomatica} />
       <Route path="/admin/caja-automatica/estado" component={CajaAutomaticaEstado} />
+      <Route path="/admin/inventario/fisico" component={InventarioFisico} />
+      <Route path="/admin/inventario/informes" component={InformesStock} />
       <Route component={NotFound} />
     </Switch>
   );
