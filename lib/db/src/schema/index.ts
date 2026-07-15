@@ -19,3 +19,4 @@ export * from "./stock";
 export * from "./reservations";
 export * from "./cash-machine";
 export * from "./suppliers";
+export * from "./invoice-scanner";

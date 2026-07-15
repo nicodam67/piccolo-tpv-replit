@@ -26,6 +26,7 @@ import {
   Calculator,
   Truck,
   ShoppingCart,
+  ScanSearch,
   GitCompare,
   FileText,
   Star,
@@ -426,6 +427,19 @@ const MODULES: ModuleCard[] = [
     iconBg: 'rgba(220,80,80,0.15)',
     iconColor: '#dc5050',
     glow: 'rgba(220,80,80,0.12)',
+  },
+  {
+    id: 'escaner-facturas',
+    icon: <ScanSearch size={28} />,
+    title: 'Escáner de facturas',
+    description: 'OCR · revisión · conciliación automática',
+    href: '/admin/escaner-facturas',
+    ready: true,
+    accent: 'rgba(99,102,241,0.07)',
+    border: 'rgba(99,102,241,0.28)',
+    iconBg: 'rgba(99,102,241,0.15)',
+    iconColor: '#818cf8',
+    glow: 'rgba(99,102,241,0.12)',
   },
 ];
 

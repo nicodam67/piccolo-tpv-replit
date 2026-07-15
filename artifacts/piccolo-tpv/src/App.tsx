@@ -40,6 +40,9 @@ import RecepcionMercancia from './pages/recepcion-mercancia';
 import FacturasProveedor from './pages/facturas-proveedor';
 import ConciliacionDocumental from './pages/conciliacion-documental';
 import LotesCaducidades from './pages/lotes-caducidades';
+import EscanerFacturas from './pages/escaner-facturas';
+import RevisionFactura from './pages/revision-factura';
+import ConciliacionFactura from './pages/conciliacion-factura';
 import NotFound from './pages/not-found';
 
 const queryClient = new QueryClient({
@@ -91,6 +94,9 @@ function Router() {
       <Route path="/admin/facturas-proveedor" component={FacturasProveedor} />
       <Route path="/admin/conciliacion" component={ConciliacionDocumental} />
       <Route path="/admin/lotes-caducidades" component={LotesCaducidades} />
+      <Route path="/admin/escaner-facturas" component={EscanerFacturas} />
+      <Route path="/admin/revision-factura/:id" component={RevisionFactura} />
+      <Route path="/admin/conciliacion-factura/:id" component={ConciliacionFactura} />
       <Route component={NotFound} />
     </Switch>
   );
