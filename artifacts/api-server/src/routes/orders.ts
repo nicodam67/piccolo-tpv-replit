@@ -497,7 +497,7 @@ router.post("/orders/:orderId/send", requireAuth, async (req, res): Promise<void
 
   try {
     const io = getIO();
-    io.emit("kds:refresh");
+    io.emit("kds:refresh", { employeeName: req.user?.name ?? null });
     emitRefresh(orderId, req.user?.name);
   } catch { /* ignore */ }
 

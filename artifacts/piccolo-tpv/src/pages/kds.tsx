@@ -49,6 +49,7 @@ export default function KdsPage() {
   const rawZone = params.zone || 'cocina';
   const zone: KdsZone = VALID_ZONES.includes(rawZone as KdsZone) ? (rawZone as KdsZone) : 'cocina';
   const queryClient = useQueryClient();
+  const [updatedBy, setUpdatedBy] = useState<string | null>(null);
 
   const { data: rawTasks, isLoading } = useGetKdsTasks(zone, {
     query: {
@@ -65,16 +66,30 @@ export default function KdsPage() {
 
   useEffect(() => {
     const socket = io({ path: '/api/socket.io' });
+    let clearTimer: ReturnType<typeof setTimeout>;
 
     const invalidate = () => {
       queryClient.invalidateQueries({ queryKey: getGetKdsTasksQueryKey(zone) });
     };
 
+    const handleKdsRefresh = (payload?: { employeeName?: string | null }) => {
+      invalidate();
+      const name = payload?.employeeName;
+      if (name) {
+        setUpdatedBy(name);
+        clearTimeout(clearTimer);
+        clearTimer = setTimeout(() => setUpdatedBy(null), 4000);
+      }
+    };
+
     // Re-fetch on every reconnect so missed events during a dropped connection are caught up
     socket.on('connect', invalidate);
-    socket.on('kds:refresh', invalidate);
+    socket.on('kds:refresh', handleKdsRefresh);
 
-    return () => { socket.disconnect(); };
+    return () => {
+      clearTimeout(clearTimer);
+      socket.disconnect();
+    };
   }, [zone, queryClient]);
 
   const updateStatus = useUpdateKitchenTaskStatus();
@@ -99,28 +114,38 @@ export default function KdsPage() {
   return (
     <div className="min-h-[100dvh] bg-background flex flex-col text-foreground overflow-hidden">
       {/* Header */}
-      <header className="h-16 border-b-2 border-border bg-card flex items-center justify-between px-6 shrink-0 shadow-sm z-10">
-        <div className="flex items-center gap-6">
-          <h1 className="text-3xl font-black uppercase tracking-widest text-primary drop-shadow-sm">{zone}</h1>
-          <div className="w-1 h-8 bg-border rounded-full hidden sm:block"></div>
-          <nav className="hidden sm:flex gap-2">
-            {ZONES.map(z => (
-              <Link 
-                key={z} 
-                href={`/kds/${z}`}
-                className={`px-4 py-2 rounded-lg text-sm font-black uppercase tracking-wider transition-all ${
-                  zone === z 
-                    ? 'bg-primary text-primary-foreground shadow-md scale-105' 
-                    : 'bg-secondary text-muted-foreground hover:bg-secondary/80 hover:text-foreground'
-                }`}
-              >
-                {z}
-              </Link>
-            ))}
-          </nav>
-        </div>
-        <div className="text-2xl font-mono font-black text-muted-foreground flex items-center gap-2 tracking-wider bg-background px-4 py-1.5 rounded-xl border border-border shadow-inner">
-           <LiveClock />
+      <header className="border-b-2 border-border bg-card shrink-0 shadow-sm z-10">
+        <div className="h-16 flex items-center justify-between px-6">
+          <div className="flex items-center gap-6">
+            <h1 className="text-3xl font-black uppercase tracking-widest text-primary drop-shadow-sm">{zone}</h1>
+            <div className="w-1 h-8 bg-border rounded-full hidden sm:block"></div>
+            <nav className="hidden sm:flex gap-2">
+              {ZONES.map(z => (
+                <Link 
+                  key={z} 
+                  href={`/kds/${z}`}
+                  className={`px-4 py-2 rounded-lg text-sm font-black uppercase tracking-wider transition-all ${
+                    zone === z 
+                      ? 'bg-primary text-primary-foreground shadow-md scale-105' 
+                      : 'bg-secondary text-muted-foreground hover:bg-secondary/80 hover:text-foreground'
+                  }`}
+                >
+                  {z}
+                </Link>
+              ))}
+            </nav>
+          </div>
+          <div className="flex items-center gap-3">
+            {updatedBy && (
+              <div className="flex items-center gap-2 bg-primary/15 border border-primary/30 text-primary px-3 py-1.5 rounded-lg animate-pulse">
+                <span className="text-xs font-black uppercase tracking-widest">Actualizado por</span>
+                <span className="text-sm font-black">{updatedBy}</span>
+              </div>
+            )}
+            <div className="text-2xl font-mono font-black text-muted-foreground flex items-center gap-2 tracking-wider bg-background px-4 py-1.5 rounded-xl border border-border shadow-inner">
+               <LiveClock />
+            </div>
+          </div>
         </div>
       </header>
       
