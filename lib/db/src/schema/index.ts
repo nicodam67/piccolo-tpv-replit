@@ -10,6 +10,8 @@ export * from "./notifications";
 export * from "./payments";
 export * from "./canvas-elements";
 export * from "./audit-log";
+export * from "./table-events";
+export * from "./alert-config";
 export * from "./business-config";
 export * from "./documents";
 export * from "./caja";

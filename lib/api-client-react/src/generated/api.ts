@@ -4433,6 +4433,98 @@ export function useReopenCashSession<TError = ErrorType<ErrorResponse>, TContext
   return useMutation(getReopenCashSessionMutationOptions(options));
 }
 
+// ─── Table history ────────────────────────────────────────────────────────────
+export const getGetTableHistoryUrl = (tableId: string) => `/api/tables/${tableId}/history`;
+export const getTableHistory = async (tableId: string, options?: RequestInit): Promise<import('./api.schemas').TableEvent[]> =>
+  customFetch<import('./api.schemas').TableEvent[]>(getGetTableHistoryUrl(tableId), { ...options, method: 'GET' });
+export const getGetTableHistoryQueryKey = (tableId: string) => [`/api/tables/${tableId}/history`] as const;
+export const getGetTableHistoryQueryOptions = <TData = Awaited<ReturnType<typeof getTableHistory>>, TError = ErrorType<ErrorResponse>>(tableId: string, options?: { query?: UseQueryOptions<Awaited<ReturnType<typeof getTableHistory>>, TError, TData>; request?: SecondParameter<typeof customFetch> }) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+  const queryKey = queryOptions?.queryKey ?? getGetTableHistoryQueryKey(tableId);
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getTableHistory>>> = ({ signal }) => getTableHistory(tableId, { signal, ...requestOptions });
+  return { queryKey, queryFn, enabled: !!tableId, ...queryOptions } as UseQueryOptions<Awaited<ReturnType<typeof getTableHistory>>, TError, TData> & { queryKey: QueryKey };
+};
+export function useGetTableHistory<TData = Awaited<ReturnType<typeof getTableHistory>>, TError = ErrorType<ErrorResponse>>(tableId: string, options?: { query?: UseQueryOptions<Awaited<ReturnType<typeof getTableHistory>>, TError, TData>; request?: SecondParameter<typeof customFetch> }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetTableHistoryQueryOptions(tableId, options);
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+// ─── Occupation summary ───────────────────────────────────────────────────────
+export const getGetOccupationSummaryUrl = () => `/api/tables/occupation-summary`;
+export const getOccupationSummary = async (options?: RequestInit): Promise<import('./api.schemas').OccupationSummary> =>
+  customFetch<import('./api.schemas').OccupationSummary>(getGetOccupationSummaryUrl(), { ...options, method: 'GET' });
+export const getGetOccupationSummaryQueryKey = () => [`/api/tables/occupation-summary`] as const;
+export const getGetOccupationSummaryQueryOptions = <TData = Awaited<ReturnType<typeof getOccupationSummary>>, TError = ErrorType<ErrorResponse>>(options?: { query?: UseQueryOptions<Awaited<ReturnType<typeof getOccupationSummary>>, TError, TData>; request?: SecondParameter<typeof customFetch> }) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+  const queryKey = queryOptions?.queryKey ?? getGetOccupationSummaryQueryKey();
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getOccupationSummary>>> = ({ signal }) => getOccupationSummary({ signal, ...requestOptions });
+  return { queryKey, queryFn, refetchInterval: 30000, ...queryOptions } as UseQueryOptions<Awaited<ReturnType<typeof getOccupationSummary>>, TError, TData> & { queryKey: QueryKey };
+};
+export function useGetOccupationSummary<TData = Awaited<ReturnType<typeof getOccupationSummary>>, TError = ErrorType<ErrorResponse>>(options?: { query?: UseQueryOptions<Awaited<ReturnType<typeof getOccupationSummary>>, TError, TData>; request?: SecondParameter<typeof customFetch> }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetOccupationSummaryQueryOptions(options);
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+// ─── Alert config ─────────────────────────────────────────────────────────────
+export const getGetAlertConfigUrl = () => `/api/admin/alert-config`;
+export const getAlertConfig = async (options?: RequestInit): Promise<import('./api.schemas').AlertConfig> =>
+  customFetch<import('./api.schemas').AlertConfig>(getGetAlertConfigUrl(), { ...options, method: 'GET' });
+export const getGetAlertConfigQueryKey = () => [`/api/admin/alert-config`] as const;
+export const getGetAlertConfigQueryOptions = <TData = Awaited<ReturnType<typeof getAlertConfig>>, TError = ErrorType<ErrorResponse>>(options?: { query?: UseQueryOptions<Awaited<ReturnType<typeof getAlertConfig>>, TError, TData>; request?: SecondParameter<typeof customFetch> }) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+  const queryKey = queryOptions?.queryKey ?? getGetAlertConfigQueryKey();
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getAlertConfig>>> = ({ signal }) => getAlertConfig({ signal, ...requestOptions });
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<Awaited<ReturnType<typeof getAlertConfig>>, TError, TData> & { queryKey: QueryKey };
+};
+export function useGetAlertConfig<TData = Awaited<ReturnType<typeof getAlertConfig>>, TError = ErrorType<ErrorResponse>>(options?: { query?: UseQueryOptions<Awaited<ReturnType<typeof getAlertConfig>>, TError, TData>; request?: SecondParameter<typeof customFetch> }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetAlertConfigQueryOptions(options);
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+export const getPatchAlertConfigMutationOptions = <TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof patchAlertConfig>>, TError, { data: import('./api.schemas').UpdateAlertConfigInput }, TContext>; request?: SecondParameter<typeof customFetch> }): UseMutationOptions<Awaited<ReturnType<typeof patchAlertConfig>>, TError, { data: import('./api.schemas').UpdateAlertConfigInput }, TContext> => {
+  const mutationKey = ['patchAlertConfig'];
+  const { mutation: mutationOptions, request: requestOptions } = options ? (options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ? options : { ...options, mutation: { ...options.mutation, mutationKey } }) : { mutation: { mutationKey }, request: undefined };
+  const mutationFn: MutationFunction<Awaited<ReturnType<typeof patchAlertConfig>>, { data: import('./api.schemas').UpdateAlertConfigInput }> = ({ data }) =>
+    customFetch<import('./api.schemas').AlertConfig>(getGetAlertConfigUrl(), { ...requestOptions, method: 'PATCH', headers: { 'Content-Type': 'application/json', ...(requestOptions as RequestInit | undefined)?.headers }, body: JSON.stringify(data) });
+  return { mutationFn, ...mutationOptions };
+};
+export const patchAlertConfig = async (data: import('./api.schemas').UpdateAlertConfigInput, options?: RequestInit): Promise<import('./api.schemas').AlertConfig> =>
+  customFetch<import('./api.schemas').AlertConfig>(getGetAlertConfigUrl(), { ...options, method: 'PATCH', headers: { 'Content-Type': 'application/json', ...options?.headers }, body: JSON.stringify(data) });
+export function usePatchAlertConfig<TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof patchAlertConfig>>, TError, { data: import('./api.schemas').UpdateAlertConfigInput }, TContext>; request?: SecondParameter<typeof customFetch> }): UseMutationResult<Awaited<ReturnType<typeof patchAlertConfig>>, TError, { data: import('./api.schemas').UpdateAlertConfigInput }, TContext> {
+  return useMutation(getPatchAlertConfigMutationOptions(options));
+}
+
+// ─── Clean table (pendiente_limpieza → free) ──────────────────────────────────
+export const getCleanTableUrl = (tableId: string) => `/api/tables/${tableId}/clean`;
+export const cleanTable = async (tableId: string, options?: RequestInit): Promise<import('./api.schemas').Table> =>
+  customFetch<import('./api.schemas').Table>(getCleanTableUrl(tableId), { ...options, method: 'POST', headers: { 'Content-Type': 'application/json', ...options?.headers } });
+export const getCleanTableMutationOptions = <TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof cleanTable>>, TError, { tableId: string }, TContext>; request?: SecondParameter<typeof customFetch> }): UseMutationOptions<Awaited<ReturnType<typeof cleanTable>>, TError, { tableId: string }, TContext> => {
+  const mutationKey = ['cleanTable'];
+  const { mutation: mutationOptions, request: requestOptions } = options ? (options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ? options : { ...options, mutation: { ...options.mutation, mutationKey } }) : { mutation: { mutationKey }, request: undefined };
+  const mutationFn: MutationFunction<Awaited<ReturnType<typeof cleanTable>>, { tableId: string }> = ({ tableId }) => cleanTable(tableId, requestOptions);
+  return { mutationFn, ...mutationOptions };
+};
+export function useCleanTable<TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof cleanTable>>, TError, { tableId: string }, TContext>; request?: SecondParameter<typeof customFetch> }): UseMutationResult<Awaited<ReturnType<typeof cleanTable>>, TError, { tableId: string }, TContext> {
+  return useMutation(getCleanTableMutationOptions(options));
+}
+
+// ─── Block / unblock table ────────────────────────────────────────────────────
+export const getBlockTableUrl = (tableId: string) => `/api/tables/${tableId}/block`;
+export const blockTable = async (tableId: string, data?: { reason?: string }, options?: RequestInit): Promise<import('./api.schemas').Table> =>
+  customFetch<import('./api.schemas').Table>(getBlockTableUrl(tableId), { ...options, method: 'POST', headers: { 'Content-Type': 'application/json', ...options?.headers }, body: JSON.stringify(data ?? {}) });
+export const getBlockTableMutationOptions = <TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof blockTable>>, TError, { tableId: string; reason?: string }, TContext>; request?: SecondParameter<typeof customFetch> }): UseMutationOptions<Awaited<ReturnType<typeof blockTable>>, TError, { tableId: string; reason?: string }, TContext> => {
+  const mutationKey = ['blockTable'];
+  const { mutation: mutationOptions, request: requestOptions } = options ? (options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ? options : { ...options, mutation: { ...options.mutation, mutationKey } }) : { mutation: { mutationKey }, request: undefined };
+  const mutationFn: MutationFunction<Awaited<ReturnType<typeof blockTable>>, { tableId: string; reason?: string }> = ({ tableId, reason }) => blockTable(tableId, { reason }, requestOptions);
+  return { mutationFn, ...mutationOptions };
+};
+export function useBlockTable<TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof blockTable>>, TError, { tableId: string; reason?: string }, TContext>; request?: SecondParameter<typeof customFetch> }): UseMutationResult<Awaited<ReturnType<typeof blockTable>>, TError, { tableId: string; reason?: string }, TContext> {
+  return useMutation(getBlockTableMutationOptions(options));
+}
+
 export const getGetCashSessionHistoryUrl = () => `/api/cash-sessions/history`;
 export const getCashSessionHistory = async (options?: RequestInit): Promise<import('./api.schemas').CashSessionHistoryItem[]> =>
   customFetch<import('./api.schemas').CashSessionHistoryItem[]>(getGetCashSessionHistoryUrl(), { ...options, method: 'GET' });

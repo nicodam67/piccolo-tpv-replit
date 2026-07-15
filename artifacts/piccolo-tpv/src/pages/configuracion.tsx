@@ -26,7 +26,10 @@ import {
   useUpdateZone,
   useDeleteZone,
   useDuplicateZone,
+  useGetAlertConfig,
+  usePatchAlertConfig,
   getGetZonesQueryKey,
+  getGetAlertConfigQueryKey,
 } from '@workspace/api-client-react';
 
 // ─── Color palette ─────────────────────────────────────────────────────────────
@@ -440,6 +443,36 @@ export default function Configuracion() {
     { query: { queryKey: getGetZonesQueryKey({ all: true }) } }
   );
 
+  // Alert config
+  const { data: alertConfig } = useGetAlertConfig({ query: { queryKey: getGetAlertConfigQueryKey() } });
+  const patchAlertConfig = usePatchAlertConfig();
+  const [alertForm, setAlertForm] = useState({ reservaProximaMin: 30, sinComandaMin: 15, prefacturaPendienteMin: 10, mesaSuciaMin: 5 });
+  const [alertSaved, setAlertSaved] = useState(false);
+  useEffect(() => {
+    if (alertConfig) {
+      setAlertForm({
+        reservaProximaMin: alertConfig.reservaProximaMin,
+        sinComandaMin: alertConfig.sinComandaMin,
+        prefacturaPendienteMin: alertConfig.prefacturaPendienteMin,
+        mesaSuciaMin: alertConfig.mesaSuciaMin,
+      });
+    }
+  }, [alertConfig]);
+
+  const handleSaveAlertConfig = () => {
+    patchAlertConfig.mutate(
+      { data: alertForm },
+      {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: getGetAlertConfigQueryKey() });
+          setAlertSaved(true);
+          setTimeout(() => setAlertSaved(false), 2500);
+        },
+        onError: () => toast.error("No se pudo guardar la configuración"),
+      }
+    );
+  };
+
   const [localZones, setLocalZones] = useState<Zone[]>([]);
   useEffect(() => {
     if (serverZones) setLocalZones(serverZones as Zone[]);
@@ -793,7 +826,7 @@ export default function Configuracion() {
       </header>
 
       {/* Content */}
-      <main className="flex-1 p-6 lg:p-10 max-w-2xl mx-auto w-full">
+      <main className="flex-1 p-6 lg:p-10 max-w-2xl mx-auto w-full space-y-10">
         {isLoading ? (
           <div className="flex justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-muted-foreground" /></div>
         ) : !localZones.length ? (
@@ -842,6 +875,53 @@ export default function Configuracion() {
           </>
         )}
       </main>
+
+      {/* Alert thresholds panel (admin only) */}
+      <section className="bg-card border border-border rounded-2xl p-6 max-w-2xl mx-auto w-full -mt-4">
+        <div className="flex items-center gap-3 mb-5">
+          <div className="w-8 h-8 rounded-lg bg-amber-500/15 flex items-center justify-center">
+            <span className="text-amber-500 text-sm">⚠️</span>
+          </div>
+          <div>
+            <h2 className="font-black text-base leading-tight">Umbrales de alerta</h2>
+            <p className="text-muted-foreground text-xs mt-0.5">El plano resaltará las mesas que superen estos tiempos</p>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {([
+            { key: 'reservaProximaMin',       label: 'Reserva próxima',         hint: 'min antes de la hora reservada' },
+            { key: 'sinComandaMin',            label: 'Mesa ocupada sin comanda', hint: 'min desde apertura sin envío' },
+            { key: 'prefacturaPendienteMin',   label: 'Prefactura sin cobrar',    hint: 'min con prefactura impresa' },
+            { key: 'mesaSuciaMin',             label: 'Mesa pendiente de limpieza', hint: 'min en estado "sucia"' },
+          ] as const).map(({ key, label, hint }) => (
+            <div key={key}>
+              <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1.5 block">{label}</label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min={1}
+                  max={999}
+                  value={alertForm[key]}
+                  onChange={e => setAlertForm(f => ({ ...f, [key]: Math.max(1, parseInt(e.target.value) || 1) }))}
+                  className="w-20 px-3 py-2 bg-secondary/50 border border-border rounded-xl text-sm font-mono focus:outline-none focus:border-primary/60 transition-colors text-center"
+                />
+                <span className="text-xs text-muted-foreground">{hint}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="flex items-center gap-3 mt-5 pt-5 border-t border-border">
+          <button
+            onClick={handleSaveAlertConfig}
+            disabled={patchAlertConfig.isPending}
+            className="px-5 py-2.5 bg-primary text-primary-foreground font-black text-sm uppercase tracking-wider rounded-xl active:scale-[0.98] transition-all flex items-center gap-2 shadow-md disabled:opacity-50"
+          >
+            {patchAlertConfig.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+            {alertSaved ? '✓ Guardado' : 'Guardar umbrales'}
+          </button>
+          {alertSaved && <span className="text-xs text-green-500 font-bold animate-pulse">Cambios guardados</span>}
+        </div>
+      </section>
 
       {/* Create dialog */}
       {showCreateDialog && (

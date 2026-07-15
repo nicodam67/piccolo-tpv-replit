@@ -10,147 +10,102 @@ import {
   useGetCanvasElements,
   useOpenTable,
   useUpdateZone,
+  useGetEmployeeLoginList,
+  useGetOccupationSummary,
+  useGetAlertConfig,
+  useGetTableHistory,
+  useCleanTable,
+  useBlockTable,
   getGetZoneTablesQueryKey,
   getGetDashboardSummaryQueryKey,
   getGetAllTablesQueryKey,
   getGetCanvasElementsQueryKey,
   getGetZonesQueryKey,
+  getGetOccupationSummaryQueryKey,
+  getGetAlertConfigQueryKey,
   type Table,
   type CanvasElement,
+  type TableEvent,
+  type AlertConfig,
 } from "@workspace/api-client-react";
-import { LogOut, Loader2, Monitor, Settings, ZoomIn, ZoomOut, Maximize2, Package } from "lucide-react";
+import {
+  LogOut, Loader2, Monitor, Settings, ZoomIn, ZoomOut, Maximize2, Package,
+  CheckCircle2, CalendarClock, Users, ChefHat, FileText, CreditCard,
+  Sparkles, Lock, Clock, X, History, AlertTriangle, Info,
+  LayoutGrid, Coins,
+} from "lucide-react";
 import { toast } from "sonner";
 
-// ─── Emoji palette (shared with configuracion) ────────────────────────────────
+// ─── Emoji palette ────────────────────────────────────────────────────────────
 const ZONE_EMOJIS = [
-  '🍕', '🍔', '🌮', '🥩', '🐟', '🦞',
-  '🍷', '🍺', '☕', '🧉', '🥂', '🍹',
-  '🌿', '🏖️', '🎉', '⭐', '🔥', '🌙',
-  '🎭', '🎸', '🌺', '❄️', '🏔️', '🌅',
+  '🍕','🍔','🌮','🥩','🐟','🦞','🍷','🍺','☕','🧉','🥂','🍹',
+  '🌿','🏖️','🎉','⭐','🔥','🌙','🎭','🎸','🌺','❄️','🏔️','🌅',
 ];
 
-// ─── Mini emoji picker popover for zone tabs ──────────────────────────────────
-interface ZoneEmojiPickerProps {
-  currentIcon: string | null | undefined;
-  onSelect: (icon: string | null) => void;
-  onClose: () => void;
-}
+// ─── Status configuration ──────────────────────────────────────────────────────
+const STATUS_STYLES: Record<string, { bg: string; border: string; text: string; dot: string; glow: string }> = {
+  free:                { bg: '#253324', border: '#3f573c', text: '#dcecdb', dot: '#61895f', glow: '#61895f' },
+  reserved:            { bg: '#2a1a3a', border: '#6a3a8a', text: '#e4c8ff', dot: '#a855f7', glow: '#a855f7' },
+  occupied:            { bg: '#45201a', border: '#6b3127', text: '#f5dcd8', dot: '#c05c4a', glow: '#c05c4a' },
+  comanda_abierta:     { bg: '#3d1f00', border: '#7c3d00', text: '#ffe0b0', dot: '#fb923c', glow: '#fb923c' },
+  prefactura_impresa:  { bg: '#1a2040', border: '#3b4ea0', text: '#bfcfff', dot: '#4f6ef7', glow: '#4f6ef7' },
+  pendiente_cobro:     { bg: '#3a2c0f', border: '#7a5c1a', text: '#fde68a', dot: '#f59e0b', glow: '#f59e0b' },
+  parcialmente_cobrada:{ bg: '#0f2e2e', border: '#1e6262', text: '#99f6e4', dot: '#2dd4bf', glow: '#2dd4bf' },
+  pendiente_limpieza:  { bg: '#1e1a2e', border: '#3a3060', text: '#c4b5fd', dot: '#8b5cf6', glow: '#8b5cf6' },
+  bloqueada:           { bg: '#1e1e22', border: '#44444e', text: '#888898', dot: '#55555f', glow: 'transparent' },
+  // Legacy aliases
+  waiting:             { bg: '#3a2c0f', border: '#7a5c1a', text: '#fde68a', dot: '#f59e0b', glow: '#f59e0b' },
+  bill_requested:      { bg: '#1a2040', border: '#3b4ea0', text: '#bfcfff', dot: '#4f6ef7', glow: '#4f6ef7' },
+  out_of_service:      { bg: '#1e1e22', border: '#44444e', text: '#888898', dot: '#55555f', glow: 'transparent' },
+};
 
-function ZoneEmojiPicker({ currentIcon, onSelect, onClose }: ZoneEmojiPickerProps) {
-  const ref = useRef<HTMLDivElement>(null);
+const STATUS_ICONS: Record<string, React.FC<{ size?: number; style?: React.CSSProperties }>> = {
+  free:                CheckCircle2,
+  reserved:            CalendarClock,
+  occupied:            Users,
+  comanda_abierta:     ChefHat,
+  prefactura_impresa:  FileText,
+  pendiente_cobro:     CreditCard,
+  parcialmente_cobrada:Coins,
+  pendiente_limpieza:  Sparkles,
+  bloqueada:           Lock,
+  waiting:             CreditCard,
+  bill_requested:      FileText,
+  out_of_service:      Lock,
+};
 
-  useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
-    }
-    const id = setTimeout(() => document.addEventListener('mousedown', handleClick), 0);
-    return () => { clearTimeout(id); document.removeEventListener('mousedown', handleClick); };
-  }, [onClose]);
+const STATUS_LABELS: Record<string, string> = {
+  free:                'Libre',
+  reserved:            'Reservada',
+  occupied:            'Ocupada',
+  comanda_abierta:     'Comanda abierta',
+  prefactura_impresa:  'Prefactura impresa',
+  pendiente_cobro:     'Pendiente de cobro',
+  parcialmente_cobrada:'Parcialmente cobrada',
+  pendiente_limpieza:  'Pendiente de limpieza',
+  bloqueada:           'Bloqueada',
+};
 
-  return (
-    <div
-      ref={ref}
-      className="absolute left-0 top-full mt-1 z-50 bg-card border border-border rounded-2xl shadow-2xl p-3"
-      style={{ minWidth: 230 }}
-    >
-      <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-2 px-1">Icono de la sala</p>
-      <div className="grid grid-cols-6 gap-1 mb-2">
-        {ZONE_EMOJIS.map(emoji => (
-          <button
-            key={emoji}
-            onPointerDown={e => { e.stopPropagation(); }}
-            onClick={() => { onSelect(emoji); onClose(); }}
-            className={`w-9 h-9 rounded-xl text-lg flex items-center justify-center transition-all active:scale-90 hover:bg-secondary ${currentIcon === emoji ? 'bg-primary/15 ring-2 ring-primary/40' : ''}`}
-          >
-            {emoji}
-          </button>
-        ))}
-      </div>
-      <button
-        onPointerDown={e => e.stopPropagation()}
-        onClick={() => { onSelect(null); onClose(); }}
-        className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-muted-foreground hover:bg-secondary transition-colors"
-      >
-        <div className="w-5 h-5 rounded-md border-2 border-dashed border-muted-foreground/40" />
-        Sin icono
-      </button>
-    </div>
-  );
-}
+const LEGEND_STATUSES = [
+  'free','reserved','occupied','comanda_abierta','prefactura_impresa',
+  'pendiente_cobro','parcialmente_cobrada','pendiente_limpieza','bloqueada',
+];
 
-// Canvas constants — same as zone-editor so layouts match
+// ─── Canvas constants ──────────────────────────────────────────────────────────
 const CANVAS_W = 1600;
 const CANVAS_H = 900;
-
-// Element colour defaults — must match zone-editor
 const ELEMENT_COLOR: Record<string, string> = {
   wall: '#64748b', door: '#854d0e', window: '#7dd3fc', bar: '#78350f', column: '#475569',
 };
-
-/** Read-only element renderer for the camarero floor plan view */
-function ElementShape({ el }: { el: CanvasElement }) {
-  const color  = el.color ?? ELEMENT_COLOR[el.type] ?? '#64748b';
-  const isCol  = el.type === 'column';
-  const isDoor = el.type === 'door';
-  const isBar  = el.type === 'bar';
-  const isWin  = el.type === 'window';
-  return (
-    <div style={{
-      position: 'absolute', left: el.x, top: el.y, width: el.width, height: el.height,
-      backgroundColor: isWin ? 'transparent' : color,
-      borderRadius: isCol ? '50%' : isDoor ? '4px 4px 0 0' : isBar ? '8px' : isWin ? '2px' : '3px',
-      border: isWin ? `3px solid ${color}` : `1px solid ${color}dd`,
-      transform: el.rotation ? `rotate(${el.rotation}deg)` : undefined,
-      transformOrigin: 'center center',
-      boxShadow: '0 1px 4px rgba(0,0,0,0.5)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      opacity: 0.78, pointerEvents: 'none', userSelect: 'none', overflow: 'visible',
-    }}>
-      {isWin && (
-        <>
-          <div style={{ position: 'absolute', left: '50%', top: 0, bottom: 0, width: 2, backgroundColor: color, transform: 'translateX(-50%)', opacity: 0.7 }} />
-          <div style={{ position: 'absolute', top: '50%', left: 0, right: 0, height: 2, backgroundColor: color, transform: 'translateY(-50%)', opacity: 0.7 }} />
-        </>
-      )}
-      {(isBar || el.label) && !isWin && (
-        <span style={{ color: '#fff', fontSize: Math.max(9, Math.min(el.height / 2, 14)), fontWeight: 800, letterSpacing: 1, opacity: 0.9, textTransform: 'uppercase' }}>
-          {el.label ?? el.type}
-        </span>
-      )}
-      {isDoor && (
-        <svg width={el.width * 0.7} height={el.height * 1.5} viewBox="0 0 40 40"
-          style={{ position: 'absolute', bottom: el.height * 0.9, pointerEvents: 'none', opacity: 0.6 }}>
-          <path d="M0,40 A40,40 0 0,1 40,40" fill="none" stroke="#fff" strokeWidth="2" />
-        </svg>
-      )}
-    </div>
-  );
-}
-
 const ZOOM_STEP = 0.1;
 const ZOOM_MIN = 0.2;
 const ZOOM_MAX = 2.0;
-const ZOOM_STORAGE_PREFIX  = "piccolo_floor_zoom_";
+const ZOOM_STORAGE_PREFIX   = "piccolo_floor_zoom_";
 const SCROLL_STORAGE_PREFIX = "piccolo_floor_scroll_";
-
-// SVG grid background
+const TAP_SLOP = 8;
 const GRID_BG = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40'%3E%3Cpath d='M 40 0 L 0 0 0 40' fill='none' stroke='rgba(255,255,255,0.04)' stroke-width='1'/%3E%3C/svg%3E")`;
 
-// Max pointer movement (in CSS px) between pointerdown and pointerup
-// that still counts as a deliberate tap. Anything larger is treated as a
-// scroll/drag and the click is suppressed.
-const TAP_SLOP = 8;
-
-// Extended status styles for all table states
-const STATUS_STYLES: Record<string, { bg: string; border: string; text: string; dot: string; glow: string }> = {
-  free:           { bg: '#253324', border: '#3f573c', text: '#dcecdb', dot: '#61895f', glow: '#61895f' },
-  occupied:       { bg: '#45201a', border: '#6b3127', text: '#f5dcd8', dot: '#c05c4a', glow: '#c05c4a' },
-  waiting:        { bg: '#3a2c0f', border: '#7a5c1a', text: '#fde68a', dot: '#f59e0b', glow: '#f59e0b' },
-  bill_requested: { bg: '#1a2040', border: '#3b4ea0', text: '#bfcfff', dot: '#4f6ef7', glow: '#4f6ef7' },
-  out_of_service: { bg: '#1e1e22', border: '#44444e', text: '#888898', dot: '#55555f', glow: 'transparent' },
-  reserved:       { bg: '#2a1a3a', border: '#6a3a8a', text: '#e4c8ff', dot: '#a855f7', glow: '#a855f7' },
-};
-
+// ─── Helper ────────────────────────────────────────────────────────────────────
 function elapsed(openedAt: string | null | undefined): string {
   if (!openedAt) return '';
   const ms = Date.now() - new Date(openedAt).getTime();
@@ -161,7 +116,310 @@ function elapsed(openedAt: string | null | undefined): string {
   return `${hrs}h${(mins % 60).toString().padStart(2, '0')}`;
 }
 
-function TableCard({ table, onClick, isBusy }: { table: Table; onClick: () => void; isBusy: boolean }) {
+function elapsedMinutes(isoDate: string | null | undefined): number {
+  if (!isoDate) return 0;
+  return Math.floor((Date.now() - new Date(isoDate).getTime()) / 60000);
+}
+
+// ─── Zone emoji picker ─────────────────────────────────────────────────────────
+interface ZoneEmojiPickerProps { currentIcon: string | null | undefined; onSelect: (icon: string | null) => void; onClose: () => void; }
+function ZoneEmojiPicker({ currentIcon, onSelect, onClose }: ZoneEmojiPickerProps) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    function handleClick(e: MouseEvent) { if (ref.current && !ref.current.contains(e.target as Node)) onClose(); }
+    const id = setTimeout(() => document.addEventListener('mousedown', handleClick), 0);
+    return () => { clearTimeout(id); document.removeEventListener('mousedown', handleClick); };
+  }, [onClose]);
+  return (
+    <div ref={ref} className="absolute left-0 top-full mt-1 z-50 bg-card border border-border rounded-2xl shadow-2xl p-3" style={{ minWidth: 230 }}>
+      <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-2 px-1">Icono de la sala</p>
+      <div className="grid grid-cols-6 gap-1 mb-2">
+        {ZONE_EMOJIS.map(emoji => (
+          <button key={emoji} onPointerDown={e => e.stopPropagation()} onClick={() => { onSelect(emoji); onClose(); }}
+            className={`w-9 h-9 rounded-xl text-lg flex items-center justify-center transition-all active:scale-90 hover:bg-secondary ${currentIcon === emoji ? 'bg-primary/15 ring-2 ring-primary/40' : ''}`}>
+            {emoji}
+          </button>
+        ))}
+      </div>
+      <button onPointerDown={e => e.stopPropagation()} onClick={() => { onSelect(null); onClose(); }}
+        className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-muted-foreground hover:bg-secondary transition-colors">
+        <div className="w-5 h-5 rounded-md border-2 border-dashed border-muted-foreground/40" />
+        Sin icono
+      </button>
+    </div>
+  );
+}
+
+// ─── ElementShape ──────────────────────────────────────────────────────────────
+function ElementShape({ el }: { el: CanvasElement }) {
+  const color = el.color ?? ELEMENT_COLOR[el.type] ?? '#64748b';
+  const isCol = el.type === 'column', isDoor = el.type === 'door', isBar = el.type === 'bar', isWin = el.type === 'window';
+  return (
+    <div style={{
+      position: 'absolute', left: el.x, top: el.y, width: el.width, height: el.height,
+      backgroundColor: isWin ? 'transparent' : color,
+      borderRadius: isCol ? '50%' : isDoor ? '4px 4px 0 0' : isBar ? '8px' : isWin ? '2px' : '3px',
+      border: isWin ? `3px solid ${color}` : `1px solid ${color}dd`,
+      transform: el.rotation ? `rotate(${el.rotation}deg)` : undefined,
+      transformOrigin: 'center center', boxShadow: '0 1px 4px rgba(0,0,0,0.5)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      opacity: 0.78, pointerEvents: 'none', userSelect: 'none', overflow: 'visible',
+    }}>
+      {isWin && (<>
+        <div style={{ position: 'absolute', left: '50%', top: 0, bottom: 0, width: 2, backgroundColor: color, transform: 'translateX(-50%)', opacity: 0.7 }} />
+        <div style={{ position: 'absolute', top: '50%', left: 0, right: 0, height: 2, backgroundColor: color, transform: 'translateY(-50%)', opacity: 0.7 }} />
+      </>)}
+      {(isBar || el.label) && !isWin && (
+        <span style={{ color: '#fff', fontSize: Math.max(9, Math.min(el.height / 2, 14)), fontWeight: 800, letterSpacing: 1, opacity: 0.9, textTransform: 'uppercase' }}>
+          {el.label ?? el.type}
+        </span>
+      )}
+      {isDoor && (
+        <svg width={el.width * 0.7} height={el.height * 1.5} viewBox="0 0 40 40" style={{ position: 'absolute', bottom: el.height * 0.9, pointerEvents: 'none', opacity: 0.6 }}>
+          <path d="M0,40 A40,40 0 0,1 40,40" fill="none" stroke="#fff" strokeWidth="2" />
+        </svg>
+      )}
+    </div>
+  );
+}
+
+// ─── StatusLegend panel ────────────────────────────────────────────────────────
+function StatusLegend({ onClose }: { onClose: () => void }) {
+  return (
+    <div className="absolute bottom-4 right-4 z-30 bg-card/95 border border-border rounded-2xl shadow-2xl backdrop-blur-sm overflow-hidden" style={{ minWidth: 220 }}>
+      <div className="flex items-center justify-between px-3 py-2.5 border-b border-border">
+        <div className="flex items-center gap-2">
+          <LayoutGrid size={13} className="text-muted-foreground" />
+          <span className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Leyenda</span>
+        </div>
+        <button onClick={onClose} className="w-6 h-6 flex items-center justify-center rounded-lg hover:bg-secondary text-muted-foreground transition-colors">
+          <X size={12} />
+        </button>
+      </div>
+      <div className="p-2">
+        {LEGEND_STATUSES.map(st => {
+          const style = STATUS_STYLES[st] ?? STATUS_STYLES.free;
+          const Icon = STATUS_ICONS[st] ?? CheckCircle2;
+          return (
+            <div key={st} className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg hover:bg-secondary/40 transition-colors">
+              <div style={{ width: 24, height: 24, borderRadius: 6, backgroundColor: style.bg, border: `1.5px solid ${style.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <Icon size={12} style={{ color: style.dot }} />
+              </div>
+              <span className="text-xs font-medium" style={{ color: style.text }}>{STATUS_LABELS[st] ?? st}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─── OccupationBar ─────────────────────────────────────────────────────────────
+interface OccupationBarProps {
+  freeCount: number;
+  occupiedCount: number;
+  reservedCount: number;
+  currentGuests: number;
+  pendingReservations: number;
+  avgOccupationMinutes: number;
+  pendingCleaningCount: number;
+}
+function OccupationBar({ freeCount, occupiedCount, reservedCount, currentGuests, pendingCleaningCount, avgOccupationMinutes }: OccupationBarProps) {
+  const items = [
+    { label: 'Libres',    value: freeCount,           color: '#61895f' },
+    { label: 'Ocupadas',  value: occupiedCount,        color: '#c05c4a' },
+    { label: 'Reservadas',value: reservedCount,        color: '#a855f7' },
+    { label: 'Comensales',value: currentGuests,        color: '#f59e0b' },
+    ...(pendingCleaningCount > 0 ? [{ label: 'Limpieza', value: pendingCleaningCount, color: '#8b5cf6' }] : []),
+    ...(avgOccupationMinutes > 0 ? [{ label: 'T. medio', value: avgOccupationMinutes > 60 ? `${Math.floor(avgOccupationMinutes/60)}h${(avgOccupationMinutes%60).toString().padStart(2,'0')}` : `${avgOccupationMinutes}m`, color: '#64748b' }] : []),
+  ];
+  return (
+    <div className="bg-card/80 border-b border-border/50 px-4 py-1.5 flex items-center gap-4 overflow-x-auto hide-scrollbar shrink-0">
+      {items.map((item, i) => (
+        <React.Fragment key={item.label}>
+          {i > 0 && <div className="w-px h-3 bg-border/60 shrink-0" />}
+          <div className="flex items-center gap-1.5 shrink-0">
+            <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">{item.label}</span>
+            <span className="text-xs font-black tabular-nums" style={{ color: item.color }}>{item.value}</span>
+          </div>
+        </React.Fragment>
+      ))}
+    </div>
+  );
+}
+
+// ─── TableHistoryDrawer ────────────────────────────────────────────────────────
+const ACTION_ICONS: Record<string, string> = {
+  open_table: '🔓', close_table: '🔒', clean_table: '✨', block_table: '⛔', unblock_table: '🔓',
+  add_item: '➕', send_kds: '👨‍🍳', bill_request: '🧾', payment: '💳', cancel_item: '✂️',
+  waiter_transfer: '🔄', table_transfer: '↗️', merge_table: '🔗', separate_table: '✂️',
+};
+
+function TableHistoryDrawer({ tableId, tableName, onClose }: { tableId: string; tableName: string; onClose: () => void }) {
+  const { data: events, isLoading } = useGetTableHistory(tableId, { query: { enabled: !!tableId, queryKey: [`/api/tables/${tableId}/history`] } });
+  return (
+    <div className="fixed inset-y-0 right-0 z-50 w-80 max-w-full bg-card border-l border-border shadow-2xl flex flex-col" style={{ top: 0 }}>
+      <div className="flex items-center justify-between px-4 py-3.5 border-b border-border bg-card shrink-0">
+        <div>
+          <h3 className="font-black text-sm">{tableName}</h3>
+          <p className="text-muted-foreground text-[11px] font-semibold uppercase tracking-wider mt-0.5">Historial</p>
+        </div>
+        <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-secondary text-muted-foreground transition-colors"><X size={16} /></button>
+      </div>
+      <div className="flex-1 overflow-y-auto py-2">
+        {isLoading ? (
+          <div className="flex items-center justify-center py-10"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
+        ) : !events?.length ? (
+          <div className="flex flex-col items-center justify-center py-10 text-muted-foreground">
+            <History size={28} className="mb-2 opacity-30" />
+            <p className="text-xs font-semibold">Sin eventos registrados</p>
+          </div>
+        ) : (
+          <div className="relative">
+            {/* Timeline line */}
+            <div className="absolute left-8 top-0 bottom-0 w-px bg-border/60" />
+            {events.map((ev: TableEvent) => (
+              <div key={ev.id} className="flex gap-3 px-4 py-2.5 hover:bg-secondary/20 transition-colors relative">
+                <div className="w-8 h-8 shrink-0 flex items-center justify-center rounded-full bg-card border border-border text-sm z-10">
+                  {ACTION_ICONS[ev.action] ?? '📋'}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-bold capitalize leading-snug">{ev.action.replace(/_/g, ' ')}</p>
+                  {ev.details && <p className="text-[11px] text-muted-foreground mt-0.5 leading-snug">{ev.details}</p>}
+                  <div className="flex items-center gap-2 mt-1">
+                    {ev.employeeName && <span className="text-[10px] text-muted-foreground font-medium">{ev.employeeName}</span>}
+                    <span className="text-[10px] text-muted-foreground/60">
+                      {new Date(ev.createdAt).toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' })}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── OpenTableModal ────────────────────────────────────────────────────────────
+interface OpenTableModalProps {
+  table: Table;
+  onConfirm: (params: { guestCount: number; clientName: string; notes: string; employeeId: string | null; terminalName: string }) => void;
+  onCancel: () => void;
+  isPending: boolean;
+  currentEmployeeId?: string;
+}
+function OpenTableModal({ table, onConfirm, onCancel, isPending, currentEmployeeId }: OpenTableModalProps) {
+  const [guestCount, setGuestCount]   = useState(2);
+  const [clientName, setClientName]   = useState('');
+  const [notes, setNotes]             = useState('');
+  const [employeeId, setEmployeeId]   = useState<string | null>(currentEmployeeId ?? null);
+  const { data: employees } = useGetEmployeeLoginList();
+
+  const handleSubmit = () => {
+    onConfirm({ guestCount, clientName, notes, employeeId, terminalName: '' });
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" onClick={onCancel}>
+      <div className="bg-card border border-border rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+        {/* Header */}
+        <div className="p-5 border-b border-border flex items-start justify-between">
+          <div>
+            <h2 className="font-black text-xl leading-tight">{table.name}</h2>
+            <p className="text-muted-foreground text-sm mt-0.5 font-medium">Abrir mesa</p>
+          </div>
+          <button onClick={onCancel} className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-secondary text-muted-foreground transition-colors"><X size={16} /></button>
+        </div>
+
+        <div className="p-4 space-y-4 max-h-[75vh] overflow-y-auto">
+          {/* Comensales */}
+          <div>
+            <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2 block">Comensales</label>
+            <div className="grid grid-cols-4 gap-1.5 mb-2">
+              {[1,2,3,4,5,6,7,8].map(n => (
+                <button key={n} onClick={() => setGuestCount(n)}
+                  className={`h-10 rounded-xl font-black text-lg transition-all active:scale-95 border-2 ${guestCount === n ? 'bg-primary text-primary-foreground border-primary shadow-md' : 'bg-secondary/50 border-border text-foreground hover:border-primary/40'}`}>
+                  {n}
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center justify-center gap-3">
+              <button onClick={() => setGuestCount(Math.max(1, guestCount - 1))} className="w-9 h-9 flex items-center justify-center rounded-xl bg-secondary border border-border hover:border-primary/40 transition-colors active:scale-90 font-black text-lg">−</button>
+              <span className="text-2xl font-black w-10 text-center tabular-nums">{guestCount}</span>
+              <button onClick={() => setGuestCount(guestCount + 1)} className="w-9 h-9 flex items-center justify-center rounded-xl bg-secondary border border-border hover:border-primary/40 transition-colors active:scale-90 font-black text-lg">+</button>
+            </div>
+          </div>
+
+          {/* Camarero */}
+          {employees && employees.length > 1 && (
+            <div>
+              <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2 block">Camarero responsable</label>
+              <div className="grid grid-cols-2 gap-1.5">
+                {employees.map(emp => (
+                  <button key={emp.id} onClick={() => setEmployeeId(emp.id)}
+                    className={`px-3 py-2 rounded-xl text-xs font-bold text-left transition-all border-2 active:scale-95 ${employeeId === emp.id ? 'bg-primary/15 border-primary text-primary' : 'bg-secondary/50 border-border text-foreground hover:border-primary/40'}`}>
+                    {emp.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Nombre del cliente */}
+          <div>
+            <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1.5 block">Nombre del cliente <span className="font-normal text-muted-foreground/60 normal-case">(opcional)</span></label>
+            <input
+              value={clientName}
+              onChange={e => setClientName(e.target.value)}
+              placeholder="Nombre o referencia..."
+              className="w-full px-3 py-2.5 bg-secondary/50 border border-border rounded-xl text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/60 transition-colors"
+            />
+          </div>
+
+          {/* Observaciones */}
+          <div>
+            <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1.5 block">Observaciones <span className="font-normal text-muted-foreground/60 normal-case">(opcional)</span></label>
+            <textarea
+              value={notes}
+              onChange={e => setNotes(e.target.value)}
+              rows={2}
+              placeholder="Alergias, preferencias..."
+              className="w-full px-3 py-2.5 bg-secondary/50 border border-border rounded-xl text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/60 transition-colors resize-none"
+            />
+          </div>
+        </div>
+
+        <div className="p-4 border-t border-border flex gap-2">
+          <button onClick={onCancel} className="flex-1 py-3 rounded-xl border border-border text-muted-foreground hover:bg-secondary transition-colors font-bold text-sm">
+            Cancelar
+          </button>
+          <button onClick={handleSubmit} disabled={isPending}
+            className="flex-1 py-3 bg-primary text-primary-foreground font-black text-sm uppercase tracking-wider rounded-xl active:scale-[0.98] transition-all flex items-center justify-center gap-2 shadow-lg disabled:opacity-50">
+            {isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+            Abrir mesa
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── TableCard ─────────────────────────────────────────────────────────────────
+type AlertLevel = 'none' | 'warn' | 'danger';
+
+interface TableCardProps {
+  table: Table;
+  onClick: () => void;
+  onHistory?: () => void;
+  onClean?: () => void;
+  isBusy: boolean;
+  alertLevel: AlertLevel;
+  isManagerOrAdmin: boolean;
+}
+
+function TableCard({ table, onClick, onHistory, onClean, isBusy, alertLevel, isManagerOrAdmin }: TableCardProps) {
   const isMerged   = !!table.mergeGroup;
   const st         = STATUS_STYLES[table.status] ?? STATUS_STYLES.free;
   const rotation   = (table as any).rotation ?? 0;
@@ -169,37 +427,38 @@ function TableCard({ table, onClick, isBusy }: { table: Table; onClick: () => vo
   const elapsedStr = elapsed((table as any).openedAt);
   const hasAmount  = (table as any).currentTotal != null && (table as any).currentTotal > 0;
   const amountStr  = hasAmount ? `${Number((table as any).currentTotal).toFixed(2)}€` : '';
+  const guestCount = (table as any).guestCount;
+  const clientName = (table as any).clientName;
+  const Icon       = STATUS_ICONS[table.status] ?? CheckCircle2;
+  const isBlocked  = table.status === 'bloqueada' || table.status === 'out_of_service';
+  const isPendingClean = table.status === 'pendiente_limpieza';
 
   const { onPointerDown: handlePointerDown, guard } = useScrollGuard();
   const handleClick = guard(() => { if (!isBusy) onClick(); });
+
+  const alertRingColor = alertLevel === 'danger' ? '#ef4444' : alertLevel === 'warn' ? '#f59e0b' : 'transparent';
 
   return (
     <div
       onPointerDown={handlePointerDown}
       onClick={handleClick}
       style={{
-        position: "absolute",
-        left: table.x,
-        top: table.y,
-        width: table.width,
-        height: table.height,
+        position: "absolute", left: table.x, top: table.y, width: table.width, height: table.height,
         borderRadius: radius,
         backgroundColor: st.bg,
         border: `2.5px solid ${isMerged ? (table.status === 'free' ? '#7c3aed' : '#6b3a8a') : st.border}`,
-        boxShadow: `0 2px 10px rgba(0,0,0,0.45)`,
-        cursor: isBusy ? "wait" : table.status === 'out_of_service' ? 'not-allowed' : 'pointer',
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: 2,
+        boxShadow: alertLevel !== 'none'
+          ? `0 2px 10px rgba(0,0,0,0.45), 0 0 0 3px ${alertRingColor}44, 0 0 12px ${alertRingColor}66`
+          : '0 2px 10px rgba(0,0,0,0.45)',
+        cursor: isBusy ? "wait" : isBlocked ? 'not-allowed' : 'pointer',
+        display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2,
         transform: rotation ? `rotate(${rotation}deg)` : undefined,
         transformOrigin: 'center center',
-        opacity: table.status === 'out_of_service' ? 0.6 : 1,
+        opacity: isBlocked ? 0.6 : 1,
         transition: "border-color 0.15s, box-shadow 0.15s",
         userSelect: "none",
       }}
-      className="hover:brightness-110 active:scale-[0.97] transition-transform"
+      className={`hover:brightness-110 active:scale-[0.97] transition-transform ${alertLevel !== 'none' ? 'animate-pulse-ring' : ''}`}
     >
       {isBusy ? (
         <Loader2 style={{ width: 20, height: 20, color: st.text, opacity: 0.6 }} className="animate-spin" />
@@ -208,8 +467,9 @@ function TableCard({ table, onClick, isBusy }: { table: Table; onClick: () => vo
           <span style={{ color: st.text, fontWeight: 900, fontSize: Math.max(10, Math.min(table.width, table.height) / 5), lineHeight: 1, pointerEvents: "none" }}>
             {table.name}
           </span>
-          <span style={{ color: st.text, opacity: 0.6, fontSize: 10, pointerEvents: "none" }}>
-            {table.capacity}p
+          {/* Guest count or capacity */}
+          <span style={{ color: st.text, opacity: 0.6, fontSize: 9, pointerEvents: "none" }}>
+            {guestCount ? `${guestCount}p` : `${table.capacity}p`}
           </span>
           {/* Employee initial — top-left */}
           {(table as any).employeeName && (
@@ -217,35 +477,65 @@ function TableCard({ table, onClick, isBusy }: { table: Table; onClick: () => vo
               {(table as any).employeeName.charAt(0).toUpperCase()}
             </span>
           )}
-          {/* Out-of-service icon — top-right */}
-          {table.status === 'out_of_service' && (
-            <span style={{ position: 'absolute', top: 3, right: 5, fontSize: 10, color: st.dot, pointerEvents: 'none' }}>⊘</span>
+          {/* Status icon — top-right (replaced by clean button for pending_limpieza) */}
+          {isPendingClean && isManagerOrAdmin && onClean ? (
+            <button
+              onPointerDown={e => e.stopPropagation()}
+              onClick={e => { e.stopPropagation(); onClean(); }}
+              style={{ position: 'absolute', top: 3, right: 4, width: 18, height: 18, borderRadius: 5, backgroundColor: st.dot + '33', border: `1px solid ${st.dot}66`, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'auto' }}
+              title="Marcar como limpia"
+            >
+              <Sparkles size={10} style={{ color: st.dot }} />
+            </button>
+          ) : (
+            <Icon size={10} style={{ position: 'absolute', top: 4, right: 5, color: st.dot, pointerEvents: 'none', opacity: 0.9 }} />
           )}
-          {/* Elapsed time — bottom-left */}
+          {/* History button — bottom-left (manager/admin only) */}
+          {isManagerOrAdmin && onHistory && !isPendingClean && (
+            <button
+              onPointerDown={e => e.stopPropagation()}
+              onClick={e => { e.stopPropagation(); onHistory(); }}
+              style={{ position: 'absolute', bottom: 3, left: 4, width: 16, height: 16, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'auto' }}
+              title="Ver historial"
+            >
+              <History size={9} style={{ color: st.text, opacity: 0.6 }} />
+            </button>
+          )}
+          {/* Elapsed time — bottom (center or bottom-right depending on space) */}
           {elapsedStr && (
-            <span style={{ position: 'absolute', bottom: 4, left: 6, fontSize: 8, color: st.text, opacity: 0.7, fontWeight: 700, pointerEvents: 'none' }}>
+            <span style={{ position: 'absolute', bottom: 4, right: 6, fontSize: 8, color: st.text, opacity: 0.7, fontWeight: 700, pointerEvents: 'none' }}>
               {elapsedStr}
             </span>
           )}
-          {/* Amount — bottom-right */}
-          {amountStr && (
+          {/* Amount — if no elapsed (free/reserved) show amount alone */}
+          {amountStr && !elapsedStr && (
             <span style={{ position: 'absolute', bottom: 4, right: 6, fontSize: 8, color: st.text, opacity: 0.7, fontWeight: 700, pointerEvents: 'none' }}>
               {amountStr}
             </span>
           )}
+          {/* Alert badge */}
+          {alertLevel !== 'none' && (
+            <div style={{ position: 'absolute', top: -6, left: '50%', transform: 'translateX(-50%)', zIndex: 1 }}>
+              <AlertTriangle size={10} style={{ color: alertRingColor }} />
+            </div>
+          )}
+          {/* Client name chip — only shown on larger tables */}
+          {clientName && table.width >= 100 && (
+            <span style={{ position: 'absolute', bottom: 14, left: 6, right: 6, fontSize: 7, color: st.text, opacity: 0.5, fontWeight: 600, pointerEvents: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'center' }}>
+              {clientName}
+            </span>
+          )}
         </>
       )}
-      {/* Status dot — hidden for out_of_service */}
-      {table.status !== 'out_of_service' && (
-        <div style={{
-          position: "absolute", top: 6, right: 6, width: 8, height: 8, borderRadius: "50%",
-          backgroundColor: st.dot, boxShadow: `0 0 6px ${st.glow}`,
-        }} />
+      {/* Status dot */}
+      {!isBlocked && (
+        <div style={{ position: "absolute", top: 6, right: isManagerOrAdmin ? 22 : 6, width: 7, height: 7, borderRadius: "50%", backgroundColor: st.dot, boxShadow: `0 0 5px ${st.glow}` }} />
       )}
     </div>
   );
 }
 
+// ─── Main Tables page ─────────────────────────────────────────────────────────
 export default function Tables() {
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
@@ -253,42 +543,31 @@ export default function Tables() {
 
   const [employeeName, setEmployeeName] = useState<string>("");
   const [employeeRole, setEmployeeRole] = useState<string>("");
+  const [employeeId, setEmployeeId] = useState<string>("");
 
-  // Zoom state — persisted per zone; starts at 1× until the first zone activates
+  // Zoom state
   const [zoom, setZoom] = useState<number>(1);
-  // Tracks the zone whose zoom is currently loaded, so persistZoom always
-  // writes to the right key even when called from gesture handlers.
   const currentZoneIdRef = useRef<string | null>(null);
 
   const persistZoom = useCallback((z: number) => {
     const clamped = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, parseFloat(z.toFixed(2))));
     setZoom(clamped);
     const zoneId = currentZoneIdRef.current;
-    if (zoneId) {
-      try { localStorage.setItem(ZOOM_STORAGE_PREFIX + zoneId, String(clamped)); } catch { /* ignore */ }
-    }
+    if (zoneId) { try { localStorage.setItem(ZOOM_STORAGE_PREFIX + zoneId, String(clamped)); } catch { /* */ } }
     return clamped;
   }, []);
 
-  /** Zoom in/out keeping the current viewport centre fixed on the canvas. */
   const zoomAroundCenter = useCallback((delta: number) => {
     const el = canvasContainerRef.current;
     const newZoom = persistZoom(zoom + delta);
     if (!el) return;
     const { width: cw, height: ch } = el.getBoundingClientRect();
-    const oldZoom = zoom;
-    // When the canvas is smaller than the viewport it is centred via flex —
-    // account for that offset so the canvas-space point under the viewport
-    // centre is computed correctly.
-    const oldOffsetX = Math.max(0, (cw - CANVAS_W * oldZoom) / 2);
-    const oldOffsetY = Math.max(0, (ch - CANVAS_H * oldZoom) / 2);
-    // Viewport centre in canvas-space coordinates (at the *old* zoom level)
-    const cx = (el.scrollLeft + cw / 2 - oldOffsetX) / oldZoom;
-    const cy = (el.scrollTop  + ch / 2 - oldOffsetY) / oldZoom;
-    // Centering offsets at the new zoom level
+    const oldOffsetX = Math.max(0, (cw - CANVAS_W * zoom) / 2);
+    const oldOffsetY = Math.max(0, (ch - CANVAS_H * zoom) / 2);
+    const cx = (el.scrollLeft + cw / 2 - oldOffsetX) / zoom;
+    const cy = (el.scrollTop  + ch / 2 - oldOffsetY) / zoom;
     const newOffsetX = Math.max(0, (cw - CANVAS_W * newZoom) / 2);
     const newOffsetY = Math.max(0, (ch - CANVAS_H * newZoom) / 2);
-    // Reposition scroll so the same canvas point stays centred after zoom
     el.scrollLeft = cx * newZoom - cw / 2 + newOffsetX;
     el.scrollTop  = cy * newZoom - ch / 2 + newOffsetY;
   }, [zoom, persistZoom]);
@@ -302,10 +581,6 @@ export default function Tables() {
     const { width: cw, height: ch } = el.getBoundingClientRect();
     const fitZoom = Math.min(cw / CANVAS_W, ch / CANVAS_H) * 0.95;
     persistZoom(fitZoom);
-    // Reset scroll via rAF so it runs after React re-renders the canvas at the
-    // new zoom level. At fit zoom the canvas is always smaller than the viewport,
-    // so (0,0) is the correct scroll — the flex centering wrapper handles the
-    // visual centering via CSS.
     requestAnimationFrame(() => {
       if (!canvasContainerRef.current) return;
       canvasContainerRef.current.scrollLeft = 0;
@@ -313,138 +588,69 @@ export default function Tables() {
     });
   }, [persistZoom]);
 
-  // Pinch-to-zoom — non-passive so we can preventDefault and block scroll
+  // Pinch / pan refs
   const pinchRef = useRef<{
-    startDist: number;
-    startZoom: number;
-    /** Canvas-space coordinates of the pinch midpoint at gesture start */
+    startDist: number; startZoom: number;
     canvasPoint: { x: number; y: number };
-    /** Pinch midpoint position relative to the container's top-left edge */
     midScreen: { x: number; y: number };
-    /** Container viewport size captured at gesture start for offset maths */
     containerSize: { w: number; h: number };
   } | null>(null);
   const zoomRef = useRef(zoom);
   useEffect(() => { zoomRef.current = zoom; }, [zoom]);
-
-  // Single-finger pan state
-  const panRef = useRef<{
-    startX: number;
-    startY: number;
-    scrollLeft: number;
-    scrollTop: number;
-    /** Whether we've crossed TAP_SLOP and are actively panning */
-    active: boolean;
-  } | null>(null);
+  const panRef = useRef<{ startX: number; startY: number; scrollLeft: number; scrollTop: number; active: boolean } | null>(null);
 
   useEffect(() => {
     const elOrNull = canvasContainerRef.current;
     if (!elOrNull) return;
     const el: HTMLDivElement = elOrNull;
 
-    function dist(t: TouchList) {
-      const dx = t[0].clientX - t[1].clientX;
-      const dy = t[0].clientY - t[1].clientY;
-      return Math.sqrt(dx * dx + dy * dy);
-    }
+    function dist(t: TouchList) { const dx = t[0].clientX - t[1].clientX, dy = t[0].clientY - t[1].clientY; return Math.sqrt(dx*dx+dy*dy); }
 
     function onTouchStart(e: TouchEvent) {
       if (e.touches.length === 1) {
-        // Begin tracking a potential single-finger pan
-        panRef.current = {
-          startX: e.touches[0].clientX,
-          startY: e.touches[0].clientY,
-          scrollLeft: el.scrollLeft,
-          scrollTop: el.scrollTop,
-          active: false,
-        };
+        panRef.current = { startX: e.touches[0].clientX, startY: e.touches[0].clientY, scrollLeft: el.scrollLeft, scrollTop: el.scrollTop, active: false };
       } else if (e.touches.length === 2) {
-        // Cancel any in-progress pan when a second finger lands
         panRef.current = null;
         const rect = el.getBoundingClientRect();
         const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
         const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
-        // Position of midpoint relative to the scrollable container's origin
-        const relX = midX - rect.left;
-        const relY = midY - rect.top;
+        const relX = midX - rect.left, relY = midY - rect.top;
         const z = zoomRef.current;
-        // When canvas < viewport it is flex-centred — subtract that offset so
-        // we get the correct canvas-space coordinate under the pinch midpoint.
         const offsetX = Math.max(0, (rect.width  - CANVAS_W * z) / 2);
         const offsetY = Math.max(0, (rect.height - CANVAS_H * z) / 2);
-        // Canvas coordinates under the midpoint (inverse of scale+scroll transform)
-        const cx = (el.scrollLeft + relX - offsetX) / z;
-        const cy = (el.scrollTop  + relY - offsetY) / z;
-        pinchRef.current = {
-          startDist: dist(e.touches),
-          startZoom: z,
-          canvasPoint: { x: cx, y: cy },
-          midScreen: { x: relX, y: relY },
-          containerSize: { w: rect.width, h: rect.height },
-        };
+        pinchRef.current = { startDist: dist(e.touches), startZoom: z, canvasPoint: { x: (el.scrollLeft + relX - offsetX) / z, y: (el.scrollTop + relY - offsetY) / z }, midScreen: { x: relX, y: relY }, containerSize: { w: rect.width, h: rect.height } };
       }
     }
 
     function onTouchMove(e: TouchEvent) {
       if (e.touches.length === 1 && panRef.current) {
-        const dx = e.touches[0].clientX - panRef.current.startX;
-        const dy = e.touches[0].clientY - panRef.current.startY;
-        // Only start panning once the finger has moved beyond the tap slop
-        if (!panRef.current.active) {
-          if (Math.abs(dx) > TAP_SLOP || Math.abs(dy) > TAP_SLOP) {
-            panRef.current.active = true;
-          } else {
-            return; // still within tap threshold — do nothing yet
-          }
-        }
-        e.preventDefault(); // block native scroll while panning
+        const dx = e.touches[0].clientX - panRef.current.startX, dy = e.touches[0].clientY - panRef.current.startY;
+        if (!panRef.current.active) { if (Math.abs(dx) > TAP_SLOP || Math.abs(dy) > TAP_SLOP) panRef.current.active = true; else return; }
+        e.preventDefault();
         el.scrollLeft = panRef.current.scrollLeft - dx;
         el.scrollTop  = panRef.current.scrollTop  - dy;
       } else if (e.touches.length === 2 && pinchRef.current) {
-        e.preventDefault(); // prevent browser pan/zoom during pinch
+        e.preventDefault();
         const scale = dist(e.touches) / pinchRef.current.startDist;
-        const rawZoom = pinchRef.current.startZoom * scale;
-        // Clamp (mirror persistZoom logic so scroll uses the final value)
-        const newZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, parseFloat(rawZoom.toFixed(2))));
-        // Centering offsets at the new zoom (canvas < viewport → flex-centred)
+        const newZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, parseFloat((pinchRef.current.startZoom * scale).toFixed(2))));
         const { canvasPoint, midScreen, containerSize } = pinchRef.current;
-        const newOffsetX = Math.max(0, (containerSize.w - CANVAS_W * newZoom) / 2);
-        const newOffsetY = Math.max(0, (containerSize.h - CANVAS_H * newZoom) / 2);
-        // Reposition scroll so the pinch midpoint stays fixed on screen
-        el.scrollLeft = canvasPoint.x * newZoom - midScreen.x + newOffsetX;
-        el.scrollTop  = canvasPoint.y * newZoom - midScreen.y + newOffsetY;
+        el.scrollLeft = canvasPoint.x * newZoom - midScreen.x + Math.max(0, (containerSize.w - CANVAS_W * newZoom) / 2);
+        el.scrollTop  = canvasPoint.y * newZoom - midScreen.y + Math.max(0, (containerSize.h - CANVAS_H * newZoom) / 2);
         persistZoom(newZoom);
       }
     }
 
-    function onTouchEnd() {
-      panRef.current = null;
-      pinchRef.current = null;
-    }
+    function onTouchEnd() { panRef.current = null; pinchRef.current = null; }
 
     el.addEventListener("touchstart", onTouchStart, { passive: true });
-    el.addEventListener("touchmove", onTouchMove, { passive: false });
-    el.addEventListener("touchend", onTouchEnd, { passive: true });
-    el.addEventListener("touchcancel", onTouchEnd, { passive: true });
-    return () => {
-      el.removeEventListener("touchstart", onTouchStart);
-      el.removeEventListener("touchmove", onTouchMove);
-      el.removeEventListener("touchend", onTouchEnd);
-      el.removeEventListener("touchcancel", onTouchEnd);
-    };
+    el.addEventListener("touchmove",  onTouchMove,  { passive: false });
+    el.addEventListener("touchend",   onTouchEnd,   { passive: true });
+    el.addEventListener("touchcancel",onTouchEnd,   { passive: true });
+    return () => { el.removeEventListener("touchstart", onTouchStart); el.removeEventListener("touchmove", onTouchMove); el.removeEventListener("touchend", onTouchEnd); el.removeEventListener("touchcancel", onTouchEnd); };
   }, [persistZoom]);
 
-  // Reset gesture refs when the page is hidden (screen lock, home button, tab
-  // switch). Some iOS/Android versions suppress touchcancel in these cases,
-  // leaving stale finger positions in the refs and causing position jumps on
-  // return. visibilitychange fires reliably in both scenarios.
   useEffect(() => {
-    function handleVisibilityChange() {
-      if (document.visibilityState === "hidden") {
-        pinchRef.current = null;
-        panRef.current = null;
-      }
-    }
+    function handleVisibilityChange() { if (document.visibilityState === "hidden") { pinchRef.current = null; panRef.current = null; } }
     document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
   }, []);
@@ -452,74 +658,42 @@ export default function Tables() {
   useEffect(() => {
     const token = localStorage.getItem("token");
     const empStr = localStorage.getItem("employee");
-    if (!token) {
-      setLocation("/");
-    } else if (empStr) {
-      try {
-        const emp = JSON.parse(empStr);
-        setEmployeeName(emp.name);
-        setEmployeeRole(emp.role ?? "");
-      } catch (e) { /* ignore */ }
+    if (!token) { setLocation("/"); } else if (empStr) {
+      try { const emp = JSON.parse(empStr); setEmployeeName(emp.name); setEmployeeRole(emp.role ?? ""); setEmployeeId(emp.id ?? ""); } catch { /* */ }
     }
   }, [setLocation]);
 
   const isAdmin = employeeRole === "admin";
+  const isManagerOrAdmin = isAdmin || employeeRole === "manager" || employeeRole === "encargado";
 
   const { data: summary } = useGetDashboardSummary();
   const { data: zones, isLoading: loadingZones } = useGetZones();
   const [activeZone, setActiveZone] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (zones?.length && !activeZone) setActiveZone(zones[0].id);
-  }, [zones, activeZone]);
+  useEffect(() => { if (zones?.length && !activeZone) setActiveZone(zones[0].id); }, [zones, activeZone]);
 
-  /** Save the current canvas scroll position for a given zone to localStorage. */
   const saveScrollForZone = useCallback((zoneId: string) => {
     const el = canvasContainerRef.current;
     if (!el || !zoneId) return;
-    try {
-      localStorage.setItem(
-        SCROLL_STORAGE_PREFIX + zoneId,
-        JSON.stringify({ left: el.scrollLeft, top: el.scrollTop }),
-      );
-    } catch { /* ignore */ }
+    try { localStorage.setItem(SCROLL_STORAGE_PREFIX + zoneId, JSON.stringify({ left: el.scrollLeft, top: el.scrollTop })); } catch { /* */ }
   }, []);
 
-  // Persist scroll position to localStorage before the page is unloaded
-  // (hard refresh, browser close, navigation away). This ensures restore works
-  // even when the user never explicitly switched zones in the session.
-  // currentZoneIdRef is used instead of activeZone so the handler doesn't need
-  // to be re-registered on every zone change.
   useEffect(() => {
-    function handlePageHide() {
-      const zoneId = currentZoneIdRef.current;
-      if (zoneId) saveScrollForZone(zoneId);
-    }
+    function handlePageHide() { const zoneId = currentZoneIdRef.current; if (zoneId) saveScrollForZone(zoneId); }
     window.addEventListener("pagehide", handlePageHide);
     return () => window.removeEventListener("pagehide", handlePageHide);
   }, [saveScrollForZone]);
 
-  /** Restore the saved scroll position for a zone (if any). Must be called after render. */
   const restoreScrollForZone = useCallback((zoneId: string) => {
     const el = canvasContainerRef.current;
     if (!el || !zoneId) return;
     try {
       const raw = localStorage.getItem(SCROLL_STORAGE_PREFIX + zoneId);
-      if (raw) {
-        const { left, top } = JSON.parse(raw) as { left: number; top: number };
-        el.scrollLeft = left;
-        el.scrollTop  = top;
-      } else {
-        // No saved position → start at top-left
-        el.scrollLeft = 0;
-        el.scrollTop  = 0;
-      }
-    } catch { /* ignore */ }
+      if (raw) { const { left, top } = JSON.parse(raw) as { left: number; top: number }; el.scrollLeft = left; el.scrollTop = top; }
+      else { el.scrollLeft = 0; el.scrollTop = 0; }
+    } catch { /* */ }
   }, []);
 
-  // Pulse key — increments on every explicit zone switch so the accent div
-  // remounts (via key={}) and re-runs its CSS animation. We skip the very
-  // first auto-selection (null → zones[0]) so there's no animation on load.
   const [accentPulseKey, setAccentPulseKey] = useState(0);
   const accentInitRef = useRef(false);
   useEffect(() => {
@@ -528,67 +702,37 @@ export default function Tables() {
     setAccentPulseKey(k => k + 1);
   }, [activeZone]);
 
-  /** Switch zone: persist current scroll first, then change the active zone. */
   const switchZone = useCallback((zoneId: string) => {
     if (activeZone) saveScrollForZone(activeZone);
     setActiveZone(zoneId);
   }, [activeZone, saveScrollForZone]);
 
-  // After the active zone changes, restore the saved zoom and scroll position.
-  // • If a zoom level was previously saved (localStorage) → restore it, then restore scroll.
-  // • If no saved zoom (first visit to this zone) → auto-fit the canvas to fill the viewport.
-  //   handleFit calls persistZoom which writes to localStorage, so subsequent visits restore it.
   useEffect(() => {
     if (!activeZone) return;
-    // Update the ref so persistZoom always writes to the correct zone key.
     currentZoneIdRef.current = activeZone;
-
     let rafId: number;
     try {
       const raw = localStorage.getItem(ZOOM_STORAGE_PREFIX + activeZone);
       const parsed = raw ? parseFloat(raw) : NaN;
       if (!isNaN(parsed) && parsed >= ZOOM_MIN && parsed <= ZOOM_MAX) {
-        // Saved zoom found — restore it synchronously, then restore scroll position.
         setZoom(parsed);
         rafId = requestAnimationFrame(() => restoreScrollForZone(activeZone));
-      } else {
-        // First visit to this zone — fit the canvas to fill the viewport.
-        // handleFit persists the fit zoom so the next visit (including after reload) restores it.
-        rafId = requestAnimationFrame(() => handleFit());
-      }
-    } catch {
-      rafId = requestAnimationFrame(() => handleFit());
-    }
+      } else { rafId = requestAnimationFrame(() => handleFit()); }
+    } catch { rafId = requestAnimationFrame(() => handleFit()); }
     return () => cancelAnimationFrame(rafId);
   }, [activeZone, restoreScrollForZone, handleFit]);
 
-  // No explicit layout param — server returns tables for the zone's active layout
   const { data: tables, isLoading: loadingTables } = useGetZoneTables(
-    activeZone!,
-    undefined,
+    activeZone!, undefined,
     { query: { enabled: !!activeZone, queryKey: getGetZoneTablesQueryKey(activeZone!) } }
   );
-
-  // Canvas elements (walls, doors, etc.) — read-only in camarero view
   const { data: elements } = useGetCanvasElements(
-    activeZone!,
-    { layout: 'normal' },
+    activeZone!, { layout: 'normal' },
     { query: { enabled: !!activeZone, queryKey: getGetCanvasElementsQueryKey(activeZone!, { layout: 'normal' }) } }
   );
 
-  // Continuously persist scroll position so a brief loading-state flip (e.g.
-  // triggered by a tables:refresh socket event) does not lose where the waiter
-  // left the canvas. The <main> element is always mounted, so the handler
-  // stays registered regardless of loadingTables.
-  const handleCanvasScroll = useCallback(() => {
-    const zone = currentZoneIdRef.current;
-    if (zone) saveScrollForZone(zone);
-  }, [saveScrollForZone]);
+  const handleCanvasScroll = useCallback(() => { const zone = currentZoneIdRef.current; if (zone) saveScrollForZone(zone); }, [saveScrollForZone]);
 
-  // Restore scroll after a loading → ready transition.
-  // When the socket invalidates the query, isLoading briefly becomes true if
-  // the browser discards the cached content, causing scrollLeft/scrollTop to
-  // reset. Re-applying the saved position after the canvas reappears fixes it.
   const prevLoadingTablesRef = useRef(loadingTables);
   useEffect(() => {
     const wasLoading = prevLoadingTablesRef.current;
@@ -600,203 +744,181 @@ export default function Tables() {
     return undefined;
   }, [loadingTables, activeZone, restoreScrollForZone]);
 
-  // Auto-fit is now handled per-zone in the zone restore effect above.
-  // No global didAutoFit needed — each zone auto-fits on its first visit.
-
-  // Keep a ref to the active zone so the socket handler always reads the
-  // latest value without needing to reconnect when the zone changes.
   const activeZoneRef = useRef<string | null>(null);
   activeZoneRef.current = activeZone;
 
-  // Reset in-flight gesture state whenever the zone changes.
-  // Normally touchend fires before a zone tap registers, but a cancelled
-  // touch (browser interrupt, rapid switch) can leave stale pinch/pan state
-  // that would anchor the *next* gesture to the wrong canvas coordinates.
-  useEffect(() => {
-    pinchRef.current = null;
-    panRef.current = null;
-  }, [activeZone]);
+  useEffect(() => { pinchRef.current = null; panRef.current = null; }, [activeZone]);
 
-  // Real-time: socket is created once on mount and torn down on unmount.
-  // Zone switches only change which queryKey is invalidated — no reconnect.
   useEffect(() => {
     const socket = io({ path: "/api/socket.io" });
     socket.on("tables:refresh", () => {
       const zone = activeZoneRef.current;
-      if (zone) {
-        queryClient.invalidateQueries({ queryKey: getGetZoneTablesQueryKey(zone) });
-      }
+      if (zone) queryClient.invalidateQueries({ queryKey: getGetZoneTablesQueryKey(zone) });
       queryClient.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() });
       queryClient.invalidateQueries({ queryKey: getGetAllTablesQueryKey() });
+      queryClient.invalidateQueries({ queryKey: getGetOccupationSummaryQueryKey() });
     });
     return () => { socket.disconnect(); };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [queryClient]);
 
-  const openTable = useOpenTable();
-  const updateZone = useUpdateZone();
+  const openTable   = useOpenTable();
+  const updateZone  = useUpdateZone();
+  const cleanTable  = useCleanTable();
+  const blockTable  = useBlockTable();
 
-  // Emoji picker state (admin only — zone tab long-press)
+  // Occupation summary (auto-refreshes every 30s)
+  const { data: occupation } = useGetOccupationSummary();
+
+  // Alert config (admin/manager only)
+  const { data: alertConfig } = useGetAlertConfig({ query: { enabled: isManagerOrAdmin, queryKey: getGetAlertConfigQueryKey() } });
+  const thresholds: AlertConfig = alertConfig ?? {
+    id: '', reservaProximaMin: 30, sinComandaMin: 15, prefacturaPendienteMin: 10, mesaSuciaMin: 5,
+    updatedAt: '',
+  };
+
+  // Compute alert level for a table
+  const getAlertLevel = useCallback((table: Table): AlertLevel => {
+    if (!isManagerOrAdmin) return 'none';
+    const mins = elapsedMinutes((table as any).openedAt);
+    if (table.status === 'pendiente_limpieza' && mins >= thresholds.mesaSuciaMin) return mins >= thresholds.mesaSuciaMin * 2 ? 'danger' : 'warn';
+    if ((table.status === 'prefactura_impresa' || table.status === 'bill_requested') && mins >= thresholds.prefacturaPendienteMin) return 'warn';
+    if (table.status === 'occupied' && !(table as any).currentOrderId && mins >= thresholds.sinComandaMin) return 'warn';
+    return 'none';
+  }, [isManagerOrAdmin, thresholds]);
+
+  // Zone emoji picker
   const [emojiPickerZoneId, setEmojiPickerZoneId] = useState<string | null>(null);
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Flag set when a long-press fires the picker open; used to swallow the
-  // subsequent `click` event that the browser fires after pointerup.
   const didLongPressRef = useRef(false);
 
   const handleZoneEmojiSelect = (zoneId: string, icon: string | null) => {
     updateZone.mutate(
       { zoneId, data: { icon: icon === null ? null : icon } },
       {
-        onSuccess: () => {
-          queryClient.invalidateQueries({ queryKey: getGetZonesQueryKey() });
-          toast.success(icon ? `Icono actualizado` : "Icono eliminado");
-        },
+        onSuccess: () => { queryClient.invalidateQueries({ queryKey: getGetZonesQueryKey() }); toast.success(icon ? `Icono actualizado` : "Icono eliminado"); },
         onError: () => toast.error("No se pudo actualizar el icono"),
       }
     );
   };
 
-  // Guest count dialog state
-  const [guestCountTable, setGuestCountTable] = useState<Table | null>(null);
-  const [pendingGuestCount, setPendingGuestCount] = useState(2);
+  // Open modal state
+  const [openModalTable, setOpenModalTable] = useState<Table | null>(null);
 
-  const doOpenTable = (table: Table, guestCount: number) => {
+  const doOpenTable = (table: Table, params: { guestCount: number; clientName: string; notes: string; employeeId: string | null; terminalName: string }) => {
     openTable.mutate(
-      { tableId: table.id, data: { guestCount } },
+      { tableId: table.id, data: { guestCount: params.guestCount, clientName: params.clientName, notes: params.notes, employeeId: params.employeeId ?? undefined, terminalName: params.terminalName } },
       {
         onSuccess: (data) => {
           queryClient.invalidateQueries({ queryKey: getGetZoneTablesQueryKey(activeZone!) });
           queryClient.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() });
           queryClient.invalidateQueries({ queryKey: getGetAllTablesQueryKey() });
+          queryClient.invalidateQueries({ queryKey: getGetOccupationSummaryQueryKey() });
           setLocation(`/pedido/${table.id}/${data.order.id}`);
         },
         onError: () => toast.error("No se pudo abrir la mesa"),
       }
     );
-    setGuestCountTable(null);
+    setOpenModalTable(null);
   };
 
   const handleTableClick = (table: Table) => {
-    if (table.status === "free") {
-      setPendingGuestCount(2);
-      setGuestCountTable(table);
-    } else if (table.status === "out_of_service") {
-      // Out-of-service tables have no active order — do nothing
+    if (table.status === "free" || table.status === "reserved") {
+      setOpenModalTable(table);
+    } else if (table.status === 'bloqueada' || table.status === 'out_of_service') {
+      if (isManagerOrAdmin) toast.info("Mesa bloqueada — usa el botón de desbloqueo");
+      return;
+    } else if (table.status === 'pendiente_limpieza') {
+      // Let staff decide what to do — show order for cleanup confirmation or nothing
       return;
     } else {
       setLocation(`/pedido/${table.id}/current`);
     }
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("employee");
-    setLocation("/");
+  const handleCleanTable = (tableId: string) => {
+    cleanTable.mutate({ tableId }, {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getGetZoneTablesQueryKey(activeZone!) });
+        queryClient.invalidateQueries({ queryKey: getGetOccupationSummaryQueryKey() });
+        toast.success("Mesa marcada como libre");
+      },
+      onError: () => toast.error("No se pudo limpiar la mesa"),
+    });
   };
 
-  // Compute merge group bounding boxes for overlay
+  // History drawer state
+  const [historyTable, setHistoryTable] = useState<{ id: string; name: string } | null>(null);
+
+  // Legend panel state
+  const [showLegend, setShowLegend] = useState(false);
+
+  const handleLogout = () => { localStorage.removeItem("token"); localStorage.removeItem("employee"); setLocation("/"); };
+
+  // Merge group bounding boxes
   const mergeGroups: Record<string, Table[]> = {};
-  if (tables) {
-    for (const t of tables) {
-      if (t.mergeGroup) (mergeGroups[t.mergeGroup] = mergeGroups[t.mergeGroup] ?? []).push(t);
-    }
-  }
+  if (tables) { for (const t of tables) { if (t.mergeGroup) (mergeGroups[t.mergeGroup] = mergeGroups[t.mergeGroup] ?? []).push(t); } }
 
   return (
     <div className="h-screen flex flex-col bg-background overflow-hidden">
+      <style>{`
+        @keyframes zone-accent-pulse { 0% { transform: scaleY(1); filter: brightness(1); opacity: 1; } 30% { transform: scaleY(2.6); filter: brightness(1.9); opacity: 1; } 100% { transform: scaleY(1); filter: brightness(1); opacity: 1; } }
+        .zone-accent-pulse { animation: zone-accent-pulse 0.38s cubic-bezier(0.22, 1, 0.36, 1) forwards; transform-origin: center; }
+        @keyframes alert-ring-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+        .animate-pulse-ring { animation: alert-ring-pulse 1.8s ease-in-out infinite; }
+      `}</style>
+
       {/* Header */}
       <header className="h-16 flex items-center justify-between px-6 bg-card border-b border-border shadow-sm shrink-0 relative z-20">
-        <button
-          onClick={() => isAdmin && setLocation("/admin")}
-          className={`flex items-center gap-3 ${isAdmin ? "hover:opacity-80 active:scale-95 transition-all cursor-pointer" : "cursor-default"}`}
-          title={isAdmin ? "Volver al Dashboard" : undefined}
-        >
+        <button onClick={() => isAdmin && setLocation("/admin")} className={`flex items-center gap-3 ${isAdmin ? "hover:opacity-80 active:scale-95 transition-all cursor-pointer" : "cursor-default"}`} title={isAdmin ? "Dashboard" : undefined}>
           <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-primary-foreground font-bold shadow-sm">P</div>
           <span className="font-semibold text-lg tracking-tight hidden sm:inline-block">Piccolo</span>
         </button>
 
         {summary && (
           <div className="flex items-center gap-5 text-sm font-medium bg-background px-4 py-2 rounded-full border border-border">
-            <div className="flex items-center gap-2">
-              <span className="text-muted-foreground">Total</span>
-              <span className="px-2 py-0.5 rounded bg-secondary text-secondary-foreground font-mono">{summary.totalTables}</span>
-            </div>
+            <div className="flex items-center gap-2"><span className="text-muted-foreground">Total</span><span className="px-2 py-0.5 rounded bg-secondary text-secondary-foreground font-mono">{summary.totalTables}</span></div>
             <div className="w-px h-4 bg-border" />
-            <div className="flex items-center gap-2">
-              <span className="text-[#c05c4a]">Ocupadas</span>
-              <span className="px-2 py-0.5 rounded bg-[#c05c4a]/10 text-[#c05c4a] font-mono">{summary.occupiedTables}</span>
-            </div>
+            <div className="flex items-center gap-2"><span className="text-[#c05c4a]">Ocupadas</span><span className="px-2 py-0.5 rounded bg-[#c05c4a]/10 text-[#c05c4a] font-mono">{summary.occupiedTables}</span></div>
             <div className="w-px h-4 bg-border" />
-            <div className="flex items-center gap-2">
-              <span className="text-[#61895f]">Libres</span>
-              <span className="px-2 py-0.5 rounded bg-[#61895f]/10 text-[#61895f] font-mono">{summary.freeTables}</span>
-            </div>
+            <div className="flex items-center gap-2"><span className="text-[#61895f]">Libres</span><span className="px-2 py-0.5 rounded bg-[#61895f]/10 text-[#61895f] font-mono">{summary.freeTables}</span></div>
           </div>
         )}
 
         <div className="flex items-center gap-3">
-          <button onClick={() => setLocation("/recogida")}
-            className="h-9 px-3 flex items-center gap-1.5 rounded-lg border border-border bg-secondary/60 hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors active:scale-95 text-sm font-bold uppercase tracking-wider"
-            title="Recogida de pedidos">
-            <Package size={14} />
-            <span className="hidden sm:inline">Recogida</span>
+          <button onClick={() => setLocation("/recogida")} className="h-9 px-3 flex items-center gap-1.5 rounded-lg border border-border bg-secondary/60 hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors active:scale-95 text-sm font-bold uppercase tracking-wider" title="Recogida">
+            <Package size={14} /><span className="hidden sm:inline">Recogida</span>
           </button>
-          {isAdmin && (
-            <>
-              <button onClick={() => setLocation("/configuracion")}
-                className="h-9 px-3 flex items-center gap-1.5 rounded-lg border border-border bg-secondary/60 hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors active:scale-95 text-sm font-bold uppercase tracking-wider"
-                title="Configuración de salas">
-                <Settings size={14} />
-                <span className="hidden sm:inline">Config</span>
-              </button>
-              <button onClick={() => setLocation("/kds/cocina")}
-                className="h-9 px-3 flex items-center gap-1.5 rounded-lg border border-border bg-secondary/60 hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors active:scale-95 text-sm font-bold uppercase tracking-wider"
-                title="Pantalla de cocina">
-                <Monitor size={14} />
-                <span className="hidden sm:inline">KDS</span>
-              </button>
-              <button onClick={() => setLocation("/caja")}
-                className="h-9 px-3 flex items-center gap-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20 text-amber-500 transition-colors active:scale-95 text-sm font-bold uppercase tracking-wider"
-                title="Gestión de caja">
-                <span className="text-base leading-none">🗃</span>
-                <span className="hidden sm:inline">Caja</span>
-              </button>
-            </>
-          )}
-
-          {/* Employee chip */}
+          {isAdmin && (<>
+            <button onClick={() => setLocation("/configuracion")} className="h-9 px-3 flex items-center gap-1.5 rounded-lg border border-border bg-secondary/60 hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors active:scale-95 text-sm font-bold uppercase tracking-wider">
+              <Settings size={14} /><span className="hidden sm:inline">Config</span>
+            </button>
+            <button onClick={() => setLocation("/kds/cocina")} className="h-9 px-3 flex items-center gap-1.5 rounded-lg border border-border bg-secondary/60 hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors active:scale-95 text-sm font-bold uppercase tracking-wider">
+              <Monitor size={14} /><span className="hidden sm:inline">KDS</span>
+            </button>
+            <button onClick={() => setLocation("/caja")} className="h-9 px-3 flex items-center gap-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20 text-amber-500 transition-colors active:scale-95 text-sm font-bold uppercase tracking-wider">
+              <span className="text-base leading-none">🗃</span><span className="hidden sm:inline">Caja</span>
+            </button>
+          </>)}
           <div className="flex items-center gap-2 text-sm font-medium pl-1">
             <div className="relative">
-              <div className="w-8 h-8 rounded-full bg-secondary border border-border flex items-center justify-center font-bold text-secondary-foreground">
-                {employeeName.charAt(0) || "U"}
-              </div>
-              {isAdmin && (
-                <span className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-amber-500 border-2 border-card flex items-center justify-center text-[8px] font-black text-white leading-none">A</span>
-              )}
+              <div className="w-8 h-8 rounded-full bg-secondary border border-border flex items-center justify-center font-bold text-secondary-foreground">{employeeName.charAt(0) || "U"}</div>
+              {isAdmin && <span className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-amber-500 border-2 border-card flex items-center justify-center text-[8px] font-black text-white leading-none">A</span>}
             </div>
             <div className="hidden md:flex flex-col leading-none">
               <span className="font-semibold">{employeeName}</span>
-              <span className={`text-[10px] uppercase tracking-widest font-bold mt-0.5 ${isAdmin ? "text-amber-500" : "text-muted-foreground"}`}>
-                {employeeRole || "staff"}
-              </span>
+              <span className={`text-[10px] uppercase tracking-widest font-bold mt-0.5 ${isAdmin ? "text-amber-500" : "text-muted-foreground"}`}>{employeeRole || "staff"}</span>
             </div>
           </div>
-
-          <button onClick={handleLogout}
-            className="w-9 h-9 flex items-center justify-center rounded-lg hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors active:scale-90"
-            title="Cerrar sesión">
-            <LogOut size={18} strokeWidth={2.5} />
-          </button>
+          <button onClick={handleLogout} className="w-9 h-9 flex items-center justify-center rounded-lg hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors active:scale-90"><LogOut size={18} strokeWidth={2.5} /></button>
         </div>
       </header>
 
-      {/* Zone Tabs + Zoom controls */}
+      {/* Zone tabs + zoom controls */}
       <div className="bg-card border-b border-border shrink-0 px-4 pt-4 pb-0 flex items-end justify-between overflow-x-auto hide-scrollbar">
         <div className="overflow-x-auto hide-scrollbar">
           {loadingZones ? (
-            <div className="flex gap-2 pb-4">
-              {[1, 2, 3].map(i => <div key={i} className="w-24 h-10 rounded-t-xl bg-secondary animate-pulse" />)}
-            </div>
+            <div className="flex gap-2 pb-4">{[1,2,3].map(i => <div key={i} className="w-24 h-10 rounded-t-xl bg-secondary animate-pulse" />)}</div>
           ) : (
             <div className="flex gap-2">
               {zones?.map(zone => {
@@ -807,68 +929,25 @@ export default function Tables() {
                   <div key={zone.id} className="relative">
                     <button
                       onClick={() => {
-                        // Swallow the click that the browser fires right after a long-press pointerup
                         if (didLongPressRef.current) { didLongPressRef.current = false; return; }
-                        // A tap while the picker is open just closes it without switching zones
                         if (emojiPickerZoneId) { setEmojiPickerZoneId(null); return; }
                         switchZone(zone.id);
                       }}
                       onPointerDown={() => {
                         if (!isAdmin) return;
-                        longPressTimerRef.current = setTimeout(() => {
-                          longPressTimerRef.current = null;
-                          didLongPressRef.current = true;
-                          setEmojiPickerZoneId(zone.id);
-                        }, 500);
+                        longPressTimerRef.current = setTimeout(() => { longPressTimerRef.current = null; didLongPressRef.current = true; setEmojiPickerZoneId(zone.id); }, 500);
                       }}
-                      onPointerUp={() => {
-                        if (longPressTimerRef.current) {
-                          clearTimeout(longPressTimerRef.current);
-                          longPressTimerRef.current = null;
-                        }
-                      }}
-                      onPointerLeave={() => {
-                        if (longPressTimerRef.current) {
-                          clearTimeout(longPressTimerRef.current);
-                          longPressTimerRef.current = null;
-                        }
-                      }}
-                      onPointerCancel={() => {
-                        if (longPressTimerRef.current) {
-                          clearTimeout(longPressTimerRef.current);
-                          longPressTimerRef.current = null;
-                        }
-                      }}
-                      onContextMenu={e => {
-                        if (!isAdmin) return;
-                        e.preventDefault();
-                        didLongPressRef.current = false;
-                        setEmojiPickerZoneId(prev => prev === zone.id ? null : zone.id);
-                      }}
+                      onPointerUp={() => { if (longPressTimerRef.current) { clearTimeout(longPressTimerRef.current); longPressTimerRef.current = null; } }}
+                      onPointerLeave={() => { if (longPressTimerRef.current) { clearTimeout(longPressTimerRef.current); longPressTimerRef.current = null; } }}
+                      onPointerCancel={() => { if (longPressTimerRef.current) { clearTimeout(longPressTimerRef.current); longPressTimerRef.current = null; } }}
+                      onContextMenu={e => { if (!isAdmin) return; e.preventDefault(); didLongPressRef.current = false; setEmojiPickerZoneId(prev => prev === zone.id ? null : zone.id); }}
                       style={isActive && zoneColor ? { borderTopColor: zoneColor, color: zoneColor } : undefined}
-                      className={`flex items-center gap-2 px-5 py-3 rounded-t-xl font-semibold text-sm transition-all whitespace-nowrap
-                        ${isActive
-                          ? "bg-background border-t-2 border-primary shadow-[0_-4px_10px_rgba(0,0,0,0.05)]"
-                          : "bg-secondary/50 text-muted-foreground hover:bg-secondary hover:text-foreground"}
-                        ${isAdmin ? "select-none" : ""}`}
+                      className={`flex items-center gap-2 px-5 py-3 rounded-t-xl font-semibold text-sm transition-all whitespace-nowrap ${isActive ? "bg-background border-t-2 border-primary shadow-[0_-4px_10px_rgba(0,0,0,0.05)]" : "bg-secondary/50 text-muted-foreground hover:bg-secondary hover:text-foreground"} ${isAdmin ? "select-none" : ""}`}
                     >
-                      {zone.icon ? (
-                        <span className="shrink-0 text-base leading-none">{zone.icon}</span>
-                      ) : zoneColor ? (
-                        <span
-                          className="shrink-0 w-2.5 h-2.5 rounded-full"
-                          style={{ backgroundColor: zoneColor, boxShadow: isActive ? `0 0 6px ${zoneColor}88` : undefined }}
-                        />
-                      ) : null}
+                      {zone.icon ? <span className="shrink-0 text-base leading-none">{zone.icon}</span> : zoneColor ? <span className="shrink-0 w-2.5 h-2.5 rounded-full" style={{ backgroundColor: zoneColor, boxShadow: isActive ? `0 0 6px ${zoneColor}88` : undefined }} /> : null}
                       {zone.name}
                     </button>
-                    {isEmojiOpen && (
-                      <ZoneEmojiPicker
-                        currentIcon={zone.icon}
-                        onSelect={icon => handleZoneEmojiSelect(zone.id, icon)}
-                        onClose={() => setEmojiPickerZoneId(null)}
-                      />
-                    )}
+                    {isEmojiOpen && <ZoneEmojiPicker currentIcon={zone.icon} onSelect={icon => handleZoneEmojiSelect(zone.id, icon)} onClose={() => setEmojiPickerZoneId(null)} />}
                   </div>
                 );
               })}
@@ -876,197 +955,99 @@ export default function Tables() {
           )}
         </div>
 
-        {/* Zoom controls */}
+        {/* Zoom controls + legend toggle */}
         <div className="flex items-center gap-1 mb-2 ml-4 shrink-0">
-          <button
-            onClick={handleZoomOut}
-            disabled={zoom <= ZOOM_MIN}
-            className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors active:scale-90 disabled:opacity-30"
-            title="Reducir zoom">
-            <ZoomOut size={15} />
+          <button onClick={() => setShowLegend(v => !v)} className={`h-8 px-2 flex items-center gap-1.5 rounded-lg border transition-colors active:scale-95 text-xs font-bold uppercase tracking-wider mr-1 ${showLegend ? 'border-primary/50 bg-primary/10 text-primary' : 'border-border bg-secondary/60 hover:bg-secondary text-muted-foreground hover:text-foreground'}`} title="Leyenda de estados">
+            <Info size={12} />
           </button>
-          <span className="text-xs font-mono font-bold text-muted-foreground w-10 text-center tabular-nums">
-            {Math.round(zoom * 100)}%
-          </span>
-          <button
-            onClick={handleZoomIn}
-            disabled={zoom >= ZOOM_MAX}
-            className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors active:scale-90 disabled:opacity-30"
-            title="Ampliar zoom">
-            <ZoomIn size={15} />
-          </button>
-          <button
-            onClick={handleFit}
-            className="h-8 px-2.5 flex items-center gap-1.5 rounded-lg border border-border bg-secondary/60 hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors active:scale-95 text-xs font-bold uppercase tracking-wider ml-1"
-            title="Ajustar al área disponible">
-            <Maximize2 size={12} />
-            <span>Encajar</span>
+          <button onClick={handleZoomOut} disabled={zoom <= ZOOM_MIN} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors active:scale-90 disabled:opacity-30"><ZoomOut size={15} /></button>
+          <span className="text-xs font-mono font-bold text-muted-foreground w-10 text-center tabular-nums">{Math.round(zoom * 100)}%</span>
+          <button onClick={handleZoomIn} disabled={zoom >= ZOOM_MAX} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors active:scale-90 disabled:opacity-30"><ZoomIn size={15} /></button>
+          <button onClick={handleFit} className="h-8 px-2.5 flex items-center gap-1.5 rounded-lg border border-border bg-secondary/60 hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors active:scale-95 text-xs font-bold uppercase tracking-wider ml-1">
+            <Maximize2 size={12} /><span>Encajar</span>
           </button>
         </div>
       </div>
 
-      {/* Zone color accent — thin rule that follows the active zone.
-          Always occupies 3 px so it acts as a visual separator even when
-          the zone has no custom color. The empty-state overlay inside
-          <main> is absolutely positioned and cannot cover this element.
-          When the zone changes, accentPulseKey increments → the div remounts
-          with key= so the CSS animation runs from scratch each time. */}
-      <style>{`
-        @keyframes zone-accent-pulse {
-          0%   { transform: scaleY(1);   filter: brightness(1);   opacity: 1; }
-          30%  { transform: scaleY(2.6); filter: brightness(1.9); opacity: 1; }
-          100% { transform: scaleY(1);   filter: brightness(1);   opacity: 1; }
-        }
-        .zone-accent-pulse {
-          animation: zone-accent-pulse 0.38s cubic-bezier(0.22, 1, 0.36, 1) forwards;
-          transform-origin: center;
-        }
-      `}</style>
+      {/* Zone color accent */}
       {(() => {
         const activeZoneColor = zones?.find(z => z.id === activeZone)?.color ?? null;
         return (
-          <div
-            key={accentPulseKey}
-            className={accentPulseKey > 0 ? "zone-accent-pulse" : undefined}
-            style={{
-              height: 3,
-              minHeight: 3,
-              flexShrink: 0,
-              background: activeZoneColor ?? undefined,
-              borderBottom: activeZoneColor ? undefined : "1px solid var(--border)",
-              transition: "background 0.35s ease, border-color 0.35s ease",
-            }}
-          />
+          <div key={accentPulseKey} className={accentPulseKey > 0 ? "zone-accent-pulse" : undefined}
+            style={{ height: 3, minHeight: 3, flexShrink: 0, background: activeZoneColor ?? undefined, borderBottom: activeZoneColor ? undefined : "1px solid var(--border)", transition: "background 0.35s ease, border-color 0.35s ease" }} />
         );
       })()}
 
-      {/* Floor plan canvas — overflow:auto creates a scroll container that
-          clips absolutely-positioned children (e.g. the empty-state overlay)
-          so they cannot bleed upward and obscure the accent rule above. */}
+      {/* Occupation summary bar */}
+      {occupation && (
+        <OccupationBar
+          freeCount={occupation.freeCount}
+          occupiedCount={occupation.occupiedCount}
+          reservedCount={occupation.reservedCount}
+          currentGuests={occupation.currentGuests}
+          pendingReservations={occupation.pendingReservations}
+          avgOccupationMinutes={occupation.avgOccupationMinutes}
+          pendingCleaningCount={occupation.pendingCleaningCount}
+        />
+      )}
+
+      {/* Floor plan canvas */}
       <main ref={canvasContainerRef} onScroll={handleCanvasScroll} className="flex-1 overflow-auto bg-[#0c0c0c] relative">
         {loadingTables ? (
-          <div className="absolute inset-0 flex items-center justify-center">
-            <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
-          </div>
+          <div className="absolute inset-0 flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-muted-foreground" /></div>
         ) : !tables?.length ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center text-muted-foreground">
-            <div className="w-16 h-16 rounded-full bg-secondary flex items-center justify-center mb-4">
-              <span className="font-bold text-2xl">!</span>
-            </div>
+            <div className="w-16 h-16 rounded-full bg-secondary flex items-center justify-center mb-4"><span className="font-bold text-2xl">!</span></div>
             <p className="text-lg font-semibold">Sin mesas configuradas</p>
-            {isAdmin && (
-              <button onClick={() => setLocation("/configuracion")}
-                className="mt-4 px-4 py-2 bg-primary text-primary-foreground rounded-xl font-bold text-sm hover:opacity-90 active:scale-95 transition-all">
-                Ir a Configuración →
-              </button>
-            )}
+            {isAdmin && <button onClick={() => setLocation("/configuracion")} className="mt-4 px-4 py-2 bg-primary text-primary-foreground rounded-xl font-bold text-sm hover:opacity-90 active:scale-95 transition-all">Ir a Configuración →</button>}
           </div>
         ) : (
-          /* Centering wrapper — always fills the scroll container so the canvas
-             is centred via flex when it is smaller than the viewport (e.g. at
-             fit zoom). When the canvas is larger it overflows and the browser
-             shows scrollbars as usual. */
           <div style={{ minWidth: '100%', minHeight: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          {/* Outer wrapper occupies exactly the scaled canvas size so scrollbars appear correctly */}
-          <div style={{ width: CANVAS_W * zoom, height: CANVAS_H * zoom, position: "relative", flexShrink: 0 }}>
-            <div
-              style={{
-                position: "absolute",
-                top: 0,
-                left: 0,
-                width: CANVAS_W,
-                height: CANVAS_H,
-                transform: `scale(${zoom})`,
-                transformOrigin: "top left",
-                backgroundImage: GRID_BG,
-                backgroundSize: "40px 40px",
-              }}
-            >
-              {/* Merge group bounding boxes */}
-              <svg style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }}>
-                {Object.values(mergeGroups).filter(g => g.length >= 2).map((grp, gi) => {
-                  const minX = Math.min(...grp.map(t => t.x)) - 6;
-                  const minY = Math.min(...grp.map(t => t.y)) - 6;
-                  const maxX = Math.max(...grp.map(t => t.x + t.width)) + 6;
-                  const maxY = Math.max(...grp.map(t => t.y + t.height)) + 6;
-                  return (
-                    <rect key={gi} x={minX} y={minY} width={maxX - minX} height={maxY - minY}
-                      rx="12" ry="12" fill="rgba(192,132,252,0.06)"
-                      stroke="rgba(192,132,252,0.3)" strokeWidth="1.5" strokeDasharray="6 4" />
-                  );
-                })}
-              </svg>
-
-              {/* Canvas elements — read-only room layout (walls, doors, etc.) */}
-              {elements?.map(el => <ElementShape key={el.id} el={el} />)}
-
-              {/* Tables */}
-              {tables.map(table => (
-                <TableCard
-                  key={table.id}
-                  table={table}
-                  onClick={() => handleTableClick(table)}
-                  isBusy={openTable.isPending && openTable.variables?.tableId === table.id}
-                />
-              ))}
-            </div>
-          </div>
-          </div>
-        )}
-      </main>
-
-      {/* Guest count dialog */}
-      {guestCountTable && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-6" onClick={() => setGuestCountTable(null)}>
-          <div className="bg-card border border-border rounded-2xl w-full max-w-xs shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
-            <div className="p-5 border-b border-border">
-              <h2 className="font-black text-2xl leading-tight">{guestCountTable.name}</h2>
-              <p className="text-muted-foreground text-sm mt-1 font-semibold">¿Cuántos comensales?</p>
-            </div>
-            <div className="p-4">
-              {/* Quick selector grid */}
-              <div className="grid grid-cols-4 gap-2 mb-4">
-                {[1, 2, 3, 4, 5, 6, 7, 8].map(n => (
-                  <button
-                    key={n}
-                    onClick={() => setPendingGuestCount(n)}
-                    className={`h-12 rounded-xl font-black text-xl transition-all active:scale-[0.95] border-2 ${
-                      pendingGuestCount === n
-                        ? 'bg-primary text-primary-foreground border-primary shadow-[0_4px_12px_rgba(0,0,0,0.3)]'
-                        : 'bg-secondary/50 border-border text-foreground hover:border-primary/40'
-                    }`}
-                  >
-                    {n}
-                  </button>
+            <div style={{ width: CANVAS_W * zoom, height: CANVAS_H * zoom, position: "relative", flexShrink: 0 }}>
+              <div style={{ position: "absolute", top: 0, left: 0, width: CANVAS_W, height: CANVAS_H, transform: `scale(${zoom})`, transformOrigin: "top left", backgroundImage: GRID_BG, backgroundSize: "40px 40px" }}>
+                {/* Merge group overlays */}
+                <svg style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }}>
+                  {Object.values(mergeGroups).filter(g => g.length >= 2).map((grp, gi) => {
+                    const minX = Math.min(...grp.map(t => t.x)) - 6, minY = Math.min(...grp.map(t => t.y)) - 6;
+                    const maxX = Math.max(...grp.map(t => t.x + t.width)) + 6, maxY = Math.max(...grp.map(t => t.y + t.height)) + 6;
+                    return <rect key={gi} x={minX} y={minY} width={maxX - minX} height={maxY - minY} rx="12" ry="12" fill="rgba(192,132,252,0.06)" stroke="rgba(192,132,252,0.3)" strokeWidth="1.5" strokeDasharray="6 4" />;
+                  })}
+                </svg>
+                {elements?.map(el => <ElementShape key={el.id} el={el} />)}
+                {tables.map(table => (
+                  <TableCard
+                    key={table.id}
+                    table={table}
+                    onClick={() => handleTableClick(table)}
+                    onHistory={isManagerOrAdmin ? () => setHistoryTable({ id: table.id, name: table.name }) : undefined}
+                    onClean={isManagerOrAdmin && table.status === 'pendiente_limpieza' ? () => handleCleanTable(table.id) : undefined}
+                    isBusy={openTable.isPending && openTable.variables?.tableId === table.id}
+                    alertLevel={getAlertLevel(table)}
+                    isManagerOrAdmin={isManagerOrAdmin}
+                  />
                 ))}
               </div>
-              {/* Manual +/- for more than 8 */}
-              <div className="flex items-center justify-center gap-4 mb-5">
-                <button
-                  onClick={() => setPendingGuestCount(Math.max(1, pendingGuestCount - 1))}
-                  className="w-10 h-10 flex items-center justify-center rounded-xl bg-secondary border border-border hover:border-primary/40 text-foreground transition-colors active:scale-90 font-black text-lg"
-                >−</button>
-                <span className="text-3xl font-black w-12 text-center tabular-nums">{pendingGuestCount}</span>
-                <button
-                  onClick={() => setPendingGuestCount(pendingGuestCount + 1)}
-                  className="w-10 h-10 flex items-center justify-center rounded-xl bg-secondary border border-border hover:border-primary/40 text-foreground transition-colors active:scale-90 font-black text-lg"
-                >+</button>
-              </div>
-              <button
-                onClick={() => doOpenTable(guestCountTable, pendingGuestCount)}
-                disabled={openTable.isPending}
-                className="w-full py-4 bg-primary text-primary-foreground font-black text-xl uppercase tracking-wider rounded-xl active:scale-[0.98] transition-all flex items-center justify-center gap-2 shadow-[0_8px_20px_rgba(0,0,0,0.3)] disabled:opacity-50 hover:-translate-y-0.5"
-              >
-                {openTable.isPending ? <Loader2 className="w-5 h-5 animate-spin" /> : null}
-                Abrir mesa
-              </button>
-              <button onClick={() => setGuestCountTable(null)} className="w-full mt-2.5 py-3 rounded-xl border border-border text-muted-foreground hover:bg-secondary transition-colors font-bold">
-                Cancelar
-              </button>
             </div>
           </div>
-        </div>
+        )}
+
+        {/* Legend panel (inside canvas area, bottom-right) */}
+        {showLegend && <StatusLegend onClose={() => setShowLegend(false)} />}
+      </main>
+
+      {/* Open table modal */}
+      {openModalTable && (
+        <OpenTableModal
+          table={openModalTable}
+          onConfirm={params => doOpenTable(openModalTable, params)}
+          onCancel={() => setOpenModalTable(null)}
+          isPending={openTable.isPending}
+          currentEmployeeId={employeeId}
+        />
       )}
+
+      {/* History drawer */}
+      {historyTable && <TableHistoryDrawer tableId={historyTable.id} tableName={historyTable.name} onClose={() => setHistoryTable(null)} />}
     </div>
   );
 }

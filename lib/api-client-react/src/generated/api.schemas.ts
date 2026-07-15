@@ -53,6 +53,8 @@ export interface Table {
   currentOrderId?: string | null;
   openedAt?: string | null;
   employeeName?: string | null;
+  guestCount?: number | null;
+  clientName?: string | null;
   currentTotal?: number | null;
 }
 
@@ -346,6 +348,10 @@ export interface AddOrderItemInput {
 
 export interface OpenTableInput {
   guestCount?: number;
+  clientName?: string;
+  notes?: string;
+  terminalName?: string;
+  employeeId?: string;
 }
 
 export type UpdateOrderInputStatus = typeof UpdateOrderInputStatus[keyof typeof UpdateOrderInputStatus];
@@ -1286,6 +1292,48 @@ export interface PrefacturaStatus {
   prefacturaNumber: number | null;
   prefacturaCode: string | null;
   lastPrintedAt: string | null;
+}
+
+// ─── Table events (history) ───────────────────────────────────────────────────
+export interface TableEvent {
+  id: string;
+  tableId: string;
+  orderId?: string | null;
+  employeeId?: string | null;
+  employeeName: string;
+  action: string;
+  details: string;
+  metadata?: unknown;
+  createdAt: string;
+}
+
+// ─── Occupation summary ───────────────────────────────────────────────────────
+export interface OccupationSummary {
+  freeCount: number;
+  occupiedCount: number;
+  reservedCount: number;
+  pendingCleaningCount: number;
+  blockedCount: number;
+  currentGuests: number;
+  pendingReservations: number;
+  avgOccupationMinutes: number;
+}
+
+// ─── Alert config ─────────────────────────────────────────────────────────────
+export interface AlertConfig {
+  id: string;
+  reservaProximaMin: number;
+  sinComandaMin: number;
+  prefacturaPendienteMin: number;
+  mesaSuciaMin: number;
+  updatedAt: string;
+}
+
+export interface UpdateAlertConfigInput {
+  reservaProximaMin?: number;
+  sinComandaMin?: number;
+  prefacturaPendienteMin?: number;
+  mesaSuciaMin?: number;
 }
 
 // ─── Cash session history ─────────────────────────────────────────────────────

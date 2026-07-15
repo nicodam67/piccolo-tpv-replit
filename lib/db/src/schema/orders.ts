@@ -12,6 +12,8 @@ export const ordersTable = pgTable("orders", {
   status: text("status").notNull().default("open"),
   guestCount: integer("guest_count").notNull().default(1),
   notes: text("notes").notNull().default(""),
+  clientName: text("client_name").notNull().default(""),
+  openedByTerminal: text("opened_by_terminal").notNull().default(""),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   sentAt: timestamp("sent_at", { withTimezone: true }),
 });

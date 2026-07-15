@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { restaurantTablesTable, roomZonesTable, ordersTable } from "@workspace/db";
+import { restaurantTablesTable, roomZonesTable, ordersTable, tableEventsTable, alertConfigTable } from "@workspace/db";
 import { sql, eq, and, asc } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
 
@@ -8,7 +8,14 @@ const router: IRouter = Router();
 
 type Shape = "square" | "round" | "rect";
 const VALID_SHAPES: Shape[] = ["square", "round", "rect"];
-const VALID_STATUSES = ["free", "occupied", "waiting", "bill_requested", "out_of_service", "reserved"];
+const VALID_STATUSES = [
+  // Canonical 9 statuses
+  "free", "reserved", "occupied",
+  "comanda_abierta", "prefactura_impresa", "pendiente_cobro",
+  "parcialmente_cobrada", "pendiente_limpieza", "bloqueada",
+  // Legacy aliases kept for backward compat
+  "waiting", "bill_requested", "out_of_service",
+];
 const VALID_LAYOUTS = ["normal", "verano", "invierno", "eventos"];
 
 const CANVAS_W = 1600;
@@ -18,26 +25,28 @@ const CANVAS_H = 900;
 
 function rowToTable(r: Record<string, unknown>) {
   return {
-    id:             r.id,
-    zoneId:         r.zone_id,
-    name:           r.name,
-    capacity:       r.capacity,
-    status:         r.status,
-    x:              r.x,
-    y:              r.y,
-    width:          r.width,
-    height:         r.height,
-    shape:          r.shape,
-    rotation:       Number(r.rotation ?? 0),
-    layout:         r.layout ?? "normal",
-    mergeGroup:     r.merge_group ?? null,
-    active:         r.active,
-    currentOrderId: r.current_order_id ?? null,
-    openedAt:       r.opened_at ?? null,
-    employeeName:   r.employee_name ?? null,
-    currentTotal:   r.current_total !== null && r.current_total !== undefined
-                      ? parseFloat(String(r.current_total))
-                      : null,
+    id:                 r.id,
+    zoneId:             r.zone_id,
+    name:               r.name,
+    capacity:           r.capacity,
+    status:             r.status,
+    x:                  r.x,
+    y:                  r.y,
+    width:              r.width,
+    height:             r.height,
+    shape:              r.shape,
+    rotation:           Number(r.rotation ?? 0),
+    layout:             r.layout ?? "normal",
+    mergeGroup:         r.merge_group ?? null,
+    active:             r.active,
+    currentOrderId:     r.current_order_id ?? null,
+    openedAt:           r.opened_at ?? null,
+    employeeName:       r.employee_name ?? null,
+    guestCount:         r.guest_count !== null && r.guest_count !== undefined ? Number(r.guest_count) : null,
+    clientName:         r.client_name ?? null,
+    currentTotal:       r.current_total !== null && r.current_total !== undefined
+                          ? parseFloat(String(r.current_total))
+                          : null,
   };
 }
 
@@ -60,8 +69,33 @@ function tableShape(t: typeof restaurantTablesTable.$inferSelect) {
     currentOrderId: null,
     openedAt:       null,
     employeeName:   null,
+    guestCount:     null,
+    clientName:     null,
     currentTotal:   null,
   };
+}
+
+/** Insert a table event (history entry). Fire-and-forget — callers do not await. */
+async function addTableEvent(params: {
+  tableId: string;
+  orderId?: string | null;
+  employeeId?: string | null;
+  employeeName?: string;
+  action: string;
+  details?: string;
+  metadata?: Record<string, unknown>;
+}) {
+  try {
+    await db.insert(tableEventsTable).values({
+      tableId:      params.tableId,
+      orderId:      params.orderId ?? null,
+      employeeId:   params.employeeId ?? null,
+      employeeName: params.employeeName ?? "",
+      action:       params.action,
+      details:      params.details ?? "",
+      metadata:     params.metadata ?? null,
+    });
+  } catch { /* non-critical — never crash the main request */ }
 }
 
 // ── GET /zones/:zoneId/tables ──────────────────────────────────────────────────
@@ -74,17 +108,14 @@ router.get("/zones/:zoneId/tables", requireAuth, async (req, res): Promise<void>
   let layoutFilter: string | null = null;
 
   if (typeof req.query.layout === "string" && VALID_LAYOUTS.includes(req.query.layout)) {
-    // Explicit layout requested (editor)
     layoutFilter = req.query.layout;
   } else if (!isAdmin) {
-    // Waiter: use zone's active layout
     const [zone] = await db
       .select({ activeLayout: roomZonesTable.activeLayout })
       .from(roomZonesTable)
       .where(eq(roomZonesTable.id, zoneId));
     layoutFilter = zone?.activeLayout ?? "normal";
   }
-  // Admin without ?layout: return all layouts (for zone duplication etc.)
 
   const layoutClause = layoutFilter
     ? sql` AND t.layout = ${layoutFilter}`
@@ -96,6 +127,8 @@ router.get("/zones/:zoneId/tables", requireAuth, async (req, res): Promise<void>
       t.x, t.y, t.width, t.height, t.shape, t.merge_group, t.active, t.rotation, t.layout,
       o.id             AS current_order_id,
       o.created_at     AS opened_at,
+      o.guest_count    AS guest_count,
+      o.client_name    AS client_name,
       e.name           AS employee_name,
       COALESCE(SUM(CAST(oi.unit_price AS numeric) * oi.quantity), 0)::float AS current_total
     FROM restaurant_tables t
@@ -120,6 +153,112 @@ router.get("/tables", requireAuth, async (_req, res): Promise<void> => {
     .where(and(eq(restaurantTablesTable.active, true), eq(roomZonesTable.active, true)))
     .orderBy(asc(roomZonesTable.sortOrder), asc(restaurantTablesTable.name));
   res.json(tables.map(r => tableShape(r.restaurant_tables)));
+});
+
+// ── GET /tables/occupation-summary ────────────────────────────────────────────
+// Must be registered BEFORE /tables/:tableId routes
+
+router.get("/tables/occupation-summary", requireAuth, async (_req, res): Promise<void> => {
+  const rows = await db.execute(sql`
+    SELECT
+      t.status,
+      COUNT(*)::int                      AS count,
+      COALESCE(SUM(o.guest_count), 0)::int AS guests,
+      COALESCE(
+        AVG(EXTRACT(EPOCH FROM (NOW() - o.created_at)) / 60)
+        FILTER (WHERE o.id IS NOT NULL), 0
+      )::float AS avg_open_min
+    FROM restaurant_tables t
+    LEFT JOIN orders o ON o.table_id = t.id AND o.status = 'open'
+    WHERE t.active = true
+    GROUP BY t.status
+  `);
+
+  const statusMap: Record<string, { count: number; guests: number; avgMin: number }> = {};
+  for (const r of rows.rows as any[]) {
+    statusMap[r.status as string] = {
+      count: Number(r.count),
+      guests: Number(r.guests),
+      avgMin: Number(r.avg_open_min),
+    };
+  }
+
+  const freeCount           = (statusMap["free"]?.count ?? 0);
+  const reservedCount       = (statusMap["reserved"]?.count ?? 0);
+  const pendingCleaningCount= (statusMap["pendiente_limpieza"]?.count ?? 0);
+  const blockedCount        = (statusMap["bloqueada"]?.count ?? 0) + (statusMap["out_of_service"]?.count ?? 0);
+
+  // All occupied-like statuses
+  const OCCUPIED_KEYS = ["occupied", "comanda_abierta", "prefactura_impresa", "pendiente_cobro",
+                         "parcialmente_cobrada", "waiting", "bill_requested"];
+  const occupiedCount = OCCUPIED_KEYS.reduce((acc, k) => acc + (statusMap[k]?.count ?? 0), 0);
+  const currentGuests = OCCUPIED_KEYS.reduce((acc, k) => acc + (statusMap[k]?.guests ?? 0), 0);
+  const avgMinutes    = OCCUPIED_KEYS.reduce((acc, k) => acc + (statusMap[k]?.avgMin ?? 0), 0)
+                        / Math.max(OCCUPIED_KEYS.filter(k => (statusMap[k]?.count ?? 0) > 0).length, 1);
+
+  res.json({
+    freeCount,
+    occupiedCount,
+    reservedCount,
+    pendingCleaningCount,
+    blockedCount,
+    currentGuests,
+    pendingReservations: 0, // Will be updated by reservations task
+    avgOccupationMinutes: Math.round(avgMinutes),
+  });
+});
+
+// ── GET /tables/:tableId/history ──────────────────────────────────────────────
+
+router.get("/tables/:tableId/history", requireAuth, requireRole("manager", "admin"), async (req, res): Promise<void> => {
+  const tableId = req.params.tableId as string;
+  const events = await db
+    .select()
+    .from(tableEventsTable)
+    .where(eq(tableEventsTable.tableId, tableId))
+    .orderBy(asc(tableEventsTable.createdAt));
+  res.json(events);
+});
+
+// ── GET /admin/alert-config ───────────────────────────────────────────────────
+
+router.get("/admin/alert-config", requireAuth, requireRole("manager", "admin"), async (_req, res): Promise<void> => {
+  const rows = await db.select().from(alertConfigTable).limit(1);
+  if (!rows.length) {
+    await db.insert(alertConfigTable).values({});
+    const [row] = await db.select().from(alertConfigTable).limit(1);
+    res.json(row);
+  } else {
+    res.json(rows[0]);
+  }
+});
+
+// ── PATCH /admin/alert-config ─────────────────────────────────────────────────
+
+router.patch("/admin/alert-config", requireAuth, requireRole("admin"), async (req, res): Promise<void> => {
+  const b = req.body ?? {};
+  const updates: Partial<typeof alertConfigTable.$inferInsert> = { updatedAt: new Date() };
+
+  if (Number.isFinite(b.reservaProximaMin) && b.reservaProximaMin >= 1)
+    updates.reservaProximaMin = Math.floor(b.reservaProximaMin);
+  if (Number.isFinite(b.sinComandaMin) && b.sinComandaMin >= 1)
+    updates.sinComandaMin = Math.floor(b.sinComandaMin);
+  if (Number.isFinite(b.prefacturaPendienteMin) && b.prefacturaPendienteMin >= 1)
+    updates.prefacturaPendienteMin = Math.floor(b.prefacturaPendienteMin);
+  if (Number.isFinite(b.mesaSuciaMin) && b.mesaSuciaMin >= 1)
+    updates.mesaSuciaMin = Math.floor(b.mesaSuciaMin);
+
+  // Ensure a row exists
+  const existing = await db.select({ id: alertConfigTable.id }).from(alertConfigTable).limit(1);
+  if (!existing.length) {
+    await db.insert(alertConfigTable).values({});
+  }
+
+  const [row] = await db.update(alertConfigTable)
+    .set(updates)
+    .where(eq(alertConfigTable.id, (existing[0] ?? (await db.select().from(alertConfigTable).limit(1))[0]).id))
+    .returning();
+  res.json(row);
 });
 
 // ── POST /zones/:zoneId/tables — create table (admin) ─────────────────────────
@@ -238,46 +377,161 @@ router.delete("/tables/:tableId", requireAuth, requireRole("admin"), async (req,
   res.status(204).send();
 });
 
-// ── POST /tables/:tableId/open — open free table + create order ───────────────
+// ── POST /tables/:tableId/open — open free or reserved table ──────────────────
 
 router.post("/tables/:tableId/open", requireAuth, async (req, res): Promise<void> => {
   const tableId    = req.params.tableId as string;
-  const employeeId = (req as any).user?.id as string | undefined;
+  const user       = (req as any).user as { id?: string; name?: string } | undefined;
+  const employeeId = user?.id as string | undefined;
+
   const rawGuests  = req.body?.guestCount;
   const guestCount = Number.isFinite(Number(rawGuests)) && Number(rawGuests) >= 1
     ? Math.floor(Number(rawGuests))
     : 1;
+  const clientName       = typeof req.body?.clientName === "string" ? req.body.clientName.trim() : "";
+  const notes            = typeof req.body?.notes === "string" ? req.body.notes.trim() : "";
+  const terminalName     = typeof req.body?.terminalName === "string" ? req.body.terminalName.trim() : "";
+  // Allow caller to override employeeId (useful for manager opening on behalf of waiter)
+  const effectiveEmpId   = typeof req.body?.employeeId === "string" && req.body.employeeId
+    ? req.body.employeeId
+    : (employeeId ?? null);
 
   const result = await db.transaction(async (tx) => {
     const [table] = await tx
       .update(restaurantTablesTable)
       .set({ status: "occupied" })
-      .where(and(eq(restaurantTablesTable.id, tableId), eq(restaurantTablesTable.status, "free")))
+      .where(and(
+        eq(restaurantTablesTable.id, tableId),
+        sql`status IN ('free', 'reserved', 'pendiente_limpieza')`,
+      ))
       .returning();
     if (!table) return null;
+
     const [order] = await tx
       .insert(ordersTable)
-      .values({ tableId: table.id, employeeId: employeeId ?? null, status: "open", guestCount })
+      .values({
+        tableId:          table.id,
+        employeeId:       effectiveEmpId,
+        status:           "open",
+        guestCount,
+        notes,
+        clientName,
+        openedByTerminal: terminalName,
+      })
       .returning();
     return { table: tableShape(table), order: { ...order, items: [] } };
   });
 
-  if (!result) { res.status(409).json({ error: "La mesa no está libre" }); return; }
+  if (!result) { res.status(409).json({ error: "La mesa no está disponible" }); return; }
+
+  // Record history event (fire-and-forget)
+  void addTableEvent({
+    tableId,
+    orderId:      result.order.id,
+    employeeId:   effectiveEmpId,
+    employeeName: user?.name ?? "",
+    action:       "open_table",
+    details:      `${guestCount} comensales${clientName ? ` · Cliente: ${clientName}` : ""}`,
+    metadata:     { guestCount, clientName, terminalName },
+  });
+
   res.json(result);
 });
 
-// ── POST /tables/:tableId/close — free an occupied table ──────────────────────
+// ── POST /tables/:tableId/close — transition to pending-cleaning ───────────────
 
 router.post("/tables/:tableId/close", requireAuth, async (req, res): Promise<void> => {
+  const tableId  = req.params.tableId as string;
+  const user     = (req as any).user as { id?: string; name?: string } | undefined;
+
+  const [table] = await db
+    .update(restaurantTablesTable)
+    .set({ status: "pendiente_limpieza" })
+    .where(and(
+      eq(restaurantTablesTable.id, tableId),
+      sql`status NOT IN ('free', 'pendiente_limpieza', 'bloqueada', 'out_of_service', 'reserved')`,
+    ))
+    .returning();
+
+  if (!table) {
+    // Fallback: try exact "occupied" match (legacy caller)
+    const [t2] = await db
+      .update(restaurantTablesTable)
+      .set({ status: "free" })
+      .where(and(eq(restaurantTablesTable.id, tableId), eq(restaurantTablesTable.status, "occupied")))
+      .returning();
+    if (!t2) { res.status(409).json({ error: "La mesa no puede cerrarse desde su estado actual" }); return; }
+    res.json(tableShape(t2));
+    return;
+  }
+
+  void addTableEvent({
+    tableId,
+    employeeId:   user?.id,
+    employeeName: user?.name ?? "",
+    action:       "close_table",
+    details:      "Mesa cerrada — pendiente de limpieza",
+  });
+
+  res.json(tableShape(table));
+});
+
+// ── POST /tables/:tableId/clean — mark as free after cleaning ─────────────────
+
+router.post("/tables/:tableId/clean", requireAuth, async (req, res): Promise<void> => {
   const tableId = req.params.tableId as string;
+  const user    = (req as any).user as { id?: string; name?: string } | undefined;
 
   const [table] = await db
     .update(restaurantTablesTable)
     .set({ status: "free" })
-    .where(and(eq(restaurantTablesTable.id, tableId), eq(restaurantTablesTable.status, "occupied")))
+    .where(and(eq(restaurantTablesTable.id, tableId), eq(restaurantTablesTable.status, "pendiente_limpieza")))
     .returning();
 
-  if (!table) { res.status(409).json({ error: "La mesa no está ocupada" }); return; }
+  if (!table) { res.status(409).json({ error: "La mesa no está pendiente de limpieza" }); return; }
+
+  void addTableEvent({
+    tableId,
+    employeeId:   user?.id,
+    employeeName: user?.name ?? "",
+    action:       "clean_table",
+    details:      "Mesa limpia — disponible",
+  });
+
+  res.json(tableShape(table));
+});
+
+// ── POST /tables/:tableId/block — block/unblock table (manager+) ──────────────
+
+router.post("/tables/:tableId/block", requireAuth, requireRole("manager", "admin"), async (req, res): Promise<void> => {
+  const tableId = req.params.tableId as string;
+  const reason  = typeof req.body?.reason === "string" ? req.body.reason.trim() : "";
+  const user    = (req as any).user as { id?: string; name?: string } | undefined;
+
+  const [existing] = await db
+    .select({ status: restaurantTablesTable.status })
+    .from(restaurantTablesTable)
+    .where(and(eq(restaurantTablesTable.id, tableId), eq(restaurantTablesTable.active, true)));
+
+  if (!existing) { res.status(404).json({ error: "Mesa no encontrada" }); return; }
+
+  // Toggle: if already blocked unblock, otherwise block
+  const newStatus = existing.status === "bloqueada" ? "free" : "bloqueada";
+
+  const [table] = await db
+    .update(restaurantTablesTable)
+    .set({ status: newStatus })
+    .where(eq(restaurantTablesTable.id, tableId))
+    .returning();
+
+  void addTableEvent({
+    tableId,
+    employeeId:   user?.id,
+    employeeName: user?.name ?? "",
+    action:       newStatus === "bloqueada" ? "block_table" : "unblock_table",
+    details:      reason || (newStatus === "bloqueada" ? "Mesa bloqueada" : "Mesa desbloqueada"),
+  });
+
   res.json(tableShape(table));
 });
 
