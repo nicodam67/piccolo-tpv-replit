@@ -52,9 +52,15 @@ export default function RecogidaPage() {
   // Real-time socket
   useEffect(() => {
     const socket = io({ path: '/api/socket.io' });
-    socket.on('kds:refresh', () => {
+
+    const invalidate = () => {
       queryClient.invalidateQueries({ queryKey: getGetKdsTasksQueryKey('pase') });
-    });
+    };
+
+    // Re-fetch on every reconnect so missed events during a dropped connection are caught up
+    socket.on('connect', invalidate);
+    socket.on('kds:refresh', invalidate);
+
     return () => { socket.disconnect(); };
   }, [queryClient]);
 
