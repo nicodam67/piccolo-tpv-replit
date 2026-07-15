@@ -20,6 +20,7 @@ import {
   Coffee,
   Sliders,
   Receipt,
+  Coins,
 } from 'lucide-react';
 import { useGetDashboardSummary } from '@workspace/api-client-react';
 
@@ -220,6 +221,19 @@ const MODULES: ModuleCard[] = [
     iconBg: 'rgba(80,180,160,0.12)',
     iconColor: '#50b4a0',
     glow: 'rgba(80,180,160,0.10)',
+  },
+  {
+    id: 'caja-automatica',
+    icon: <Coins size={28} />,
+    title: 'Caja automática',
+    description: 'Configuración y estado del dispositivo',
+    href: '/admin/caja-automatica',
+    ready: true,
+    accent: 'rgba(60,140,200,0.07)',
+    border: 'rgba(60,140,200,0.28)',
+    iconBg: 'rgba(60,140,200,0.15)',
+    iconColor: '#3c8cc8',
+    glow: 'rgba(60,140,200,0.12)',
   },
   {
     id: 'configuracion',

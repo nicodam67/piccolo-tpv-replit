@@ -6,7 +6,7 @@ import { io } from 'socket.io-client';
 import {
   ChevronLeft, Check, Loader2, Euro, CreditCard, Smartphone, FileText, X,
   Printer, Percent, Scissors, Wallet, Gift, Plus, Minus, ArrowRight, AlertCircle,
-  Banknote, Building2,
+  Banknote, Building2, Coins,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -22,6 +22,10 @@ import {
   useCreateOrderSplits,
   useMarkSplitGroupPaid,
   useGetOrderSplits,
+  useStartCashMachinePayment,
+  useGetCashMachinePayment,
+  useCancelCashMachinePayment,
+  useGetCashMachineStatus,
   getGetOrderPaymentSummaryQueryKey,
   getGetClientsQueryKey,
   getGetCurrentCashSessionQueryKey,
@@ -34,6 +38,7 @@ import {
   type PaymentMethod,
   type SplitGroupWithItems,
   type SplitGroupItemDetail,
+  type CashMachineTransaction,
 } from '@workspace/api-client-react';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -934,6 +939,176 @@ function SplitPayMode({ orderId, groups, terminal, orderTotal, orderPaid, orderR
   );
 }
 
+// ── Cash Machine Payment Modal ────────────────────────────────────────────────
+interface CashMachinePaymentModalProps {
+  orderId: string;
+  amount: number;
+  terminal?: string;
+  onSuccess: () => void;
+  onCancel: () => void;
+}
+
+function CashMachinePaymentModal({ orderId, amount, terminal, onSuccess, onCancel }: CashMachinePaymentModalProps) {
+  const startPayment  = useStartCashMachinePayment();
+  const cancelPayment = useCancelCashMachinePayment();
+  const [txId, setTxId]             = useState<string | null>(null);
+  const [txStatus, setTxStatus]     = useState<string>('pending');
+  const [changeAmt, setChangeAmt]   = useState(0);
+  const [received, setReceived]     = useState(0);
+  const [errMsg, setErrMsg]         = useState<string | null>(null);
+  const [cancelling, setCancelling] = useState(false);
+  const intervalRef                 = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Capture onSuccess in a ref so the interval always calls the latest version
+  const onSuccessRef = useRef(onSuccess);
+  useEffect(() => { onSuccessRef.current = onSuccess; }, [onSuccess]);
+
+  const TERMINAL_STATUSES = ['completada', 'cancelada', 'tiempo_agotado', 'error', 'intervencion_manual'];
+
+  /** Plain fetch so the closure always uses the correct transaction ID, avoiding
+   *  stale-refetch issues that arise when the React Query hook is initialized before
+   *  the real ID is known.
+   */
+  const startPolling = (id: string) => {
+    if (intervalRef.current) clearInterval(intervalRef.current);
+    intervalRef.current = setInterval(async () => {
+      try {
+        const token = localStorage.getItem('token') ?? '';
+        const resp = await fetch(`/api/cash-machine/payments/${id}`, {
+          headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        });
+        const data = await resp.json();
+        const tx = data?.transaction as CashMachineTransaction | undefined;
+        if (!tx) return;
+        setTxStatus(tx.status);
+        setReceived(parseFloat(tx.amountReceived ?? '0'));
+        setChangeAmt(parseFloat(tx.changeDispensed ?? '0'));
+        // Handle reconciliation error: device completed but order settlement failed
+        if (!resp.ok && (data as any)?.needsReconciliation) {
+          if (intervalRef.current) clearInterval(intervalRef.current);
+          setErrMsg('El pago fue recibido por la máquina pero no se pudo liquidar el pedido. Avisa al encargado.');
+          return;
+        }
+        if (!resp.ok) return;
+        if (tx.status === 'completada') {
+          if (intervalRef.current) clearInterval(intervalRef.current);
+          setTimeout(() => onSuccessRef.current(), 1200);
+        } else if (['error', 'cancelada', 'tiempo_agotado', 'intervencion_manual'].includes(tx.status)) {
+          if (intervalRef.current) clearInterval(intervalRef.current);
+          setErrMsg((tx as any).deviceError ?? 'La transacción no se completó.');
+        }
+      } catch {}
+    }, 2000);
+  };
+
+  useEffect(() => {
+    const init = async () => {
+      try {
+        const res = await startPayment.mutateAsync({
+          data: { orderId, amount: fmt(amount), terminalName: terminal ?? 'Caja principal' },
+        });
+        const id = (res as any)?.transaction?.id as string;
+        if (!id) { setErrMsg('Error al iniciar pago.'); return; }
+        setTxId(id);
+        setTxStatus((res as any)?.transaction?.status ?? 'pending');
+        startPolling(id);   // pass id directly — no stale closure
+      } catch (e: any) {
+        setErrMsg(e?.error ?? 'Error al conectar con la caja automática');
+      }
+    };
+    init();
+    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
+  }, []);  // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleCancel = async () => {
+    if (!txId) { onCancel(); return; }
+    setCancelling(true);
+    try {
+      await cancelPayment.mutateAsync({ id: txId });
+    } catch {}
+    if (intervalRef.current) clearInterval(intervalRef.current);
+    onCancel();
+  };
+
+  const statusMeta: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
+    pending:             { label: 'Iniciando…',            color: 'text-muted-foreground', icon: <Loader2 size={32} className="animate-spin" /> },
+    iniciando:           { label: 'Iniciando…',            color: 'text-muted-foreground', icon: <Loader2 size={32} className="animate-spin" /> },
+    esperando_efectivo:  { label: 'Esperando efectivo…',   color: 'text-primary',          icon: <Loader2 size={32} className="animate-spin" /> },
+    efectivo_parcial:    { label: 'Efectivo parcial',      color: 'text-amber-400',        icon: <Loader2 size={32} className="animate-spin" /> },
+    devolviendo_cambio:  { label: 'Dispensando cambio…',   color: 'text-blue-400',         icon: <Loader2 size={32} className="animate-spin" /> },
+    completada:          { label: 'Pago completado',       color: 'text-green-400',        icon: <Check size={32} className="text-green-400" /> },
+    error:               { label: 'Error en la máquina',   color: 'text-destructive',      icon: <X size={32} className="text-destructive" /> },
+    cancelada:           { label: 'Cancelado',             color: 'text-muted-foreground', icon: <X size={32} className="text-muted-foreground" /> },
+    tiempo_agotado:      { label: 'Tiempo agotado',        color: 'text-destructive',      icon: <X size={32} className="text-destructive" /> },
+    intervencion_manual: { label: 'Intervención manual',   color: 'text-destructive',      icon: <X size={32} className="text-destructive" /> },
+  };
+
+  const meta = statusMeta[txStatus] ?? statusMeta.pending;
+  const TERMINAL = ['completada', 'cancelada', 'tiempo_agotado', 'error', 'intervencion_manual'];
+  const isTerminal = TERMINAL.includes(txStatus);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+      <div className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-sm text-center p-8 space-y-6">
+        {/* Icon */}
+        <div className={`flex justify-center ${meta.color}`}>{meta.icon}</div>
+
+        {/* Title */}
+        <div>
+          <h3 className="text-xl font-black">{txStatus === 'completed' ? '¡Pago recibido!' : 'Caja automática'}</h3>
+          <p className={`text-sm font-semibold mt-1 ${meta.color}`}>{meta.label}</p>
+          {errMsg && <p className="text-xs text-destructive mt-2">{errMsg}</p>}
+        </div>
+
+        {/* Amounts */}
+        <div className="bg-secondary/40 rounded-xl p-4 space-y-2 text-sm">
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">A cobrar</span>
+            <span className="font-black font-mono text-primary">{fmt(amount)}€</span>
+          </div>
+          {received > 0 && (
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Recibido</span>
+              <span className="font-black font-mono">{fmt(received)}€</span>
+            </div>
+          )}
+          {changeAmt > 0 && (
+            <div className="flex justify-between">
+              <span className="text-muted-foreground text-yellow-400">Cambio</span>
+              <span className="font-black font-mono text-yellow-400">{fmt(changeAmt)}€</span>
+            </div>
+          )}
+        </div>
+
+        {/* Instructions */}
+        {!isTerminal && (
+          <p className="text-xs text-muted-foreground">
+            Introduce el efectivo en la máquina. No pulses cancelar salvo que el cliente desista.
+          </p>
+        )}
+
+        {/* Cancel button — only while in progress */}
+        {!isTerminal && (
+          <button
+            onClick={handleCancel}
+            disabled={cancelling}
+            className="w-full py-3 bg-secondary text-foreground font-bold rounded-xl text-sm disabled:opacity-50 hover:bg-secondary/80 transition-colors flex items-center justify-center gap-2">
+            {cancelling ? <Loader2 size={16} className="animate-spin" /> : null}
+            Cancelar
+          </button>
+        )}
+
+        {/* Close after error */}
+        {['error', 'cancelada', 'tiempo_agotado', 'intervencion_manual'].includes(txStatus) && (
+          <button onClick={onCancel}
+            className="w-full py-3 bg-secondary text-foreground font-bold rounded-xl text-sm">
+            Cerrar
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 export default function Payment() {
   const { orderId } = useParams<{ orderId: string }>();
@@ -970,6 +1145,7 @@ export default function Payment() {
   const [showSplit, setShowSplit]         = useState(false);
   const [splitGroups, setSplitGroups]     = useState<SplitGroupWithItems[] | null>(null);
   const [tipPaymentId, setTipPaymentId]   = useState<string | null>(null);
+  const [showCashMachineModal, setShowCashMachineModal] = useState(false);
 
   // "Remotely updated" banner — shown when another staff member changes this
   // order while the payment screen is open.
@@ -1224,6 +1400,20 @@ export default function Payment() {
           onSaved={() => { setTipPaymentId(null); setLocation(`/ticket/${orderId}`); }}
         />
       )}
+      {showCashMachineModal && orderId && (
+        <CashMachinePaymentModal
+          orderId={orderId}
+          amount={remainingNum}
+          terminal={terminal || undefined}
+          onSuccess={() => {
+            setShowCashMachineModal(false);
+            queryClient.invalidateQueries({ queryKey: getGetOrderPaymentSummaryQueryKey(orderId!) });
+            toast.success('Pago registrado por caja automática');
+            setTimeout(() => setLocation(`/ticket/${orderId}`), 800);
+          }}
+          onCancel={() => setShowCashMachineModal(false)}
+        />
+      )}
 
       {/* ── LEFT: order summary ── */}
       <div className="flex-1 flex flex-col border-b lg:border-b-0 lg:border-r border-border bg-card lg:max-w-md xl:max-w-lg shrink-0 h-[38vh] lg:h-full">
@@ -1399,12 +1589,23 @@ export default function Payment() {
                 </TouchBtn>
               ))}
 
-              {/* Confirm button */}
-              <TouchBtn onPress={() => setShowConfirm(true)} disabled={!canSubmit}
-                className="col-span-3 py-5 bg-primary text-primary-foreground text-xl font-black rounded-xl shadow-lg flex items-center justify-center gap-3 mt-1">
-                <Check size={24} /> Cobrar {fmt(effectiveTotal)}€
-                {changeAmt > 0.001 && ` · Cambio ${fmt(changeAmt)}€`}
-              </TouchBtn>
+              {/* Cash machine: show device modal instead of confirm dialog */}
+              {focused === 'cash_machine' && (
+                <TouchBtn
+                  onPress={() => setShowCashMachineModal(true)}
+                  disabled={remainingNum <= 0}
+                  className="col-span-3 py-5 bg-blue-600 text-white text-xl font-black rounded-xl shadow-lg flex items-center justify-center gap-3 mt-1">
+                  <Coins size={24} /> Cobrar con caja automática
+                </TouchBtn>
+              )}
+              {/* Normal confirm button — hidden when cash_machine is focused */}
+              {focused !== 'cash_machine' && (
+                <TouchBtn onPress={() => setShowConfirm(true)} disabled={!canSubmit}
+                  className="col-span-3 py-5 bg-primary text-primary-foreground text-xl font-black rounded-xl shadow-lg flex items-center justify-center gap-3 mt-1">
+                  <Check size={24} /> Cobrar {fmt(effectiveTotal)}€
+                  {changeAmt > 0.001 && ` · Cambio ${fmt(changeAmt)}€`}
+                </TouchBtn>
+              )}
             </div>
           </>
         )}

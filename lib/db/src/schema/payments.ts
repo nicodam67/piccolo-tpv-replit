@@ -1,4 +1,5 @@
-import { boolean, jsonb, numeric, pgTable, text, timestamp, uuid, integer, bigserial } from "drizzle-orm/pg-core";
+import { boolean, jsonb, numeric, pgTable, text, timestamp, uuid, integer, bigserial, uniqueIndex } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { employeesTable } from "./employees";
 import { ordersTable } from "./orders";
 
@@ -32,23 +33,36 @@ export const cashSessionsTable = pgTable("cash_sessions", {
   denominationBreakdown: jsonb("denomination_breakdown"),
 });
 
-export const paymentsTable = pgTable("payments", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  orderId: uuid("order_id")
-    .notNull()
-    .references(() => ordersTable.id),
-  cashSessionId: uuid("cash_session_id").references(() => cashSessionsTable.id),
-  paymentMethodId: uuid("payment_method_id")
-    .notNull()
-    .references(() => paymentMethodsTable.id),
-  amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
-  status: text("status").notNull().default("completed"),
-  reference: text("reference"),
-  employeeId: uuid("employee_id")
-    .notNull()
-    .references(() => employeesTable.id),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const paymentsTable = pgTable(
+  "payments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orderId: uuid("order_id")
+      .notNull()
+      .references(() => ordersTable.id),
+    cashSessionId: uuid("cash_session_id").references(() => cashSessionsTable.id),
+    paymentMethodId: uuid("payment_method_id")
+      .notNull()
+      .references(() => paymentMethodsTable.id),
+    amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
+    status: text("status").notNull().default("completed"),
+    /** Idempotency key for cash-machine payments (cash_machine_transaction.id).
+     *  NULL for all other payment methods — uniqueness is enforced only on non-null
+     *  values via the partial index below, preventing cross-method collisions. */
+    reference: text("reference"),
+    employeeId: uuid("employee_id")
+      .notNull()
+      .references(() => employeesTable.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    /** Partial unique index: guarantees exactly-once payment recording for
+     *  cash-machine transactions while leaving NULL references unrestricted. */
+    referenceUniqueIdx: uniqueIndex("payments_reference_unique")
+      .on(table.reference)
+      .where(sql`${table.reference} IS NOT NULL`),
+  }),
+);
 
 export const ticketsTable = pgTable("tickets", {
   id: uuid("id").primaryKey().defaultRandom(),

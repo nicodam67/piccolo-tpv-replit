@@ -26,6 +26,8 @@ import Ingredientes from './pages/ingredientes';
 import Stock from './pages/stock';
 import Carta from './pages/carta';
 import Reservations from './pages/reservations';
+import CajaAutomatica from './pages/caja-automatica';
+import CajaAutomaticaEstado from './pages/caja-automatica-estado';
 import NotFound from './pages/not-found';
 
 const queryClient = new QueryClient({
@@ -63,6 +65,8 @@ function Router() {
       <Route path="/recogida" component={Recogida} />
       <Route path="/prefactura/:orderId" component={Prefactura} />
       <Route path="/reservas" component={Reservations} />
+      <Route path="/admin/caja-automatica" component={CajaAutomatica} />
+      <Route path="/admin/caja-automatica/estado" component={CajaAutomaticaEstado} />
       <Route component={NotFound} />
     </Switch>
   );

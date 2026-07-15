@@ -22,6 +22,7 @@ import ingredientsRouter from "./ingredients";
 import recipesRouter from "./recipes";
 import tableOperationsRouter from "./table-operations";
 import reservationsRouter from "./reservations";
+import cashMachineRouter from "./cash-machine";
 
 const router: IRouter = Router();
 
@@ -48,5 +49,6 @@ router.use(tipsRouter);
 router.use(splitsRouter);
 router.use(ingredientsRouter);
 router.use(recipesRouter);
+router.use(cashMachineRouter);
 
 export default router;

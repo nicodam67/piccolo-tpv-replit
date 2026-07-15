@@ -10,6 +10,8 @@ const DEFAULT_METHODS = [
   { code: "cheque_rest",     name: "Cheque restaurante", sortOrder: 5,  active: true },
   { code: "invitation",      name: "Invitación",         sortOrder: 6,  active: true },
   { code: "other",           name: "Otro",               sortOrder: 7,  active: true },
+  // Automatic cash machine — seeded at startup; visible only when module is enabled in config
+  { code: "cash_machine",    name: "Caja automática",    sortOrder: 8,  active: true },
 ];
 
 export async function seedCash(): Promise<void> {

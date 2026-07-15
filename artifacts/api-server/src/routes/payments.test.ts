@@ -349,3 +349,43 @@ describe("POST /orders/:id/payments", () => {
     });
   });
 });
+
+// ─── cash_machine bootstrap seed ─────────────────────────────────────────────
+// Verifies that `cash_machine` is present in the DEFAULT_METHODS seed list so
+// it shows up in GET /payment-methods on a clean install.
+
+import { seedCash } from "../lib/seed-cash";
+
+describe("Payment method seed — cash_machine included", () => {
+  it("seedCash creates cash_machine when it does not yet exist", async () => {
+    // Mock: no existing methods (empty DB)
+    const insertedCodes: string[] = [];
+    mockDb.select.mockReturnValue(makeChain([]));      // all "existing" checks return empty
+    mockDb.insert.mockImplementation(() => ({
+      values: (row: any) => {
+        insertedCodes.push(row.code);
+        return makeChain([row]);
+      },
+    }));
+
+    await seedCash();
+
+    expect(insertedCodes).toContain("cash_machine");
+  });
+
+  it("seedCash does not re-insert cash_machine when it already exists", async () => {
+    const insertedCodes: string[] = [];
+    // Return a row for every code so the "existing" check finds it
+    mockDb.select.mockReturnValue(makeChain([{ id: "existing-id", code: "cash_machine" }]));
+    mockDb.insert.mockImplementation(() => ({
+      values: (row: any) => {
+        insertedCodes.push(row.code);
+        return makeChain([row]);
+      },
+    }));
+
+    await seedCash();
+
+    expect(insertedCodes).not.toContain("cash_machine");
+  });
+});

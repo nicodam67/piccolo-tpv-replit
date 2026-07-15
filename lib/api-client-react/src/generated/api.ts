@@ -116,6 +116,17 @@ import type {
   UpdateModifierGroupInput,
   CreateModifierInput,
   UpdateModifierInput,
+  CashMachineConfig,
+  UpdateCashMachineConfigInput,
+  TestCashMachineConnectionInput,
+  TestCashMachineConnectionResult,
+  CashMachineDeviceStatus,
+  CashMachineCashLevel,
+  StartCashMachinePaymentInput,
+  CashMachinePaymentResult,
+  CashMachineTransaction,
+  CashMachineRefundInput,
+  CashMachineSessionSummary,
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -4731,6 +4742,157 @@ export const getGetCashSessionHistoryQueryOptions = <TData = Awaited<ReturnType<
 };
 export function useGetCashSessionHistory<TData = Awaited<ReturnType<typeof getCashSessionHistory>>, TError = ErrorType<ErrorResponse>>(options?: { query?: UseQueryOptions<Awaited<ReturnType<typeof getCashSessionHistory>>, TError, TData>; request?: SecondParameter<typeof customFetch> }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetCashSessionHistoryQueryOptions(options);
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+// ─── Cash Machine ─────────────────────────────────────────────────────────────
+
+// GET /admin/cash-machine/config
+export const getGetCashMachineConfigUrl = () => `/api/admin/cash-machine/config`;
+export const getCashMachineConfig = async (options?: RequestInit): Promise<CashMachineConfig> =>
+  customFetch<CashMachineConfig>(getGetCashMachineConfigUrl(), { ...options, method: 'GET' });
+export const getGetCashMachineConfigQueryKey = () => [`/api/admin/cash-machine/config`] as const;
+export const getGetCashMachineConfigQueryOptions = <TData = Awaited<ReturnType<typeof getCashMachineConfig>>, TError = ErrorType<ErrorResponse>>(options?: { query?: UseQueryOptions<Awaited<ReturnType<typeof getCashMachineConfig>>, TError, TData>; request?: SecondParameter<typeof customFetch> }) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+  const queryKey = queryOptions?.queryKey ?? getGetCashMachineConfigQueryKey();
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getCashMachineConfig>>> = ({ signal }) => getCashMachineConfig({ signal, ...requestOptions });
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<Awaited<ReturnType<typeof getCashMachineConfig>>, TError, TData> & { queryKey: QueryKey };
+};
+export function useGetCashMachineConfig<TData = Awaited<ReturnType<typeof getCashMachineConfig>>, TError = ErrorType<ErrorResponse>>(options?: { query?: UseQueryOptions<Awaited<ReturnType<typeof getCashMachineConfig>>, TError, TData>; request?: SecondParameter<typeof customFetch> }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetCashMachineConfigQueryOptions(options);
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+// PUT /admin/cash-machine/config
+export const updateCashMachineConfig = async (updateCashMachineConfigInput: BodyType<UpdateCashMachineConfigInput>, options?: RequestInit): Promise<CashMachineConfig> =>
+  customFetch<CashMachineConfig>(getGetCashMachineConfigUrl(), { ...options, method: 'PUT', body: JSON.stringify(updateCashMachineConfigInput) });
+export function useUpdateCashMachineConfig<TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof updateCashMachineConfig>>, TError, { data: BodyType<UpdateCashMachineConfigInput> }, TContext> }): UseMutationResult<Awaited<ReturnType<typeof updateCashMachineConfig>>, TError, { data: BodyType<UpdateCashMachineConfigInput> }, TContext> {
+  const mutationOptions = options?.mutation;
+  const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateCashMachineConfig>>, { data: BodyType<UpdateCashMachineConfigInput> }> = (props) => {
+    const { data } = props ?? {};
+    return updateCashMachineConfig(data);
+  };
+  return useMutation({ mutationFn, ...mutationOptions });
+}
+
+// POST /admin/cash-machine/test-connection
+export const testCashMachineConnectionUrl = () => `/api/admin/cash-machine/test-connection`;
+export const testCashMachineConnection = async (body: BodyType<Record<string, unknown>>, options?: RequestInit): Promise<TestCashMachineConnectionResult> =>
+  customFetch<TestCashMachineConnectionResult>(testCashMachineConnectionUrl(), { ...options, method: 'POST', body: JSON.stringify(body) });
+export function useTestCashMachineConnection<TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof testCashMachineConnection>>, TError, { data: BodyType<Record<string, unknown>> }, TContext> }): UseMutationResult<Awaited<ReturnType<typeof testCashMachineConnection>>, TError, { data: BodyType<Record<string, unknown>> }, TContext> {
+  const mutationOptions = options?.mutation;
+  const mutationFn: MutationFunction<Awaited<ReturnType<typeof testCashMachineConnection>>, { data: BodyType<Record<string, unknown>> }> = (props) => {
+    const { data } = props ?? {};
+    return testCashMachineConnection(data);
+  };
+  return useMutation({ mutationFn, ...mutationOptions });
+}
+
+// GET /admin/cash-machine/status
+export const getGetCashMachineStatusUrl = () => `/api/admin/cash-machine/status`;
+export const getCashMachineStatus = async (options?: RequestInit): Promise<CashMachineDeviceStatus> =>
+  customFetch<CashMachineDeviceStatus>(getGetCashMachineStatusUrl(), { ...options, method: 'GET' });
+export const getGetCashMachineStatusQueryKey = () => [`/api/admin/cash-machine/status`] as const;
+export const getGetCashMachineStatusQueryOptions = <TData = Awaited<ReturnType<typeof getCashMachineStatus>>, TError = ErrorType<ErrorResponse>>(options?: { query?: UseQueryOptions<Awaited<ReturnType<typeof getCashMachineStatus>>, TError, TData>; request?: SecondParameter<typeof customFetch> }) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+  const queryKey = queryOptions?.queryKey ?? getGetCashMachineStatusQueryKey();
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getCashMachineStatus>>> = ({ signal }) => getCashMachineStatus({ signal, ...requestOptions });
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<Awaited<ReturnType<typeof getCashMachineStatus>>, TError, TData> & { queryKey: QueryKey };
+};
+export function useGetCashMachineStatus<TData = Awaited<ReturnType<typeof getCashMachineStatus>>, TError = ErrorType<ErrorResponse>>(options?: { query?: UseQueryOptions<Awaited<ReturnType<typeof getCashMachineStatus>>, TError, TData>; request?: SecondParameter<typeof customFetch> }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetCashMachineStatusQueryOptions(options);
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+// GET /admin/cash-machine/cash-levels
+export const getGetCashMachineCashLevelsUrl = () => `/api/admin/cash-machine/cash-levels`;
+export const getCashMachineCashLevels = async (options?: RequestInit): Promise<CashMachineCashLevel[]> =>
+  customFetch<CashMachineCashLevel[]>(getGetCashMachineCashLevelsUrl(), { ...options, method: 'GET' });
+export const getGetCashMachineCashLevelsQueryKey = () => [`/api/admin/cash-machine/cash-levels`] as const;
+export const getGetCashMachineCashLevelsQueryOptions = <TData = Awaited<ReturnType<typeof getCashMachineCashLevels>>, TError = ErrorType<ErrorResponse>>(options?: { query?: UseQueryOptions<Awaited<ReturnType<typeof getCashMachineCashLevels>>, TError, TData>; request?: SecondParameter<typeof customFetch> }) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+  const queryKey = queryOptions?.queryKey ?? getGetCashMachineCashLevelsQueryKey();
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getCashMachineCashLevels>>> = ({ signal }) => getCashMachineCashLevels({ signal, ...requestOptions });
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<Awaited<ReturnType<typeof getCashMachineCashLevels>>, TError, TData> & { queryKey: QueryKey };
+};
+export function useGetCashMachineCashLevels<TData = Awaited<ReturnType<typeof getCashMachineCashLevels>>, TError = ErrorType<ErrorResponse>>(options?: { query?: UseQueryOptions<Awaited<ReturnType<typeof getCashMachineCashLevels>>, TError, TData>; request?: SecondParameter<typeof customFetch> }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetCashMachineCashLevelsQueryOptions(options);
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+// POST /cash-machine/payments
+export const startCashMachinePaymentUrl = () => `/api/cash-machine/payments`;
+export const startCashMachinePayment = async (body: BodyType<StartCashMachinePaymentInput>, options?: RequestInit): Promise<CashMachinePaymentResult> =>
+  customFetch<CashMachinePaymentResult>(startCashMachinePaymentUrl(), { ...options, method: 'POST', body: JSON.stringify(body) });
+export function useStartCashMachinePayment<TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof startCashMachinePayment>>, TError, { data: BodyType<StartCashMachinePaymentInput> }, TContext> }): UseMutationResult<Awaited<ReturnType<typeof startCashMachinePayment>>, TError, { data: BodyType<StartCashMachinePaymentInput> }, TContext> {
+  const mutationOptions = options?.mutation;
+  const mutationFn: MutationFunction<Awaited<ReturnType<typeof startCashMachinePayment>>, { data: BodyType<StartCashMachinePaymentInput> }> = (props) => {
+    const { data } = props ?? {};
+    return startCashMachinePayment(data);
+  };
+  return useMutation({ mutationFn, ...mutationOptions });
+}
+
+// GET /cash-machine/payments/:id
+export const getCashMachinePaymentUrl = (id: string) => `/api/cash-machine/payments/${id}`;
+export const getCashMachinePayment = async (id: string, options?: RequestInit): Promise<CashMachinePaymentResult> =>
+  customFetch<CashMachinePaymentResult>(getCashMachinePaymentUrl(id), { ...options, method: 'GET' });
+export const getGetCashMachinePaymentQueryKey = (id: string) => [`/api/cash-machine/payments/${id}`] as const;
+export const getGetCashMachinePaymentQueryOptions = <TData = Awaited<ReturnType<typeof getCashMachinePayment>>, TError = ErrorType<ErrorResponse>>(id: string, options?: { query?: UseQueryOptions<Awaited<ReturnType<typeof getCashMachinePayment>>, TError, TData>; request?: SecondParameter<typeof customFetch> }) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+  const queryKey = queryOptions?.queryKey ?? getGetCashMachinePaymentQueryKey(id);
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getCashMachinePayment>>> = ({ signal }) => getCashMachinePayment(id, { signal, ...requestOptions });
+  return { queryKey, queryFn, enabled: !!id, ...queryOptions } as UseQueryOptions<Awaited<ReturnType<typeof getCashMachinePayment>>, TError, TData> & { queryKey: QueryKey };
+};
+export function useGetCashMachinePayment<TData = Awaited<ReturnType<typeof getCashMachinePayment>>, TError = ErrorType<ErrorResponse>>(id: string, options?: { query?: UseQueryOptions<Awaited<ReturnType<typeof getCashMachinePayment>>, TError, TData>; request?: SecondParameter<typeof customFetch> }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetCashMachinePaymentQueryOptions(id, options);
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+// POST /cash-machine/payments/:id/cancel
+export const cancelCashMachinePaymentUrl = (id: string) => `/api/cash-machine/payments/${id}/cancel`;
+export const cancelCashMachinePayment = async (id: string, options?: RequestInit): Promise<CashMachinePaymentResult> =>
+  customFetch<CashMachinePaymentResult>(cancelCashMachinePaymentUrl(id), { ...options, method: 'POST', body: JSON.stringify({}) });
+export function useCancelCashMachinePayment<TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof cancelCashMachinePayment>>, TError, { id: string }, TContext> }): UseMutationResult<Awaited<ReturnType<typeof cancelCashMachinePayment>>, TError, { id: string }, TContext> {
+  const mutationOptions = options?.mutation;
+  const mutationFn: MutationFunction<Awaited<ReturnType<typeof cancelCashMachinePayment>>, { id: string }> = (props) => {
+    const { id } = props ?? {};
+    return cancelCashMachinePayment(id);
+  };
+  return useMutation({ mutationFn, ...mutationOptions });
+}
+
+// POST /cash-machine/refunds
+export const createCashMachineRefundUrl = () => `/api/cash-machine/refunds`;
+export const createCashMachineRefund = async (body: BodyType<CashMachineRefundInput>, options?: RequestInit): Promise<CashMachinePaymentResult> =>
+  customFetch<CashMachinePaymentResult>(createCashMachineRefundUrl(), { ...options, method: 'POST', body: JSON.stringify(body) });
+export function useCreateCashMachineRefund<TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof createCashMachineRefund>>, TError, { data: BodyType<CashMachineRefundInput> }, TContext> }): UseMutationResult<Awaited<ReturnType<typeof createCashMachineRefund>>, TError, { data: BodyType<CashMachineRefundInput> }, TContext> {
+  const mutationOptions = options?.mutation;
+  const mutationFn: MutationFunction<Awaited<ReturnType<typeof createCashMachineRefund>>, { data: BodyType<CashMachineRefundInput> }> = (props) => {
+    const { data } = props ?? {};
+    return createCashMachineRefund(data);
+  };
+  return useMutation({ mutationFn, ...mutationOptions });
+}
+
+// GET /cash-sessions/:id/cash-machine-summary
+export const getCashMachineSessionSummaryUrl = (id: string) => `/api/cash-sessions/${id}/cash-machine-summary`;
+export const getCashMachineSessionSummary = async (id: string, options?: RequestInit): Promise<CashMachineSessionSummary> =>
+  customFetch<CashMachineSessionSummary>(getCashMachineSessionSummaryUrl(id), { ...options, method: 'GET' });
+export const getGetCashMachineSessionSummaryQueryKey = (id: string) => [`/api/cash-sessions/${id}/cash-machine-summary`] as const;
+export const getGetCashMachineSessionSummaryQueryOptions = <TData = Awaited<ReturnType<typeof getCashMachineSessionSummary>>, TError = ErrorType<ErrorResponse>>(id: string, options?: { query?: UseQueryOptions<Awaited<ReturnType<typeof getCashMachineSessionSummary>>, TError, TData>; request?: SecondParameter<typeof customFetch> }) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+  const queryKey = queryOptions?.queryKey ?? getGetCashMachineSessionSummaryQueryKey(id);
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getCashMachineSessionSummary>>> = ({ signal }) => getCashMachineSessionSummary(id, { signal, ...requestOptions });
+  return { queryKey, queryFn, enabled: !!id, ...queryOptions } as UseQueryOptions<Awaited<ReturnType<typeof getCashMachineSessionSummary>>, TError, TData> & { queryKey: QueryKey };
+};
+export function useGetCashMachineSessionSummary<TData = Awaited<ReturnType<typeof getCashMachineSessionSummary>>, TError = ErrorType<ErrorResponse>>(id: string, options?: { query?: UseQueryOptions<Awaited<ReturnType<typeof getCashMachineSessionSummary>>, TError, TData>; request?: SecondParameter<typeof customFetch> }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetCashMachineSessionSummaryQueryOptions(id, options);
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
   return withQueryKey(query, queryOptions.queryKey);
 }

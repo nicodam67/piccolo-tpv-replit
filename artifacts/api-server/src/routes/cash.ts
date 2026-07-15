@@ -5,6 +5,7 @@ import {
   cashMovementsTable,
   paymentsTable,
   paymentMethodsTable,
+  cashMachineConfigTable,
   employeesTable,
   discountsTable,
   tipsTable,
@@ -22,13 +23,26 @@ const CASH_MANAGER_ROLES = ["manager", "admin"];
 const router: IRouter = Router();
 
 // GET /payment-methods — list all active payment methods
+// cash_machine is excluded unless the module is explicitly enabled in config
 router.get("/payment-methods", requireAuth, async (_req, res): Promise<void> => {
   const methods = await db
     .select()
     .from(paymentMethodsTable)
     .where(eq(paymentMethodsTable.active, true))
     .orderBy(paymentMethodsTable.sortOrder);
-  res.json(methods);
+
+  // Filter cash_machine if module is not enabled
+  const [cmConfig] = await db
+    .select({ enabled: cashMachineConfigTable.enabled })
+    .from(cashMachineConfigTable)
+    .limit(1);
+  const cashMachineEnabled = cmConfig?.enabled === true;
+
+  const visible = cashMachineEnabled
+    ? methods
+    : methods.filter((m) => m.code !== "cash_machine");
+
+  res.json(visible);
 });
 
 // POST /cash-sessions/open

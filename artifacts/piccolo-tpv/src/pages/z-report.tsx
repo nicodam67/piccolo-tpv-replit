@@ -1,7 +1,7 @@
 import React, { useRef } from 'react';
 import { useParams, useLocation } from 'wouter';
 import { ChevronLeft, Printer, FileDown, Loader2, CheckCircle2, AlertCircle, Wallet, TrendingUp, TrendingDown, Receipt } from 'lucide-react';
-import { useGetCashSessionReport } from '@workspace/api-client-react';
+import { useGetCashSessionReport, useGetCashMachineSessionSummary } from '@workspace/api-client-react';
 import type { ZReport, TaxBreakdownItem } from '@workspace/api-client-react';
 
 function fmt(n: number | string) { return parseFloat(String(n)).toFixed(2); }
@@ -22,6 +22,13 @@ export default function ZReport() {
 
   const { data: report, isLoading } = useGetCashSessionReport(sessionId!, {
     query: { enabled: !!sessionId, queryKey: [`/api/cash-sessions/${sessionId}/report`] as const },
+  });
+
+  const { data: cashMachineSummary } = useGetCashMachineSessionSummary(sessionId!, {
+    query: {
+      enabled: !!sessionId,
+      queryKey: [`/api/cash-sessions/${sessionId}/cash-machine-summary`] as const,
+    },
   });
 
   const handlePrint = () => {
@@ -306,6 +313,42 @@ export default function ZReport() {
               )}
             </div>
           </div>
+
+          {/* Caja automática */}
+          {cashMachineSummary && (cashMachineSummary as any).enabled && (
+            <div className="bg-card border border-border rounded-2xl p-5">
+              <h3 className="text-sm font-black uppercase tracking-widest text-muted-foreground mb-4">Caja automática — conciliación</h3>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Cobros por máquina (TPV)</span>
+                  <span className="font-mono font-bold">{fmt((cashMachineSummary as any).tpvTotal ?? 0)}€</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Cobros por máquina (dispositivo)</span>
+                  <span className="font-mono font-bold">{fmt((cashMachineSummary as any).deviceTotal ?? 0)}€</span>
+                </div>
+                {parseFloat((cashMachineSummary as any).changeDispensed ?? '0') > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Cambio dispensado</span>
+                    <span className="font-mono font-bold text-yellow-400">{fmt((cashMachineSummary as any).changeDispensed)}€</span>
+                  </div>
+                )}
+                {parseFloat((cashMachineSummary as any).refundsDispensed ?? '0') > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Devoluciones</span>
+                    <span className="font-mono font-bold text-destructive">{fmt((cashMachineSummary as any).refundsDispensed)}€</span>
+                  </div>
+                )}
+                <div className="flex justify-between pt-2 border-t border-border font-black">
+                  <span>Diferencia dispositivo</span>
+                  <span className={`font-mono ${parseFloat((cashMachineSummary as any).difference ?? '0') === 0 ? 'text-green-400' : 'text-destructive'}`}>
+                    {parseFloat((cashMachineSummary as any).difference ?? '0') >= 0 ? '+' : ''}{fmt((cashMachineSummary as any).difference ?? 0)}€
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground">{(cashMachineSummary as any).transactionCount ?? 0} transacciones registradas</p>
+              </div>
+            </div>
+          )}
 
           {/* Notas */}
           {session.closingNotes && (

@@ -1407,6 +1407,108 @@ export interface WaiterTransferInput {
   authorisedById?: string;
 }
 
+// ─── Cash Machine ─────────────────────────────────────────────────────────────
+export interface CashMachineConfig {
+  id: string | null;
+  manufacturer: string;
+  model: string;
+  host: string;
+  port: number;
+  connectionType: string;
+  deviceId: string;
+  credentialKey?: string | null;
+  timeoutMs: number;
+  enabled: boolean;
+  hasCredential: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface UpdateCashMachineConfigInput {
+  manufacturer?: string;
+  model?: string;
+  host?: string;
+  port?: number;
+  connectionType?: string;
+  deviceId?: string;
+  credentialKey?: string;
+  timeoutMs?: number;
+  enabled?: boolean;
+}
+
+export interface TestCashMachineConnectionInput {
+  [key: string]: unknown;
+}
+
+export interface TestCashMachineConnectionResult {
+  ok: boolean;
+  latencyMs?: number;
+  error?: string;
+}
+
+export interface CashMachineDeviceStatus {
+  status: 'connected' | 'disconnected' | 'busy' | 'error' | 'maintenance';
+  busyWithTransactionId?: string;
+  jamDetected: boolean;
+  doorOpen: boolean;
+  maintenanceRequired: boolean;
+  lastSeen: string;
+  supportsCashLevels: boolean;
+}
+
+export interface CashMachineCashLevel {
+  denomination: number;
+  count: number;
+  isLow: boolean;
+}
+
+export interface StartCashMachinePaymentInput {
+  orderId?: string;
+  amount: string;
+  splitRef?: string;
+  terminalName?: string;
+}
+
+export interface CashMachineTransaction {
+  id: string;
+  orderId?: string | null;
+  splitRef?: string | null;
+  transactionType: string;
+  amountRequested: string;
+  amountReceived: string;
+  changeDispensed: string;
+  status: string;
+  deviceTransactionId?: string | null;
+  deviceError?: string | null;
+  employeeId?: string | null;
+  terminalName: string;
+  deviceId: string;
+  startedAt: string;
+  completedAt?: string | null;
+  createdAt: string;
+}
+
+export interface CashMachinePaymentResult {
+  transaction: CashMachineTransaction;
+}
+
+export interface CashMachineRefundInput {
+  orderId?: string;
+  amount: string;
+  splitRef?: string;
+  terminalName?: string;
+}
+
+export interface CashMachineSessionSummary {
+  enabled: boolean;
+  tpvTotal: string;
+  deviceTotal: string;
+  changeDispensed: string;
+  refundsDispensed: string;
+  difference: string;
+  transactionCount: number;
+}
+
 // ─── Cash session history ─────────────────────────────────────────────────────
 export type CashSessionHistoryItem = {
   id: string;

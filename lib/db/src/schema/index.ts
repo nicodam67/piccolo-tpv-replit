@@ -17,3 +17,4 @@ export * from "./documents";
 export * from "./caja";
 export * from "./stock";
 export * from "./reservations";
+export * from "./cash-machine";
