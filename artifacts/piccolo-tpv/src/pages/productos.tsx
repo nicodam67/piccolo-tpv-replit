@@ -18,12 +18,13 @@ import {
   useUpdateRecipeLine,
   useDeleteRecipeLine,
   useGetAdminIngredients,
+  useGetAdminSubrecipes,
   useImportProducts,
   downloadProductExport,
   getGetAdminProductsQueryKey,
   getGetProductRecipeQueryKey,
 } from '@workspace/api-client-react';
-import type { AdminProduct, AdminCategory, AdminModifierGroup, ProductFormat, RecipeLine, Ingredient } from '@workspace/api-client-react';
+import type { AdminProduct, AdminCategory, AdminModifierGroup, ProductFormat, RecipeLine, Ingredient, Subrecipe } from '@workspace/api-client-react';
 import {
   ArrowLeft, Package, Plus, Search, X, Check, Pencil, Trash2,
   ChevronRight, Eye, EyeOff, Tag, Sliders, ImageIcon, Save,
@@ -492,7 +493,7 @@ function ProductSheet({
 
           {/* ── Recipe tab ── */}
           {tab === 'recipe' && !isNew && product && (
-            <RecipeTab productId={product.id} productPrice={product.price} />
+            <RecipeTab productId={product.id} productPrice={product.price} taxRate={product.taxRate} />
           )}
         </div>
       </div>
@@ -501,15 +502,26 @@ function ProductSheet({
 }
 
 // ── Recipe tab component ──────────────────────────────────────────────────────
-function RecipeTab({ productId, productPrice }: { productId: string; productPrice: string }) {
+function RecipeTab({
+  productId,
+  productPrice,
+  taxRate,
+}: {
+  productId: string;
+  productPrice: string;
+  taxRate: number;
+}) {
   const qc = useQueryClient();
   const { data: recipe, isLoading } = useGetProductRecipe(productId);
   const { data: allIngredients = [] } = useGetAdminIngredients();
+  const { data: allSubrecipes = [] } = useGetAdminSubrecipes();
   const createLine = useCreateRecipeLine();
   const updateLine = useUpdateRecipeLine();
   const deleteLine = useDeleteRecipeLine();
 
+  const [addType, setAddType] = useState<'ingredient' | 'subrecipe'>('ingredient');
   const [addIngId, setAddIngId] = useState('');
+  const [addSubrecipeId, setAddSubrecipeId] = useState('');
   const [addQty, setAddQty] = useState('');
   const [addWaste, setAddWaste] = useState('0');
   const [adding, setAdding] = useState(false);
@@ -518,23 +530,35 @@ function RecipeTab({ productId, productPrice }: { productId: string; productPric
   const invalidate = () => qc.invalidateQueries({ queryKey: getGetProductRecipeQueryKey(productId) });
 
   const activeIngredients = (allIngredients as Ingredient[]).filter(i => i.active);
+  const activeSubrecipes = (allSubrecipes as Subrecipe[]).filter(s => s.active);
+
   const filteredIng = activeIngredients.filter(i =>
     !ingSearch || i.name.toLowerCase().includes(ingSearch.toLowerCase())
   );
+  const filteredSr = activeSubrecipes.filter(s =>
+    !ingSearch || s.name.toLowerCase().includes(ingSearch.toLowerCase())
+  );
 
   const selectedIng = activeIngredients.find(i => i.id === addIngId);
+  const selectedSr = activeSubrecipes.find(s => s.id === addSubrecipeId);
 
   const handleAddLine = async () => {
-    if (!addIngId || !addQty || parseFloat(addQty) <= 0) {
-      toast.error('Selecciona un ingrediente e introduce la cantidad'); return;
+    const hasSource = addType === 'ingredient' ? !!addIngId : !!addSubrecipeId;
+    if (!hasSource || !addQty || parseFloat(addQty) <= 0) {
+      toast.error('Selecciona un ingrediente o subreceta e introduce la cantidad'); return;
     }
     try {
       await createLine.mutateAsync({
         productId,
-        data: { ingredientId: addIngId, quantity: addQty, wastePercent: addWaste },
+        data: {
+          ingredientId: addType === 'ingredient' ? addIngId : undefined,
+          subrecipeId: addType === 'subrecipe' ? addSubrecipeId : undefined,
+          quantity: addQty,
+          wastePercent: addWaste,
+        },
       });
       invalidate();
-      setAddIngId(''); setAddQty(''); setAddWaste('0'); setIngSearch(''); setAdding(false);
+      setAddIngId(''); setAddSubrecipeId(''); setAddQty(''); setAddWaste('0'); setIngSearch(''); setAdding(false);
     } catch { toast.error('Error al añadir línea'); }
   };
 
@@ -554,29 +578,40 @@ function RecipeTab({ productId, productPrice }: { productId: string; productPric
 
   if (isLoading) return <div className="flex items-center justify-center py-10 text-muted-foreground text-sm">Cargando receta…</div>;
 
-  const lines = recipe?.lines ?? [];
-  const totalCost = parseFloat(recipe?.totalCost ?? '0');
-  const grossMargin = parseFloat(recipe?.grossMargin ?? '0');
-  const marginPct = parseFloat(recipe?.marginPct ?? '0');
+  const lines = (recipe as any)?.lines ?? [];
+  const totalCost = parseFloat((recipe as any)?.totalCost ?? '0');
+  const grossMargin = parseFloat((recipe as any)?.grossMargin ?? '0');
+  const marginPct = parseFloat((recipe as any)?.marginPct ?? '0');
   const price = parseFloat(productPrice);
+  // Base price sin IVA and derived metrics
+  const effectiveTax = taxRate > 0 ? taxRate : 10;
+  const basePrice = price / (1 + effectiveTax / 100);
+  const grossMarginBase = basePrice > 0 ? basePrice - totalCost : 0;
+  const marginPctBase = basePrice > 0 ? (grossMarginBase / basePrice) * 100 : 0;
+  const foodCostPct = basePrice > 0 ? (totalCost / basePrice) * 100 : 0;
   const marginColor = marginPct >= 60 ? '#3caa78' : marginPct >= 30 ? '#d2a032' : '#dc3c3c';
+  const fcColor = foodCostPct <= 25 ? '#3caa78' : foodCostPct <= 35 ? '#d2a032' : '#dc3c3c';
 
   return (
     <div className="space-y-4">
       {/* Summary bar */}
       {lines.length > 0 && (
-        <div className="rounded-xl border border-border bg-secondary/30 p-3 grid grid-cols-3 gap-2 text-center">
+        <div className="rounded-xl border border-border bg-secondary/30 p-3 grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
           <div>
             <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide mb-0.5">Coste total</p>
-            <p className="text-base font-black">{totalCost.toFixed(3)}€</p>
+            <p className="text-base font-black">{totalCost.toFixed(4)}€</p>
           </div>
           <div>
-            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide mb-0.5">Margen bruto</p>
-            <p className="text-base font-black" style={{ color: marginColor }}>{grossMargin.toFixed(2)}€</p>
-          </div>
-          <div>
-            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide mb-0.5">Margen %</p>
+            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide mb-0.5">Margen % (PVP)</p>
             <p className="text-base font-black" style={{ color: marginColor }}>{marginPct.toFixed(1)}%</p>
+          </div>
+          <div>
+            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide mb-0.5">Margen s/base IVA</p>
+            <p className="text-base font-black" style={{ color: marginColor }}>{marginPctBase.toFixed(1)}%</p>
+          </div>
+          <div>
+            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide mb-0.5">Food cost</p>
+            <p className="text-base font-black" style={{ color: fcColor }}>{foodCostPct.toFixed(1)}%</p>
           </div>
         </div>
       )}
@@ -589,34 +624,59 @@ function RecipeTab({ productId, productPrice }: { productId: string; productPric
         </div>
       )}
 
-      {lines.map((line: RecipeLine) => (
+      {lines.map((line: RecipeLine & { lineType?: string }) => (
         <RecipeLineRow key={line.id} line={line} onDelete={handleDeleteLine} onUpdate={handleUpdateLine} />
       ))}
 
-      {/* Add ingredient form */}
+      {/* Add line form */}
       {adding ? (
         <div className="rounded-xl border border-primary/30 bg-primary/5 p-3 space-y-2">
-          <p className="text-xs font-bold text-primary">Nuevo ingrediente</p>
+          {/* Type switcher */}
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-bold text-primary">Nueva línea</p>
+            <div className="flex gap-0.5 rounded-lg bg-secondary p-0.5">
+              {(['ingredient', 'subrecipe'] as const).map(type => (
+                <button key={type}
+                  onClick={() => { setAddType(type); setAddIngId(''); setAddSubrecipeId(''); setIngSearch(''); }}
+                  className={`px-2 py-0.5 rounded-md text-[10px] font-bold transition-colors ${addType === type ? 'bg-card text-foreground shadow' : 'text-muted-foreground'}`}>
+                  {type === 'ingredient' ? 'Ingrediente' : 'Subreceta'}
+                </button>
+              ))}
+            </div>
+          </div>
 
-          {/* Ingredient search */}
+          {/* Search */}
           <div className="relative">
             <input
               type="text"
-              placeholder="Buscar ingrediente…"
-              value={ingSearch || (selectedIng?.name ?? '')}
-              onChange={e => { setIngSearch(e.target.value); setAddIngId(''); }}
+              placeholder={addType === 'ingredient' ? 'Buscar ingrediente…' : 'Buscar subreceta…'}
+              value={ingSearch || (addType === 'ingredient' ? (selectedIng?.name ?? '') : (selectedSr?.name ?? ''))}
+              onChange={e => { setIngSearch(e.target.value); setAddIngId(''); setAddSubrecipeId(''); }}
               className="w-full px-3 py-2 rounded-lg bg-card border border-border text-sm focus:outline-none focus:border-primary/50"
             />
-            {ingSearch && !addIngId && (
+            {ingSearch && !addIngId && !addSubrecipeId && (
               <div className="absolute top-full left-0 right-0 z-10 bg-card border border-border rounded-lg shadow-lg max-h-32 overflow-y-auto mt-0.5">
-                {filteredIng.slice(0, 8).map(i => (
-                  <button key={i.id} className="w-full text-left px-3 py-1.5 text-sm hover:bg-secondary flex items-center justify-between"
-                    onClick={() => { setAddIngId(i.id); setIngSearch(''); }}>
-                    <span>{i.name}</span>
-                    <span className="text-[10px] text-muted-foreground">{parseFloat(i.purchaseCost).toFixed(3)}€/{i.unit}</span>
-                  </button>
-                ))}
-                {filteredIng.length === 0 && <p className="px-3 py-2 text-xs text-muted-foreground">Sin resultados</p>}
+                {addType === 'ingredient' ? (
+                  filteredIng.slice(0, 8).length > 0 ? (
+                    filteredIng.slice(0, 8).map(i => (
+                      <button key={i.id} className="w-full text-left px-3 py-1.5 text-sm hover:bg-secondary flex items-center justify-between"
+                        onClick={() => { setAddIngId(i.id); setIngSearch(''); }}>
+                        <span>{i.name}</span>
+                        <span className="text-[10px] text-muted-foreground">{parseFloat(i.purchaseCost).toFixed(3)}€/{i.unit}</span>
+                      </button>
+                    ))
+                  ) : <p className="px-3 py-2 text-xs text-muted-foreground">Sin resultados</p>
+                ) : (
+                  filteredSr.slice(0, 8).length > 0 ? (
+                    filteredSr.slice(0, 8).map(s => (
+                      <button key={s.id} className="w-full text-left px-3 py-1.5 text-sm hover:bg-secondary flex items-center justify-between"
+                        onClick={() => { setAddSubrecipeId(s.id); setIngSearch(''); }}>
+                        <span>{s.name}</span>
+                        <span className="text-[10px] text-muted-foreground">{parseFloat(s.cost).toFixed(4)}€/{s.unit}</span>
+                      </button>
+                    ))
+                  ) : <p className="px-3 py-2 text-xs text-muted-foreground">Sin subrecetas activas</p>
+                )}
               </div>
             )}
           </div>
@@ -624,7 +684,7 @@ function RecipeTab({ productId, productPrice }: { productId: string; productPric
           <div className="flex gap-2">
             <div className="flex-1">
               <label className="text-[10px] font-bold text-muted-foreground mb-0.5 block">
-                Cantidad {selectedIng ? `(${selectedIng.unit})` : ''}
+                Cantidad {selectedIng ? `(${selectedIng.unit})` : selectedSr ? `(${selectedSr.unit})` : ''}
               </label>
               <input type="number" step="0.001" min="0" value={addQty} onChange={e => setAddQty(e.target.value)}
                 placeholder="0.000"
@@ -638,16 +698,20 @@ function RecipeTab({ productId, productPrice }: { productId: string; productPric
           </div>
 
           {/* Preview cost */}
-          {selectedIng && addQty && parseFloat(addQty) > 0 && (
+          {(selectedIng || selectedSr) && addQty && parseFloat(addQty) > 0 && (
             <div className="text-xs text-muted-foreground">
               Coste línea ≈ <span className="font-bold text-foreground">
-                {(parseFloat(selectedIng.purchaseCost) * parseFloat(addQty) * (1 + parseFloat(addWaste || '0') / 100)).toFixed(4)}€
+                {(
+                  parseFloat(selectedIng?.purchaseCost ?? selectedSr?.cost ?? '0') *
+                  parseFloat(addQty) *
+                  (1 + parseFloat(addWaste || '0') / 100)
+                ).toFixed(4)}€
               </span>
             </div>
           )}
 
           <div className="flex gap-2">
-            <button onClick={() => { setAdding(false); setAddIngId(''); setAddQty(''); setAddWaste('0'); setIngSearch(''); }}
+            <button onClick={() => { setAdding(false); setAddIngId(''); setAddSubrecipeId(''); setAddQty(''); setAddWaste('0'); setIngSearch(''); }}
               className="flex-1 py-2 rounded-lg bg-secondary text-xs font-semibold">Cancelar</button>
             <button onClick={handleAddLine} disabled={createLine.isPending}
               className="flex-1 py-2 rounded-lg bg-primary text-primary-foreground text-xs font-bold disabled:opacity-60">
@@ -658,7 +722,7 @@ function RecipeTab({ productId, productPrice }: { productId: string; productPric
       ) : (
         <button onClick={() => setAdding(true)}
           className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl border border-dashed border-border text-muted-foreground text-sm hover:border-primary/40 hover:text-primary transition-colors">
-          <Plus size={14} /> Añadir ingrediente
+          <Plus size={14} /> Añadir ingrediente o subreceta
         </button>
       )}
     </div>

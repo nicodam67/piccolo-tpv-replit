@@ -4949,3 +4949,176 @@ export function useGetCashMachineSessionSummary<TData = Awaited<ReturnType<typeo
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
   return withQueryKey(query, queryOptions.queryKey);
 }
+
+// ─── Subrecipes ───────────────────────────────────────────────────────────────
+import type {
+  Subrecipe,
+  CreateSubrecipeInput,
+  UpdateSubrecipeInput,
+  AddSubrecipeItemInput,
+  UpdateSubrecipeItemInput,
+  SubrecipeItem,
+  ProductProfitability,
+  ProfitabilityByCategory,
+  ProfitabilityReport,
+  CostHistoryEntry,
+  CostAlert,
+  PriceSimulatorResult,
+  PriceSimulatorInput,
+} from './api.schemas';
+
+export const getAdminSubrecipesUrl = () => `/api/admin/subrecipes`;
+export const getAdminSubrecipes = async (options?: RequestInit): Promise<Subrecipe[]> =>
+  customFetch<Subrecipe[]>(getAdminSubrecipesUrl(), { ...options, method: 'GET' });
+export const getGetAdminSubrecipesQueryKey = () => [`/api/admin/subrecipes`] as const;
+export const getGetAdminSubrecipesQueryOptions = <TData = Awaited<ReturnType<typeof getAdminSubrecipes>>, TError = ErrorType<ErrorResponse>>(options?: { query?: UseQueryOptions<Awaited<ReturnType<typeof getAdminSubrecipes>>, TError, TData>; request?: SecondParameter<typeof customFetch> }) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+  const queryKey = queryOptions?.queryKey ?? getGetAdminSubrecipesQueryKey();
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getAdminSubrecipes>>> = ({ signal }) => getAdminSubrecipes({ signal, ...requestOptions });
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<Awaited<ReturnType<typeof getAdminSubrecipes>>, TError, TData> & { queryKey: QueryKey };
+};
+export function useGetAdminSubrecipes<TData = Awaited<ReturnType<typeof getAdminSubrecipes>>, TError = ErrorType<ErrorResponse>>(options?: { query?: UseQueryOptions<Awaited<ReturnType<typeof getAdminSubrecipes>>, TError, TData>; request?: SecondParameter<typeof customFetch> }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetAdminSubrecipesQueryOptions(options);
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+export const getAdminSubrecipeUrl = (id: string) => `/api/admin/subrecipes/${id}`;
+export const getAdminSubrecipe = async (id: string, options?: RequestInit): Promise<Subrecipe> =>
+  customFetch<Subrecipe>(getAdminSubrecipeUrl(id), { ...options, method: 'GET' });
+export const getGetAdminSubrecipeQueryKey = (id: string) => [`/api/admin/subrecipes/${id}`] as const;
+export const getGetAdminSubrecipeQueryOptions = <TData = Awaited<ReturnType<typeof getAdminSubrecipe>>, TError = ErrorType<ErrorResponse>>(id: string, options?: { query?: UseQueryOptions<Awaited<ReturnType<typeof getAdminSubrecipe>>, TError, TData>; request?: SecondParameter<typeof customFetch> }) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+  const queryKey = queryOptions?.queryKey ?? getGetAdminSubrecipeQueryKey(id);
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getAdminSubrecipe>>> = ({ signal }) => getAdminSubrecipe(id, { signal, ...requestOptions });
+  return { queryKey, queryFn, enabled: !!id, ...queryOptions } as UseQueryOptions<Awaited<ReturnType<typeof getAdminSubrecipe>>, TError, TData> & { queryKey: QueryKey };
+};
+export function useGetAdminSubrecipe<TData = Awaited<ReturnType<typeof getAdminSubrecipe>>, TError = ErrorType<ErrorResponse>>(id: string, options?: { query?: UseQueryOptions<Awaited<ReturnType<typeof getAdminSubrecipe>>, TError, TData>; request?: SecondParameter<typeof customFetch> }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetAdminSubrecipeQueryOptions(id, options);
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+export const createSubrecipe = async (data: BodyType<CreateSubrecipeInput>, options?: RequestInit): Promise<Subrecipe> =>
+  customFetch<Subrecipe>(getAdminSubrecipesUrl(), { ...options, method: 'POST', body: JSON.stringify(data) });
+export function useCreateSubrecipe<TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof createSubrecipe>>, TError, { data: BodyType<CreateSubrecipeInput> }, TContext> }): UseMutationResult<Awaited<ReturnType<typeof createSubrecipe>>, TError, { data: BodyType<CreateSubrecipeInput> }, TContext> {
+  const mutationFn: MutationFunction<Awaited<ReturnType<typeof createSubrecipe>>, { data: BodyType<CreateSubrecipeInput> }> = ({ data }) => createSubrecipe(data);
+  return useMutation({ mutationFn, ...options?.mutation });
+}
+
+export const updateSubrecipe = async (id: string, data: BodyType<UpdateSubrecipeInput>, options?: RequestInit): Promise<Subrecipe> =>
+  customFetch<Subrecipe>(getAdminSubrecipeUrl(id), { ...options, method: 'PATCH', body: JSON.stringify(data) });
+export function useUpdateSubrecipe<TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof updateSubrecipe>>, TError, { id: string; data: BodyType<UpdateSubrecipeInput> }, TContext> }): UseMutationResult<Awaited<ReturnType<typeof updateSubrecipe>>, TError, { id: string; data: BodyType<UpdateSubrecipeInput> }, TContext> {
+  const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateSubrecipe>>, { id: string; data: BodyType<UpdateSubrecipeInput> }> = ({ id, data }) => updateSubrecipe(id, data);
+  return useMutation({ mutationFn, ...options?.mutation });
+}
+
+export const deleteSubrecipe = async (id: string, options?: RequestInit): Promise<{ ok: boolean }> =>
+  customFetch<{ ok: boolean }>(getAdminSubrecipeUrl(id), { ...options, method: 'DELETE' });
+export function useDeleteSubrecipe<TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof deleteSubrecipe>>, TError, { id: string }, TContext> }): UseMutationResult<Awaited<ReturnType<typeof deleteSubrecipe>>, TError, { id: string }, TContext> {
+  const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteSubrecipe>>, { id: string }> = ({ id }) => deleteSubrecipe(id);
+  return useMutation({ mutationFn, ...options?.mutation });
+}
+
+export const addSubrecipeItem = async (subrecipeId: string, data: BodyType<AddSubrecipeItemInput>, options?: RequestInit): Promise<SubrecipeItem> =>
+  customFetch<SubrecipeItem>(`/api/admin/subrecipes/${subrecipeId}/items`, { ...options, method: 'POST', body: JSON.stringify(data) });
+export function useAddSubrecipeItem<TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof addSubrecipeItem>>, TError, { subrecipeId: string; data: BodyType<AddSubrecipeItemInput> }, TContext> }): UseMutationResult<Awaited<ReturnType<typeof addSubrecipeItem>>, TError, { subrecipeId: string; data: BodyType<AddSubrecipeItemInput> }, TContext> {
+  const mutationFn: MutationFunction<Awaited<ReturnType<typeof addSubrecipeItem>>, { subrecipeId: string; data: BodyType<AddSubrecipeItemInput> }> = ({ subrecipeId, data }) => addSubrecipeItem(subrecipeId, data);
+  return useMutation({ mutationFn, ...options?.mutation });
+}
+
+export const updateSubrecipeItem = async (itemId: string, data: BodyType<UpdateSubrecipeItemInput>, options?: RequestInit): Promise<SubrecipeItem> =>
+  customFetch<SubrecipeItem>(`/api/admin/subrecipe-items/${itemId}`, { ...options, method: 'PATCH', body: JSON.stringify(data) });
+export function useUpdateSubrecipeItem<TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof updateSubrecipeItem>>, TError, { itemId: string; data: BodyType<UpdateSubrecipeItemInput> }, TContext> }): UseMutationResult<Awaited<ReturnType<typeof updateSubrecipeItem>>, TError, { itemId: string; data: BodyType<UpdateSubrecipeItemInput> }, TContext> {
+  const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateSubrecipeItem>>, { itemId: string; data: BodyType<UpdateSubrecipeItemInput> }> = ({ itemId, data }) => updateSubrecipeItem(itemId, data);
+  return useMutation({ mutationFn, ...options?.mutation });
+}
+
+export const deleteSubrecipeItem = async (itemId: string, options?: RequestInit): Promise<{ ok: boolean }> =>
+  customFetch<{ ok: boolean }>(`/api/admin/subrecipe-items/${itemId}`, { ...options, method: 'DELETE' });
+export function useDeleteSubrecipeItem<TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof deleteSubrecipeItem>>, TError, { itemId: string }, TContext> }): UseMutationResult<Awaited<ReturnType<typeof deleteSubrecipeItem>>, TError, { itemId: string }, TContext> {
+  const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteSubrecipeItem>>, { itemId: string }> = ({ itemId }) => deleteSubrecipeItem(itemId);
+  return useMutation({ mutationFn, ...options?.mutation });
+}
+
+// ─── Profitability ────────────────────────────────────────────────────────────
+export const getAdminProfitabilityUrl = () => `/api/admin/profitability`;
+export const getAdminProfitability = async (options?: RequestInit): Promise<ProductProfitability[]> =>
+  customFetch<ProductProfitability[]>(getAdminProfitabilityUrl(), { ...options, method: 'GET' });
+export const getGetAdminProfitabilityQueryKey = () => [`/api/admin/profitability`] as const;
+export const getGetAdminProfitabilityQueryOptions = <TData = Awaited<ReturnType<typeof getAdminProfitability>>, TError = ErrorType<ErrorResponse>>(options?: { query?: UseQueryOptions<Awaited<ReturnType<typeof getAdminProfitability>>, TError, TData>; request?: SecondParameter<typeof customFetch> }) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+  const queryKey = queryOptions?.queryKey ?? getGetAdminProfitabilityQueryKey();
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getAdminProfitability>>> = ({ signal }) => getAdminProfitability({ signal, ...requestOptions });
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<Awaited<ReturnType<typeof getAdminProfitability>>, TError, TData> & { queryKey: QueryKey };
+};
+export function useGetAdminProfitability<TData = Awaited<ReturnType<typeof getAdminProfitability>>, TError = ErrorType<ErrorResponse>>(options?: { query?: UseQueryOptions<Awaited<ReturnType<typeof getAdminProfitability>>, TError, TData>; request?: SecondParameter<typeof customFetch> }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetAdminProfitabilityQueryOptions(options);
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+export const getAdminProfitabilityByCategoryUrl = () => `/api/admin/profitability/by-category`;
+export const getAdminProfitabilityByCategory = async (options?: RequestInit): Promise<ProfitabilityByCategory[]> =>
+  customFetch<ProfitabilityByCategory[]>(getAdminProfitabilityByCategoryUrl(), { ...options, method: 'GET' });
+export const getGetAdminProfitabilityByCategoryQueryKey = () => [`/api/admin/profitability/by-category`] as const;
+export const getGetAdminProfitabilityByCategoryQueryOptions = <TData = Awaited<ReturnType<typeof getAdminProfitabilityByCategory>>, TError = ErrorType<ErrorResponse>>(options?: { query?: UseQueryOptions<Awaited<ReturnType<typeof getAdminProfitabilityByCategory>>, TError, TData>; request?: SecondParameter<typeof customFetch> }) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+  const queryKey = queryOptions?.queryKey ?? getGetAdminProfitabilityByCategoryQueryKey();
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getAdminProfitabilityByCategory>>> = ({ signal }) => getAdminProfitabilityByCategory({ signal, ...requestOptions });
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<Awaited<ReturnType<typeof getAdminProfitabilityByCategory>>, TError, TData> & { queryKey: QueryKey };
+};
+export function useGetAdminProfitabilityByCategory<TData = Awaited<ReturnType<typeof getAdminProfitabilityByCategory>>, TError = ErrorType<ErrorResponse>>(options?: { query?: UseQueryOptions<Awaited<ReturnType<typeof getAdminProfitabilityByCategory>>, TError, TData>; request?: SecondParameter<typeof customFetch> }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetAdminProfitabilityByCategoryQueryOptions(options);
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+export const getAdminProfitabilityReportsUrl = () => `/api/admin/profitability/reports`;
+export const getAdminProfitabilityReports = async (params?: { from?: string; to?: string }, options?: RequestInit): Promise<ProfitabilityReport> => {
+  const url = new URL(getAdminProfitabilityReportsUrl(), 'http://x');
+  if (params?.from) url.searchParams.set('from', params.from);
+  if (params?.to) url.searchParams.set('to', params.to);
+  return customFetch<ProfitabilityReport>(url.pathname + url.search, { ...options, method: 'GET' });
+};
+export const getGetAdminProfitabilityReportsQueryKey = (params?: { from?: string; to?: string }) => [`/api/admin/profitability/reports`, params] as const;
+export function useGetAdminProfitabilityReports<TData = Awaited<ReturnType<typeof getAdminProfitabilityReports>>, TError = ErrorType<ErrorResponse>>(params?: { from?: string; to?: string }, options?: { query?: UseQueryOptions<Awaited<ReturnType<typeof getAdminProfitabilityReports>>, TError, TData> }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryKey = getGetAdminProfitabilityReportsQueryKey(params);
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getAdminProfitabilityReports>>> = () => getAdminProfitabilityReports(params);
+  const query = useQuery({ queryKey, queryFn, ...options?.query }) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
+  return withQueryKey(query, queryKey);
+}
+
+export const getAdminCostHistoryUrl = () => `/api/admin/cost-history`;
+export const getAdminCostHistory = async (params?: { ingredientId?: string; limit?: string }, options?: RequestInit): Promise<CostHistoryEntry[]> => {
+  const url = new URL(getAdminCostHistoryUrl(), 'http://x');
+  if (params?.ingredientId) url.searchParams.set('ingredientId', params.ingredientId);
+  if (params?.limit) url.searchParams.set('limit', params.limit);
+  return customFetch<CostHistoryEntry[]>(url.pathname + url.search, { ...options, method: 'GET' });
+};
+export const getGetAdminCostHistoryQueryKey = (params?: { ingredientId?: string; limit?: string }) => [`/api/admin/cost-history`, params] as const;
+export function useGetAdminCostHistory<TData = Awaited<ReturnType<typeof getAdminCostHistory>>, TError = ErrorType<ErrorResponse>>(params?: { ingredientId?: string; limit?: string }, options?: { query?: UseQueryOptions<Awaited<ReturnType<typeof getAdminCostHistory>>, TError, TData> }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryKey = getGetAdminCostHistoryQueryKey(params);
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getAdminCostHistory>>> = () => getAdminCostHistory(params);
+  const query = useQuery({ queryKey, queryFn, ...options?.query }) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
+  return withQueryKey(query, queryKey);
+}
+
+export const getAdminCostAlertsUrl = () => `/api/admin/cost-alerts`;
+export const getAdminCostAlerts = async (options?: RequestInit): Promise<CostAlert[]> =>
+  customFetch<CostAlert[]>(getAdminCostAlertsUrl(), { ...options, method: 'GET' });
+export const getGetAdminCostAlertsQueryKey = () => [`/api/admin/cost-alerts`] as const;
+export function useGetAdminCostAlerts<TData = Awaited<ReturnType<typeof getAdminCostAlerts>>, TError = ErrorType<ErrorResponse>>(options?: { query?: UseQueryOptions<Awaited<ReturnType<typeof getAdminCostAlerts>>, TError, TData> }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryKey = getGetAdminCostAlertsQueryKey();
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getAdminCostAlerts>>> = ({ signal }) => getAdminCostAlerts({ signal });
+  const query = useQuery({ queryKey, queryFn, ...options?.query }) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
+  return withQueryKey(query, queryKey);
+}
+
+export const simulatePriceUrl = () => `/api/admin/price-simulator`;
+export const simulatePrice = async (data: BodyType<PriceSimulatorInput>, options?: RequestInit): Promise<PriceSimulatorResult> =>
+  customFetch<PriceSimulatorResult>(simulatePriceUrl(), { ...options, method: 'POST', body: JSON.stringify(data) });
+export function useSimulatePrice<TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof simulatePrice>>, TError, { data: BodyType<PriceSimulatorInput> }, TContext> }): UseMutationResult<Awaited<ReturnType<typeof simulatePrice>>, TError, { data: BodyType<PriceSimulatorInput> }, TContext> {
+  const mutationFn: MutationFunction<Awaited<ReturnType<typeof simulatePrice>>, { data: BodyType<PriceSimulatorInput> }> = ({ data }) => simulatePrice(data);
+  return useMutation({ mutationFn, ...options?.mutation });
+}

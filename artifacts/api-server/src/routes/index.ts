@@ -20,6 +20,8 @@ import tipsRouter from "./tips";
 import splitsRouter from "./splits";
 import ingredientsRouter from "./ingredients";
 import recipesRouter from "./recipes";
+import subrecipesRouter from "./subrecipes";
+import profitabilityRouter from "./profitability";
 import tableOperationsRouter from "./table-operations";
 import reservationsRouter from "./reservations";
 import cashMachineRouter from "./cash-machine";
@@ -49,6 +51,8 @@ router.use(tipsRouter);
 router.use(splitsRouter);
 router.use(ingredientsRouter);
 router.use(recipesRouter);
+router.use(subrecipesRouter);
+router.use(profitabilityRouter);
 router.use(cashMachineRouter);
 
 export default router;

@@ -30,6 +30,9 @@ import CajaAutomatica from './pages/caja-automatica';
 import CajaAutomaticaEstado from './pages/caja-automatica-estado';
 import InventarioFisico from './pages/inventario-fisico';
 import InformesStock from './pages/informes-stock';
+import Subrecetas from './pages/subrecetas';
+import Rentabilidad from './pages/rentabilidad';
+import SimuladorPrecios from './pages/simulador-precios';
 import NotFound from './pages/not-found';
 
 const queryClient = new QueryClient({
@@ -71,6 +74,9 @@ function Router() {
       <Route path="/admin/caja-automatica/estado" component={CajaAutomaticaEstado} />
       <Route path="/admin/inventario/fisico" component={InventarioFisico} />
       <Route path="/admin/inventario/informes" component={InformesStock} />
+      <Route path="/admin/subrecetas" component={Subrecetas} />
+      <Route path="/admin/rentabilidad" component={Rentabilidad} />
+      <Route path="/admin/simulador-precios" component={SimuladorPrecios} />
       <Route component={NotFound} />
     </Switch>
   );

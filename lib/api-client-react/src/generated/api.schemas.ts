@@ -1331,17 +1331,23 @@ export interface RecipeResponse {
 }
 
 export interface CreateRecipeLineInput {
-  ingredientId: string;
+  ingredientId?: string;
+  subrecipeId?: string;
   quantity: string;
   unit?: string;
   wastePercent?: string;
+  packagingCost?: string;
+  additionalCost?: string;
 }
 
 export interface UpdateRecipeLineInput {
   ingredientId?: string;
+  subrecipeId?: string;
   quantity?: string;
   unit?: string;
   wastePercent?: string;
+  packagingCost?: string;
+  additionalCost?: string;
 }
 
 // ─── Prefactura print / status ────────────────────────────────────────────────
@@ -1585,3 +1591,221 @@ export type CashSessionHistoryItem = {
 };
 
 
+
+// ─── Subrecipes ───────────────────────────────────────────────────────────────
+
+/** A subrecipe (semi-prepared component used in product recipes). */
+export interface Subrecipe {
+  id: string;
+  name: string;
+  unit: string;
+  yieldQuantity: string;
+  /** Cached cost per unit (updated whenever items change). */
+  cost: string;
+  notes?: string | null;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SubrecipeItem {
+  id: string;
+  subrecipeId: string;
+  ingredientId: string;
+  ingredientName: string;
+  ingredientUnit: string;
+  ingredientCost: string;
+  quantity: string;
+  unit: string;
+  wastePercent: string;
+  lineCost: string;
+}
+
+export interface CreateSubrecipeInput {
+  name: string;
+  unit?: string;
+  yieldQuantity?: string;
+  notes?: string;
+}
+
+export interface UpdateSubrecipeInput {
+  name?: string;
+  unit?: string;
+  yieldQuantity?: string;
+  notes?: string;
+  active?: boolean;
+}
+
+export interface AddSubrecipeItemInput {
+  ingredientId: string;
+  quantity: string;
+  unit?: string;
+  wastePercent?: string;
+}
+
+export interface UpdateSubrecipeItemInput {
+  quantity?: string;
+  unit?: string;
+  wastePercent?: string;
+}
+
+// ─── Profitability ────────────────────────────────────────────────────────────
+
+/**
+ * Profitability data for a single active product.
+ * Matches GET /admin/profitability response items.
+ */
+export interface ProductProfitability {
+  /** Product UUID */
+  id: string;
+  /** Product name */
+  name: string;
+  categoryId: string;
+  categoryName: string;
+  /** PVP (price with VAT) as a string, e.g. "12.50" */
+  pvp: string;
+  /** Base price excluding VAT, e.g. "11.36" */
+  basePrice: string;
+  theoreticalCost: string;
+  packagingCost: string;
+  additionalCost: string;
+  /** Sum of theoretical + packaging + additional cost */
+  totalCost: string;
+  /** Cached cost stored on the product row (may differ from computed) */
+  recordedCost: string | null;
+  grossMargin: string;
+  /** Margin as percent of base price, e.g. "64.32" */
+  marginPct: string;
+  /** Food cost as percent of base price, e.g. "24.10" */
+  foodCostPct: string;
+  costDeviation: string | null;
+  /** "food_cost_high" | "margin_low" | null */
+  alert: string | null;
+  taxRate: number;
+}
+
+/** A product row inside a by-category response. */
+export interface ProfitabilityCategoryProduct {
+  id: string;
+  name: string;
+  pvp: string;
+  basePrice: string;
+  totalCost: string;
+  grossMargin: string;
+  marginPct: string;
+  foodCostPct: string;
+}
+
+/**
+ * Profitability summary grouped by category.
+ * Matches GET /admin/profitability/by-category response items.
+ */
+export interface ProfitabilityByCategory {
+  categoryId: string;
+  categoryName: string;
+  /** Average food cost % across all products in category */
+  avgFoodCostPct: string;
+  products: ProfitabilityCategoryProduct[];
+}
+
+/** A ranked product item inside a profitability report. */
+export interface ProfitabilityRankedProduct {
+  id: string;
+  name: string;
+  categoryName: string;
+  pvp: string;
+  totalCost: string;
+  basePrice: string;
+  /** Numeric value (not a string) for easy sorting */
+  marginPct: number;
+  foodCostPct: number;
+}
+
+/**
+ * Aggregated profitability report with rankings.
+ * Matches GET /admin/profitability/reports response.
+ */
+export interface ProfitabilityReport {
+  from: string;
+  to: string;
+  avgFoodCostPct: string;
+  avgMarginPct: string;
+  mostProfitable: ProfitabilityRankedProduct[];
+  leastProfitable: ProfitabilityRankedProduct[];
+  highFoodCost: ProfitabilityRankedProduct[];
+  /** Map of ingredientId → total consumed quantity in the period */
+  consumedByIngredient: Record<string, number>;
+}
+
+/**
+ * Ingredient cost history entry.
+ * Matches GET /admin/cost-history response items.
+ */
+export interface CostHistoryEntry {
+  id: string;
+  ingredientId: string;
+  ingredientName: string;
+  previousCost: string;
+  newCost: string;
+  supplierName?: string | null;
+  reason?: string | null;
+  employeeId?: string | null;
+  createdAt: string;
+}
+
+/**
+ * Product-level cost/margin alert.
+ * Matches GET /admin/cost-alerts response items.
+ */
+export interface CostAlert {
+  /** "food_cost_high" | "margin_low" */
+  type: string;
+  productId: string;
+  productName: string;
+  categoryName: string;
+  /** "foodCostPct" | "marginPct" */
+  metric: string;
+  /** Actual metric value as string, e.g. "38.50" */
+  value: string;
+  /** Threshold that triggered the alert, e.g. 35 */
+  threshold: number;
+  pvp: string;
+  totalCost: string;
+}
+
+/**
+ * Input for the price simulator endpoint.
+ * Matches POST /admin/price-simulator body.
+ */
+export interface PriceSimulatorInput {
+  productId: string;
+  targetMarginPct?: number;
+  maxFoodCostPct?: number;
+  roundTo?: number;
+}
+
+export interface PriceSimulatorRoundedOption {
+  price: string;
+  marginPct: string;
+  foodCostPct: string;
+}
+
+/**
+ * Price simulator result.
+ * Matches POST /admin/price-simulator response.
+ */
+export interface PriceSimulatorResult {
+  productId: string;
+  productName: string;
+  taxRate: number;
+  currentPrice: string;
+  currentBasePrice: string;
+  currentTotalCost: string;
+  currentMarginPct: string;
+  currentFoodCostPct: string;
+  recommendedPrice: string | null;
+  recommendedBase: string | null;
+  roundedOptions: PriceSimulatorRoundedOption[];
+  inputTargetMarginPct: number | null;
+  inputMaxFoodCostPct: number | null;
+}

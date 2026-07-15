@@ -7,18 +7,11 @@ import {
   timestamp,
   uuid,
 } from "drizzle-orm/pg-core";
-import { productsTable } from "./categories";
+import { productsTable, productFormatsTable } from "./categories";
 import { employeesTable } from "./employees";
 import { orderItemsTable } from "./order-items";
 
 // ─── Ingredients ──────────────────────────────────────────────────────────────
-// Represents a raw material / ingredient tracked in stock.
-// unit: 'kg' | 'g' | 'l' | 'ml' | 'ud' | 'cl' (open text for flexibility)
-// purchaseCost: cost per unit in €
-// currentStock: amount currently in stock (same unit)
-// minStock: alert threshold
-// allergenTags: JSON array of allergen codes (e.g. ["gluten","lactosa"])
-
 export const ingredientsTable = pgTable("ingredients", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),
@@ -47,19 +40,37 @@ export const ingredientsTable = pgTable("ingredients", {
     .defaultNow(),
 });
 
-// ─── Recipe items ─────────────────────────────────────────────────────────────
-// One row per ingredient used in a product's recipe (escandallo).
-// quantity: how much of the ingredient per serving (in the recipe's own unit)
-// unit: can differ from ingredient.unit if conversion is tracked elsewhere;
-//       typically matches ingredient.unit
-// wastePercent: percentage waste (e.g. 10 → 10%)
-// Computed cost per line = ingredient.purchaseCost * quantity * (1 + wastePercent/100)
+// ─── Sub-recipes ──────────────────────────────────────────────────────────────
+// Reusable base preparations (e.g. tomato sauce, pizza dough, béchamel).
+// yieldQuantity: how many portions the sub-recipe produces.
+// cost: computed cache = Σ(ingredient lineCost) / yieldQuantity.
 
-export const recipeItemsTable = pgTable("recipe_items", {
+export const subrecipesTable = pgTable("subrecipes", {
   id: uuid("id").primaryKey().defaultRandom(),
-  productId: uuid("product_id")
+  name: text("name").notNull(),
+  unit: text("unit").notNull().default("ud"),
+  yieldQuantity: numeric("yield_quantity", { precision: 10, scale: 4 })
     .notNull()
-    .references(() => productsTable.id, { onDelete: "cascade" }),
+    .default("1"),
+  notes: text("notes"),
+  active: boolean("active").notNull().default(true),
+  cost: numeric("cost", { precision: 10, scale: 4 }).notNull().default("0"),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+// ─── Sub-recipe items ─────────────────────────────────────────────────────────
+// One row per ingredient inside a sub-recipe.
+
+export const subrecipeItemsTable = pgTable("subrecipe_items", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  subrecipeId: uuid("subrecipe_id")
+    .notNull()
+    .references(() => subrecipesTable.id, { onDelete: "cascade" }),
   ingredientId: uuid("ingredient_id")
     .notNull()
     .references(() => ingredientsTable.id, { onDelete: "cascade" }),
@@ -72,18 +83,68 @@ export const recipeItemsTable = pgTable("recipe_items", {
     .default("0"),
 });
 
-// ─── Stock movements ──────────────────────────────────────────────────────────
-// Immutable ledger of every stock change.
-// movementType: 'purchase' | 'sale' | 'adjustment' | 'waste'
-// quantity: positive = stock in, negative = stock out
-// unitCost: cost per unit at the time of the movement (for FIFO / average cost)
+// ─── Ingredient cost history ───────────────────────────────────────────────────
+// Append-only log every time an ingredient's purchaseCost changes.
 
+export const ingredientCostHistoryTable = pgTable("ingredient_cost_history", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  ingredientId: uuid("ingredient_id")
+    .notNull()
+    .references(() => ingredientsTable.id),
+  previousCost: numeric("previous_cost", { precision: 10, scale: 4 }).notNull(),
+  newCost: numeric("new_cost", { precision: 10, scale: 4 }).notNull(),
+  supplierName: text("supplier_name"),
+  reason: text("reason"),
+  employeeId: uuid("employee_id").references(() => employeesTable.id),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+// ─── Recipe items ─────────────────────────────────────────────────────────────
+// One row per ingredient OR sub-recipe used in a product's recipe.
+// Exactly one of ingredientId / subrecipeId must be set (enforced at API level).
+// formatId: when set, this line belongs to a specific product format recipe;
+//           null = base product recipe.
+// packagingCost: extra cost for packaging on this line (e.g. pizza box).
+// additionalCost: any other direct cost not captured by the ingredient price.
+
+export const recipeItemsTable = pgTable("recipe_items", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  productId: uuid("product_id")
+    .notNull()
+    .references(() => productsTable.id, { onDelete: "cascade" }),
+  formatId: uuid("format_id").references(() => productFormatsTable.id, {
+    onDelete: "cascade",
+  }),
+  ingredientId: uuid("ingredient_id").references(() => ingredientsTable.id, {
+    onDelete: "cascade",
+  }),
+  subrecipeId: uuid("subrecipe_id").references(() => subrecipesTable.id, {
+    onDelete: "cascade",
+  }),
+  quantity: numeric("quantity", { precision: 10, scale: 4 })
+    .notNull()
+    .default("0"),
+  unit: text("unit").notNull().default("ud"),
+  wastePercent: numeric("waste_percent", { precision: 5, scale: 2 })
+    .notNull()
+    .default("0"),
+  packagingCost: numeric("packaging_cost", { precision: 10, scale: 4 })
+    .notNull()
+    .default("0"),
+  additionalCost: numeric("additional_cost", { precision: 10, scale: 4 })
+    .notNull()
+    .default("0"),
+});
+
+// ─── Stock movements ──────────────────────────────────────────────────────────
 export const stockMovementsTable = pgTable("stock_movements", {
   id: uuid("id").primaryKey().defaultRandom(),
   ingredientId: uuid("ingredient_id")
     .notNull()
     .references(() => ingredientsTable.id),
-  movementType: text("movement_type").notNull(), // purchase | sale | adjustment | waste
+  movementType: text("movement_type").notNull(),
   quantity: numeric("quantity", { precision: 10, scale: 4 }).notNull(),
   unitCost: numeric("unit_cost", { precision: 10, scale: 4 }),
   reason: text("reason").notNull().default(""),
@@ -97,5 +158,8 @@ export const stockMovementsTable = pgTable("stock_movements", {
 });
 
 export type Ingredient = typeof ingredientsTable.$inferSelect;
+export type Subrecipe = typeof subrecipesTable.$inferSelect;
+export type SubrecipeItem = typeof subrecipeItemsTable.$inferSelect;
+export type IngredientCostHistory = typeof ingredientCostHistoryTable.$inferSelect;
 export type RecipeItem = typeof recipeItemsTable.$inferSelect;
 export type StockMovement = typeof stockMovementsTable.$inferSelect;

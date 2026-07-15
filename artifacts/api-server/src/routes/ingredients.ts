@@ -5,6 +5,7 @@ import {
   recipeItemsTable,
   stockMovementsTable,
   productsTable,
+  ingredientCostHistoryTable,
 } from "@workspace/db";
 import { eq, and, ilike, or, desc, asc, gt, lte, sum, gte, sql } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
@@ -74,6 +75,7 @@ router.patch("/admin/ingredients/:id", requireAuth, requireRole("admin"), async 
   const {
     name, internalCode, unit, purchaseCost,
     currentStock, minStock, optimalStock, supplierName, allergenTags, active,
+    reason, // optional reason for cost change
   } = req.body as Record<string, unknown>;
 
   const [existing] = await db.select().from(ingredientsTable).where(eq(ingredientsTable.id, id));
@@ -113,6 +115,23 @@ router.patch("/admin/ingredients/:id", requireAuth, requireRole("admin"), async 
 
   if (!Object.keys(updates).length) { res.status(400).json({ error: "Sin cambios" }); return; }
   const [updated] = await db.update(ingredientsTable).set(updates as any).where(eq(ingredientsTable.id, id)).returning();
+
+  // Log purchaseCost change to history
+  if (
+    purchaseCost !== undefined &&
+    String(purchaseCost) !== String(existing.purchaseCost)
+  ) {
+    const user = (req as any).user;
+    await db.insert(ingredientCostHistoryTable).values({
+      ingredientId: id,
+      previousCost: String(existing.purchaseCost),
+      newCost: String(purchaseCost),
+      supplierName: (supplierName as string | undefined) ?? existing.supplierName ?? null,
+      reason: (reason as string | undefined) ?? null,
+      employeeId: user?.id ?? null,
+    });
+  }
+
   res.json(updated);
 });
 
@@ -127,7 +146,9 @@ router.delete("/admin/ingredients/:id", requireAuth, requireRole("admin"), async
 // Manual stock entry (purchase receipt)
 router.post("/admin/ingredients/:id/stock-in", requireAuth, requireRole("admin"), async (req, res): Promise<void> => {
   const id = req.params.id as string;
-  const { quantity, unitCost, reason = "Entrada de mercancía" } = req.body as {
+  const {
+    quantity, unitCost, reason = "Entrada de mercancía",
+  } = req.body as {
     quantity: string; unitCost?: string; reason?: string;
   };
 
@@ -142,6 +163,8 @@ router.post("/admin/ingredients/:id/stock-in", requireAuth, requireRole("admin")
   const newStock = parseFloat(String(ingredient.currentStock)) + parseFloat(String(quantity));
   const costToUse = unitCost ?? ingredient.purchaseCost;
 
+  const prevCost = ingredient.purchaseCost;
+
   await db.transaction(async (tx) => {
     await tx.update(ingredientsTable)
       .set({ currentStock: String(newStock), updatedAt: new Date() })
@@ -155,10 +178,19 @@ router.post("/admin/ingredients/:id/stock-in", requireAuth, requireRole("admin")
       employeeId: user?.id ?? null,
     });
     // Update purchaseCost if a new one was provided
-    if (unitCost) {
+    if (unitCost && unitCost !== prevCost) {
       await tx.update(ingredientsTable)
         .set({ purchaseCost: String(unitCost), updatedAt: new Date() })
         .where(eq(ingredientsTable.id, id));
+      // Log cost history
+      await tx.insert(ingredientCostHistoryTable).values({
+        ingredientId: id,
+        previousCost: prevCost,
+        newCost: String(unitCost),
+        supplierName: ingredient.supplierName ?? null,
+        reason: `Stock-in: ${reason}`,
+        employeeId: user?.id ?? null,
+      });
     }
   });
 
@@ -300,7 +332,7 @@ router.post("/admin/stock/inventory-count", requireAuth, requireRole("admin"), a
 // ── GET /admin/stock/product-availability ─────────────────────────────────────
 // Returns each product's stock availability (all recipe ingredients > 0).
 router.get("/admin/stock/product-availability", requireAuth, async (req, res): Promise<void> => {
-  // Fetch all recipe ingredient requirements joined with current stock
+  // Fetch all recipe ingredient requirements joined with current stock (ingredient lines only)
   const recipeRows = await db
     .select({
       productId: recipeItemsTable.productId,
