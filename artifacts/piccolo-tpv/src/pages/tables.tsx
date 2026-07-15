@@ -129,7 +129,7 @@ function ElementShape({ el }: { el: CanvasElement }) {
 const ZOOM_STEP = 0.1;
 const ZOOM_MIN = 0.2;
 const ZOOM_MAX = 2.0;
-const ZOOM_STORAGE_KEY = "piccolo_floor_zoom";
+const ZOOM_STORAGE_PREFIX  = "piccolo_floor_zoom_";
 const SCROLL_STORAGE_PREFIX = "piccolo_floor_scroll_";
 
 // SVG grid background
@@ -263,19 +263,19 @@ export default function Tables() {
   const [employeeName, setEmployeeName] = useState<string>("");
   const [employeeRole, setEmployeeRole] = useState<string>("");
 
-  // Zoom state — persisted per session
-  const [zoom, setZoom] = useState<number>(() => {
-    try {
-      const saved = sessionStorage.getItem(ZOOM_STORAGE_KEY);
-      const parsed = saved ? parseFloat(saved) : NaN;
-      return !isNaN(parsed) && parsed >= ZOOM_MIN && parsed <= ZOOM_MAX ? parsed : 1;
-    } catch { return 1; }
-  });
+  // Zoom state — persisted per zone; starts at 1× until the first zone activates
+  const [zoom, setZoom] = useState<number>(1);
+  // Tracks the zone whose zoom is currently loaded, so persistZoom always
+  // writes to the right key even when called from gesture handlers.
+  const currentZoneIdRef = useRef<string | null>(null);
 
   const persistZoom = useCallback((z: number) => {
     const clamped = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, parseFloat(z.toFixed(2))));
     setZoom(clamped);
-    try { sessionStorage.setItem(ZOOM_STORAGE_KEY, String(clamped)); } catch { /* ignore */ }
+    const zoneId = currentZoneIdRef.current;
+    if (zoneId) {
+      try { sessionStorage.setItem(ZOOM_STORAGE_PREFIX + zoneId, String(clamped)); } catch { /* ignore */ }
+    }
     return clamped;
   }, []);
 
@@ -490,10 +490,20 @@ export default function Tables() {
     setActiveZone(zoneId);
   }, [activeZone, saveScrollForZone]);
 
-  // After the active zone changes, restore the saved scroll position.
-  // We use rAF so the browser has painted the new zone's content first.
+  // After the active zone changes, restore the saved zoom and scroll position.
+  // Zoom is restored synchronously so the canvas scales before the scroll is
+  // applied; scroll uses rAF so the browser has painted the new content first.
   useEffect(() => {
     if (!activeZone) return;
+    // Update the ref so persistZoom always writes to the correct zone key.
+    currentZoneIdRef.current = activeZone;
+    // Restore per-zone zoom (fall back to 1× if no saved level).
+    try {
+      const raw = sessionStorage.getItem(ZOOM_STORAGE_PREFIX + activeZone);
+      const parsed = raw ? parseFloat(raw) : NaN;
+      setZoom(!isNaN(parsed) && parsed >= ZOOM_MIN && parsed <= ZOOM_MAX ? parsed : 1);
+    } catch { setZoom(1); }
+    // Restore per-zone scroll position.
     const id = requestAnimationFrame(() => restoreScrollForZone(activeZone));
     return () => cancelAnimationFrame(id);
   }, [activeZone, restoreScrollForZone]);
