@@ -265,7 +265,7 @@ export default function Tables() {
     setZoom(clamped);
     const zoneId = currentZoneIdRef.current;
     if (zoneId) {
-      try { sessionStorage.setItem(ZOOM_STORAGE_PREFIX + zoneId, String(clamped)); } catch { /* ignore */ }
+      try { localStorage.setItem(ZOOM_STORAGE_PREFIX + zoneId, String(clamped)); } catch { /* ignore */ }
     }
     return clamped;
   }, []);
@@ -535,22 +535,32 @@ export default function Tables() {
   }, [activeZone, saveScrollForZone]);
 
   // After the active zone changes, restore the saved zoom and scroll position.
-  // Zoom is restored synchronously so the canvas scales before the scroll is
-  // applied; scroll uses rAF so the browser has painted the new content first.
+  // • If a zoom level was previously saved (localStorage) → restore it, then restore scroll.
+  // • If no saved zoom (first visit to this zone) → auto-fit the canvas to fill the viewport.
+  //   handleFit calls persistZoom which writes to localStorage, so subsequent visits restore it.
   useEffect(() => {
     if (!activeZone) return;
     // Update the ref so persistZoom always writes to the correct zone key.
     currentZoneIdRef.current = activeZone;
-    // Restore per-zone zoom (fall back to 1× if no saved level).
+
+    let rafId: number;
     try {
-      const raw = sessionStorage.getItem(ZOOM_STORAGE_PREFIX + activeZone);
+      const raw = localStorage.getItem(ZOOM_STORAGE_PREFIX + activeZone);
       const parsed = raw ? parseFloat(raw) : NaN;
-      setZoom(!isNaN(parsed) && parsed >= ZOOM_MIN && parsed <= ZOOM_MAX ? parsed : 1);
-    } catch { setZoom(1); }
-    // Restore per-zone scroll position.
-    const id = requestAnimationFrame(() => restoreScrollForZone(activeZone));
-    return () => cancelAnimationFrame(id);
-  }, [activeZone, restoreScrollForZone]);
+      if (!isNaN(parsed) && parsed >= ZOOM_MIN && parsed <= ZOOM_MAX) {
+        // Saved zoom found — restore it synchronously, then restore scroll position.
+        setZoom(parsed);
+        rafId = requestAnimationFrame(() => restoreScrollForZone(activeZone));
+      } else {
+        // First visit to this zone — fit the canvas to fill the viewport.
+        // handleFit persists the fit zoom so the next visit (including after reload) restores it.
+        rafId = requestAnimationFrame(() => handleFit());
+      }
+    } catch {
+      rafId = requestAnimationFrame(() => handleFit());
+    }
+    return () => cancelAnimationFrame(rafId);
+  }, [activeZone, restoreScrollForZone, handleFit]);
 
   // No explicit layout param — server returns tables for the zone's active layout
   const { data: tables, isLoading: loadingTables } = useGetZoneTables(
@@ -590,13 +600,8 @@ export default function Tables() {
     return undefined;
   }, [loadingTables, activeZone, restoreScrollForZone]);
 
-  // Auto-fit on first tables load so the full floor plan is visible immediately
-  const didAutoFit = useRef(false);
-  useEffect(() => {
-    if (!tables?.length || didAutoFit.current) return;
-    didAutoFit.current = true;
-    requestAnimationFrame(() => handleFit());
-  }, [tables, handleFit]);
+  // Auto-fit is now handled per-zone in the zone restore effect above.
+  // No global didAutoFit needed — each zone auto-fits on its first visit.
 
   // Keep a ref to the active zone so the socket handler always reads the
   // latest value without needing to reconnect when the zone changes.
