@@ -200,6 +200,7 @@ export default function OrderPage() {
   const [activeAlert, setActiveAlert] = useState<any | null>(null);
   const [remotelyUpdated, setRemotelyUpdated] = useState(false);
   const [remoteUpdatedBy, setRemoteUpdatedBy] = useState<string | null>(null);
+  const [socketConnected, setSocketConnected] = useState(true);
   const suppressNextRefresh = useRef(false);
   const suppressTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const remotelyUpdatedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -277,6 +278,10 @@ export default function OrderPage() {
       reconnectionDelay: 1000,
       reconnectionDelayMax: 30000,
     });
+
+    // Track connection state for the reconnecting indicator.
+    socket.on('connect', () => setSocketConnected(true));
+    socket.on('disconnect', () => setSocketConnected(false));
 
     // After any reconnect, suppress the "remotely updated" banner (it's our own
     // reconnect) and re-fetch fresh data.
@@ -577,6 +582,12 @@ export default function OrderPage() {
           </div>
 
           <div className="flex items-center gap-2">
+            {!socketConnected && (
+              <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold text-amber-400 bg-amber-500/10 border border-amber-500/20 select-none">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse shrink-0" />
+                Reconectando…
+              </span>
+            )}
             {showBillBadge && (
               <button
                 onClick={handleCancelBill}
