@@ -123,6 +123,13 @@ describe("POST /api/orders/:orderId/items — add item emits orders:refresh", ()
   beforeEach(() => {
     vi.clearAllMocks();
     process.env["SESSION_SECRET"] = "test-secret";
+    // Default: any unmocked DB call returns an empty chain so the route
+    // doesn't throw when it hits optional queries (modifiers, audit log,
+    // prefactura status, ingredient stock) that tests don't need to assert on.
+    mockDb.select.mockImplementation(() => makeChain([]));
+    mockDb.insert.mockImplementation(() => makeChain([]));
+    mockDb.update.mockImplementation(() => makeChain([]));
+    mockDb.delete.mockImplementation(() => makeChain([]));
   });
 
   it("emits orders:refresh with the correct orderId after adding an item", async () => {
@@ -176,6 +183,10 @@ describe("DELETE /api/order-items/:itemId — remove item emits orders:refresh",
   beforeEach(() => {
     vi.clearAllMocks();
     process.env["SESSION_SECRET"] = "test-secret";
+    mockDb.select.mockImplementation(() => makeChain([]));
+    mockDb.insert.mockImplementation(() => makeChain([]));
+    mockDb.update.mockImplementation(() => makeChain([]));
+    mockDb.delete.mockImplementation(() => makeChain([]));
   });
 
   it("emits orders:refresh with the correct orderId after deleting a draft item", async () => {
@@ -332,6 +343,10 @@ describe("orders:refresh employeeName — name always comes from the JWT, never 
   beforeEach(() => {
     vi.clearAllMocks();
     process.env["SESSION_SECRET"] = "test-secret";
+    mockDb.select.mockImplementation(() => makeChain([]));
+    mockDb.insert.mockImplementation(() => makeChain([]));
+    mockDb.update.mockImplementation(() => makeChain([]));
+    mockDb.delete.mockImplementation(() => makeChain([]));
   });
 
   it("carries the name from the JWT in the orders:refresh payload (add-item path)", async () => {
@@ -409,6 +424,10 @@ describe("Two-session live sync — end-to-end scenario", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     process.env["SESSION_SECRET"] = "test-secret";
+    mockDb.select.mockImplementation(() => makeChain([]));
+    mockDb.insert.mockImplementation(() => makeChain([]));
+    mockDb.update.mockImplementation(() => makeChain([]));
+    mockDb.delete.mockImplementation(() => makeChain([]));
   });
 
   it("add-item path: Device A adds, orders:refresh reaches Device B's listener", async () => {

@@ -9,6 +9,7 @@ import {
   unique,
   uuid,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { employeesTable } from "./employees";
 import { ordersTable } from "./orders";
 
@@ -183,3 +184,20 @@ export const documentReprintsTable = pgTable("document_reprints", {
 });
 
 export type DocumentReprint = typeof documentReprintsTable.$inferSelect;
+
+// ---------------------------------------------------------------------------
+// Prefactura Prints (internal audit — NOT a fiscal document)
+// ---------------------------------------------------------------------------
+
+export const prefacturaPrintsTable = pgTable("prefactura_prints", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orderId: uuid("order_id").notNull().references(() => ordersTable.id),
+  /** Consecutive internal number from prefactura_number_seq — independent of invoice numbering */
+  prefacturaNumber: integer("prefactura_number").notNull().default(sql`nextval('prefactura_number_seq')`),
+  employeeId: uuid("employee_id").references(() => employeesTable.id),
+  employeeName: text("employee_name").notNull().default(""),
+  amount: numeric("amount", { precision: 10, scale: 2 }),
+  printedAt: timestamp("printed_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type PrefacturaPrint = typeof prefacturaPrintsTable.$inferSelect;

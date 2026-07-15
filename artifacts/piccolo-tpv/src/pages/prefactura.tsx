@@ -1,16 +1,19 @@
-import React, { useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useLocation } from 'wouter';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   useGetOrderPaymentSummary,
   useGetBusinessConfig,
   useGetDocumentTemplates,
-  useCreateReprint,
+  useCreatePrefacturaPrint,
+  useGetPrefacturaStatus,
   getGetOrderPaymentSummaryQueryKey,
   getGetBusinessConfigQueryKey,
   getGetDocumentTemplatesQueryKey,
+  getGetPrefacturaStatusQueryKey,
 } from '@workspace/api-client-react';
-import { Loader2, ChevronLeft, Printer, CreditCard, RefreshCw } from 'lucide-react';
-import type { TaxBreakdownItem } from '@workspace/api-client-react';
+import { Loader2, ChevronLeft, Printer, CreditCard, RefreshCw, AlertTriangle } from 'lucide-react';
+import type { TaxBreakdownItem, PrefacturaPrintResult } from '@workspace/api-client-react';
 import { toast } from 'sonner';
 
 // Helper: parse employee id from localStorage
@@ -21,7 +24,7 @@ function getEmployeeId(): string | undefined {
 export default function Prefactura() {
   const { orderId } = useParams<{ orderId: string }>();
   const [, setLocation] = useLocation();
-  const printedRef = useRef(false);
+  const queryClient = useQueryClient();
 
   const { data: summary, isLoading } = useGetOrderPaymentSummary(orderId!, {
     query: { enabled: !!orderId, queryKey: getGetOrderPaymentSummaryQueryKey(orderId!) },
@@ -32,7 +35,16 @@ export default function Prefactura() {
   const { data: templates = [] } = useGetDocumentTemplates({ documentType: 'prefactura' }, {
     query: { queryKey: getGetDocumentTemplatesQueryKey({ documentType: 'prefactura' }) },
   });
-  const createReprint = useCreateReprint();
+
+  // Persistent print state from the server
+  const { data: prefacturaStatus, refetch: refetchStatus } = useGetPrefacturaStatus(orderId!, {
+    query: {
+      enabled: !!orderId,
+      queryKey: getGetPrefacturaStatusQueryKey(orderId!),
+      refetchOnWindowFocus: true,
+    },
+  });
+  const createPrint = useCreatePrefacturaPrint();
 
   const now = new Date().toLocaleString('es-ES');
 
@@ -46,24 +58,45 @@ export default function Prefactura() {
     : (cfg.fontFamily as string) === 'serif' ? 'Georgia, serif'
     : '"Courier New", Courier, monospace';
 
-  const logPrint = (isReprint = false) => {
-    const ticketId = (summary as any)?.ticket?.id;
-    if (!ticketId && !orderId) return;
-    createReprint.mutate({
-      data: {
-        documentId: ticketId ?? orderId!,
-        documentType: 'prefactura',
-        reason: isReprint ? 'Reimpresión manual' : 'Impresión inicial',
-      },
-    }, { onError: () => {} });
-  };
+  // pendingPrint holds the API response while we wait for a re-render so the
+  // correct P-XXXX appears in the DOM before window.print() opens the dialog.
+  const [pendingPrint, setPendingPrint] = useState<PrefacturaPrintResult | null>(null);
+
+  // Derived display values: prefer the fresh mutation result so the document
+  // shows the assigned code even before the status query has re-fetched.
+  const hasPrinted = pendingPrint?.isReprint !== undefined ? pendingPrint.isReprint : (prefacturaStatus?.hasPrinted ?? false);
+  const prefacturaCode = pendingPrint?.prefacturaCode ?? prefacturaStatus?.prefacturaCode ?? null;
+
+  // After pendingPrint is committed to state (React has re-rendered), open the
+  // print dialog so the correct P-XXXX is guaranteed to appear in the output.
+  useEffect(() => {
+    if (!pendingPrint) return;
+    // requestAnimationFrame ensures the browser has painted the new DOM.
+    const raf = requestAnimationFrame(() => {
+      window.print();
+      queryClient.invalidateQueries({ queryKey: getGetPrefacturaStatusQueryKey(orderId!) });
+      refetchStatus();
+      setPendingPrint(null);
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [pendingPrint, orderId, queryClient, refetchStatus]);
 
   const handlePrint = () => {
-    logPrint(printedRef.current);
-    printedRef.current = true;
-    window.print();
-    toast.success(printedRef.current ? 'Reimpresión registrada' : 'Impresión registrada');
+    createPrint.mutate({ orderId: orderId! }, {
+      onSuccess: (result: PrefacturaPrintResult) => {
+        toast.success(result.isReprint ? `Reimpresión prefactura ${result.prefacturaCode} registrada` : `Prefactura ${result.prefacturaCode} registrada`);
+        // Store result → triggers useEffect above after re-render
+        setPendingPrint(result);
+      },
+      onError: (err: any) => {
+        const msg = err?.response?.data?.error ?? 'Error al registrar la impresión';
+        toast.error(msg);
+      },
+    });
   };
+
+  // 409 = order already paid, show a specific error state
+  const orderIsPaid = (summary as any)?.order?.status === 'paid';
 
   if (isLoading || !summary) {
     return (
@@ -118,14 +151,40 @@ export default function Prefactura() {
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-4 md:p-8 flex flex-col items-center">
 
+          {/* Reprint banner — shown when a prefactura was already printed for this order */}
+          {hasPrinted && (
+            <div className="w-full max-w-sm mb-4 flex items-start gap-2 bg-amber-500/10 border border-amber-500/40 rounded-xl px-4 py-3">
+              <AlertTriangle size={16} className="text-amber-400 shrink-0 mt-0.5" />
+              <div>
+                <p className="text-amber-400 font-black text-sm uppercase tracking-wide leading-tight">
+                  Reimpresión de prefactura
+                </p>
+                <p className="text-amber-400/80 text-xs font-semibold mt-0.5">
+                  {prefacturaCode} · {prefacturaStatus?.totalPrints ?? 0} impresión(es) registrada(s)
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Paid error state */}
+          {orderIsPaid && (
+            <div className="w-full max-w-sm mb-4 flex items-start gap-2 bg-red-500/10 border border-red-500/40 rounded-xl px-4 py-3">
+              <AlertTriangle size={16} className="text-red-400 shrink-0 mt-0.5" />
+              <p className="text-red-400 font-bold text-sm leading-tight">
+                Esta comanda ya ha sido cobrada. No se puede generar una nueva prefactura.
+              </p>
+            </div>
+          )}
+
           {/* Action buttons */}
           <div className="flex gap-3 mb-8 w-full max-w-sm">
             <button
               onClick={handlePrint}
-              className="flex-1 py-4 bg-secondary text-foreground font-black uppercase tracking-wider rounded-xl border-2 border-border hover:border-primary/40 hover:-translate-y-0.5 active:scale-95 transition-all flex items-center justify-center gap-2 text-sm"
+              disabled={createPrint.isPending || orderIsPaid}
+              className="flex-1 py-4 bg-secondary text-foreground font-black uppercase tracking-wider rounded-xl border-2 border-border hover:border-primary/40 hover:-translate-y-0.5 active:scale-95 transition-all flex items-center justify-center gap-2 text-sm disabled:opacity-50 disabled:pointer-events-none"
             >
-              {printedRef.current ? <RefreshCw size={16} /> : <Printer size={18} />}
-              {printedRef.current ? 'Reimprimir' : 'Imprimir'}
+              {createPrint.isPending ? <Loader2 size={16} className="animate-spin" /> : hasPrinted ? <RefreshCw size={16} /> : <Printer size={18} />}
+              {hasPrinted ? 'Reimprimir' : 'Imprimir'}
             </button>
             <button
               onClick={() => setLocation(`/cobro/${orderId}`)}
@@ -153,7 +212,7 @@ export default function Prefactura() {
               {/* PREFACTURA disclaimer box — MANDATORY, cannot be hidden */}
               <div className="border-2 border-dashed border-amber-600 rounded-md px-3 py-2 mb-4 mt-3 text-center bg-amber-50">
                 <div className="font-black text-base text-amber-700 uppercase tracking-widest leading-none">
-                  PREFACTURA
+                  {hasPrinted ? 'REIMPRESIÓN DE PREFACTURA' : 'PREFACTURA'}
                 </div>
                 <div className="text-[10px] text-amber-800 font-bold mt-1 leading-tight">
                   DOCUMENTO NO VÁLIDO COMO FACTURA
@@ -164,6 +223,7 @@ export default function Prefactura() {
 
               {/* Order meta */}
               <div className="mb-4 space-y-0.5 font-semibold text-gray-800 text-xs">
+                {prefacturaCode && <div>Nº prefactura: <span className="font-black text-black">{prefacturaCode}</span></div>}
                 <div>Mesa: <span className="font-black text-black">{order.tableName}</span></div>
                 <div>Atiende: {order.employeeName}</div>
                 <div>Fecha: {now}</div>
@@ -268,7 +328,9 @@ export default function Prefactura() {
 
         {/* Disclaimer box — always printed */}
         <div className="border border-dashed border-black px-2 py-1 mb-2 mt-1 text-center">
-          <div className="font-black text-sm uppercase tracking-widest">PREFACTURA</div>
+          <div className="font-black text-sm uppercase tracking-widest">
+            {hasPrinted ? 'REIMPRESIÓN DE PREFACTURA' : 'PREFACTURA'}
+          </div>
           <div className="text-[9px] font-bold leading-tight mt-0.5">
             DOCUMENTO NO VÁLIDO COMO FACTURA
           </div>
@@ -277,6 +339,7 @@ export default function Prefactura() {
         <div className="border-b border-dashed border-black mb-2" />
 
         <div className="mb-2 text-[11px]">
+          {prefacturaCode && <div>Nº: {prefacturaCode}</div>}
           <div>Mesa: {order.tableName}</div>
           <div>Atiende: {order.employeeName}</div>
           <div>Fecha: {now}</div>

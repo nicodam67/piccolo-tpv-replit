@@ -11,8 +11,9 @@ import {
   orderItemModifiersTable,
   waiterNotificationsTable,
   auditLogTable,
+  prefacturaPrintsTable,
 } from "@workspace/db";
-import { eq, and, inArray, desc, sql } from "drizzle-orm";
+import { eq, and, inArray, desc, asc, sql } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import { recipeItemsTable, ingredientsTable, stockMovementsTable } from "@workspace/db";
 import { getIO } from "../lib/socket";
@@ -329,6 +330,18 @@ router.post("/orders/:orderId/items", requireAuth, async (req, res): Promise<voi
 
   await writeAudit(orderId, req.user?.id, req.user?.name ?? "", "add_item",
     `Añadido: ${product.name}${resolvedFormatName ? ` [${resolvedFormatName}]` : ""}`);
+
+  // Log modification after prefactura if one was already printed
+  const [existingPrintAdd] = await db
+    .select({ id: prefacturaPrintsTable.id })
+    .from(prefacturaPrintsTable)
+    .where(eq(prefacturaPrintsTable.orderId, orderId))
+    .limit(1);
+  if (existingPrintAdd) {
+    await writeAudit(orderId, req.user?.id, req.user?.name ?? "", "modified_after_prefactura",
+      `Comanda modificada tras prefactura: ${product.name} añadido`);
+  }
+
   emitRefresh(orderId, req.user?.name);
 
   res.status(201).json({
@@ -398,6 +411,17 @@ router.patch("/order-items/:itemId", requireAuth, async (req, res): Promise<void
     .select({ name: productsTable.name })
     .from(productsTable)
     .where(eq(productsTable.id, item.productId));
+
+  // Log modification after prefactura if one was already printed
+  const [existingPrint] = await db
+    .select({ id: prefacturaPrintsTable.id })
+    .from(prefacturaPrintsTable)
+    .where(eq(prefacturaPrintsTable.orderId, item.orderId))
+    .limit(1);
+  if (existingPrint) {
+    await writeAudit(item.orderId, req.user?.id, req.user?.name ?? "", "modified_after_prefactura",
+      `Comanda modificada tras prefactura: ${product?.name ?? "ítem"} actualizado`);
+  }
 
   emitRefresh(item.orderId, req.user?.name);
   res.json({ ...updated, productName: product?.name ?? "", modifiers: itemModifiers });
@@ -486,6 +510,18 @@ router.delete("/order-items/:itemId", requireAuth, async (req, res): Promise<voi
 
   await writeAudit(item.order_items.orderId, req.user?.id, req.user?.name ?? "", "cancel_item",
     `Anulado: ${item.products.name}`);
+
+  // Log modification after prefactura if one was already printed
+  const [existingPrintDel] = await db
+    .select({ id: prefacturaPrintsTable.id })
+    .from(prefacturaPrintsTable)
+    .where(eq(prefacturaPrintsTable.orderId, item.order_items.orderId))
+    .limit(1);
+  if (existingPrintDel) {
+    await writeAudit(item.order_items.orderId, req.user?.id, req.user?.name ?? "", "modified_after_prefactura",
+      `Comanda modificada tras prefactura: ${item.products.name} eliminado`);
+  }
+
   emitRefresh(item.order_items.orderId, req.user?.name);
 
   res.status(204).send();
@@ -577,6 +613,107 @@ router.post("/orders/:orderId/send", requireAuth, async (req, res): Promise<void
   } catch { /* ignore */ }
 
   res.json(updated);
+});
+
+// ── POST /orders/:orderId/prefactura/print ─────────────────────────────────────
+
+router.post("/orders/:orderId/prefactura/print", requireAuth, async (req, res): Promise<void> => {
+  const orderId = req.params.orderId as string;
+
+  const [order] = await db
+    .select({ status: ordersTable.status })
+    .from(ordersTable)
+    .where(eq(ordersTable.id, orderId));
+
+  if (!order) { res.status(404).json({ error: "Pedido no encontrado" }); return; }
+  if (order.status === "paid") {
+    res.status(409).json({ error: "Esta comanda ya ha sido cobrada. No se puede generar una nueva prefactura." });
+    return;
+  }
+
+  // Compute current total from items (outside transaction — read-only, no contention)
+  const items = await db
+    .select({ unitPrice: orderItemsTable.unitPrice, quantity: orderItemsTable.quantity })
+    .from(orderItemsTable)
+    .where(eq(orderItemsTable.orderId, orderId));
+  const amount = items.reduce((s, it) => s + parseFloat(it.unitPrice) * it.quantity, 0);
+
+  // Atomic first-print assignment: lock the order row so two concurrent
+  // first-print requests can never assign different P-XXXX numbers to the same
+  // order.  Inside the transaction:
+  //   • SELECT FOR UPDATE serializes concurrent prints for the same order.
+  //   • We check existing prints and either reuse the first number or call
+  //     nextval() to get a brand-new one — all within the same transaction.
+  const { prefacturaNumber, isReprint, totalPrints } = await db.transaction(async (tx) => {
+    // Lock the order row for the duration of this transaction
+    await tx.execute(sql`SELECT id FROM orders WHERE id = ${orderId} FOR UPDATE`);
+
+    const existingPrints = await tx
+      .select({ prefacturaNumber: prefacturaPrintsTable.prefacturaNumber })
+      .from(prefacturaPrintsTable)
+      .where(eq(prefacturaPrintsTable.orderId, orderId))
+      .orderBy(asc(prefacturaPrintsTable.printedAt));
+
+    const isReprint = existingPrints.length > 0;
+
+    let prefacturaNumber: number;
+    if (isReprint) {
+      // Reuse the number that was assigned on the very first print
+      prefacturaNumber = existingPrints[0].prefacturaNumber;
+    } else {
+      // Allocate a new consecutive number; nextval() is itself atomic
+      const seqResult = await tx.execute(sql`SELECT nextval('prefactura_number_seq') AS num`);
+      prefacturaNumber = Number((seqResult.rows[0] as Record<string, unknown>).num);
+    }
+
+    // Always insert one row so totalPrints is a true audit count
+    await tx.insert(prefacturaPrintsTable).values({
+      orderId,
+      prefacturaNumber,
+      employeeId: req.user?.id ?? null,
+      employeeName: req.user?.name ?? "",
+      amount: amount.toFixed(2),
+    });
+
+    return { prefacturaNumber, isReprint, totalPrints: existingPrints.length + 1 };
+  });
+
+  const action = isReprint ? "reprint_prefactura" : "print_prefactura";
+  const code = `P-${String(prefacturaNumber).padStart(4, "0")}`;
+  await writeAudit(orderId, req.user?.id, req.user?.name ?? "", action,
+    `${isReprint ? "Reimpresión" : "Impresión"} prefactura ${code}, importe: ${amount.toFixed(2)}€`);
+
+  res.status(201).json({
+    prefacturaNumber,
+    prefacturaCode: code,
+    isReprint,
+    totalPrints,
+    amount: amount.toFixed(2),
+  });
+});
+
+// ── GET /orders/:orderId/prefactura/status ─────────────────────────────────────
+
+router.get("/orders/:orderId/prefactura/status", requireAuth, async (req, res): Promise<void> => {
+  const orderId = req.params.orderId as string;
+
+  const prints = await db
+    .select()
+    .from(prefacturaPrintsTable)
+    .where(eq(prefacturaPrintsTable.orderId, orderId))
+    .orderBy(asc(prefacturaPrintsTable.printedAt));
+
+  const hasPrinted = prints.length > 0;
+  const firstPrint = prints[0] ?? null;
+  const lastPrint  = prints[prints.length - 1] ?? null;
+
+  res.json({
+    hasPrinted,
+    totalPrints: prints.length,
+    prefacturaNumber: firstPrint?.prefacturaNumber ?? null,
+    prefacturaCode: firstPrint ? `P-${String(firstPrint.prefacturaNumber).padStart(4, "0")}` : null,
+    lastPrintedAt: lastPrint?.printedAt?.toISOString() ?? null,
+  });
 });
 
 // ── GET /orders/:orderId/audit ─────────────────────────────────────────────────

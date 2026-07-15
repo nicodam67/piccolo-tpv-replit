@@ -4369,6 +4369,39 @@ export const getDeleteRecipeLineMutationOptions = <TError = ErrorType<ErrorRespo
 };
 export const useDeleteRecipeLine = <TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof deleteRecipeLine>>, TError, { lineId: string }, TContext>; request?: SecondParameter<typeof customFetch> }): UseMutationResult<Awaited<ReturnType<typeof deleteRecipeLine>>, TError, { lineId: string }, TContext> => useMutation(getDeleteRecipeLineMutationOptions(options));
 
+// ============================================================
+// PREFACTURA PRINT & STATUS
+// ============================================================
+
+// createPrefacturaPrint — POST /orders/:orderId/prefactura/print
+export const getCreatePrefacturaPrintUrl = (orderId: string) => `/api/orders/${orderId}/prefactura/print`;
+export const createPrefacturaPrint = async (orderId: string, options?: RequestInit): Promise<import('./api.schemas').PrefacturaPrintResult> =>
+  customFetch<import('./api.schemas').PrefacturaPrintResult>(getCreatePrefacturaPrintUrl(orderId), { ...options, method: 'POST', headers: { 'Content-Type': 'application/json', ...options?.headers } });
+export const getCreatePrefacturaPrintMutationOptions = <TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof createPrefacturaPrint>>, TError, { orderId: string }, TContext>; request?: SecondParameter<typeof customFetch> }): UseMutationOptions<Awaited<ReturnType<typeof createPrefacturaPrint>>, TError, { orderId: string }, TContext> => {
+  const mutationKey = ['createPrefacturaPrint'];
+  const { mutation: mutationOptions, request: requestOptions } = options ? (options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ? options : { ...options, mutation: { ...options.mutation, mutationKey } }) : { mutation: { mutationKey }, request: undefined };
+  const mutationFn: MutationFunction<Awaited<ReturnType<typeof createPrefacturaPrint>>, { orderId: string }> = (props) => { const { orderId } = props ?? {}; return createPrefacturaPrint(orderId, requestOptions); };
+  return { mutationFn, ...mutationOptions };
+};
+export const useCreatePrefacturaPrint = <TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof createPrefacturaPrint>>, TError, { orderId: string }, TContext>; request?: SecondParameter<typeof customFetch> }): UseMutationResult<Awaited<ReturnType<typeof createPrefacturaPrint>>, TError, { orderId: string }, TContext> => useMutation(getCreatePrefacturaPrintMutationOptions(options));
+
+// getPrefacturaStatus — GET /orders/:orderId/prefactura/status
+export const getGetPrefacturaStatusUrl = (orderId: string) => `/api/orders/${orderId}/prefactura/status`;
+export const getPrefacturaStatus = async (orderId: string, options?: RequestInit): Promise<import('./api.schemas').PrefacturaStatus> =>
+  customFetch<import('./api.schemas').PrefacturaStatus>(getGetPrefacturaStatusUrl(orderId), { ...options, method: 'GET' });
+export const getGetPrefacturaStatusQueryKey = (orderId: string) => [`/api/orders/${orderId}/prefactura/status`] as const;
+export const getGetPrefacturaStatusQueryOptions = <TData = Awaited<ReturnType<typeof getPrefacturaStatus>>, TError = ErrorType<ErrorResponse>>(orderId: string, options?: { query?: UseQueryOptions<Awaited<ReturnType<typeof getPrefacturaStatus>>, TError, TData>; request?: SecondParameter<typeof customFetch> }) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+  const queryKey = queryOptions?.queryKey ?? getGetPrefacturaStatusQueryKey(orderId);
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getPrefacturaStatus>>> = ({ signal }) => getPrefacturaStatus(orderId, { signal, ...requestOptions });
+  return { queryKey, queryFn, enabled: !!orderId, ...queryOptions } as UseQueryOptions<Awaited<ReturnType<typeof getPrefacturaStatus>>, TError, TData> & { queryKey: QueryKey };
+};
+export function useGetPrefacturaStatus<TData = Awaited<ReturnType<typeof getPrefacturaStatus>>, TError = ErrorType<ErrorResponse>>(orderId: string, options?: { query?: UseQueryOptions<Awaited<ReturnType<typeof getPrefacturaStatus>>, TError, TData>; request?: SecondParameter<typeof customFetch> }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetPrefacturaStatusQueryOptions(orderId, options);
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
 export const getGetCashSessionHistoryUrl = () => `/api/cash-sessions/history`;
 export const getCashSessionHistory = async (options?: RequestInit): Promise<import('./api.schemas').CashSessionHistoryItem[]> =>
   customFetch<import('./api.schemas').CashSessionHistoryItem[]>(getGetCashSessionHistoryUrl(), { ...options, method: 'GET' });

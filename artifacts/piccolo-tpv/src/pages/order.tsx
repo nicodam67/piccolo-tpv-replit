@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import {
   ChevronLeft, Trash2, Send, Clock, CheckCircle2, CircleDashed, Loader2, PenLine,
   Bell, Check, Plus, Minus, Receipt, Users, AlertTriangle, ChevronDown, Copy,
+  FileText, RefreshCw, History, ChevronUp,
 } from 'lucide-react';
 import {
   useGetTableOrder,
@@ -21,14 +22,19 @@ import {
   useDuplicateOrderItem,
   useGetProductModifiers,
   useGetProductFormats,
+  useGetPrefacturaStatus,
+  useGetOrderAudit,
   getGetTableOrderQueryKey,
   getGetCategoryProductsQueryKey,
   getGetAllTablesQueryKey,
   getGetDashboardSummaryQueryKey,
   getGetUnreadNotificationsQueryKey,
+  getGetPrefacturaStatusQueryKey,
+  getGetOrderAuditQueryKey,
   type Product,
   type ProductFormat,
   type ModifierGroup,
+  type AuditLogEntry,
 } from '@workspace/api-client-react';
 import { EditItemModal } from '../components/EditItemModal';
 import { EU_ALLERGENS, parseAllergens } from '../lib/allergens';
@@ -208,6 +214,7 @@ export default function OrderPage() {
   const [employeeName, setEmployeeName] = useState<string>('');
   const [editingItem, setEditingItem] = useState<any | null>(null);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   const [activeAlert, setActiveAlert] = useState<any | null>(null);
   const [remotelyUpdated, setRemotelyUpdated] = useState(false);
   const [remoteUpdatedBy, setRemoteUpdatedBy] = useState<string | null>(null);
@@ -278,6 +285,23 @@ export default function OrderPage() {
 
   const { data: notificationsData } = useGetUnreadNotifications({
     query: { enabled: !!employeeId, refetchInterval: 15000, queryKey: getGetUnreadNotificationsQueryKey() }
+  });
+
+  // Prefactura status — persistent, server-backed, updates on window focus
+  const { data: prefacturaStatus, refetch: refetchPrefacturaStatus } = useGetPrefacturaStatus(actualOrderId ?? '', {
+    query: {
+      enabled: !!actualOrderId,
+      queryKey: actualOrderId ? getGetPrefacturaStatusQueryKey(actualOrderId) : [],
+      refetchOnWindowFocus: true,
+    },
+  });
+
+  // Audit log — fetched lazily when the history panel is opened
+  const { data: auditEntries = [] } = useGetOrderAudit(actualOrderId ?? '', {
+    query: {
+      enabled: showHistory && !!actualOrderId,
+      queryKey: actualOrderId ? getGetOrderAuditQueryKey(actualOrderId) : [],
+    },
   });
   const markRead = useMarkNotificationRead();
   const handleMarkRead = (id: string) => {
@@ -557,6 +581,13 @@ export default function OrderPage() {
       },
       onError: () => { suppressNextRefresh.current = false; toast.error('Error al cancelar la cuenta'); }
     });
+  };
+
+  const handlePrintPrefactura = () => {
+    if (!actualOrderId) return;
+    // Navigate to prefactura WITHOUT changing the order status.
+    // The comanda remains fully open and editable on return.
+    setLocation(`/prefactura/${actualOrderId}`);
   };
 
   const allItems = order?.items || [];
@@ -935,14 +966,17 @@ export default function OrderPage() {
             Enviar Comanda
           </button>
 
-          {/* Cuenta button */}
-          {hasNonDraftItems && order?.status !== 'paid' && order?.status !== 'bill_requested' && (
+          {/* Imprimir prefactura — does NOT change order status */}
+          {hasNonDraftItems && order?.status !== 'paid' && (
             <button
-              onClick={handleRequestBill}
-              disabled={updateOrder.isPending}
-              className="w-full py-3.5 mt-2.5 bg-blue-600 text-white text-lg font-black uppercase tracking-wider rounded-xl active:scale-[0.98] transition-all flex items-center justify-center gap-2 shadow-[0_4px_12px_rgba(0,0,0,0.25)] hover:-translate-y-0.5 disabled:opacity-40"
+              onClick={handlePrintPrefactura}
+              className={`w-full py-3.5 mt-2.5 text-white text-lg font-black uppercase tracking-wider rounded-xl active:scale-[0.98] transition-all flex items-center justify-center gap-2 shadow-[0_4px_12px_rgba(0,0,0,0.25)] hover:-translate-y-0.5 ${prefacturaStatus?.hasPrinted ? 'bg-amber-600' : 'bg-blue-600'}`}
             >
-              <Receipt size={20} /> Cuenta
+              {prefacturaStatus?.hasPrinted ? <RefreshCw size={18} /> : <FileText size={18} />}
+              {prefacturaStatus?.hasPrinted ? 'Reimprimir prefactura' : 'Imprimir prefactura'}
+              {prefacturaStatus?.prefacturaCode && (
+                <span className="ml-1 text-xs bg-white/20 px-2 py-0.5 rounded-md font-black">{prefacturaStatus.prefacturaCode}</span>
+              )}
             </button>
           )}
 
@@ -964,6 +998,66 @@ export default function OrderPage() {
             >
               Cobrar
             </button>
+          )}
+
+          {/* History toggle */}
+          {actualOrderId && (
+            <button
+              onClick={() => setShowHistory(h => !h)}
+              className="w-full mt-3 flex items-center justify-between px-3 py-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-colors text-sm font-bold"
+            >
+              <span className="flex items-center gap-1.5"><History size={14} /> Historial</span>
+              {showHistory ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+            </button>
+          )}
+
+          {/* History timeline */}
+          {showHistory && (
+            <div className="mt-1 border border-border rounded-xl overflow-hidden">
+              {auditEntries.length === 0 ? (
+                <p className="text-xs text-muted-foreground text-center py-4 font-semibold">Sin eventos registrados</p>
+              ) : (
+                <div className="divide-y divide-border max-h-64 overflow-y-auto">
+                  {[...auditEntries].reverse().map((entry: AuditLogEntry) => {
+                    const label: Record<string, string> = {
+                      open_table: 'Mesa abierta',
+                      add_item: 'Producto añadido',
+                      cancel_item: 'Producto eliminado',
+                      duplicate_item: 'Producto duplicado',
+                      send_kds: 'Comanda enviada a cocina',
+                      bill_request: 'Cuenta solicitada',
+                      update_guests: 'Comensales actualizados',
+                      print_prefactura: 'Prefactura impresa',
+                      reprint_prefactura: 'Prefactura reimpresa',
+                      modified_after_prefactura: 'Comanda modificada tras prefactura',
+                      issue_ticket: 'Cuenta cobrada y cerrada',
+                      bill_paid: 'Cuenta cobrada',
+                    };
+                    const color: Record<string, string> = {
+                      print_prefactura: 'text-amber-500',
+                      reprint_prefactura: 'text-amber-400',
+                      modified_after_prefactura: 'text-orange-400',
+                      issue_ticket: 'text-green-500',
+                      bill_paid: 'text-green-500',
+                      cancel_item: 'text-red-400',
+                      send_kds: 'text-blue-400',
+                    };
+                    return (
+                      <div key={entry.id} className="px-3 py-2 flex flex-col gap-0.5">
+                        <span className={`text-xs font-black ${color[entry.action] ?? 'text-foreground'}`}>
+                          {label[entry.action] ?? entry.action}
+                        </span>
+                        {entry.details && <span className="text-[10px] text-muted-foreground leading-tight">{entry.details}</span>}
+                        <span className="text-[10px] text-muted-foreground/70">
+                          {new Date(entry.createdAt).toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' })}
+                          {entry.employeeName ? ` · ${entry.employeeName}` : ''}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           )}
 
           <div className="mt-4 text-center pb-1">

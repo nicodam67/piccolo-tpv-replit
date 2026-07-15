@@ -1257,6 +1257,23 @@ export interface UpdateRecipeLineInput {
   wastePercent?: string;
 }
 
+// ─── Prefactura print / status ────────────────────────────────────────────────
+export interface PrefacturaPrintResult {
+  prefacturaNumber: number;
+  prefacturaCode: string;
+  isReprint: boolean;
+  totalPrints: number;
+  amount: string;
+}
+
+export interface PrefacturaStatus {
+  hasPrinted: boolean;
+  totalPrints: number;
+  prefacturaNumber: number | null;
+  prefacturaCode: string | null;
+  lastPrintedAt: string | null;
+}
+
 // ─── Cash session history ─────────────────────────────────────────────────────
 export type CashSessionHistoryItem = {
   id: string;
