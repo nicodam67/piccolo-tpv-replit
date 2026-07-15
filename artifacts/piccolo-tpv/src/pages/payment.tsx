@@ -339,12 +339,14 @@ type SplitGroup = { label: string; items: { itemIndex: number; quantity: number 
 
 function SplitSheet({ orderId, items, remaining, onClose, onSplitCreated }: SplitSheetProps) {
   const createSplits = useCreateOrderSplits();
-  const [mode, setMode] = useState<'equal' | 'items'>('equal');
+  const [mode, setMode] = useState<'equal' | 'items' | 'custom'>('equal');
   const [numParts, setNumParts] = useState(2);
   const [groups, setGroups] = useState<SplitGroup[]>([
     { label: 'Comensal 1', items: [] },
     { label: 'Comensal 2', items: [] },
   ]);
+  // Per-diner amounts for "Importe libre" mode
+  const [customAmounts, setCustomAmounts] = useState<string[]>(['', '']);
   const [saving, setSaving] = useState(false);
 
   const adjustParts = (delta: number) => {
@@ -359,27 +361,34 @@ function SplitSheet({ orderId, items, remaining, onClose, onSplitCreated }: Spli
       }
       return prev.slice(0, next);
     });
+    setCustomAmounts(prev => {
+      if (next > prev.length) return [...prev, ...Array(next - prev.length).fill('')];
+      return prev.slice(0, next);
+    });
   };
 
   const equalAmount = remaining / numParts;
+
+  // Custom mode: running totals
+  const customTotal = customAmounts.reduce((s, v) => s + parseAmt(v), 0);
+  const customLeft  = remaining - customTotal;
+  const customAllAssigned = Math.abs(customLeft) < 0.01;
+
+  const canCreate =
+    mode === 'equal' ||
+    mode === 'items' ||
+    (mode === 'custom' && customAllAssigned && customAmounts.every(v => parseAmt(v) > 0));
 
   const handleCreate = async () => {
     setSaving(true);
     try {
       if (mode === 'equal') {
-        // Create groups with all items equally split (assign all items to group 0 placeholder; server just splits by amount)
-        const equalGroups = groups.map((g, i) => ({
-          label: g.label,
-          items: items.map(it => ({ orderItemId: it.id, quantity: it.quantity / numParts })),
-        }));
-        // For equal splits we send the groups but the frontend tracks by amount, not by item assignment
-        // We still persist them for tracking
         const res = await createSplits.mutateAsync({
           orderId,
           data: { groups: groups.map(g => ({ label: g.label, items: items.map(it => ({ orderItemId: it.id, quantity: it.quantity / numParts })) })) },
         });
         onSplitCreated(res);
-      } else {
+      } else if (mode === 'items') {
         const apiGroups = groups
           .filter(g => g.items.length > 0)
           .map(g => ({
@@ -390,9 +399,27 @@ function SplitSheet({ orderId, items, remaining, onClose, onSplitCreated }: Spli
             })),
           }));
         if (apiGroups.length === 0) {
-          toast.error('Asigna al menos un artículo'); return;
+          toast.error('Asigna al menos un artículo'); setSaving(false); return;
         }
         const res = await createSplits.mutateAsync({ orderId, data: { groups: apiGroups } });
+        onSplitCreated(res);
+      } else {
+        // Custom-amount mode: send explicit totals, no item fractions
+        if (customAmounts.some(v => parseAmt(v) <= 0)) {
+          toast.error('Introduce un importe válido para cada comensal'); setSaving(false); return;
+        }
+        if (!customAllAssigned) {
+          toast.error(
+            customLeft > 0
+              ? `Faltan ${fmt(customLeft)}€ por asignar`
+              : `Te has pasado ${fmt(Math.abs(customLeft))}€`
+          );
+          setSaving(false); return;
+        }
+        const res = await createSplits.mutateAsync({
+          orderId,
+          data: { groups: groups.map((g, i) => ({ label: g.label, total: customAmounts[i], items: [] })) },
+        });
         onSplitCreated(res);
       }
     } catch (e: any) {
@@ -433,15 +460,19 @@ function SplitSheet({ orderId, items, remaining, onClose, onSplitCreated }: Spli
         </div>
 
         <div className="flex-1 overflow-y-auto p-6 space-y-5">
-          {/* Mode */}
-          <div className="flex gap-2 p-1 bg-secondary rounded-xl">
+          {/* Mode selector — three tabs */}
+          <div className="flex gap-1 p-1 bg-secondary rounded-xl">
             <button onClick={() => setMode('equal')}
-              className={`flex-1 py-2.5 rounded-lg font-bold text-sm transition-all ${mode === 'equal' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground'}`}>
+              className={`flex-1 py-2.5 rounded-lg font-bold text-xs transition-all ${mode === 'equal' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground'}`}>
               Partes iguales
             </button>
             <button onClick={() => setMode('items')}
-              className={`flex-1 py-2.5 rounded-lg font-bold text-sm transition-all ${mode === 'items' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground'}`}>
+              className={`flex-1 py-2.5 rounded-lg font-bold text-xs transition-all ${mode === 'items' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground'}`}>
               Por artículos
+            </button>
+            <button onClick={() => setMode('custom')}
+              className={`flex-1 py-2.5 rounded-lg font-bold text-xs transition-all ${mode === 'custom' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground'}`}>
+              Importe libre
             </button>
           </div>
 
@@ -461,7 +492,7 @@ function SplitSheet({ orderId, items, remaining, onClose, onSplitCreated }: Spli
             </div>
           </div>
 
-          {/* Group labels */}
+          {/* Group rows: label + amount (equal preview or custom input) */}
           <div className="space-y-2">
             {groups.map((g, gi) => (
               <div key={gi} className="flex items-center gap-3">
@@ -471,9 +502,41 @@ function SplitSheet({ orderId, items, remaining, onClose, onSplitCreated }: Spli
                 {mode === 'equal' && (
                   <span className="font-mono font-black text-primary shrink-0">{fmt(equalAmount)}€</span>
                 )}
+                {mode === 'custom' && (
+                  <div className="relative shrink-0 w-28">
+                    <input
+                      type="number" step="0.01" min="0"
+                      value={customAmounts[gi] ?? ''}
+                      onChange={e => setCustomAmounts(prev => prev.map((v, i) => i === gi ? e.target.value : v))}
+                      placeholder="0.00"
+                      className="w-full bg-background border-2 border-border rounded-xl px-3 py-2 text-sm font-black font-mono text-right focus:outline-none focus:border-primary transition-colors pr-6"
+                    />
+                    <span className="absolute right-2 top-1/2 -translate-y-1/2 text-sm text-muted-foreground pointer-events-none">€</span>
+                  </div>
+                )}
               </div>
             ))}
           </div>
+
+          {/* Custom mode: running counter */}
+          {mode === 'custom' && (
+            <div className={`rounded-xl p-3 text-sm flex justify-between items-center border ${customAllAssigned ? 'bg-green-500/10 border-green-500/30' : 'bg-secondary/50 border-border'}`}>
+              <span className="text-muted-foreground font-semibold">Total asignado</span>
+              <div className="text-right">
+                <span className={`font-black font-mono ${customAllAssigned ? 'text-green-400' : 'text-primary'}`}>
+                  {fmt(customTotal)}€
+                </span>
+                <span className="text-muted-foreground font-mono text-xs"> / {fmt(remaining)}€</span>
+                {!customAllAssigned && Math.abs(customLeft) > 0.005 && (
+                  <div className="text-xs text-amber-400 font-bold mt-0.5">
+                    {customLeft > 0
+                      ? `Quedan ${fmt(customLeft)}€ sin asignar`
+                      : `Excedido en ${fmt(Math.abs(customLeft))}€`}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Item assignment mode */}
           {mode === 'items' && (
@@ -503,7 +566,7 @@ function SplitSheet({ orderId, items, remaining, onClose, onSplitCreated }: Spli
           <button onClick={onClose} className="flex-1 py-3 bg-secondary text-foreground font-bold rounded-xl text-sm">
             Cancelar
           </button>
-          <button onClick={handleCreate} disabled={saving}
+          <button onClick={handleCreate} disabled={saving || !canCreate}
             className="flex-1 py-3 bg-primary text-primary-foreground font-black rounded-xl text-sm flex items-center justify-center gap-2 disabled:opacity-50">
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Scissors size={16} />}
             Dividir
@@ -676,11 +739,15 @@ interface SplitPayModeProps {
   orderId: string;
   groups: SplitGroupWithItems[];
   terminal?: string;
+  /** Order-level totals for the persistent summary bar */
+  orderTotal: string;
+  orderPaid: string;
+  orderRemaining: string;
   onDone: () => void;
   onRefresh: () => void;
 }
 
-function SplitPayMode({ orderId, groups, terminal, onDone, onRefresh }: SplitPayModeProps) {
+function SplitPayMode({ orderId, groups, terminal, orderTotal, orderPaid, orderRemaining, onDone, onRefresh }: SplitPayModeProps) {
   const qc = useQueryClient();
   const addPayment   = useAddPayment();
   const markPaid     = useMarkSplitGroupPaid();
@@ -783,6 +850,25 @@ function SplitPayMode({ orderId, groups, terminal, onDone, onRefresh }: SplitPay
             <span className="ml-2 font-mono text-xs">{fmt(g.total)}€</span>
           </button>
         ))}
+      </div>
+
+      {/* Persistent order-level totals — always visible so staff can track
+          the overall balance while paying group by group. */}
+      <div className="grid grid-cols-3 gap-px bg-border shrink-0 border-b border-border">
+        <div className="bg-card px-3 py-2 text-center">
+          <p className="text-xs text-muted-foreground font-semibold">Total</p>
+          <p className="font-black font-mono text-sm">{fmt(orderTotal)}€</p>
+        </div>
+        <div className="bg-card px-3 py-2 text-center">
+          <p className="text-xs text-muted-foreground font-semibold">Cobrado</p>
+          <p className="font-black font-mono text-sm text-green-400">{fmt(orderPaid)}€</p>
+        </div>
+        <div className="bg-card px-3 py-2 text-center">
+          <p className="text-xs text-muted-foreground font-semibold">Pendiente</p>
+          <p className={`font-black font-mono text-sm ${parseAmt(orderRemaining) <= 0.001 ? 'text-green-400' : 'text-primary'}`}>
+            {fmt(Math.max(0, parseAmt(orderRemaining)))}€
+          </p>
+        </div>
       </div>
 
       {group && (
@@ -1095,6 +1181,9 @@ export default function Payment() {
             orderId={orderId!}
             groups={splitGroups}
             terminal={terminal || undefined}
+            orderTotal={total}
+            orderPaid={paid}
+            orderRemaining={remaining}
             onRefresh={() => { refetchSplits(); queryClient.invalidateQueries({ queryKey: getGetOrderSplitsQueryKey(orderId!) }); }}
             onDone={() => {
               setSplitGroups(null);

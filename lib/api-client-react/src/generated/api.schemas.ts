@@ -1086,6 +1086,8 @@ export type CreateSplitGroupsInputGroupItem = {
 
 export type CreateSplitGroupsInputGroup = {
   label: string;
+  /** Optional explicit total for custom-amount splits (no item fractions needed). */
+  total?: string;
   items: CreateSplitGroupsInputGroupItem[];
 };
 

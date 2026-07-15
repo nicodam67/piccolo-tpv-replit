@@ -84,7 +84,13 @@ router.post("/orders/:id/splits", requireAuth, async (req, res): Promise<void> =
   }
 
   const { groups } = req.body as {
-    groups: { label: string; items: { orderItemId: string; quantity: number }[] }[];
+    groups: {
+      label: string;
+      /** Optional explicit total — used by custom-amount splits where the
+       *  frontend assigns a fixed amount per person without item fractions. */
+      total?: string | number;
+      items: { orderItemId: string; quantity: number }[];
+    }[];
   };
 
   if (!Array.isArray(groups) || groups.length === 0) {
@@ -113,17 +119,22 @@ router.post("/orders/:id/splits", requireAuth, async (req, res): Promise<void> =
     for (let i = 0; i < groups.length; i++) {
       const g = groups[i];
 
-      // Calculate group total
-      let total = 0;
+      // Calculate group total from items; override with explicit total when provided
+      // (used by custom-amount splits where item fractions are not relevant).
+      let computedTotal = 0;
       for (const item of g.items) {
         const [oi] = await tx
           .select({ unitPrice: orderItemsTable.unitPrice })
           .from(orderItemsTable)
           .where(eq(orderItemsTable.id, item.orderItemId));
         if (oi) {
-          total += parseFloat(oi.unitPrice) * item.quantity;
+          computedTotal += parseFloat(oi.unitPrice) * item.quantity;
         }
       }
+      const total =
+        g.total != null && parseFloat(String(g.total)) > 0
+          ? parseFloat(String(g.total))
+          : computedTotal;
 
       const [group] = await tx
         .insert(splitGroupsTable)

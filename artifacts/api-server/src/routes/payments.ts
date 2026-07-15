@@ -26,7 +26,7 @@ const router: IRouter = Router();
 
 // GET /orders/:id/payment-summary
 router.get("/orders/:id/payment-summary", requireAuth, async (req, res): Promise<void> => {
-  const { id } = req.params;
+  const id = req.params.id as string;
 
   const [order] = await db.select().from(ordersTable).where(eq(ordersTable.id, id));
   if (!order) {
@@ -65,7 +65,7 @@ router.get("/orders/:id/payment-summary", requireAuth, async (req, res): Promise
   const discountResult = await db
     .select({ total: sum(discountsTable.discountAmount) })
     .from(discountsTable)
-    .where(eq(discountsTable.orderId, id as string));
+    .where(eq(discountsTable.orderId, id));
   const discountTotal = parseFloat(discountResult[0]?.total ?? "0");
 
   // Compute VAT breakdown per line, then aggregate (discount distributed proportionally)
@@ -130,7 +130,7 @@ router.get("/orders/:id/payment-summary", requireAuth, async (req, res): Promise
 
 // POST /orders/:id/payments
 router.post("/orders/:id/payments", requireAuth, requireRole(...PAYMENT_ROLES), async (req, res): Promise<void> => {
-  const { id: orderId } = req.params;
+  const orderId = req.params.id as string;
   const employeeId = (req as any).user?.id as string;
   const { methodCode, amount, reference, terminal: bodyTerminal } = req.body as {
     methodCode: string;
@@ -348,7 +348,7 @@ router.post("/orders/:id/payments", requireAuth, requireRole(...PAYMENT_ROLES), 
 
 // GET /orders/:id/ticket
 router.get("/orders/:id/ticket", requireAuth, async (req, res): Promise<void> => {
-  const { id } = req.params;
+  const id = req.params.id as string;
 
   const [ticket] = await db
     .select()
