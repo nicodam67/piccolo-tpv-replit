@@ -575,6 +575,30 @@ export default function Tables() {
     { query: { enabled: !!activeZone, queryKey: getGetCanvasElementsQueryKey(activeZone!, { layout: 'normal' }) } }
   );
 
+  // Continuously persist scroll position so a brief loading-state flip (e.g.
+  // triggered by a tables:refresh socket event) does not lose where the waiter
+  // left the canvas. The <main> element is always mounted, so the handler
+  // stays registered regardless of loadingTables.
+  const handleCanvasScroll = useCallback(() => {
+    const zone = currentZoneIdRef.current;
+    if (zone) saveScrollForZone(zone);
+  }, [saveScrollForZone]);
+
+  // Restore scroll after a loading → ready transition.
+  // When the socket invalidates the query, isLoading briefly becomes true if
+  // the browser discards the cached content, causing scrollLeft/scrollTop to
+  // reset. Re-applying the saved position after the canvas reappears fixes it.
+  const prevLoadingTablesRef = useRef(loadingTables);
+  useEffect(() => {
+    const wasLoading = prevLoadingTablesRef.current;
+    prevLoadingTablesRef.current = loadingTables;
+    if (wasLoading && !loadingTables && activeZone) {
+      const id = requestAnimationFrame(() => restoreScrollForZone(activeZone));
+      return () => cancelAnimationFrame(id);
+    }
+    return undefined;
+  }, [loadingTables, activeZone, restoreScrollForZone]);
+
   // Auto-fit on first tables load so the full floor plan is visible immediately
   const didAutoFit = useRef(false);
   useEffect(() => {
@@ -923,7 +947,7 @@ export default function Tables() {
       {/* Floor plan canvas — overflow:auto creates a scroll container that
           clips absolutely-positioned children (e.g. the empty-state overlay)
           so they cannot bleed upward and obscure the accent rule above. */}
-      <main ref={canvasContainerRef} className="flex-1 overflow-auto bg-[#0c0c0c] relative">
+      <main ref={canvasContainerRef} onScroll={handleCanvasScroll} className="flex-1 overflow-auto bg-[#0c0c0c] relative">
         {loadingTables ? (
           <div className="absolute inset-0 flex items-center justify-center">
             <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
