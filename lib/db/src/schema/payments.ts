@@ -22,6 +22,12 @@ export const cashSessionsTable = pgTable("cash_sessions", {
   countedCash: numeric("counted_cash", { precision: 10, scale: 2 }),
   difference: numeric("difference", { precision: 10, scale: 2 }),
   status: text("status").notNull().default("open"),
+  // Multi-terminal support
+  terminalName: text("terminal_name").notNull().default("Caja principal"),
+  blindClose: boolean("blind_close").notNull().default(false),
+  notes: text("notes"),
+  discrepancyReason: text("discrepancy_reason"),
+  closingNotes: text("closing_notes"),
 });
 
 export const paymentsTable = pgTable("payments", {

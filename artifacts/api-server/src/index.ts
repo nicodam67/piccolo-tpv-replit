@@ -3,6 +3,7 @@ import app from "./app";
 import { logger } from "./lib/logger";
 import { initSocket } from "./lib/socket";
 import { seedDocuments } from "./lib/seed-documents";
+import { seedCash } from "./lib/seed-cash";
 
 const rawPort = process.env["PORT"];
 
@@ -23,6 +24,7 @@ server.listen(port, async () => {
   logger.info({ port }, "Server listening");
   try {
     await seedDocuments();
+    await seedCash();
   } catch (err) {
     logger.error({ err }, "Seed documents failed — continuing");
   }

@@ -2716,20 +2716,20 @@ export const useOpenCashSession = <TError = ErrorType<ErrorResponse>,
       return useMutation(getOpenCashSessionMutationOptions(options));
     }
 
-export const getGetCurrentCashSessionUrl = () => {
+export type GetCurrentCashSessionParams = { terminal?: string };
 
-
-
-
-  return `/api/cash-sessions/current`
+export const getGetCurrentCashSessionUrl = (params?: GetCurrentCashSessionParams) => {
+  const terminal = params?.terminal;
+  const qs = terminal ? `?terminal=${encodeURIComponent(terminal)}` : '';
+  return `/api/cash-sessions/current${qs}`;
 }
 
 /**
- * @summary Get the currently open cash session (or null)
+ * @summary Get the currently open cash session (or null), optionally filtered by terminal
  */
-export const getCurrentCashSession = async ( options?: RequestInit): Promise<CashSessionWithEmployee> => {
+export const getCurrentCashSession = async (params?: GetCurrentCashSessionParams, options?: RequestInit): Promise<CashSessionWithEmployee> => {
 
-  return customFetch<CashSessionWithEmployee>(getGetCurrentCashSessionUrl(),
+  return customFetch<CashSessionWithEmployee>(getGetCurrentCashSessionUrl(params),
   {
     ...options,
     method: 'GET'
@@ -2741,25 +2741,24 @@ export const getCurrentCashSession = async ( options?: RequestInit): Promise<Cas
 
 
 
-
-export const getGetCurrentCashSessionQueryKey = () => {
+export const getGetCurrentCashSessionQueryKey = (params?: GetCurrentCashSessionParams) => {
     return [
-    `/api/cash-sessions/current`
+    `/api/cash-sessions/current`,
+    ...(params?.terminal ? [params.terminal] : []),
     ] as const;
     }
 
 
-export const getGetCurrentCashSessionQueryOptions = <TData = Awaited<ReturnType<typeof getCurrentCashSession>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCurrentCashSession>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getGetCurrentCashSessionQueryOptions = <TData = Awaited<ReturnType<typeof getCurrentCashSession>>, TError = ErrorType<ErrorResponse>>(params?: GetCurrentCashSessionParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCurrentCashSession>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
 
-  const queryKey =  queryOptions?.queryKey ?? getGetCurrentCashSessionQueryKey();
+  const queryKey =  queryOptions?.queryKey ?? getGetCurrentCashSessionQueryKey(params);
 
 
 
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof getCurrentCashSession>>> = ({ signal }) => getCurrentCashSession({ signal, ...requestOptions });
-
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getCurrentCashSession>>> = ({ signal }) => getCurrentCashSession(params, { signal, ...requestOptions });
 
 
 
@@ -2772,15 +2771,16 @@ export type GetCurrentCashSessionQueryError = ErrorType<ErrorResponse>
 
 
 /**
- * @summary Get the currently open cash session (or null)
+ * @summary Get the currently open cash session (or null), optionally filtered by terminal
  */
 
 export function useGetCurrentCashSession<TData = Awaited<ReturnType<typeof getCurrentCashSession>>, TError = ErrorType<ErrorResponse>>(
+  params?: GetCurrentCashSessionParams,
   options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCurrentCashSession>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
-  const queryOptions = getGetCurrentCashSessionQueryOptions(options)
+  const queryOptions = getGetCurrentCashSessionQueryOptions(params, options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
@@ -3655,6 +3655,156 @@ export type GetDocumentAuditLogQueryResult = NonNullable<Awaited<ReturnType<type
 export type GetDocumentAuditLogQueryError = ErrorType<ErrorResponse>;
 export function useGetDocumentAuditLog<TData = Awaited<ReturnType<typeof getDocumentAuditLog>>, TError = ErrorType<ErrorResponse>>(params?: GetDocumentAuditLogParams, options?: { query?: UseQueryOptions<Awaited<ReturnType<typeof getDocumentAuditLog>>, TError, TData>; request?: SecondParameter<typeof customFetch> }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetDocumentAuditLogQueryOptions(params, options);
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+// ============================================================
+// PAYMENT METHODS
+// ============================================================
+
+export const getGetPaymentMethodsUrl = () => `/api/payment-methods`;
+export const getPaymentMethods = async (options?: RequestInit): Promise<import('./api.schemas').PaymentMethod[]> =>
+  customFetch<import('./api.schemas').PaymentMethod[]>(getGetPaymentMethodsUrl(), { ...options, method: 'GET' });
+export const getGetPaymentMethodsQueryKey = () => [`/api/payment-methods`] as const;
+export const getGetPaymentMethodsQueryOptions = <TData = Awaited<ReturnType<typeof getPaymentMethods>>, TError = ErrorType<ErrorResponse>>(options?: { query?: UseQueryOptions<Awaited<ReturnType<typeof getPaymentMethods>>, TError, TData>; request?: SecondParameter<typeof customFetch> }) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+  const queryKey = queryOptions?.queryKey ?? getGetPaymentMethodsQueryKey();
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getPaymentMethods>>> = ({ signal }) => getPaymentMethods({ signal, ...requestOptions });
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<Awaited<ReturnType<typeof getPaymentMethods>>, TError, TData> & { queryKey: QueryKey };
+};
+export function useGetPaymentMethods<TData = Awaited<ReturnType<typeof getPaymentMethods>>, TError = ErrorType<ErrorResponse>>(options?: { query?: UseQueryOptions<Awaited<ReturnType<typeof getPaymentMethods>>, TError, TData>; request?: SecondParameter<typeof customFetch> }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetPaymentMethodsQueryOptions(options);
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+// ============================================================
+// DISCOUNTS
+// ============================================================
+
+export const getGetOrderDiscountsUrl = (orderId: string) => `/api/orders/${orderId}/discounts`;
+export const getOrderDiscounts = async (orderId: string, options?: RequestInit): Promise<import('./api.schemas').Discount[]> =>
+  customFetch<import('./api.schemas').Discount[]>(getGetOrderDiscountsUrl(orderId), { ...options, method: 'GET' });
+export const getGetOrderDiscountsQueryKey = (orderId: string) => [`/api/orders/${orderId}/discounts`] as const;
+export const getGetOrderDiscountsQueryOptions = <TData = Awaited<ReturnType<typeof getOrderDiscounts>>, TError = ErrorType<ErrorResponse>>(orderId: string, options?: { query?: UseQueryOptions<Awaited<ReturnType<typeof getOrderDiscounts>>, TError, TData>; request?: SecondParameter<typeof customFetch> }) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+  const queryKey = queryOptions?.queryKey ?? getGetOrderDiscountsQueryKey(orderId);
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getOrderDiscounts>>> = ({ signal }) => getOrderDiscounts(orderId, { signal, ...requestOptions });
+  return { queryKey, queryFn, enabled: !!orderId, ...queryOptions } as UseQueryOptions<Awaited<ReturnType<typeof getOrderDiscounts>>, TError, TData> & { queryKey: QueryKey };
+};
+export function useGetOrderDiscounts<TData = Awaited<ReturnType<typeof getOrderDiscounts>>, TError = ErrorType<ErrorResponse>>(orderId: string, options?: { query?: UseQueryOptions<Awaited<ReturnType<typeof getOrderDiscounts>>, TError, TData>; request?: SecondParameter<typeof customFetch> }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetOrderDiscountsQueryOptions(orderId, options);
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+export const getAddDiscountMutationOptions = <TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof addDiscount>>, TError, { orderId: string; data: BodyType<import('./api.schemas').AddDiscountInput> }, TContext>; request?: SecondParameter<typeof customFetch> }): UseMutationOptions<Awaited<ReturnType<typeof addDiscount>>, TError, { orderId: string; data: BodyType<import('./api.schemas').AddDiscountInput> }, TContext> => {
+  const mutationKey = ['addDiscount'];
+  const { mutation: mutationOptions, request: requestOptions } = options ? (options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ? options : { ...options, mutation: { ...options.mutation, mutationKey } }) : { mutation: { mutationKey }, request: undefined };
+  const mutationFn: MutationFunction<Awaited<ReturnType<typeof addDiscount>>, { orderId: string; data: BodyType<import('./api.schemas').AddDiscountInput> }> = (props) => { const { orderId, data } = props ?? {}; return addDiscount(orderId, data, requestOptions); };
+  return { mutationFn, ...mutationOptions };
+};
+export const addDiscount = async (orderId: string, addDiscountInput: BodyType<import('./api.schemas').AddDiscountInput>, options?: RequestInit): Promise<import('./api.schemas').Discount> =>
+  customFetch<import('./api.schemas').Discount>(`/api/orders/${orderId}/discounts`, { ...options, method: 'POST', headers: { 'Content-Type': 'application/json', ...options?.headers }, body: JSON.stringify(addDiscountInput) });
+export const useAddDiscount = <TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof addDiscount>>, TError, { orderId: string; data: BodyType<import('./api.schemas').AddDiscountInput> }, TContext>; request?: SecondParameter<typeof customFetch> }): UseMutationResult<Awaited<ReturnType<typeof addDiscount>>, TError, { orderId: string; data: BodyType<import('./api.schemas').AddDiscountInput> }, TContext> => useMutation(getAddDiscountMutationOptions(options));
+
+// ============================================================
+// TIPS
+// ============================================================
+
+export const addTip = async (paymentId: string, addTipInput: BodyType<import('./api.schemas').AddTipInput>, options?: RequestInit): Promise<import('./api.schemas').Tip> =>
+  customFetch<import('./api.schemas').Tip>(`/api/payments/${paymentId}/tip`, { ...options, method: 'POST', headers: { 'Content-Type': 'application/json', ...options?.headers }, body: JSON.stringify(addTipInput) });
+export const getAddTipMutationOptions = <TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof addTip>>, TError, { paymentId: string; data: BodyType<import('./api.schemas').AddTipInput> }, TContext>; request?: SecondParameter<typeof customFetch> }): UseMutationOptions<Awaited<ReturnType<typeof addTip>>, TError, { paymentId: string; data: BodyType<import('./api.schemas').AddTipInput> }, TContext> => {
+  const mutationKey = ['addTip'];
+  const { mutation: mutationOptions, request: requestOptions } = options ? (options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ? options : { ...options, mutation: { ...options.mutation, mutationKey } }) : { mutation: { mutationKey }, request: undefined };
+  const mutationFn: MutationFunction<Awaited<ReturnType<typeof addTip>>, { paymentId: string; data: BodyType<import('./api.schemas').AddTipInput> }> = (props) => { const { paymentId, data } = props ?? {}; return addTip(paymentId, data, requestOptions); };
+  return { mutationFn, ...mutationOptions };
+};
+export const useAddTip = <TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof addTip>>, TError, { paymentId: string; data: BodyType<import('./api.schemas').AddTipInput> }, TContext>; request?: SecondParameter<typeof customFetch> }): UseMutationResult<Awaited<ReturnType<typeof addTip>>, TError, { paymentId: string; data: BodyType<import('./api.schemas').AddTipInput> }, TContext> => useMutation(getAddTipMutationOptions(options));
+
+// ============================================================
+// SPLIT GROUPS
+// ============================================================
+
+export const getGetOrderSplitsUrl = (orderId: string) => `/api/orders/${orderId}/splits`;
+export const getOrderSplits = async (orderId: string, options?: RequestInit): Promise<import('./api.schemas').SplitGroupWithItems[]> =>
+  customFetch<import('./api.schemas').SplitGroupWithItems[]>(getGetOrderSplitsUrl(orderId), { ...options, method: 'GET' });
+export const getGetOrderSplitsQueryKey = (orderId: string) => [`/api/orders/${orderId}/splits`] as const;
+export const getGetOrderSplitsQueryOptions = <TData = Awaited<ReturnType<typeof getOrderSplits>>, TError = ErrorType<ErrorResponse>>(orderId: string, options?: { query?: UseQueryOptions<Awaited<ReturnType<typeof getOrderSplits>>, TError, TData>; request?: SecondParameter<typeof customFetch> }) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+  const queryKey = queryOptions?.queryKey ?? getGetOrderSplitsQueryKey(orderId);
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getOrderSplits>>> = ({ signal }) => getOrderSplits(orderId, { signal, ...requestOptions });
+  return { queryKey, queryFn, enabled: !!orderId, ...queryOptions } as UseQueryOptions<Awaited<ReturnType<typeof getOrderSplits>>, TError, TData> & { queryKey: QueryKey };
+};
+export function useGetOrderSplits<TData = Awaited<ReturnType<typeof getOrderSplits>>, TError = ErrorType<ErrorResponse>>(orderId: string, options?: { query?: UseQueryOptions<Awaited<ReturnType<typeof getOrderSplits>>, TError, TData>; request?: SecondParameter<typeof customFetch> }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetOrderSplitsQueryOptions(orderId, options);
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+export const createOrderSplits = async (orderId: string, input: BodyType<import('./api.schemas').CreateSplitGroupsInput>, options?: RequestInit): Promise<import('./api.schemas').SplitGroupWithItems[]> =>
+  customFetch<import('./api.schemas').SplitGroupWithItems[]>(`/api/orders/${orderId}/splits`, { ...options, method: 'POST', headers: { 'Content-Type': 'application/json', ...options?.headers }, body: JSON.stringify(input) });
+export const getCreateOrderSplitsMutationOptions = <TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof createOrderSplits>>, TError, { orderId: string; data: BodyType<import('./api.schemas').CreateSplitGroupsInput> }, TContext>; request?: SecondParameter<typeof customFetch> }): UseMutationOptions<Awaited<ReturnType<typeof createOrderSplits>>, TError, { orderId: string; data: BodyType<import('./api.schemas').CreateSplitGroupsInput> }, TContext> => {
+  const mutationKey = ['createOrderSplits'];
+  const { mutation: mutationOptions, request: requestOptions } = options ? (options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ? options : { ...options, mutation: { ...options.mutation, mutationKey } }) : { mutation: { mutationKey }, request: undefined };
+  const mutationFn: MutationFunction<Awaited<ReturnType<typeof createOrderSplits>>, { orderId: string; data: BodyType<import('./api.schemas').CreateSplitGroupsInput> }> = (props) => { const { orderId, data } = props ?? {}; return createOrderSplits(orderId, data, requestOptions); };
+  return { mutationFn, ...mutationOptions };
+};
+export const useCreateOrderSplits = <TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof createOrderSplits>>, TError, { orderId: string; data: BodyType<import('./api.schemas').CreateSplitGroupsInput> }, TContext>; request?: SecondParameter<typeof customFetch> }): UseMutationResult<Awaited<ReturnType<typeof createOrderSplits>>, TError, { orderId: string; data: BodyType<import('./api.schemas').CreateSplitGroupsInput> }, TContext> => useMutation(getCreateOrderSplitsMutationOptions(options));
+
+export const markSplitGroupPaid = async (orderId: string, groupId: string, input: BodyType<import('./api.schemas').MarkSplitGroupPaidInput>, options?: RequestInit): Promise<import('./api.schemas').SplitGroupWithItems> =>
+  customFetch<import('./api.schemas').SplitGroupWithItems>(`/api/orders/${orderId}/splits/${groupId}/pay`, { ...options, method: 'PUT', headers: { 'Content-Type': 'application/json', ...options?.headers }, body: JSON.stringify(input) });
+export const getMarkSplitGroupPaidMutationOptions = <TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof markSplitGroupPaid>>, TError, { orderId: string; groupId: string; data: BodyType<import('./api.schemas').MarkSplitGroupPaidInput> }, TContext>; request?: SecondParameter<typeof customFetch> }): UseMutationOptions<Awaited<ReturnType<typeof markSplitGroupPaid>>, TError, { orderId: string; groupId: string; data: BodyType<import('./api.schemas').MarkSplitGroupPaidInput> }, TContext> => {
+  const mutationKey = ['markSplitGroupPaid'];
+  const { mutation: mutationOptions, request: requestOptions } = options ? (options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ? options : { ...options, mutation: { ...options.mutation, mutationKey } }) : { mutation: { mutationKey }, request: undefined };
+  const mutationFn: MutationFunction<Awaited<ReturnType<typeof markSplitGroupPaid>>, { orderId: string; groupId: string; data: BodyType<import('./api.schemas').MarkSplitGroupPaidInput> }> = (props) => { const { orderId, groupId, data } = props ?? {}; return markSplitGroupPaid(orderId, groupId, data, requestOptions); };
+  return { mutationFn, ...mutationOptions };
+};
+export const useMarkSplitGroupPaid = <TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof markSplitGroupPaid>>, TError, { orderId: string; groupId: string; data: BodyType<import('./api.schemas').MarkSplitGroupPaidInput> }, TContext>; request?: SecondParameter<typeof customFetch> }): UseMutationResult<Awaited<ReturnType<typeof markSplitGroupPaid>>, TError, { orderId: string; groupId: string; data: BodyType<import('./api.schemas').MarkSplitGroupPaidInput> }, TContext> => useMutation(getMarkSplitGroupPaidMutationOptions(options));
+
+// ============================================================
+// Z-REPORT & VOID PAYMENT
+// ============================================================
+
+export const getGetCashSessionReportUrl = (sessionId: string) => `/api/cash-sessions/${sessionId}/report`;
+export const getCashSessionReport = async (sessionId: string, options?: RequestInit): Promise<import('./api.schemas').ZReport> =>
+  customFetch<import('./api.schemas').ZReport>(getGetCashSessionReportUrl(sessionId), { ...options, method: 'GET' });
+export const getGetCashSessionReportQueryKey = (sessionId: string) => [`/api/cash-sessions/${sessionId}/report`] as const;
+export const getGetCashSessionReportQueryOptions = <TData = Awaited<ReturnType<typeof getCashSessionReport>>, TError = ErrorType<ErrorResponse>>(sessionId: string, options?: { query?: UseQueryOptions<Awaited<ReturnType<typeof getCashSessionReport>>, TError, TData>; request?: SecondParameter<typeof customFetch> }) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+  const queryKey = queryOptions?.queryKey ?? getGetCashSessionReportQueryKey(sessionId);
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getCashSessionReport>>> = ({ signal }) => getCashSessionReport(sessionId, { signal, ...requestOptions });
+  return { queryKey, queryFn, enabled: !!sessionId, ...queryOptions } as UseQueryOptions<Awaited<ReturnType<typeof getCashSessionReport>>, TError, TData> & { queryKey: QueryKey };
+};
+export function useGetCashSessionReport<TData = Awaited<ReturnType<typeof getCashSessionReport>>, TError = ErrorType<ErrorResponse>>(sessionId: string, options?: { query?: UseQueryOptions<Awaited<ReturnType<typeof getCashSessionReport>>, TError, TData>; request?: SecondParameter<typeof customFetch> }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetCashSessionReportQueryOptions(sessionId, options);
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+export const voidPayment = async (sessionId: string, input: BodyType<import('./api.schemas').VoidPaymentInput>, options?: RequestInit): Promise<{ id: string }> =>
+  customFetch<{ id: string }>(`/api/cash-sessions/${sessionId}/void-payment`, { ...options, method: 'POST', headers: { 'Content-Type': 'application/json', ...options?.headers }, body: JSON.stringify(input) });
+export const getVoidPaymentMutationOptions = <TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof voidPayment>>, TError, { sessionId: string; data: BodyType<import('./api.schemas').VoidPaymentInput> }, TContext>; request?: SecondParameter<typeof customFetch> }): UseMutationOptions<Awaited<ReturnType<typeof voidPayment>>, TError, { sessionId: string; data: BodyType<import('./api.schemas').VoidPaymentInput> }, TContext> => {
+  const mutationKey = ['voidPayment'];
+  const { mutation: mutationOptions, request: requestOptions } = options ? (options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ? options : { ...options, mutation: { ...options.mutation, mutationKey } }) : { mutation: { mutationKey }, request: undefined };
+  const mutationFn: MutationFunction<Awaited<ReturnType<typeof voidPayment>>, { sessionId: string; data: BodyType<import('./api.schemas').VoidPaymentInput> }> = (props) => { const { sessionId, data } = props ?? {}; return voidPayment(sessionId, data, requestOptions); };
+  return { mutationFn, ...mutationOptions };
+};
+export const useVoidPayment = <TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof voidPayment>>, TError, { sessionId: string; data: BodyType<import('./api.schemas').VoidPaymentInput> }, TContext>; request?: SecondParameter<typeof customFetch> }): UseMutationResult<Awaited<ReturnType<typeof voidPayment>>, TError, { sessionId: string; data: BodyType<import('./api.schemas').VoidPaymentInput> }, TContext> => useMutation(getVoidPaymentMutationOptions(options));
+
+export const getGetCashSessionHistoryUrl = () => `/api/cash-sessions/history`;
+export const getCashSessionHistory = async (options?: RequestInit): Promise<import('./api.schemas').CashSessionHistoryItem[]> =>
+  customFetch<import('./api.schemas').CashSessionHistoryItem[]>(getGetCashSessionHistoryUrl(), { ...options, method: 'GET' });
+export const getGetCashSessionHistoryQueryKey = () => [`/api/cash-sessions/history`] as const;
+export const getGetCashSessionHistoryQueryOptions = <TData = Awaited<ReturnType<typeof getCashSessionHistory>>, TError = ErrorType<ErrorResponse>>(options?: { query?: UseQueryOptions<Awaited<ReturnType<typeof getCashSessionHistory>>, TError, TData>; request?: SecondParameter<typeof customFetch> }) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+  const queryKey = queryOptions?.queryKey ?? getGetCashSessionHistoryQueryKey();
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getCashSessionHistory>>> = ({ signal }) => getCashSessionHistory({ signal, ...requestOptions });
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<Awaited<ReturnType<typeof getCashSessionHistory>>, TError, TData> & { queryKey: QueryKey };
+};
+export function useGetCashSessionHistory<TData = Awaited<ReturnType<typeof getCashSessionHistory>>, TError = ErrorType<ErrorResponse>>(options?: { query?: UseQueryOptions<Awaited<ReturnType<typeof getCashSessionHistory>>, TError, TData>; request?: SecondParameter<typeof customFetch> }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetCashSessionHistoryQueryOptions(options);
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
   return withQueryKey(query, queryOptions.queryKey);
 }

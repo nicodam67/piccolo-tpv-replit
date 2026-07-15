@@ -433,6 +433,11 @@ export interface CashSession {
   countedCash?: string;
   difference?: string;
   status: string;
+  terminalName?: string;
+  blindClose?: boolean;
+  notes?: string | null;
+  discrepancyReason?: string | null;
+  closingNotes?: string | null;
 }
 
 export type CashSessionWithEmployee = CashSession & {
@@ -471,6 +476,9 @@ export interface CashSessionSummary {
 
 export interface OpenCashSessionInput {
   openingFloat?: string;
+  terminalName?: string;
+  blindClose?: boolean;
+  notes?: string;
 }
 
 export type AddCashMovementInputMovementType = typeof AddCashMovementInputMovementType[keyof typeof AddCashMovementInputMovementType];
@@ -489,6 +497,8 @@ export interface AddCashMovementInput {
 
 export interface CloseCashSessionInput {
   countedCash: string;
+  discrepancyReason?: string;
+  closingNotes?: string;
 }
 
 export type PaymentSummaryOrder = {
@@ -534,12 +544,17 @@ export const AddPaymentInputMethodCode = {
   cash: 'cash',
   card: 'card',
   bizum: 'bizum',
+  transfer: 'transfer',
+  cheque_rest: 'cheque_rest',
+  invitation: 'invitation',
+  other: 'other',
 } as const;
 
 export interface AddPaymentInput {
   methodCode: AddPaymentInputMethodCode;
   amount: string;
   reference?: string;
+  terminal?: string;
 }
 
 export type PaymentResultPayment = {
@@ -800,4 +815,148 @@ export type GetDocumentAuditLogParams = {
   page?: number;
   limit?: number;
 };
+
+// ─── Discounts ────────────────────────────────────────────────────────────────
+export type DiscountType = 'percentage' | 'fixed' | 'invitation';
+
+export interface Discount {
+  id: string;
+  orderId: string;
+  orderItemId?: string | null;
+  type: DiscountType;
+  value: string;
+  discountAmount: string;
+  reason: string;
+  authorizedBy?: string | null;
+  createdAt: string;
+}
+
+export interface AddDiscountInput {
+  type: DiscountType;
+  value: string;
+  reason: string;
+  orderItemId?: string;
+}
+
+// ─── Tips ─────────────────────────────────────────────────────────────────────
+export type TipMethod = 'cash' | 'card';
+
+export interface Tip {
+  id: string;
+  paymentId: string;
+  orderId: string;
+  amount: string;
+  method: TipMethod;
+  cashSessionId?: string | null;
+  createdAt: string;
+}
+
+export interface AddTipInput {
+  amount: string;
+  method?: TipMethod;
+}
+
+// ─── Split groups ─────────────────────────────────────────────────────────────
+export type SplitGroupItemDetail = {
+  id: string;
+  orderItemId: string;
+  quantity: string;
+  productName: string;
+  unitPrice: string;
+  lineTotal: string;
+};
+
+export interface SplitGroupWithItems {
+  id: string;
+  orderId: string;
+  label: string;
+  status: string;
+  total: string;
+  sortOrder: number;
+  createdAt: string;
+  items: SplitGroupItemDetail[];
+  paid: string;
+}
+
+export type CreateSplitGroupsInputGroupItem = {
+  orderItemId: string;
+  quantity: number;
+};
+
+export type CreateSplitGroupsInputGroup = {
+  label: string;
+  items: CreateSplitGroupsInputGroupItem[];
+};
+
+export interface CreateSplitGroupsInput {
+  groups: CreateSplitGroupsInputGroup[];
+}
+
+export interface MarkSplitGroupPaidInput {
+  paymentId?: string;
+}
+
+// ─── Z-Report ─────────────────────────────────────────────────────────────────
+export type ZReportSalesByMethodItem = {
+  methodCode: string;
+  methodName: string;
+  total?: string | null;
+};
+
+export type ZReportMovementItem = {
+  id: string;
+  movementType: string;
+  amount: string;
+  reason: string;
+  createdAt: string;
+  employeeName?: string | null;
+};
+
+export type ZReportTipItem = {
+  amount: string;
+  method: string;
+};
+
+export type ZReportVoidItem = {
+  id: string;
+  reason: string;
+  createdAt: string;
+  originalPaymentId: string;
+  employeeName?: string | null;
+};
+
+export interface ZReport {
+  session: CashSession & { employeeName?: string };
+  salesByMethod: ZReportSalesByMethodItem[];
+  movements: ZReportMovementItem[];
+  tips: ZReportTipItem[];
+  voids: ZReportVoidItem[];
+  totalSales: string;
+  totalTips: string;
+  movIn: string;
+  movOut: string;
+  paymentsCount: number;
+}
+
+// ─── Void payment ─────────────────────────────────────────────────────────────
+export interface VoidPaymentInput {
+  paymentId: string;
+  reason: string;
+}
+
+// ─── Cash session history ─────────────────────────────────────────────────────
+export type CashSessionHistoryItem = {
+  id: string;
+  terminalName: string;
+  openedAt: string;
+  closedAt?: string | null;
+  openingFloat: string;
+  expectedCash?: string | null;
+  countedCash?: string | null;
+  difference?: string | null;
+  status: string;
+  blindClose: boolean;
+  employeeName?: string | null;
+};
+
 

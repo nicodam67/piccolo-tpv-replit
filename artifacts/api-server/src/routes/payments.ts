@@ -131,10 +131,11 @@ router.get("/orders/:id/payment-summary", requireAuth, async (req, res): Promise
 router.post("/orders/:id/payments", requireAuth, requireRole(...PAYMENT_ROLES), async (req, res): Promise<void> => {
   const { id: orderId } = req.params;
   const employeeId = (req as any).user?.id as string;
-  const { methodCode, amount, reference } = req.body as {
+  const { methodCode, amount, reference, terminal: bodyTerminal } = req.body as {
     methodCode: string;
     amount: string;
     reference?: string;
+    terminal?: string;
   };
 
   const amountNum = parseFloat(amount);
@@ -161,6 +162,16 @@ router.post("/orders/:id/payments", requireAuth, requireRole(...PAYMENT_ROLES), 
   if (!method) {
     res.status(400).json({ error: "Método de pago no válido" });
     return;
+  }
+
+  // Elevated-privilege methods: invitation requires admin role
+  const ADMIN_ONLY_METHODS = ["invitation"];
+  if (ADMIN_ONLY_METHODS.includes(method.code)) {
+    const userRole = (req as any).user?.role as string;
+    if (userRole !== "admin") {
+      res.status(403).json({ error: `El método "${method.name}" requiere permisos de administrador` });
+      return;
+    }
   }
 
   // Calculate remaining
@@ -191,12 +202,46 @@ router.post("/orders/:id/payments", requireAuth, requireRole(...PAYMENT_ROLES), 
     return;
   }
 
-  // Get open cash session (required for cash payments, optional for others)
+  // Get open cash session for this terminal (prefer body.terminal, fallback to header)
+  const terminalName = bodyTerminal ?? (req.headers["x-terminal-name"] as string | undefined);
+
+  if (!terminalName) {
+    // No terminal supplied — count open sessions to decide whether to allow fallback
+    const allOpen = await db
+      .select({ id: cashSessionsTable.id })
+      .from(cashSessionsTable)
+      .where(eq(cashSessionsTable.status, "open"));
+    if (allOpen.length > 1) {
+      res.status(400).json({
+        error: "Hay varias cajas abiertas. Indica el terminal en el que estás operando.",
+      });
+      return;
+    }
+  }
+
+  const sessionCondition = terminalName
+    ? and(eq(cashSessionsTable.status, "open"), eq(cashSessionsTable.terminalName, terminalName))
+    : eq(cashSessionsTable.status, "open");
   const [openSession] = await db
     .select()
     .from(cashSessionsTable)
-    .where(eq(cashSessionsTable.status, "open"))
+    .where(sessionCondition)
     .limit(1);
+
+  // Enforce: a terminal that was provided must map to an open session
+  if (terminalName && !openSession) {
+    res.status(409).json({
+      error: `No hay caja abierta en el terminal "${terminalName}". Abre la caja antes de cobrar.`,
+    });
+    return;
+  }
+  // Enforce: cash payments always require an open session
+  if (!openSession && methodCode === "cash") {
+    res.status(409).json({
+      error: "No hay ninguna caja abierta. Abre la caja antes de cobrar con efectivo.",
+    });
+    return;
+  }
 
   // Insert payment (cap at remaining for non-cash; for cash allow full amount for change calc)
   const effectiveAmount = methodCode === "cash"

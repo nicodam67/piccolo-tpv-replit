@@ -15,6 +15,9 @@ import canvasElementsRouter from "./canvas-elements";
 import productsRouter from "./products";
 import configRouter from "./config";
 import documentsRouter from "./documents";
+import discountsRouter from "./discounts";
+import tipsRouter from "./tips";
+import splitsRouter from "./splits";
 
 const router: IRouter = Router();
 
@@ -34,5 +37,8 @@ router.use(canvasElementsRouter);
 router.use(productsRouter);
 router.use(configRouter);
 router.use(documentsRouter);
+router.use(discountsRouter);
+router.use(tipsRouter);
+router.use(splitsRouter);
 
 export default router;
