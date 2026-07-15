@@ -21,6 +21,8 @@ export const orderItemsTable = pgTable("order_items", {
   allergyNote: text("allergy_note").notNull().default(""),
   hasAllergy: boolean("has_allergy").notNull().default(false),
   isInvitation: boolean("is_invitation").notNull().default(false),
+  /** Populated during table merge to remember which table this item came from, enabling clean separation. */
+  originalTableId: uuid("original_table_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

@@ -1336,6 +1336,70 @@ export interface UpdateAlertConfigInput {
   mesaSuciaMin?: number;
 }
 
+// ─── Reservations ─────────────────────────────────────────────────────────────
+export interface Reservation {
+  id: string;
+  fecha: string;
+  hora: string;
+  nombre: string;
+  telefono: string;
+  personas: number;
+  zonaPreferida?: string | null;
+  mesaId?: string | null;
+  notes: string;
+  status: string;
+  createdBy?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateReservationInput {
+  fecha: string;
+  hora: string;
+  nombre: string;
+  telefono?: string;
+  personas?: number;
+  zonaPreferida?: string | null;
+  mesaId?: string | null;
+  notes?: string;
+}
+
+export interface UpdateReservationInput {
+  fecha?: string;
+  hora?: string;
+  nombre?: string;
+  telefono?: string;
+  personas?: number;
+  zonaPreferida?: string | null;
+  mesaId?: string | null;
+  notes?: string;
+  status?: string;
+}
+
+export interface GetReservationsParams {
+  date?: string;
+  status?: string;
+}
+
+// ─── Table operations ─────────────────────────────────────────────────────────
+export interface TableTransferInput {
+  targetTableId: string;
+}
+
+export interface MergeTablesInput {
+  tableIds: string[];
+}
+
+export interface MoveItemsInput {
+  itemIds: string[];
+  targetTableId: string;
+}
+
+export interface WaiterTransferInput {
+  newEmployeeId: string;
+  authorisedById?: string;
+}
+
 // ─── Cash session history ─────────────────────────────────────────────────────
 export type CashSessionHistoryItem = {
   id: string;

@@ -16,6 +16,10 @@ import {
   useGetTableHistory,
   useCleanTable,
   useBlockTable,
+  useTransferTable,
+  useMergeTables,
+  useSeparateTable,
+  useTransferWaiter,
   getGetZoneTablesQueryKey,
   getGetDashboardSummaryQueryKey,
   getGetAllTablesQueryKey,
@@ -32,7 +36,7 @@ import {
   LogOut, Loader2, Monitor, Settings, ZoomIn, ZoomOut, Maximize2, Package,
   CheckCircle2, CalendarClock, Users, ChefHat, FileText, CreditCard,
   Sparkles, Lock, Clock, X, History, AlertTriangle, Info,
-  LayoutGrid, Coins,
+  LayoutGrid, Coins, ArrowRight, Layers, UserCog, Scissors, Calendar,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -406,6 +410,126 @@ function OpenTableModal({ table, onConfirm, onCancel, isPending, currentEmployee
   );
 }
 
+// ─── TableContextMenu ──────────────────────────────────────────────────────────
+interface TableContextMenuProps {
+  table: Table;
+  freeTables: Table[];
+  employees: { id: string; name: string }[];
+  isManagerOrAdmin: boolean;
+  onClose: () => void;
+  onTransfer: (targetTableId: string) => void;
+  onMerge: (targetTableId: string) => void;
+  onSeparate: () => void;
+  onWaiterTransfer: (newEmployeeId: string) => void;
+  isPending: boolean;
+}
+
+function TableContextMenu({
+  table, freeTables, employees, isManagerOrAdmin, onClose,
+  onTransfer, onMerge, onSeparate, onWaiterTransfer, isPending,
+}: TableContextMenuProps) {
+  const [mode, setMode] = useState<'menu' | 'transfer' | 'merge' | 'waiter'>('menu');
+  const isOccupied = !['free','reserved','bloqueada','out_of_service','pendiente_limpieza'].includes(table.status);
+  const isMerged = !!table.mergeGroup;
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-end sm:items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-card border border-border rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+        <div className="px-4 py-3 border-b border-border flex items-center justify-between">
+          <div>
+            <h3 className="font-black text-base">{table.name}</h3>
+            <p className="text-[11px] text-muted-foreground font-semibold uppercase tracking-wider">{STATUS_LABELS[table.status] ?? table.status}</p>
+          </div>
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-secondary text-muted-foreground"><X size={15} /></button>
+        </div>
+
+        {mode === 'menu' && (
+          <div className="p-2 space-y-1">
+            {isOccupied && freeTables.length > 0 && (
+              <button onClick={() => setMode('transfer')} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-secondary text-sm font-bold text-left transition-colors active:scale-[0.98]">
+                <div className="w-8 h-8 rounded-lg bg-blue-500/15 flex items-center justify-center"><ArrowRight size={15} className="text-blue-400" /></div>
+                <div><div className="font-black">Trasladar mesa</div><div className="text-xs text-muted-foreground font-normal">Mover la comanda a otra mesa libre</div></div>
+              </button>
+            )}
+            {isManagerOrAdmin && isOccupied && freeTables.length > 0 && !isMerged && (
+              <button onClick={() => setMode('merge')} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-secondary text-sm font-bold text-left transition-colors active:scale-[0.98]">
+                <div className="w-8 h-8 rounded-lg bg-purple-500/15 flex items-center justify-center"><Layers size={15} className="text-purple-400" /></div>
+                <div><div className="font-black">Unir con otra mesa</div><div className="text-xs text-muted-foreground font-normal">Combinar comandas en un grupo</div></div>
+              </button>
+            )}
+            {isManagerOrAdmin && isMerged && (
+              <button onClick={() => { onClose(); onSeparate(); }} disabled={isPending} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-secondary text-sm font-bold text-left transition-colors active:scale-[0.98] disabled:opacity-50">
+                <div className="w-8 h-8 rounded-lg bg-orange-500/15 flex items-center justify-center"><Scissors size={15} className="text-orange-400" /></div>
+                <div><div className="font-black">Separar mesas</div><div className="text-xs text-muted-foreground font-normal">Deshacer la unión del grupo</div></div>
+              </button>
+            )}
+            {isManagerOrAdmin && isOccupied && employees.length > 1 && (
+              <button onClick={() => setMode('waiter')} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-secondary text-sm font-bold text-left transition-colors active:scale-[0.98]">
+                <div className="w-8 h-8 rounded-lg bg-emerald-500/15 flex items-center justify-center"><UserCog size={15} className="text-emerald-400" /></div>
+                <div><div className="font-black">Cambiar camarero</div><div className="text-xs text-muted-foreground font-normal">Reasignar responsable de la mesa</div></div>
+              </button>
+            )}
+            {!isOccupied && !isMerged && (
+              <div className="px-4 py-4 text-center text-muted-foreground text-sm">
+                No hay operaciones disponibles para esta mesa
+              </div>
+            )}
+          </div>
+        )}
+
+        {mode === 'transfer' && (
+          <div className="p-3">
+            <p className="text-xs text-muted-foreground font-semibold mb-3 px-1">Selecciona la mesa destino:</p>
+            <div className="grid grid-cols-3 gap-2 max-h-60 overflow-y-auto">
+              {freeTables.filter(t => t.id !== table.id).map(t => (
+                <button key={t.id} onClick={() => onTransfer(t.id)} disabled={isPending}
+                  className="py-3 px-2 rounded-xl border-2 border-[#3f573c] bg-[#253324] text-[#dcecdb] font-black text-sm hover:brightness-110 active:scale-[0.96] transition-all text-center disabled:opacity-50">
+                  {t.name}
+                </button>
+              ))}
+            </div>
+            <button onClick={() => setMode('menu')} className="w-full mt-3 py-2 text-xs text-muted-foreground hover:text-foreground transition-colors">← Atrás</button>
+          </div>
+        )}
+
+        {mode === 'merge' && (
+          <div className="p-3">
+            <p className="text-xs text-muted-foreground font-semibold mb-3 px-1">Unir con:</p>
+            <div className="grid grid-cols-3 gap-2 max-h-60 overflow-y-auto">
+              {freeTables.filter(t => t.id !== table.id).map(t => (
+                <button key={t.id} onClick={() => onMerge(t.id)} disabled={isPending}
+                  className="py-3 px-2 rounded-xl border-2 border-[#3f573c] bg-[#253324] text-[#dcecdb] font-black text-sm hover:brightness-110 active:scale-[0.96] transition-all text-center disabled:opacity-50">
+                  {t.name}
+                </button>
+              ))}
+            </div>
+            <button onClick={() => setMode('menu')} className="w-full mt-3 py-2 text-xs text-muted-foreground hover:text-foreground transition-colors">← Atrás</button>
+          </div>
+        )}
+
+        {mode === 'waiter' && (
+          <div className="p-3">
+            <p className="text-xs text-muted-foreground font-semibold mb-3 px-1">Asignar camarero:</p>
+            <div className="grid grid-cols-2 gap-2 max-h-60 overflow-y-auto">
+              {employees.map(emp => (
+                <button key={emp.id} onClick={() => onWaiterTransfer(emp.id)} disabled={isPending}
+                  className="py-3 px-3 rounded-xl border-2 border-border bg-secondary/50 font-bold text-sm hover:border-primary/40 hover:bg-secondary active:scale-[0.96] transition-all text-left disabled:opacity-50">
+                  {emp.name}
+                </button>
+              ))}
+            </div>
+            <button onClick={() => setMode('menu')} className="w-full mt-3 py-2 text-xs text-muted-foreground hover:text-foreground transition-colors">← Atrás</button>
+          </div>
+        )}
+
+        <div className="px-4 py-2 border-t border-border">
+          <button onClick={onClose} className="w-full py-2 rounded-xl text-xs text-muted-foreground hover:bg-secondary transition-colors font-bold">Cerrar</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── TableCard ─────────────────────────────────────────────────────────────────
 type AlertLevel = 'none' | 'warn' | 'danger';
 
@@ -414,12 +538,13 @@ interface TableCardProps {
   onClick: () => void;
   onHistory?: () => void;
   onClean?: () => void;
+  onLongPress?: () => void;
   isBusy: boolean;
   alertLevel: AlertLevel;
   isManagerOrAdmin: boolean;
 }
 
-function TableCard({ table, onClick, onHistory, onClean, isBusy, alertLevel, isManagerOrAdmin }: TableCardProps) {
+function TableCard({ table, onClick, onHistory, onClean, onLongPress, isBusy, alertLevel, isManagerOrAdmin }: TableCardProps) {
   const isMerged   = !!table.mergeGroup;
   const st         = STATUS_STYLES[table.status] ?? STATUS_STYLES.free;
   const rotation   = (table as any).rotation ?? 0;
@@ -433,14 +558,44 @@ function TableCard({ table, onClick, onHistory, onClean, isBusy, alertLevel, isM
   const isBlocked  = table.status === 'bloqueada' || table.status === 'out_of_service';
   const isPendingClean = table.status === 'pendiente_limpieza';
 
+  const longPressTimer  = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const didLongPress    = useRef(false);
+  const startPos        = useRef<{ x: number; y: number } | null>(null);
+
   const { onPointerDown: handlePointerDown, guard } = useScrollGuard();
-  const handleClick = guard(() => { if (!isBusy) onClick(); });
+
+  const handleCardPointerDown = (e: React.PointerEvent) => {
+    handlePointerDown(e);
+    if (!onLongPress) return;
+    startPos.current = { x: e.clientX, y: e.clientY };
+    didLongPress.current = false;
+    longPressTimer.current = setTimeout(() => {
+      longPressTimer.current = null;
+      didLongPress.current = true;
+      onLongPress();
+    }, 600);
+  };
+  const cancelLongPress = () => {
+    if (longPressTimer.current) { clearTimeout(longPressTimer.current); longPressTimer.current = null; }
+  };
+  const handleCardPointerMove = (e: React.PointerEvent) => {
+    if (startPos.current) {
+      const dx = Math.abs(e.clientX - startPos.current.x), dy = Math.abs(e.clientY - startPos.current.y);
+      if (dx > 8 || dy > 8) cancelLongPress();
+    }
+  };
+  const handleClick = guard(() => { if (!isBusy && !didLongPress.current) onClick(); });
 
   const alertRingColor = alertLevel === 'danger' ? '#ef4444' : alertLevel === 'warn' ? '#f59e0b' : 'transparent';
 
   return (
     <div
-      onPointerDown={handlePointerDown}
+      onPointerDown={handleCardPointerDown}
+      onPointerMove={handleCardPointerMove}
+      onPointerUp={cancelLongPress}
+      onPointerLeave={cancelLongPress}
+      onPointerCancel={cancelLongPress}
+      onContextMenu={e => { if (onLongPress) { e.preventDefault(); cancelLongPress(); didLongPress.current = true; onLongPress(); } }}
       onClick={handleClick}
       style={{
         position: "absolute", left: table.x, top: table.y, width: table.width, height: table.height,
@@ -762,10 +917,63 @@ export default function Tables() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [queryClient]);
 
-  const openTable   = useOpenTable();
-  const updateZone  = useUpdateZone();
-  const cleanTable  = useCleanTable();
-  const blockTable  = useBlockTable();
+  const openTable       = useOpenTable();
+  const updateZone      = useUpdateZone();
+  const cleanTable      = useCleanTable();
+  const blockTable      = useBlockTable();
+  const transferTable   = useTransferTable();
+  const mergeTables     = useMergeTables();
+  const separateTable   = useSeparateTable();
+  const transferWaiter  = useTransferWaiter();
+
+  // Context menu state
+  const [contextMenuTable, setContextMenuTable] = useState<Table | null>(null);
+  const { data: allEmployees } = useGetEmployeeLoginList();
+
+  const invalidateZoneTables = () => {
+    queryClient.invalidateQueries({ queryKey: getGetZoneTablesQueryKey(activeZone!) });
+    queryClient.invalidateQueries({ queryKey: getGetOccupationSummaryQueryKey() });
+  };
+
+  const handleTransfer = (targetTableId: string) => {
+    const table = contextMenuTable;
+    if (!table) return;
+    setContextMenuTable(null);
+    transferTable.mutate({ tableId: table.id, data: { targetTableId } }, {
+      onSuccess: () => { toast.success("Mesa trasladada"); invalidateZoneTables(); },
+      onError: (e: any) => toast.error(e?.response?.data?.error ?? "No se pudo trasladar"),
+    });
+  };
+
+  const handleMerge = (targetTableId: string) => {
+    const table = contextMenuTable;
+    if (!table) return;
+    setContextMenuTable(null);
+    mergeTables.mutate({ data: { tableIds: [table.id, targetTableId] } }, {
+      onSuccess: () => { toast.success("Mesas unidas"); invalidateZoneTables(); },
+      onError: (e: any) => toast.error(e?.response?.data?.error ?? "No se pudo unir"),
+    });
+  };
+
+  const handleSeparate = () => {
+    const table = contextMenuTable;
+    if (!table) return;
+    setContextMenuTable(null);
+    separateTable.mutate({ tableId: table.id }, {
+      onSuccess: () => { toast.success("Grupo separado"); invalidateZoneTables(); },
+      onError: (e: any) => toast.error(e?.response?.data?.error ?? "No se pudo separar"),
+    });
+  };
+
+  const handleWaiterTransfer = (newEmployeeId: string) => {
+    const table = contextMenuTable;
+    if (!table) return;
+    setContextMenuTable(null);
+    transferWaiter.mutate({ tableId: table.id, data: { newEmployeeId } }, {
+      onSuccess: () => { toast.success("Camarero reasignado"); invalidateZoneTables(); },
+      onError: (e: any) => toast.error(e?.response?.data?.error ?? "No se pudo reasignar"),
+    });
+  };
 
   // Occupation summary (auto-refreshes every 30s)
   const { data: occupation } = useGetOccupationSummary();
@@ -888,6 +1096,12 @@ export default function Tables() {
         <div className="flex items-center gap-3">
           <button onClick={() => setLocation("/recogida")} className="h-9 px-3 flex items-center gap-1.5 rounded-lg border border-border bg-secondary/60 hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors active:scale-95 text-sm font-bold uppercase tracking-wider" title="Recogida">
             <Package size={14} /><span className="hidden sm:inline">Recogida</span>
+          </button>
+          <button onClick={() => setLocation("/reservas")} className="h-9 px-3 flex items-center gap-1.5 rounded-lg border border-border bg-secondary/60 hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors active:scale-95 text-sm font-bold uppercase tracking-wider" title="Reservas">
+            <Calendar size={14} /><span className="hidden sm:inline">Reservas</span>
+            {occupation && occupation.pendingReservations > 0 && (
+              <span className="ml-0.5 w-4 h-4 rounded-full bg-primary text-primary-foreground text-[9px] font-black flex items-center justify-center">{occupation.pendingReservations > 9 ? "9+" : occupation.pendingReservations}</span>
+            )}
           </button>
           {isAdmin && (<>
             <button onClick={() => setLocation("/configuracion")} className="h-9 px-3 flex items-center gap-1.5 rounded-lg border border-border bg-secondary/60 hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors active:scale-95 text-sm font-bold uppercase tracking-wider">
@@ -1021,6 +1235,7 @@ export default function Tables() {
                     onClick={() => handleTableClick(table)}
                     onHistory={isManagerOrAdmin ? () => setHistoryTable({ id: table.id, name: table.name }) : undefined}
                     onClean={isManagerOrAdmin && table.status === 'pendiente_limpieza' ? () => handleCleanTable(table.id) : undefined}
+                    onLongPress={() => setContextMenuTable(table)}
                     isBusy={openTable.isPending && openTable.variables?.tableId === table.id}
                     alertLevel={getAlertLevel(table)}
                     isManagerOrAdmin={isManagerOrAdmin}
@@ -1048,6 +1263,22 @@ export default function Tables() {
 
       {/* History drawer */}
       {historyTable && <TableHistoryDrawer tableId={historyTable.id} tableName={historyTable.name} onClose={() => setHistoryTable(null)} />}
+
+      {/* Table context menu (long-press on any table) */}
+      {contextMenuTable && (
+        <TableContextMenu
+          table={contextMenuTable}
+          freeTables={(tables ?? []).filter(t => t.status === 'free')}
+          employees={(allEmployees ?? []).map(e => ({ id: e.id, name: e.name }))}
+          isManagerOrAdmin={isManagerOrAdmin}
+          onClose={() => setContextMenuTable(null)}
+          onTransfer={handleTransfer}
+          onMerge={handleMerge}
+          onSeparate={handleSeparate}
+          onWaiterTransfer={handleWaiterTransfer}
+          isPending={transferTable.isPending || mergeTables.isPending || separateTable.isPending || transferWaiter.isPending}
+        />
+      )}
     </div>
   );
 }

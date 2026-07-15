@@ -20,12 +20,16 @@ import tipsRouter from "./tips";
 import splitsRouter from "./splits";
 import ingredientsRouter from "./ingredients";
 import recipesRouter from "./recipes";
+import tableOperationsRouter from "./table-operations";
+import reservationsRouter from "./reservations";
 
 const router: IRouter = Router();
 
 router.use(healthRouter);
 router.use(authRouter);
 router.use(zonesRouter);
+router.use(tableOperationsRouter);
+router.use(reservationsRouter);
 router.use(tablesRouter);
 router.use(dashboardRouter);
 router.use(categoriesRouter);

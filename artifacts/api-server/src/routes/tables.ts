@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { restaurantTablesTable, roomZonesTable, ordersTable, tableEventsTable, alertConfigTable } from "@workspace/db";
-import { sql, eq, and, asc } from "drizzle-orm";
+import { restaurantTablesTable, roomZonesTable, ordersTable, tableEventsTable, alertConfigTable, reservationsTable } from "@workspace/db";
+import { sql, eq, and, asc, inArray } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
 
 const router: IRouter = Router();
@@ -196,6 +196,15 @@ router.get("/tables/occupation-summary", requireAuth, async (_req, res): Promise
   const avgMinutes    = OCCUPIED_KEYS.reduce((acc, k) => acc + (statusMap[k]?.avgMin ?? 0), 0)
                         / Math.max(OCCUPIED_KEYS.filter(k => (statusMap[k]?.count ?? 0) > 0).length, 1);
 
+  // Count today's upcoming/active reservations
+  const ACTIVE_RESERVATION_STATUSES = ["pendiente", "confirmada", "cliente_llegado"];
+  const resResult = await db.execute(sql`
+    SELECT COUNT(*)::int AS pending FROM reservations
+    WHERE fecha = CURRENT_DATE
+      AND status = ANY(ARRAY[${sql.join(ACTIVE_RESERVATION_STATUSES.map(s => sql`${s}`), sql`, `)}])
+  `);
+  const pendingReservations = Number((resResult.rows?.[0] as any)?.pending ?? 0);
+
   res.json({
     freeCount,
     occupiedCount,
@@ -203,7 +212,7 @@ router.get("/tables/occupation-summary", requireAuth, async (_req, res): Promise
     pendingCleaningCount,
     blockedCount,
     currentGuests,
-    pendingReservations: 0, // Will be updated by reservations task
+    pendingReservations,
     avgOccupationMinutes: Math.round(avgMinutes),
   });
 });

@@ -16,3 +16,4 @@ export * from "./business-config";
 export * from "./documents";
 export * from "./caja";
 export * from "./stock";
+export * from "./reservations";

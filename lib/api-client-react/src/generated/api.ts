@@ -4525,6 +4525,138 @@ export function useBlockTable<TError = ErrorType<ErrorResponse>, TContext = unkn
   return useMutation(getBlockTableMutationOptions(options));
 }
 
+// ─── Reservations ─────────────────────────────────────────────────────────────
+export const getGetReservationsUrl = (params?: import('./api.schemas').GetReservationsParams) => {
+  const q = new URLSearchParams();
+  if (params?.date) q.append("date", params.date);
+  if (params?.status) q.append("status", params.status);
+  const s = q.toString();
+  return s ? `/api/reservations?${s}` : `/api/reservations`;
+};
+export const getReservations = async (params?: import('./api.schemas').GetReservationsParams, options?: RequestInit): Promise<import('./api.schemas').Reservation[]> =>
+  customFetch<import('./api.schemas').Reservation[]>(getGetReservationsUrl(params), { ...options, method: 'GET' });
+export const getGetReservationsQueryKey = (params?: import('./api.schemas').GetReservationsParams) => [`/api/reservations`, ...(params ? [params] : [])] as const;
+export const getGetReservationsQueryOptions = <TData = Awaited<ReturnType<typeof getReservations>>, TError = ErrorType<ErrorResponse>>(params?: import('./api.schemas').GetReservationsParams, options?: { query?: UseQueryOptions<Awaited<ReturnType<typeof getReservations>>, TError, TData>; request?: SecondParameter<typeof customFetch> }) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+  const queryKey = queryOptions?.queryKey ?? getGetReservationsQueryKey(params);
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getReservations>>> = ({ signal }) => getReservations(params, { signal, ...requestOptions });
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<Awaited<ReturnType<typeof getReservations>>, TError, TData> & { queryKey: QueryKey };
+};
+export function useGetReservations<TData = Awaited<ReturnType<typeof getReservations>>, TError = ErrorType<ErrorResponse>>(params?: import('./api.schemas').GetReservationsParams, options?: { query?: UseQueryOptions<Awaited<ReturnType<typeof getReservations>>, TError, TData>; request?: SecondParameter<typeof customFetch> }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetReservationsQueryOptions(params, options);
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+export const createReservation = async (data: import('./api.schemas').CreateReservationInput, options?: RequestInit): Promise<import('./api.schemas').Reservation> =>
+  customFetch<import('./api.schemas').Reservation>(`/api/reservations`, { ...options, method: 'POST', headers: { 'Content-Type': 'application/json', ...options?.headers }, body: JSON.stringify(data) });
+export const getCreateReservationMutationOptions = <TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof createReservation>>, TError, { data: import('./api.schemas').CreateReservationInput }, TContext> }): UseMutationOptions<Awaited<ReturnType<typeof createReservation>>, TError, { data: import('./api.schemas').CreateReservationInput }, TContext> => {
+  const mutationKey = ['createReservation'];
+  const { mutation: mutationOptions } = options ? (options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ? options : { ...options, mutation: { ...options.mutation, mutationKey } }) : { mutation: { mutationKey } };
+  const mutationFn: MutationFunction<Awaited<ReturnType<typeof createReservation>>, { data: import('./api.schemas').CreateReservationInput }> = ({ data }) => createReservation(data);
+  return { mutationFn, ...mutationOptions };
+};
+export function useCreateReservation<TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof createReservation>>, TError, { data: import('./api.schemas').CreateReservationInput }, TContext> }): UseMutationResult<Awaited<ReturnType<typeof createReservation>>, TError, { data: import('./api.schemas').CreateReservationInput }, TContext> {
+  return useMutation(getCreateReservationMutationOptions(options));
+}
+
+export const patchReservation = async (id: string, data: import('./api.schemas').UpdateReservationInput, options?: RequestInit): Promise<import('./api.schemas').Reservation> =>
+  customFetch<import('./api.schemas').Reservation>(`/api/reservations/${id}`, { ...options, method: 'PATCH', headers: { 'Content-Type': 'application/json', ...options?.headers }, body: JSON.stringify(data) });
+export const getPatchReservationMutationOptions = <TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof patchReservation>>, TError, { id: string; data: import('./api.schemas').UpdateReservationInput }, TContext> }): UseMutationOptions<Awaited<ReturnType<typeof patchReservation>>, TError, { id: string; data: import('./api.schemas').UpdateReservationInput }, TContext> => {
+  const mutationKey = ['patchReservation'];
+  const { mutation: mutationOptions } = options ? (options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ? options : { ...options, mutation: { ...options.mutation, mutationKey } }) : { mutation: { mutationKey } };
+  const mutationFn: MutationFunction<Awaited<ReturnType<typeof patchReservation>>, { id: string; data: import('./api.schemas').UpdateReservationInput }> = ({ id, data }) => patchReservation(id, data);
+  return { mutationFn, ...mutationOptions };
+};
+export function usePatchReservation<TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof patchReservation>>, TError, { id: string; data: import('./api.schemas').UpdateReservationInput }, TContext> }): UseMutationResult<Awaited<ReturnType<typeof patchReservation>>, TError, { id: string; data: import('./api.schemas').UpdateReservationInput }, TContext> {
+  return useMutation(getPatchReservationMutationOptions(options));
+}
+
+export const deleteReservation = async (id: string, options?: RequestInit): Promise<void> =>
+  customFetch<void>(`/api/reservations/${id}`, { ...options, method: 'DELETE' });
+export const getDeleteReservationMutationOptions = <TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof deleteReservation>>, TError, { id: string }, TContext> }): UseMutationOptions<Awaited<ReturnType<typeof deleteReservation>>, TError, { id: string }, TContext> => {
+  const mutationKey = ['deleteReservation'];
+  const { mutation: mutationOptions } = options ? (options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ? options : { ...options, mutation: { ...options.mutation, mutationKey } }) : { mutation: { mutationKey } };
+  const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteReservation>>, { id: string }> = ({ id }) => deleteReservation(id);
+  return { mutationFn, ...mutationOptions };
+};
+export function useDeleteReservation<TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof deleteReservation>>, TError, { id: string }, TContext> }): UseMutationResult<Awaited<ReturnType<typeof deleteReservation>>, TError, { id: string }, TContext> {
+  return useMutation(getDeleteReservationMutationOptions(options));
+}
+
+export const arriveReservation = async (id: string, data?: { openTable?: boolean }, options?: RequestInit): Promise<unknown> =>
+  customFetch<unknown>(`/api/reservations/${id}/arrive`, { ...options, method: 'POST', headers: { 'Content-Type': 'application/json', ...options?.headers }, body: JSON.stringify(data ?? {}) });
+export const getArriveReservationMutationOptions = <TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof arriveReservation>>, TError, { id: string; openTable?: boolean }, TContext> }): UseMutationOptions<Awaited<ReturnType<typeof arriveReservation>>, TError, { id: string; openTable?: boolean }, TContext> => {
+  const mutationKey = ['arriveReservation'];
+  const { mutation: mutationOptions } = options ? (options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ? options : { ...options, mutation: { ...options.mutation, mutationKey } }) : { mutation: { mutationKey } };
+  const mutationFn: MutationFunction<Awaited<ReturnType<typeof arriveReservation>>, { id: string; openTable?: boolean }> = ({ id, openTable }) => arriveReservation(id, { openTable });
+  return { mutationFn, ...mutationOptions };
+};
+export function useArriveReservation<TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof arriveReservation>>, TError, { id: string; openTable?: boolean }, TContext> }): UseMutationResult<Awaited<ReturnType<typeof arriveReservation>>, TError, { id: string; openTable?: boolean }, TContext> {
+  return useMutation(getArriveReservationMutationOptions(options));
+}
+
+// ─── Table operations ─────────────────────────────────────────────────────────
+export const transferTable = async (tableId: string, data: import('./api.schemas').TableTransferInput, options?: RequestInit): Promise<{ success: boolean; orderId: string }> =>
+  customFetch<{ success: boolean; orderId: string }>(`/api/tables/${tableId}/transfer`, { ...options, method: 'POST', headers: { 'Content-Type': 'application/json', ...options?.headers }, body: JSON.stringify(data) });
+export const getTransferTableMutationOptions = <TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof transferTable>>, TError, { tableId: string; data: import('./api.schemas').TableTransferInput }, TContext> }): UseMutationOptions<Awaited<ReturnType<typeof transferTable>>, TError, { tableId: string; data: import('./api.schemas').TableTransferInput }, TContext> => {
+  const mutationKey = ['transferTable'];
+  const { mutation: mutationOptions } = options ? (options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ? options : { ...options, mutation: { ...options.mutation, mutationKey } }) : { mutation: { mutationKey } };
+  const mutationFn: MutationFunction<Awaited<ReturnType<typeof transferTable>>, { tableId: string; data: import('./api.schemas').TableTransferInput }> = ({ tableId, data }) => transferTable(tableId, data);
+  return { mutationFn, ...mutationOptions };
+};
+export function useTransferTable<TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof transferTable>>, TError, { tableId: string; data: import('./api.schemas').TableTransferInput }, TContext> }): UseMutationResult<Awaited<ReturnType<typeof transferTable>>, TError, { tableId: string; data: import('./api.schemas').TableTransferInput }, TContext> {
+  return useMutation(getTransferTableMutationOptions(options));
+}
+
+export const mergeTables = async (data: import('./api.schemas').MergeTablesInput, options?: RequestInit): Promise<{ success: boolean; mergeGroupId: string; hostOrderId: string }> =>
+  customFetch<{ success: boolean; mergeGroupId: string; hostOrderId: string }>(`/api/tables/merge`, { ...options, method: 'POST', headers: { 'Content-Type': 'application/json', ...options?.headers }, body: JSON.stringify(data) });
+export const getMergeTablesMutationOptions = <TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof mergeTables>>, TError, { data: import('./api.schemas').MergeTablesInput }, TContext> }): UseMutationOptions<Awaited<ReturnType<typeof mergeTables>>, TError, { data: import('./api.schemas').MergeTablesInput }, TContext> => {
+  const mutationKey = ['mergeTables'];
+  const { mutation: mutationOptions } = options ? (options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ? options : { ...options, mutation: { ...options.mutation, mutationKey } }) : { mutation: { mutationKey } };
+  const mutationFn: MutationFunction<Awaited<ReturnType<typeof mergeTables>>, { data: import('./api.schemas').MergeTablesInput }> = ({ data }) => mergeTables(data);
+  return { mutationFn, ...mutationOptions };
+};
+export function useMergeTables<TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof mergeTables>>, TError, { data: import('./api.schemas').MergeTablesInput }, TContext> }): UseMutationResult<Awaited<ReturnType<typeof mergeTables>>, TError, { data: import('./api.schemas').MergeTablesInput }, TContext> {
+  return useMutation(getMergeTablesMutationOptions(options));
+}
+
+export const separateTable = async (tableId: string, options?: RequestInit): Promise<{ success: boolean }> =>
+  customFetch<{ success: boolean }>(`/api/tables/${tableId}/separate`, { ...options, method: 'POST', headers: { 'Content-Type': 'application/json', ...options?.headers } });
+export const getSeparateTableMutationOptions = <TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof separateTable>>, TError, { tableId: string }, TContext> }): UseMutationOptions<Awaited<ReturnType<typeof separateTable>>, TError, { tableId: string }, TContext> => {
+  const mutationKey = ['separateTable'];
+  const { mutation: mutationOptions } = options ? (options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ? options : { ...options, mutation: { ...options.mutation, mutationKey } }) : { mutation: { mutationKey } };
+  const mutationFn: MutationFunction<Awaited<ReturnType<typeof separateTable>>, { tableId: string }> = ({ tableId }) => separateTable(tableId);
+  return { mutationFn, ...mutationOptions };
+};
+export function useSeparateTable<TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof separateTable>>, TError, { tableId: string }, TContext> }): UseMutationResult<Awaited<ReturnType<typeof separateTable>>, TError, { tableId: string }, TContext> {
+  return useMutation(getSeparateTableMutationOptions(options));
+}
+
+export const moveItems = async (orderId: string, data: import('./api.schemas').MoveItemsInput, options?: RequestInit): Promise<{ success: boolean; targetOrderId: string }> =>
+  customFetch<{ success: boolean; targetOrderId: string }>(`/api/orders/${orderId}/move-items`, { ...options, method: 'POST', headers: { 'Content-Type': 'application/json', ...options?.headers }, body: JSON.stringify(data) });
+export const getMoveItemsMutationOptions = <TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof moveItems>>, TError, { orderId: string; data: import('./api.schemas').MoveItemsInput }, TContext> }): UseMutationOptions<Awaited<ReturnType<typeof moveItems>>, TError, { orderId: string; data: import('./api.schemas').MoveItemsInput }, TContext> => {
+  const mutationKey = ['moveItems'];
+  const { mutation: mutationOptions } = options ? (options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ? options : { ...options, mutation: { ...options.mutation, mutationKey } }) : { mutation: { mutationKey } };
+  const mutationFn: MutationFunction<Awaited<ReturnType<typeof moveItems>>, { orderId: string; data: import('./api.schemas').MoveItemsInput }> = ({ orderId, data }) => moveItems(orderId, data);
+  return { mutationFn, ...mutationOptions };
+};
+export function useMoveItems<TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof moveItems>>, TError, { orderId: string; data: import('./api.schemas').MoveItemsInput }, TContext> }): UseMutationResult<Awaited<ReturnType<typeof moveItems>>, TError, { orderId: string; data: import('./api.schemas').MoveItemsInput }, TContext> {
+  return useMutation(getMoveItemsMutationOptions(options));
+}
+
+export const transferWaiter = async (tableId: string, data: import('./api.schemas').WaiterTransferInput, options?: RequestInit): Promise<{ success: boolean; orderId: string; newEmployeeId: string }> =>
+  customFetch<{ success: boolean; orderId: string; newEmployeeId: string }>(`/api/tables/${tableId}/transfer-waiter`, { ...options, method: 'POST', headers: { 'Content-Type': 'application/json', ...options?.headers }, body: JSON.stringify(data) });
+export const getTransferWaiterMutationOptions = <TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof transferWaiter>>, TError, { tableId: string; data: import('./api.schemas').WaiterTransferInput }, TContext> }): UseMutationOptions<Awaited<ReturnType<typeof transferWaiter>>, TError, { tableId: string; data: import('./api.schemas').WaiterTransferInput }, TContext> => {
+  const mutationKey = ['transferWaiter'];
+  const { mutation: mutationOptions } = options ? (options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ? options : { ...options, mutation: { ...options.mutation, mutationKey } }) : { mutation: { mutationKey } };
+  const mutationFn: MutationFunction<Awaited<ReturnType<typeof transferWaiter>>, { tableId: string; data: import('./api.schemas').WaiterTransferInput }> = ({ tableId, data }) => transferWaiter(tableId, data);
+  return { mutationFn, ...mutationOptions };
+};
+export function useTransferWaiter<TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof transferWaiter>>, TError, { tableId: string; data: import('./api.schemas').WaiterTransferInput }, TContext> }): UseMutationResult<Awaited<ReturnType<typeof transferWaiter>>, TError, { tableId: string; data: import('./api.schemas').WaiterTransferInput }, TContext> {
+  return useMutation(getTransferWaiterMutationOptions(options));
+}
+
 export const getGetCashSessionHistoryUrl = () => `/api/cash-sessions/history`;
 export const getCashSessionHistory = async (options?: RequestInit): Promise<import('./api.schemas').CashSessionHistoryItem[]> =>
   customFetch<import('./api.schemas').CashSessionHistoryItem[]>(getGetCashSessionHistoryUrl(), { ...options, method: 'GET' });

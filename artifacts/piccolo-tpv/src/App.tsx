@@ -25,6 +25,7 @@ import Modificadores from './pages/modificadores';
 import Ingredientes from './pages/ingredientes';
 import Stock from './pages/stock';
 import Carta from './pages/carta';
+import Reservations from './pages/reservations';
 import NotFound from './pages/not-found';
 
 const queryClient = new QueryClient({
@@ -61,6 +62,7 @@ function Router() {
       <Route path="/carta" component={Carta} />
       <Route path="/recogida" component={Recogida} />
       <Route path="/prefactura/:orderId" component={Prefactura} />
+      <Route path="/reservas" component={Reservations} />
       <Route component={NotFound} />
     </Switch>
   );
