@@ -203,6 +203,92 @@ describe("POST /api/zones — sortOrder after create", () => {
   });
 });
 
+// ─── POST /zones/:zoneId/duplicate — sortOrder uses active-only MAX ───────────
+
+describe("POST /api/zones/:zoneId/duplicate — sortOrder after duplicate", () => {
+  beforeEach(() => {
+    process.env["SESSION_SECRET"] = "test-secret";
+    vi.clearAllMocks();
+    // Restore the transaction shim cleared by vi.clearAllMocks()
+    mockDb.transaction.mockImplementation(async (cb: (tx: typeof mockDb) => unknown) => cb(mockDb));
+    mockDb.execute.mockResolvedValue([]);
+  });
+
+  it("assigns sortOrder = active-max + 1 (basic duplication)", async () => {
+    // Original zone to clone
+    const original = { id: "zone-a", name: "Terraza", type: "dining", sortOrder: 1, active: true, color: null, icon: null };
+    const newZone  = { id: "zone-dup1", name: "Terraza (copia)", type: "dining", sortOrder: 4, active: true, color: null, icon: null };
+
+    mockDb.select
+      .mockReturnValueOnce(makeChain([original]))  // fetch original
+      .mockReturnValueOnce(makeChain([{ v: 3 }]))  // MAX(sort_order) where active=true
+      .mockReturnValueOnce(makeChain([]));          // fetch tables to copy (none)
+
+    mockDb.insert.mockReturnValueOnce(makeChain([newZone]));
+
+    const res = await request(app)
+      .post("/api/zones/zone-a/duplicate")
+      .set("Authorization", AUTH);
+
+    expect(res.status).toBe(201);
+    expect(res.body.sortOrder).toBe(4);
+    expect(res.body.name).toBe("Terraza (copia)");
+  });
+
+  it("ignores soft-deleted zones when computing sortOrder for the duplicate", async () => {
+    // Scenario: 3 active zones (max active sortOrder=3) plus a soft-deleted zone
+    // with sortOrder=50 left over from many create/delete cycles.
+    // The cloned zone must get sortOrder=4, not sortOrder=51.
+    const original = { id: "zone-b", name: "Interior", type: "dining", sortOrder: 2, active: true, color: null, icon: null };
+    const newZone  = { id: "zone-dup2", name: "Interior (copia)", type: "dining", sortOrder: 4, active: true, color: null, icon: null };
+
+    mockDb.select
+      .mockReturnValueOnce(makeChain([original]))  // fetch original
+      .mockReturnValueOnce(makeChain([{ v: 3 }]))  // active-only MAX returns 3, not 50
+      .mockReturnValueOnce(makeChain([]));          // fetch tables to copy (none)
+
+    mockDb.insert.mockReturnValueOnce(makeChain([newZone]));
+
+    const res = await request(app)
+      .post("/api/zones/zone-b/duplicate")
+      .set("Authorization", AUTH);
+
+    expect(res.status).toBe(201);
+    // Must be active-max (3) + 1 = 4, not the inflated soft-deleted max (50) + 1 = 51
+    expect(res.body.sortOrder).toBe(4);
+  });
+
+  it("assigns sortOrder = 1 when all existing zones were soft-deleted (max is null)", async () => {
+    // Edge case: every zone has been deleted → active MAX returns null
+    const original = { id: "zone-c", name: "Barra", type: "bar", sortOrder: 99, active: true, color: null, icon: null };
+    const newZone  = { id: "zone-dup3", name: "Barra (copia)", type: "bar", sortOrder: 1, active: true, color: null, icon: null };
+
+    mockDb.select
+      .mockReturnValueOnce(makeChain([original]))   // fetch original
+      .mockReturnValueOnce(makeChain([{ v: null }])) // no active zones → MAX is null
+      .mockReturnValueOnce(makeChain([]));            // fetch tables to copy (none)
+
+    mockDb.insert.mockReturnValueOnce(makeChain([newZone]));
+
+    const res = await request(app)
+      .post("/api/zones/zone-c/duplicate")
+      .set("Authorization", AUTH);
+
+    expect(res.status).toBe(201);
+    expect(res.body.sortOrder).toBe(1);
+  });
+
+  it("returns 404 when the source zone does not exist", async () => {
+    mockDb.select.mockReturnValueOnce(makeChain([])); // zone not found
+
+    const res = await request(app)
+      .post("/api/zones/nonexistent/duplicate")
+      .set("Authorization", AUTH);
+
+    expect(res.status).toBe(404);
+  });
+});
+
 describe("PATCH /api/zones/:zoneId — reordering with various sortOrder values", () => {
   beforeEach(() => {
     process.env["SESSION_SECRET"] = "test-secret";
