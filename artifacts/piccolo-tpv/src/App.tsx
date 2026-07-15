@@ -45,6 +45,14 @@ import RevisionFactura from './pages/revision-factura';
 import ConciliacionFactura from './pages/conciliacion-factura';
 import TrazabilidadLotes from './pages/trazabilidad-lotes';
 import RetiradasLote from './pages/retirada-lote';
+import FichajeReloj from './pages/fichaje/FichajeReloj';
+import FichajePanelDiario from './pages/fichaje/FichajePanelDiario';
+import FichajeRegistros from './pages/fichaje/FichajeRegistros';
+import FichajeTurnos from './pages/fichaje/FichajeTurnos';
+import FichajeAusencias from './pages/fichaje/FichajeAusencias';
+import FichajeImportarAnviz from './pages/fichaje/FichajeImportarAnviz';
+import FichajeInformes from './pages/fichaje/FichajeInformes';
+import FichajeConfiguracion from './pages/fichaje/FichajeConfiguracion';
 import NotFound from './pages/not-found';
 
 const queryClient = new QueryClient({
@@ -101,6 +109,16 @@ function Router() {
       <Route path="/admin/conciliacion-factura/:id" component={ConciliacionFactura} />
       <Route path="/admin/trazabilidad-lotes" component={TrazabilidadLotes} />
       <Route path="/admin/retirada-lote" component={RetiradasLote} />
+      {/* Fichaje module — public mobile clock */}
+      <Route path="/fichaje" component={FichajeReloj} />
+      {/* Fichaje module — admin/manager pages */}
+      <Route path="/admin/fichaje/panel" component={FichajePanelDiario} />
+      <Route path="/admin/fichaje/registros" component={FichajeRegistros} />
+      <Route path="/admin/fichaje/turnos" component={FichajeTurnos} />
+      <Route path="/admin/fichaje/ausencias" component={FichajeAusencias} />
+      <Route path="/admin/fichaje/importar" component={FichajeImportarAnviz} />
+      <Route path="/admin/fichaje/informes" component={FichajeInformes} />
+      <Route path="/admin/fichaje/configuracion" component={FichajeConfiguracion} />
       <Route component={NotFound} />
     </Switch>
   );
