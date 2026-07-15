@@ -320,6 +320,7 @@ export default function OrderPage() {
       if (suppressTimeoutRef.current) clearTimeout(suppressTimeoutRef.current);
       suppressTimeoutRef.current = setTimeout(() => { suppressNextRefresh.current = false; suppressTimeoutRef.current = null; }, 500);
       queryClient.invalidateQueries({ queryKey: getGetTableOrderQueryKey(tableId) });
+      queryClient.invalidateQueries({ queryKey: getGetUnreadNotificationsQueryKey() });
     };
     socket.on('reconnect', handleReconnect);
 
@@ -389,10 +390,15 @@ export default function OrderPage() {
     // Also re-fetch whenever the tab becomes visible again after being hidden
     // (the socket may have been idle for a long time).
     const handleVisibilityResume = () => {
-      if (!document.hidden && socket.connected) {
-        queryClient.invalidateQueries({ queryKey: getGetTableOrderQueryKey(tableId) });
-      } else if (!document.hidden && !socket.connected) {
-        socket.connect();
+      if (!document.hidden) {
+        // Always refresh unread notifications on foreground restore, regardless
+        // of socket state — the badge must be up-to-date within a second.
+        queryClient.invalidateQueries({ queryKey: getGetUnreadNotificationsQueryKey() });
+        if (socket.connected) {
+          queryClient.invalidateQueries({ queryKey: getGetTableOrderQueryKey(tableId) });
+        } else {
+          socket.connect();
+        }
       }
     };
     document.addEventListener('visibilitychange', handleVisibilityResume);
