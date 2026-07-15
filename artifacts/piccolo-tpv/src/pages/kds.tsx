@@ -50,12 +50,18 @@ export default function KdsPage() {
   const zone: KdsZone = VALID_ZONES.includes(rawZone as KdsZone) ? (rawZone as KdsZone) : 'cocina';
   const queryClient = useQueryClient();
 
-  const { data: tasks, isLoading } = useGetKdsTasks(zone, {
+  const { data: rawTasks, isLoading } = useGetKdsTasks(zone, {
     query: {
       refetchInterval: 10000,
       queryKey: getGetKdsTasksQueryKey(zone),
     }
   });
+
+  // Client-side guard: never render tasks that are already collected or served,
+  // regardless of what the server may return (e.g. a stale cache race).
+  const tasks = rawTasks?.filter(
+    (t: { status: string }) => t.status !== 'collected' && t.status !== 'served'
+  );
 
   useEffect(() => {
     const socket = io({ path: '/api/socket.io' });

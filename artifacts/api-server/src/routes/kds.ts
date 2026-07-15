@@ -14,7 +14,7 @@ import { getIO } from "../lib/socket";
 const router: IRouter = Router();
 
 const ZONE_STATUSES = ["new", "preparing", "ready"];
-const PASE_STATUSES = ["ready", "collected"];
+const PASE_STATUSES = ["ready"];
 
 const TASK_FIELDS = {
   id: kitchenTasksTable.id,
@@ -53,7 +53,7 @@ router.get("/kds/:zone", requireAuth, async (req, res): Promise<void> => {
     .innerJoin(restaurantTablesTable, eq(ordersTable.tableId, restaurantTablesTable.id))
     .leftJoin(employeesTable, eq(ordersTable.employeeId, employeesTable.id));
 
-  const tasks =
+  const rawTasks =
     zone === "pase"
       ? await baseQuery
           .where(inArray(kitchenTasksTable.status, PASE_STATUSES))
@@ -66,6 +66,12 @@ router.get("/kds/:zone", requireAuth, async (req, res): Promise<void> => {
             ),
           )
           .orderBy(kitchenTasksTable.createdAt);
+
+  // Defense-in-depth: filter out collected/served in application code so that
+  // a stale cache or unexpected DB result never surfaces finished tasks on the
+  // kitchen display.
+  const allowedStatuses = zone === "pase" ? PASE_STATUSES : ZONE_STATUSES;
+  const tasks = rawTasks.filter((t) => allowedStatuses.includes(t.status));
 
   res.json(tasks);
 });
