@@ -482,24 +482,38 @@ export default function Tables() {
     if (zones?.length && !activeZone) setActiveZone(zones[0].id);
   }, [zones, activeZone]);
 
-  /** Save the current canvas scroll position for a given zone to sessionStorage. */
+  /** Save the current canvas scroll position for a given zone to localStorage. */
   const saveScrollForZone = useCallback((zoneId: string) => {
     const el = canvasContainerRef.current;
     if (!el || !zoneId) return;
     try {
-      sessionStorage.setItem(
+      localStorage.setItem(
         SCROLL_STORAGE_PREFIX + zoneId,
         JSON.stringify({ left: el.scrollLeft, top: el.scrollTop }),
       );
     } catch { /* ignore */ }
   }, []);
 
+  // Persist scroll position to localStorage before the page is unloaded
+  // (hard refresh, browser close, navigation away). This ensures restore works
+  // even when the user never explicitly switched zones in the session.
+  // currentZoneIdRef is used instead of activeZone so the handler doesn't need
+  // to be re-registered on every zone change.
+  useEffect(() => {
+    function handlePageHide() {
+      const zoneId = currentZoneIdRef.current;
+      if (zoneId) saveScrollForZone(zoneId);
+    }
+    window.addEventListener("pagehide", handlePageHide);
+    return () => window.removeEventListener("pagehide", handlePageHide);
+  }, [saveScrollForZone]);
+
   /** Restore the saved scroll position for a zone (if any). Must be called after render. */
   const restoreScrollForZone = useCallback((zoneId: string) => {
     const el = canvasContainerRef.current;
     if (!el || !zoneId) return;
     try {
-      const raw = sessionStorage.getItem(SCROLL_STORAGE_PREFIX + zoneId);
+      const raw = localStorage.getItem(SCROLL_STORAGE_PREFIX + zoneId);
       if (raw) {
         const { left, top } = JSON.parse(raw) as { left: number; top: number };
         el.scrollLeft = left;
