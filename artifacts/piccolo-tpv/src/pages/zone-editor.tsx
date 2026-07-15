@@ -221,7 +221,7 @@ export default function ZoneEditor() {
   // ── Zoom ─────────────────────────────────────────────────────────────────
   const [zoom, setZoom] = useState<number>(() => {
     try {
-      const saved = sessionStorage.getItem(ZOOM_STORAGE_KEY);
+      const saved = localStorage.getItem(ZOOM_STORAGE_KEY);
       const parsed = saved ? parseFloat(saved) : NaN;
       return !isNaN(parsed) && parsed >= ZOOM_MIN && parsed <= ZOOM_MAX ? parsed : 1;
     } catch { return 1; }
@@ -232,7 +232,7 @@ export default function ZoneEditor() {
   const persistZoom = useCallback((z: number) => {
     const clamped = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, parseFloat(z.toFixed(2))));
     setZoom(clamped);
-    try { sessionStorage.setItem(ZOOM_STORAGE_KEY, String(clamped)); } catch { /* */ }
+    try { localStorage.setItem(ZOOM_STORAGE_KEY, String(clamped)); } catch { /* */ }
     return clamped;
   }, []);
 
@@ -356,6 +356,9 @@ export default function ZoneEditor() {
   // Clear selection when layout changes
   useEffect(() => { setSelectedIds(new Set()); setSelectedElementId(null); }, [activeLayout]);
 
+  // Ref kept in sync with the latest handleDelete — used by keyboard shortcut
+  const handleDeleteRef = useRef<() => void>(() => {});
+
   // ── Drag state ────────────────────────────────────────────────────────────
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [locked, setLocked] = useState(false);
@@ -377,6 +380,15 @@ export default function ZoneEditor() {
   const invalidateElements = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: elementsQueryKey });
   }, [queryClient, elementsQueryKey]);
+
+  // Re-fetch tables and elements when returning to foreground
+  useEffect(() => {
+    const onVisibility = () => {
+      if (!document.hidden) { invalidateTables(); invalidateElements(); }
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, [invalidateTables, invalidateElements]);
 
   // ── Table drag ────────────────────────────────────────────────────────────
   const handleTablePointerDown = useCallback((e: React.PointerEvent, tableId: string) => {
@@ -592,6 +604,24 @@ export default function ZoneEditor() {
       });
     }
   };
+
+  // Keep ref in sync so keyboard shortcut can call handleDelete without stale closures
+  handleDeleteRef.current = handleDelete;
+
+  // ── Keyboard shortcuts (Delete/Backspace = borrar selección; Escape = deseleccionar) ──
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement).tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (selectedIds.size > 0 || selectedElementId) { e.preventDefault(); handleDeleteRef.current(); }
+      }
+      if (e.key === 'Escape') { setSelectedIds(new Set()); setSelectedElementId(null); }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedIds, selectedElementId]);
 
   const handleDuplicate = () => {
     if (selectedIds.size !== 1) return;

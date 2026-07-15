@@ -3,7 +3,7 @@ import { useParams, Link } from 'wouter';
 import { useQueryClient } from '@tanstack/react-query';
 import { io } from 'socket.io-client';
 import { toast } from 'sonner';
-import { History, RefreshCw, AlertTriangle, X, Clock, CheckCircle, ShieldCheck } from 'lucide-react';
+import { History, RefreshCw, AlertTriangle, X, Clock, CheckCircle, ShieldCheck, Search } from 'lucide-react';
 import {
   useGetKdsTasks,
   useUpdateKitchenTaskStatus,
@@ -94,7 +94,11 @@ export default function KdsPage() {
   const queryClient = useQueryClient();
   const [updatedBy, setUpdatedBy] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
-  const clearTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const clearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Track which task IDs are "just arrived" so we can flash them
+  const prevTaskIdsRef = useRef<Set<string>>(new Set());
+  const [flashingIds, setFlashingIds] = useState<Set<string>>(new Set());
 
   const { data: rawTasks, isLoading } = useGetKdsTasks(zone, {
     query: {
@@ -114,6 +118,34 @@ export default function KdsPage() {
     return true;
   });
 
+  // Detect newly arrived tasks (not in previous render) and flash them
+  useEffect(() => {
+    if (!tasks) return;
+    const currentIds = new Set(tasks.map((t: KitchenTask) => t.id));
+    const prev = prevTaskIdsRef.current;
+    prevTaskIdsRef.current = currentIds;
+    // On first load prev is empty — skip flashing so we don't flash everything on mount
+    if (prev.size === 0) return;
+    const newIds: string[] = [];
+    currentIds.forEach(id => { if (!prev.has(id)) newIds.push(id); });
+    if (newIds.length === 0) return;
+    setFlashingIds(curr => {
+      const next = new Set(curr);
+      newIds.forEach(id => next.add(id));
+      return next;
+    });
+    // Remove flash class after animation completes
+    const timer = setTimeout(() => {
+      setFlashingIds(curr => {
+        const next = new Set(curr);
+        newIds.forEach(id => next.delete(id));
+        return next;
+      });
+    }, 1500);
+    return () => clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tasks]);
+
   useEffect(() => {
     const socket = io({ path: '/api/socket.io' });
 
@@ -127,7 +159,7 @@ export default function KdsPage() {
       const name = payload?.employeeName;
       if (name) {
         setUpdatedBy(name);
-        clearTimeout(clearTimerRef.current);
+        if (clearTimerRef.current !== null) clearTimeout(clearTimerRef.current);
         clearTimerRef.current = setTimeout(() => setUpdatedBy(null), 4000);
       }
     };
@@ -135,8 +167,38 @@ export default function KdsPage() {
     socket.on('connect', invalidate);
     socket.on('kds:refresh', handleKdsRefresh);
 
+    // ── Application-level heartbeat ───────────────────────────────────────────
+    // Detects silent connection drops (overnight idle, server restart, etc.)
+    const HEARTBEAT_INTERVAL = 60_000;
+    const HEARTBEAT_TIMEOUT  =  5_000;
+    let pongTimeoutId: ReturnType<typeof setTimeout> | null = null;
+
+    const sendHeartbeat = () => {
+      if (!socket.connected) return;
+      pongTimeoutId = setTimeout(() => {
+        socket.disconnect();
+        socket.connect();
+        invalidate();
+      }, HEARTBEAT_TIMEOUT);
+      socket.emit('ping');
+    };
+    const handlePong = () => { if (pongTimeoutId !== null) { clearTimeout(pongTimeoutId); pongTimeoutId = null; } };
+    socket.on('pong', handlePong);
+    const heartbeatInterval = setInterval(sendHeartbeat, HEARTBEAT_INTERVAL);
+
+    // Re-fetch when tab becomes visible again
+    const handleVisibilityResume = () => {
+      if (!document.hidden) {
+        if (socket.connected) { invalidate(); } else { socket.connect(); }
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityResume);
+
     return () => {
-      clearTimeout(clearTimerRef.current);
+      if (clearTimerRef.current !== null) clearTimeout(clearTimerRef.current);
+      clearInterval(heartbeatInterval);
+      if (pongTimeoutId !== null) clearTimeout(pongTimeoutId);
+      document.removeEventListener('visibilitychange', handleVisibilityResume);
       socket.disconnect();
     };
   }, [zone, queryClient]);
@@ -254,7 +316,7 @@ export default function KdsPage() {
           ) : isPase ? (
             <PaseView tasks={tasks} onAction={handlePaseAction} />
           ) : (
-            <ZoneTasksView tasks={tasks} onUpdateStatus={handleUpdateStatus} onResend={handleResend} />
+            <ZoneTasksView tasks={tasks} onUpdateStatus={handleUpdateStatus} onResend={handleResend} flashingIds={flashingIds} />
           )}
         </main>
 
@@ -275,15 +337,17 @@ function ZoneTasksView({
   tasks,
   onUpdateStatus,
   onResend,
+  flashingIds,
 }: {
   tasks: KitchenTask[];
   onUpdateStatus: (id: string, status: string) => void;
   onResend: (id: string) => void;
+  flashingIds: Set<string>;
 }) {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-5 items-start">
       {tasks.map(task => (
-        <TaskCard key={task.id} task={task} onUpdateStatus={onUpdateStatus} onResend={onResend} />
+        <TaskCard key={task.id} task={task} onUpdateStatus={onUpdateStatus} onResend={onResend} isFlashing={flashingIds.has(task.id)} />
       ))}
     </div>
   );
@@ -295,10 +359,12 @@ function TaskCard({
   task,
   onUpdateStatus,
   onResend,
+  isFlashing = false,
 }: {
   task: KitchenTask;
   onUpdateStatus: (id: string, status: string) => void;
   onResend: (id: string) => void;
+  isFlashing?: boolean;
 }) {
   const isNew       = task.status === 'new';
   const isPrep      = task.status === 'preparing';
@@ -374,7 +440,7 @@ function TaskCard({
     : 'bg-[#22c55e]/20 text-[#22c55e]';
 
   return (
-    <div className={`relative flex flex-col bg-card border-2 rounded-2xl overflow-hidden shadow-xl transition-all ${borderClass} ${delayBorder}`}>
+    <div className={`relative flex flex-col bg-card border-2 rounded-2xl overflow-hidden shadow-xl transition-all ${borderClass} ${delayBorder}${isFlashing ? ' kds-flash-in' : ''}`}>
       {/* Header */}
       <div className={`flex flex-col border-b-2 ${headerBg}`}>
         <div className="p-4 flex justify-between items-start">
@@ -425,9 +491,11 @@ function TaskCard({
             </div>
             <p className="text-xs text-muted-foreground">{task.allergyNote ?? 'Preparación especial requerida'}</p>
             <textarea
+              autoFocus
               className="w-full px-2 py-1.5 rounded-lg bg-secondary border border-border text-xs focus:outline-none resize-none"
               rows={2} placeholder="Nota (ej: utensilios limpios, zona aislada…)"
               value={confirmNote} onChange={e => setConfirmNote(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void handleAllergyConfirm(); } if (e.key === 'Escape') setShowAllergyConfirm(false); }}
             />
             <label className="flex items-center gap-2 text-xs">
               <input type="checkbox" checked={crossRisk} onChange={e => setCrossRisk(e.target.checked)} className="rounded" />
@@ -621,7 +689,7 @@ function PaseView({ tasks, onAction }: { tasks: KitchenTask[]; onAction: (orderI
             {order.isAllReady ? (
               <button
                 onClick={() => onAction(order.orderId, 'collected')}
-                className="py-4 bg-[#22c55e] hover:bg-[#16a34a] text-[#14532d] font-black uppercase tracking-wider rounded-xl transition-all active:scale-95 shadow-[0_4px_15px_rgba(34,197,94,0.3)]"
+                className="py-4 bg-[#22c55e] hover:bg-[#16a34a] text-[#14532d] font-black uppercase tracking-wider rounded-xl transition-all active:scale-95 shadow-[0_4px_15px_rgba(34,197,94,0.3)] disabled:opacity-60"
               >
                 Recoger
               </button>
@@ -643,6 +711,7 @@ function HistoryPanel({ onClose }: { onClose: () => void }) {
   const { data: history, isLoading } = useGetKdsHistory({
     query: { refetchInterval: 15000, queryKey: getGetKdsHistoryQueryKey() },
   });
+  const [histSearch, setHistSearch] = useState('');
 
   const statusLabel: Record<string, string> = {
     collected: 'Recogido',
@@ -656,6 +725,13 @@ function HistoryPanel({ onClose }: { onClose: () => void }) {
     cancelled: 'text-red-400 bg-red-500/10 border-red-500/20',
   };
 
+  const filteredHistory = histSearch.trim()
+    ? (history ?? []).filter(t =>
+        t.tableName?.toLowerCase().includes(histSearch.toLowerCase()) ||
+        t.productName?.toLowerCase().includes(histSearch.toLowerCase())
+      )
+    : (history ?? []);
+
   return (
     <>
       <div className="h-14 flex items-center justify-between px-4 border-b border-border shrink-0">
@@ -668,14 +744,35 @@ function HistoryPanel({ onClose }: { onClose: () => void }) {
         </button>
       </div>
 
+      {/* History search */}
+      <div className="px-3 py-2 border-b border-border shrink-0">
+        <div className="relative">
+          <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+          <input
+            value={histSearch}
+            autoFocus
+            onChange={e => setHistSearch(e.target.value)}
+            placeholder="Filtrar por mesa o producto…"
+            className="w-full pl-8 pr-7 py-1.5 rounded-lg bg-secondary border border-border text-xs focus:outline-none focus:ring-1 focus:ring-primary/40"
+          />
+          {histSearch && (
+            <button onClick={() => setHistSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+              <X size={11} />
+            </button>
+          )}
+        </div>
+      </div>
+
       <div className="flex-1 overflow-y-auto p-3 space-y-2">
         {isLoading && (
           <div className="text-center text-muted-foreground text-sm py-8">Cargando...</div>
         )}
-        {!isLoading && (!history || history.length === 0) && (
-          <div className="text-center text-muted-foreground text-sm py-8 opacity-50">Sin actividad reciente</div>
+        {!isLoading && filteredHistory.length === 0 && (
+          <div className="text-center text-muted-foreground text-sm py-8 opacity-50">
+            {histSearch ? `Sin resultados para "${histSearch}"` : 'Sin actividad reciente'}
+          </div>
         )}
-        {history?.map(task => (
+        {filteredHistory.map(task => (
           <div key={task.id} className="bg-background rounded-xl border border-border/40 p-3 space-y-1.5">
             <div className="flex items-center justify-between gap-2">
               <span className="font-black text-foreground text-sm">{task.tableName}</span>

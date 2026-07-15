@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useLocation } from 'wouter';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   ChevronLeft, Loader2, Euro, ArrowUpRight, ArrowDownRight, Wallet,
   CheckCircle2, AlertCircle, ClipboardList, History, Settings, Eye, EyeOff, X,
-  BarChart2, RefreshCw,
+  BarChart2, RefreshCw, Plus, Minus,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -74,16 +74,25 @@ function DenomGrid({ qtys, onChange, total }: DenomGridProps) {
       const qty = qtys[String(d.value)] ?? 0;
       const sub = (d.value * qty).toFixed(2);
       return (
-        <div key={d.value} className="flex items-center gap-2 py-1.5 border-b border-border/30 last:border-0">
+        <div key={d.value} className="flex items-center gap-1.5 py-1.5 border-b border-border/30 last:border-0">
           <span className="w-10 text-right font-mono font-bold text-sm shrink-0">{d.label}</span>
-          <span className="text-muted-foreground text-xs">×</span>
+          <button
+            type="button"
+            onClick={() => onChange(String(d.value), Math.max(0, qty - 1))}
+            className="w-6 h-6 flex items-center justify-center rounded-md bg-secondary hover:bg-secondary/80 text-muted-foreground active:scale-95 shrink-0"
+          ><Minus size={10} /></button>
           <input
             type="number" min="0" step="1" value={qty === 0 ? '' : qty}
             placeholder="0"
             onChange={e => onChange(String(d.value), Math.max(0, parseInt(e.target.value) || 0))}
-            className="w-16 bg-background border border-border rounded-lg px-2 py-1 text-center text-sm font-mono focus:outline-none focus:border-primary"
+            className="w-12 bg-background border border-border rounded-lg px-1 py-1 text-center text-sm font-mono focus:outline-none focus:border-primary"
           />
-          <span className="text-xs text-muted-foreground ml-auto font-mono">
+          <button
+            type="button"
+            onClick={() => onChange(String(d.value), qty + 1)}
+            className="w-6 h-6 flex items-center justify-center rounded-md bg-secondary hover:bg-secondary/80 text-muted-foreground active:scale-95 shrink-0"
+          ><Plus size={10} /></button>
+          <span className="text-xs text-muted-foreground ml-auto font-mono shrink-0">
             {parseFloat(sub) > 0 ? `${sub}€` : ''}
           </span>
         </div>
@@ -104,7 +113,16 @@ function DenomGrid({ qtys, onChange, total }: DenomGridProps) {
       </div>
       <div className="bg-primary/10 border border-primary/30 rounded-xl p-3 flex justify-between items-center">
         <span className="font-black text-sm">Total arqueo</span>
-        <span className="font-mono font-black text-xl text-primary">{total.toFixed(2)}€</span>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => Object.keys(qtys).forEach(k => onChange(k, 0))}
+            className="text-xs text-muted-foreground hover:text-destructive font-semibold transition-colors"
+          >
+            Limpiar
+          </button>
+          <span className="font-mono font-black text-xl text-primary">{total.toFixed(2)}€</span>
+        </div>
       </div>
     </div>
   );
@@ -367,9 +385,10 @@ interface HistoryTabProps {
   onViewReport: (id: string) => void;
   isAdmin: boolean;
   onReopen: (id: string, terminalName: string) => void;
+  isReopening?: boolean;
 }
 
-function HistoryTab({ onViewReport, isAdmin, onReopen }: HistoryTabProps) {
+function HistoryTab({ onViewReport, isAdmin, onReopen, isReopening }: HistoryTabProps) {
   const { data: history = [], isLoading } = useGetCashSessionHistory({
     query: { queryKey: getGetCashSessionHistoryQueryKey() }
   });
@@ -405,8 +424,9 @@ function HistoryTab({ onViewReport, isAdmin, onReopen }: HistoryTabProps) {
               {isAdmin && s.status === 'closed' && (
                 <button onClick={() => onReopen(s.id, s.terminalName)}
                   title="Reabrir caja"
-                  className="px-3 py-2 bg-secondary text-muted-foreground font-bold rounded-xl text-sm hover:bg-amber-500/20 hover:text-amber-400 transition-colors">
-                  <RefreshCw size={16} />
+                  disabled={isReopening}
+                  className="px-3 py-2 bg-secondary text-muted-foreground font-bold rounded-xl text-sm hover:bg-amber-500/20 hover:text-amber-400 transition-colors disabled:opacity-50">
+                  {isReopening ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
                 </button>
               )}
               <button onClick={() => onViewReport(s.id)}
@@ -447,6 +467,18 @@ export default function CashSession() {
   const { data: session, isLoading: loadingSession } = useGetCurrentCashSession(terminalParam, {
     query: { queryKey: getGetCurrentCashSessionQueryKey(terminalParam) }
   });
+
+  // Re-fetch when returning from another screen so session state is always current
+  const invalidateSession = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: getGetCurrentCashSessionQueryKey(terminalParam) });
+    if (session?.id) queryClient.invalidateQueries({ queryKey: getGetCashSessionSummaryQueryKey(session.id) });
+  }, [queryClient, terminalParam, session?.id]);
+
+  useEffect(() => {
+    const onVisibility = () => { if (!document.hidden) invalidateSession(); };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, [invalidateSession]);
 
   const { data: summary, isLoading: loadingSummary } = useGetCashSessionSummary(
     session?.id || '',
@@ -554,6 +586,7 @@ export default function CashSession() {
             onViewReport={id => setLocation(`/caja/informe/${id}`)}
             isAdmin={isAdmin}
             onReopen={handleReopen}
+            isReopening={reopenSession.isPending}
           />
         ) : !canOpen ? (
           <div className="flex-1 flex items-center justify-center p-6 flex-col gap-4">
@@ -762,6 +795,7 @@ export default function CashSession() {
           onViewReport={id => setLocation(`/caja/informe/${id}`)}
           isAdmin={isAdmin}
           onReopen={handleReopen}
+          isReopening={reopenSession.isPending}
         />
       ) : (
         <div className="flex-1 overflow-y-auto p-4 lg:p-8 flex flex-col lg:flex-row gap-6 max-w-7xl mx-auto w-full">

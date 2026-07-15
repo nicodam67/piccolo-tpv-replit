@@ -68,7 +68,13 @@ export default function FichajeInformes() {
       .finally(() => setLoading(false));
   }
 
-  useEffect(() => { load(); }, [from, to, filterEmp]);
+  useEffect(() => {
+    load();
+    const onVisibility = () => { if (!document.hidden) load(); };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [from, to, filterEmp]);
 
   const totalHours = summary.reduce((acc, r) => acc + r.totalMinutes, 0) / 60;
   const totalDays = summary.reduce((acc, r) => acc + r.totalDays, 0);
@@ -107,6 +113,14 @@ export default function FichajeInformes() {
           <option value="">Todos los empleados</option>
           {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
         </select>
+        {(filterEmp || preset !== 'month') && (
+          <button
+            onClick={() => { setFilterEmp(''); applyPreset('month'); }}
+            className="px-3 py-1.5 rounded-lg text-sm bg-red-50 text-red-600 hover:bg-red-100 transition-colors border border-red-200 shrink-0"
+          >
+            Limpiar filtros
+          </button>
+        )}
       </div>
 
       {/* Totals */}

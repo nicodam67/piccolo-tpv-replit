@@ -24,10 +24,16 @@ export default function FichajeConfiguracion() {
   const token = localStorage.getItem("token");
 
   useEffect(() => {
-    fetch(`${BASE}api/fichaje/settings`, { headers: { Authorization: `Bearer ${token}` } })
-      .then(r => r.json())
-      .then(d => setSettings(s => ({ ...s, ...d, reportEmail: d.reportEmail ?? "" })))
-      .finally(() => setLoading(false));
+    function loadSettings() {
+      fetch(`${BASE}api/fichaje/settings`, { headers: { Authorization: `Bearer ${token}` } })
+        .then(r => r.json())
+        .then(d => setSettings(s => ({ ...s, ...d, reportEmail: d.reportEmail ?? "" })))
+        .finally(() => setLoading(false));
+    }
+    loadSettings();
+    const onVisibility = () => { if (!document.hidden) loadSettings(); };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
   }, []);
 
   async function save() {

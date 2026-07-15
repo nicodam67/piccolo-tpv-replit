@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useLocation } from 'wouter';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -6,7 +6,7 @@ import {
   ChevronLeft, Save, FileText, Printer, Clock, Building2,
   Plus, Pencil, Copy, Trash2, Check, X, Star, Loader2,
   ChevronDown, ChevronRight, Settings, Shield,
-  AlignLeft, AlignCenter, AlignRight, RefreshCw,
+  AlignLeft, AlignCenter, AlignRight, RefreshCw, Search,
 } from 'lucide-react';
 import {
   useGetBusinessConfig,
@@ -578,6 +578,7 @@ interface PlantillasTabProps {
 function PlantillasTab({ onEdit }: PlantillasTabProps) {
   const qc = useQueryClient();
   const [docType, setDocType] = useState<DocTypeFilter>('all');
+  const [tplSearch, setTplSearch] = useState('');
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState('');
   const [newType, setNewType] = useState('ticket');
@@ -678,6 +679,25 @@ function PlantillasTab({ onEdit }: PlantillasTabProps) {
         </div>
       )}
 
+      {/* Template search */}
+      {templates.length > 4 && (
+        <div className="relative mb-4">
+          <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+          <input
+            value={tplSearch}
+            autoFocus
+            onChange={e => setTplSearch(e.target.value)}
+            placeholder="Buscar plantilla…"
+            className="w-full pl-9 pr-8 py-2 rounded-xl bg-secondary border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+          />
+          {tplSearch && (
+            <button onClick={() => setTplSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+              <X size={13} />
+            </button>
+          )}
+        </div>
+      )}
+
       {/* List */}
       {isLoading ? (
         <div className="flex items-center justify-center h-40"><Loader2 className="animate-spin text-muted-foreground" /></div>
@@ -688,7 +708,7 @@ function PlantillasTab({ onEdit }: PlantillasTabProps) {
         </div>
       ) : (
         <div className="grid gap-3">
-          {templates.map(t => (
+          {templates.filter(t => !tplSearch.trim() || t.name.toLowerCase().includes(tplSearch.trim().toLowerCase())).map(t => (
             <div key={t.id} className={`bg-card border rounded-2xl p-4 shadow-sm transition-all ${t.isDefault ? 'border-primary/40 shadow-primary/10' : 'border-border'}`}>
               <div className="flex items-start gap-3">
                 <div className="flex-1 min-w-0">
@@ -1090,6 +1110,19 @@ export default function Documentos() {
   const { data: businessConfig = null } = useGetBusinessConfig({
     query: { queryKey: getGetBusinessConfigQueryKey() },
   });
+
+  // Re-fetch templates and config when returning to foreground
+  const queryClient = useQueryClient();
+  React.useEffect(() => {
+    const onVisibility = () => {
+      if (!document.hidden) {
+        queryClient.invalidateQueries({ queryKey: getGetDocumentTemplatesQueryKey() });
+        queryClient.invalidateQueries({ queryKey: getGetBusinessConfigQueryKey() });
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, [queryClient]);
 
   const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
     { id: 'establecimiento', label: 'Establecimiento', icon: <Building2 size={14} /> },

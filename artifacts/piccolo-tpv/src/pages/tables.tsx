@@ -321,6 +321,17 @@ function OpenTableModal({ table, onConfirm, onCancel, isPending, currentEmployee
   const [employeeId, setEmployeeId]   = useState<string | null>(currentEmployeeId ?? null);
   const { data: employees } = useGetEmployeeLoginList();
 
+  // Keyboard shortcut: Enter = confirm, Escape = cancel
+  React.useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onCancel();
+      if (e.key === 'Enter' && !isPending) handleSubmit();
+    };
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPending, guestCount, clientName, notes, employeeId]);
+
   const handleSubmit = () => {
     onConfirm({ guestCount, clientName, notes, employeeId, terminalName: '' });
   };
@@ -378,6 +389,8 @@ function OpenTableModal({ table, onConfirm, onCancel, isPending, currentEmployee
               value={clientName}
               onChange={e => setClientName(e.target.value)}
               placeholder="Nombre o referencia..."
+              autoFocus
+              onKeyDown={e => { if (e.key === 'Escape') onCancel(); }}
               className="w-full px-3 py-2.5 bg-secondary/50 border border-border rounded-xl text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/60 transition-colors"
             />
           </div>
@@ -540,11 +553,12 @@ interface TableCardProps {
   onClean?: () => void;
   onLongPress?: () => void;
   isBusy: boolean;
+  isCleaning?: boolean;
   alertLevel: AlertLevel;
   isManagerOrAdmin: boolean;
 }
 
-function TableCard({ table, onClick, onHistory, onClean, onLongPress, isBusy, alertLevel, isManagerOrAdmin }: TableCardProps) {
+function TableCard({ table, onClick, onHistory, onClean, onLongPress, isBusy, isCleaning, alertLevel, isManagerOrAdmin }: TableCardProps) {
   const isMerged   = !!table.mergeGroup;
   const st         = STATUS_STYLES[table.status] ?? STATUS_STYLES.free;
   const rotation   = (table as any).rotation ?? 0;
@@ -637,7 +651,8 @@ function TableCard({ table, onClick, onHistory, onClean, onLongPress, isBusy, al
             <button
               onPointerDown={e => e.stopPropagation()}
               onClick={e => { e.stopPropagation(); onClean(); }}
-              style={{ position: 'absolute', top: 3, right: 4, width: 18, height: 18, borderRadius: 5, backgroundColor: st.dot + '33', border: `1px solid ${st.dot}66`, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'auto' }}
+              disabled={isCleaning}
+              style={{ position: 'absolute', top: 3, right: 4, width: 18, height: 18, borderRadius: 5, backgroundColor: st.dot + '33', border: `1px solid ${st.dot}66`, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'auto', opacity: isCleaning ? 0.5 : 1 }}
               title="Marcar como limpia"
             >
               <Sparkles size={10} style={{ color: st.dot }} />
@@ -821,11 +836,19 @@ export default function Tables() {
   const isAdmin = employeeRole === "admin";
   const isManagerOrAdmin = isAdmin || employeeRole === "manager" || employeeRole === "encargado";
 
-  const { data: summary } = useGetDashboardSummary();
+  const { data: summary } = useGetDashboardSummary({ query: { refetchInterval: 30000, queryKey: getGetDashboardSummaryQueryKey() } });
   const { data: zones, isLoading: loadingZones } = useGetZones();
   const [activeZone, setActiveZone] = useState<string | null>(null);
 
   useEffect(() => { if (zones?.length && !activeZone) setActiveZone(zones[0].id); }, [zones, activeZone]);
+
+  // Update browser tab title with active zone emoji + name
+  useEffect(() => {
+    if (!zones || !activeZone) { document.title = 'Piccolo TPV'; return; }
+    const z = zones.find(z => z.id === activeZone);
+    if (z) document.title = z.icon ? `${z.icon} ${z.name} — Piccolo` : `${z.name} — Piccolo`;
+    return () => { document.title = 'Piccolo TPV'; };
+  }, [activeZone, zones]);
 
   const saveScrollForZone = useCallback((zoneId: string) => {
     const el = canvasContainerRef.current;
@@ -850,6 +873,8 @@ export default function Tables() {
   }, []);
 
   const [accentPulseKey, setAccentPulseKey] = useState(0);
+  const [tabFlashZone, setTabFlashZone] = useState<string | null>(null);
+  const tabFlashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const accentInitRef = useRef(false);
   useEffect(() => {
     if (!activeZone) return;
@@ -860,6 +885,10 @@ export default function Tables() {
   const switchZone = useCallback((zoneId: string) => {
     if (activeZone) saveScrollForZone(activeZone);
     setActiveZone(zoneId);
+    // Flash the tab button itself (task 67)
+    if (tabFlashTimerRef.current) clearTimeout(tabFlashTimerRef.current);
+    setTabFlashZone(zoneId);
+    tabFlashTimerRef.current = setTimeout(() => setTabFlashZone(null), 420);
   }, [activeZone, saveScrollForZone]);
 
   useEffect(() => {
@@ -906,14 +935,35 @@ export default function Tables() {
 
   useEffect(() => {
     const socket = io({ path: "/api/socket.io" });
-    socket.on("tables:refresh", () => {
+    const refreshAll = () => {
       const zone = activeZoneRef.current;
       if (zone) queryClient.invalidateQueries({ queryKey: getGetZoneTablesQueryKey(zone) });
       queryClient.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() });
       queryClient.invalidateQueries({ queryKey: getGetAllTablesQueryKey() });
       queryClient.invalidateQueries({ queryKey: getGetOccupationSummaryQueryKey() });
+    };
+    socket.on("tables:refresh", refreshAll);
+    // Sync zone list when any admin adds/renames/deletes a zone
+    socket.on("zones:refresh", () => {
+      queryClient.invalidateQueries({ queryKey: getGetZonesQueryKey() });
+      queryClient.invalidateQueries({ queryKey: getGetOccupationSummaryQueryKey() });
     });
-    return () => { socket.disconnect(); };
+
+    // Re-fetch occupation & tables when the tab becomes visible again
+    const handleVisibilityResume = () => {
+      if (!document.hidden) {
+        queryClient.invalidateQueries({ queryKey: getGetOccupationSummaryQueryKey() });
+        const zone = activeZoneRef.current;
+        if (zone) queryClient.invalidateQueries({ queryKey: getGetZoneTablesQueryKey(zone) });
+        if (socket.connected) { refreshAll(); } else { socket.connect(); }
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityResume);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityResume);
+      socket.disconnect();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [queryClient]);
 
@@ -976,7 +1026,7 @@ export default function Tables() {
   };
 
   // Occupation summary (auto-refreshes every 30s)
-  const { data: occupation } = useGetOccupationSummary();
+  const { data: occupation } = useGetOccupationSummary({ query: { refetchInterval: 15000, queryKey: getGetOccupationSummaryQueryKey() } });
 
   // Alert config (admin/manager only)
   const { data: alertConfig } = useGetAlertConfig({ query: { enabled: isManagerOrAdmin, queryKey: getGetAlertConfigQueryKey() } });
@@ -1156,7 +1206,7 @@ export default function Tables() {
                       onPointerCancel={() => { if (longPressTimerRef.current) { clearTimeout(longPressTimerRef.current); longPressTimerRef.current = null; } }}
                       onContextMenu={e => { if (!isAdmin) return; e.preventDefault(); didLongPressRef.current = false; setEmojiPickerZoneId(prev => prev === zone.id ? null : zone.id); }}
                       style={isActive && zoneColor ? { borderTopColor: zoneColor, color: zoneColor } : undefined}
-                      className={`flex items-center gap-2 px-5 py-3 rounded-t-xl font-semibold text-sm transition-all whitespace-nowrap ${isActive ? "bg-background border-t-2 border-primary shadow-[0_-4px_10px_rgba(0,0,0,0.05)]" : "bg-secondary/50 text-muted-foreground hover:bg-secondary hover:text-foreground"} ${isAdmin ? "select-none" : ""}`}
+                      className={`flex items-center gap-2 px-5 py-3 rounded-t-xl font-semibold text-sm transition-all whitespace-nowrap ${isActive ? "bg-background border-t-2 border-primary shadow-[0_-4px_10px_rgba(0,0,0,0.05)]" : "bg-secondary/50 text-muted-foreground hover:bg-secondary hover:text-foreground"} ${isAdmin ? "select-none" : ""} ${tabFlashZone === zone.id ? "ring-2 ring-primary/60 ring-inset scale-[1.04]" : ""}`}
                     >
                       {zone.icon ? <span className="shrink-0 text-base leading-none">{zone.icon}</span> : zoneColor ? <span className="shrink-0 w-2.5 h-2.5 rounded-full" style={{ backgroundColor: zoneColor, boxShadow: isActive ? `0 0 6px ${zoneColor}88` : undefined }} /> : null}
                       {zone.name}
@@ -1237,6 +1287,7 @@ export default function Tables() {
                     onClean={isManagerOrAdmin && table.status === 'pendiente_limpieza' ? () => handleCleanTable(table.id) : undefined}
                     onLongPress={() => setContextMenuTable(table)}
                     isBusy={openTable.isPending && openTable.variables?.tableId === table.id}
+                    isCleaning={cleanTable.isPending}
                     alertLevel={getAlertLevel(table)}
                     isManagerOrAdmin={isManagerOrAdmin}
                   />

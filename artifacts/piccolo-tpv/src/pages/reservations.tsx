@@ -145,7 +145,7 @@ function ReservationCard({
                 <Edit2 size={12} />
               </button>
               {isManager && (
-                <button onClick={onDelete} className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors" title="Eliminar">
+                <button onClick={onDelete} disabled={busy} className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors disabled:opacity-50" title="Eliminar">
                   <Trash2 size={12} />
                 </button>
               )}
@@ -227,6 +227,8 @@ function ReservationModal({
           <div>
             <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1 block">Nombre del cliente *</label>
             <input type="text" value={form.nombre} onChange={e => f("nombre", e.target.value)} placeholder="Nombre o referencia"
+              autoFocus
+              onKeyDown={e => { if (e.key === 'Enter') handleSave(); if (e.key === 'Escape') onClose(); }}
               className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-xl text-sm focus:outline-none focus:border-primary/60" />
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -274,6 +276,8 @@ export default function Reservations() {
   const [editReservation, setEditReservation] = useState<Reservation | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
+  const [filterStatus, setFilterStatus] = useState<'' | 'pendiente' | 'confirmada' | 'llegado' | 'sentada' | 'finalizada' | 'cancelada'>('');
 
   const employeeRole = (() => {
     try { return JSON.parse(localStorage.getItem("employee") ?? "{}").role ?? ""; } catch { return ""; }
@@ -289,7 +293,19 @@ export default function Reservations() {
     finally { setLoading(false); }
   };
 
-  React.useEffect(() => { load(); }, [date]);
+  React.useEffect(() => {
+    load();
+    // Auto-refresh every 60 s so new reservations made from another device appear
+    const interval = setInterval(load, 60_000);
+    // Re-fetch immediately when tab comes back to foreground
+    const handleVisibility = () => { if (!document.hidden) load(); };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [date]);
 
   const handleArrive = async (r: Reservation) => {
     setBusyId(r.id);
@@ -323,14 +339,27 @@ export default function Reservations() {
   };
 
   // Group by hour slot
+  const searchQ = search.trim().toLowerCase();
+  const filteredReservations = reservations.filter(r => {
+    if (filterStatus && r.status !== filterStatus) return false;
+    if (!searchQ) return true;
+    return (
+      r.nombre.toLowerCase().includes(searchQ) ||
+      (r.telefono ?? '').includes(searchQ) ||
+      (r.zonaPreferida ?? '').toLowerCase().includes(searchQ) ||
+      (r.notes ?? '').toLowerCase().includes(searchQ)
+    );
+  });
+
   const grouped = useMemo(() => {
     const map: Record<string, Reservation[]> = {};
-    for (const r of reservations) {
+    for (const r of filteredReservations) {
       const hour = r.hora.split(":")[0] + ":00";
       (map[hour] = map[hour] ?? []).push(r);
     }
     return Object.entries(map).sort(([a], [b]) => a.localeCompare(b));
-  }, [reservations]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filteredReservations]);
 
   const activeCount = reservations.filter(r => !["cancelada", "no_presentado", "finalizada"].includes(r.status)).length;
   const totalPax   = reservations.filter(r => !["cancelada", "no_presentado"].includes(r.status)).reduce((s, r) => s + r.personas, 0);
@@ -378,6 +407,31 @@ export default function Reservations() {
         </button>
       </div>
 
+      {/* Search + Status filter */}
+      <div className="px-4 pt-3 pb-1 shrink-0 max-w-2xl mx-auto w-full flex gap-2">
+        <input
+          type="text"
+          placeholder="Buscar por nombre, teléfono o zona…"
+          value={search}
+          autoFocus
+          onChange={e => setSearch(e.target.value)}
+          className="flex-1 bg-secondary border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+        />
+        <select
+          value={filterStatus}
+          onChange={e => setFilterStatus(e.target.value as typeof filterStatus)}
+          className="px-3 py-2 bg-secondary border border-border rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-primary/40"
+        >
+          <option value="">Todos</option>
+          <option value="pendiente">Pendiente</option>
+          <option value="confirmada">Confirmada</option>
+          <option value="llegado">Llegado</option>
+          <option value="sentada">Sentada</option>
+          <option value="finalizada">Finalizada</option>
+          <option value="cancelada">Cancelada</option>
+        </select>
+      </div>
+
       {/* Content */}
       <main className="flex-1 max-w-2xl mx-auto w-full px-4 py-6">
         {loading ? (
@@ -385,10 +439,16 @@ export default function Reservations() {
         ) : grouped.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-24 text-muted-foreground">
             <Calendar size={48} className="mb-4 opacity-20" />
-            <p className="text-lg font-semibold">Sin reservas este día</p>
-            <button onClick={() => setShowCreate(true)} className="mt-4 px-5 py-2.5 bg-primary text-primary-foreground font-bold rounded-xl hover:opacity-90 active:scale-95 transition-all text-sm">
-              <Plus size={14} className="inline mr-1.5" />Crear primera reserva
-            </button>
+            <p className="text-lg font-semibold">{search || filterStatus ? 'Sin resultados para los filtros activos' : 'Sin reservas este día'}</p>
+            {(search || filterStatus) ? (
+              <button onClick={() => { setSearch(''); setFilterStatus(''); }} className="mt-3 text-primary font-semibold hover:underline text-sm">
+                Borrar filtros
+              </button>
+            ) : (
+              <button onClick={() => setShowCreate(true)} className="mt-4 px-5 py-2.5 bg-primary text-primary-foreground font-bold rounded-xl hover:opacity-90 active:scale-95 transition-all text-sm">
+                <Plus size={14} className="inline mr-1.5" />Crear primera reserva
+              </button>
+            )}
           </div>
         ) : (
           <div className="space-y-6">

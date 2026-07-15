@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { Plus, CheckCircle, XCircle, Clock } from "lucide-react";
+import { useState, useEffect, useMemo } from "react";
+import { Plus, CheckCircle, XCircle, Clock, Search, X } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL;
 
@@ -73,6 +73,7 @@ export default function FichajeAusencias() {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [statusFilter, setStatusFilter] = useState("");
+  const [empSearch, setEmpSearch] = useState("");
   const token = localStorage.getItem("token");
 
   function load() {
@@ -89,7 +90,13 @@ export default function FichajeAusencias() {
       .then(r => r.json()).then(d => setEmployees(Array.isArray(d) ? d : []));
   }, []);
 
-  useEffect(() => { load(); }, [statusFilter]);
+  useEffect(() => {
+    load();
+    const onVisibility = () => { if (!document.hidden) load(); };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statusFilter]);
 
   async function approve(id: string, status: "approved" | "rejected") {
     await fetch(`${BASE}api/fichaje/absences/${id}/approve`, {
@@ -108,7 +115,7 @@ export default function FichajeAusencias() {
         </button>
       </div>
 
-      <div className="flex gap-2 mb-4">
+      <div className="flex gap-2 mb-3 flex-wrap">
         {["", "pending", "approved", "rejected"].map(s => (
           <button key={s} onClick={() => setStatusFilter(s)}
             className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${statusFilter === s ? "bg-teal-600 text-white" : "bg-white border text-gray-600 hover:bg-gray-50"}`}>
@@ -117,13 +124,29 @@ export default function FichajeAusencias() {
         ))}
       </div>
 
+      <div className="relative mb-4">
+        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+        <input
+          value={empSearch}
+          autoFocus
+          onChange={e => setEmpSearch(e.target.value)}
+          placeholder="Buscar empleado…"
+          className="w-full pl-9 pr-8 py-2 rounded-xl border border-gray-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-teal-400/40"
+        />
+        {empSearch && (
+          <button onClick={() => setEmpSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700">
+            <X size={13} />
+          </button>
+        )}
+      </div>
+
       {loading ? (
         <div className="text-center text-gray-400 py-12">Cargando...</div>
       ) : absences.length === 0 ? (
         <div className="text-center py-12 text-gray-400">Sin ausencias</div>
       ) : (
         <div className="space-y-2">
-          {absences.map(a => (
+          {absences.filter(a => !empSearch.trim() || a.employeeName.toLowerCase().includes(empSearch.trim().toLowerCase())).map(a => (
             <div key={a.id} className="bg-white border border-gray-200 rounded-xl p-4 flex items-center justify-between shadow-sm">
               <div>
                 <div className="font-medium text-gray-900">{a.employeeName}</div>

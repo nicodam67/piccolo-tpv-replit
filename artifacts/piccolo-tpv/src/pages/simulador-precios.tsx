@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useLocation } from 'wouter';
-import { ChevronLeft, Calculator, RefreshCw, Loader2, Check } from 'lucide-react';
+import { ChevronLeft, Calculator, RefreshCw, Loader2, Check, Search, X } from 'lucide-react';
 import {
   useGetAdminProfitability,
   useSimulatePrice,
@@ -24,7 +24,13 @@ function fcColor(pct: number | string) {
 
 export default function SimuladorPrecios() {
   const [, setLocation] = useLocation();
-  const { data: profitability = [] } = useGetAdminProfitability();
+  const { data: profitability = [], refetch: refetchProfitability } = useGetAdminProfitability();
+
+  useEffect(() => {
+    const onVisibility = () => { if (!document.hidden) void refetchProfitability(); };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, [refetchProfitability]);
   const simulate = useSimulatePrice();
 
   const [productId, setProductId] = useState('');
@@ -34,8 +40,15 @@ export default function SimuladorPrecios() {
   const [roundTo, setRoundTo] = useState('0.05');
   const [result, setResult] = useState<PriceSimulatorResult | null>(null);
 
+  const [productSearch, setProductSearch] = useState('');
+
   const products = profitability as ProductProfitability[];
   const selectedProduct = products.find(p => p.id === productId);
+
+  const filteredProducts = useMemo(() => {
+    const q = productSearch.trim().toLowerCase();
+    return q ? products.filter(p => p.name.toLowerCase().includes(q) || p.categoryName.toLowerCase().includes(q)) : products;
+  }, [products, productSearch]);
 
   const handleSimulate = async () => {
     if (!productId) { toast.error('Selecciona un producto'); return; }
@@ -65,13 +78,31 @@ export default function SimuladorPrecios() {
         {/* Product selector */}
         <div className="rounded-xl border border-border bg-card p-4 space-y-3">
           <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide">1. Selecciona un producto</p>
+          <div className="relative">
+            <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+            <input
+              value={productSearch}
+              autoFocus
+            onChange={e => setProductSearch(e.target.value)}
+              placeholder="Filtrar productos…"
+              className="w-full pl-9 pr-8 py-2 rounded-lg bg-background border border-border text-sm focus:outline-none focus:border-primary/50"
+            />
+            {productSearch && (
+              <button onClick={() => setProductSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                <X size={13} />
+              </button>
+            )}
+          </div>
           <select value={productId} onChange={e => { setProductId(e.target.value); setResult(null); }}
             className="w-full px-3 py-2 rounded-lg bg-background border border-border text-sm focus:outline-none focus:border-primary/50">
             <option value="">-- Selecciona --</option>
-            {products.map(p => (
+            {filteredProducts.map(p => (
               <option key={p.id} value={p.id}>{p.name} ({p.categoryName})</option>
             ))}
           </select>
+          {filteredProducts.length === 0 && productSearch && (
+            <p className="text-xs text-muted-foreground">Sin resultados — <button onClick={() => setProductSearch('')} className="text-primary hover:underline">Borrar búsqueda</button></p>
+          )}
 
           {selectedProduct && (
             <div className="grid grid-cols-3 gap-2 text-center text-xs rounded-lg bg-secondary/30 p-2">

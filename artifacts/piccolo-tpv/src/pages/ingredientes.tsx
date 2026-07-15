@@ -65,6 +65,7 @@ export default function Ingredientes() {
   const [, setLocation] = useLocation();
   const qc = useQueryClient();
   const [search, setSearch] = useState('');
+  const [sort, setSort] = useState<'name' | 'stock' | 'cost'>('name');
   const [sheet, setSheet] = useState<Sheet>(null);
 
   const { data: ingredients = [], isLoading } = useGetAdminIngredients();
@@ -79,10 +80,23 @@ export default function Ingredientes() {
     qc.invalidateQueries({ queryKey: getGetStockAlertsQueryKey() });
   }, [qc]);
 
-  const filtered = ingredients.filter(i =>
-    i.name.toLowerCase().includes(search.toLowerCase()) ||
-    (i.internalCode ?? '').toLowerCase().includes(search.toLowerCase())
-  );
+  // Re-fetch when returning to this screen
+  useEffect(() => {
+    const onVisibility = () => { if (!document.hidden) invalidate(); };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, [invalidate]);
+
+  const filtered = ingredients
+    .filter(i =>
+      i.name.toLowerCase().includes(search.toLowerCase()) ||
+      (i.internalCode ?? '').toLowerCase().includes(search.toLowerCase())
+    )
+    .sort((a, b) => {
+      if (sort === 'stock') return parseFloat(a.currentStock) - parseFloat(b.currentStock);
+      if (sort === 'cost') return parseFloat(b.purchaseCost ?? '0') - parseFloat(a.purchaseCost ?? '0');
+      return a.name.localeCompare(b.name, 'es');
+    });
 
   const alertCount = ingredients.filter(i => stockStatus(i) === 'low' || stockStatus(i) === 'zero').length;
 
@@ -113,14 +127,15 @@ export default function Ingredientes() {
         </button>
       </header>
 
-      {/* Search */}
-      <div className="px-4 pt-4 pb-2">
-        <div className="relative">
+      {/* Search + Sort */}
+      <div className="px-4 pt-4 pb-2 flex gap-2">
+        <div className="relative flex-1">
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <input
             type="text"
             placeholder="Buscar ingrediente o código..."
             value={search}
+            autoFocus
             onChange={e => setSearch(e.target.value)}
             className="w-full pl-9 pr-4 py-2.5 rounded-xl bg-secondary border border-border text-sm focus:outline-none focus:border-primary/50"
           />
@@ -130,6 +145,15 @@ export default function Ingredientes() {
             </button>
           )}
         </div>
+        <select
+          value={sort}
+          onChange={e => setSort(e.target.value as typeof sort)}
+          className="px-3 py-2 rounded-xl bg-secondary border border-border text-xs font-semibold focus:outline-none focus:border-primary/50"
+        >
+          <option value="name">Nombre A-Z</option>
+          <option value="stock">Stock ↑</option>
+          <option value="cost">Coste ↓</option>
+        </select>
       </div>
 
       {/* Table */}
@@ -139,8 +163,12 @@ export default function Ingredientes() {
         ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 gap-3 text-muted-foreground">
             <Package size={36} strokeWidth={1.2} />
-            <p className="text-sm">{search ? 'Sin resultados' : 'No hay ingredientes todavía.'}</p>
-            {!search && (
+            <p className="text-sm">{search ? `Sin resultados para "${search}"` : 'No hay ingredientes todavía.'}</p>
+            {search ? (
+              <button onClick={() => setSearch('')} className="text-primary text-sm font-semibold hover:underline">
+                Borrar búsqueda
+              </button>
+            ) : (
               <button onClick={() => setSheet({ kind: 'new' })} className="text-primary text-sm font-semibold hover:underline">
                 Crear el primero
               </button>
@@ -258,7 +286,7 @@ export default function Ingredientes() {
 
 // ─── IngredientSheet ──────────────────────────────────────────────────────────
 function IngredientSheet({
-  title, initial, onClose, onSave, onDelete, saving,
+  title, initial, onClose, onSave, onDelete, saving, deleting,
 }: {
   title: string;
   initial?: Ingredient;
@@ -269,6 +297,7 @@ function IngredientSheet({
   }) => Promise<void>;
   onDelete?: () => Promise<void>;
   saving: boolean;
+  deleting?: boolean;
 }) {
   const [form, setForm] = useState<{
     name: string; internalCode: string; unit: string; purchaseCost: string;
@@ -361,7 +390,9 @@ function IngredientSheet({
           <div className="col-span-2">
             <label className="text-xs font-bold text-muted-foreground mb-1 block">Nombre *</label>
             <input className="w-full px-3 py-2 rounded-xl bg-secondary border border-border text-sm focus:outline-none focus:border-primary/50"
-              value={form.name} onChange={e => set('name', e.target.value)} placeholder="Harina de trigo" />
+              value={form.name} onChange={e => set('name', e.target.value)} placeholder="Harina de trigo"
+              autoFocus
+              onKeyDown={e => { if (e.key === 'Enter') void handleSave(); }} />
           </div>
           <div>
             <label className="text-xs font-bold text-muted-foreground mb-1 block">Código interno</label>
@@ -452,8 +483,8 @@ function IngredientSheet({
 
         <div className="flex gap-2 pt-1">
           {onDelete && (
-            <button onClick={onDelete} className="px-4 py-2.5 rounded-xl border border-destructive/40 text-destructive text-sm font-semibold hover:bg-destructive/10 transition-colors">
-              Archivar
+            <button onClick={onDelete} disabled={deleting} className="px-4 py-2.5 rounded-xl border border-destructive/40 text-destructive text-sm font-semibold hover:bg-destructive/10 transition-colors disabled:opacity-60">
+              {deleting ? 'Archivando…' : 'Archivar'}
             </button>
           )}
           <button onClick={onClose} className="flex-1 py-2.5 rounded-xl bg-secondary text-sm font-semibold">Cancelar</button>

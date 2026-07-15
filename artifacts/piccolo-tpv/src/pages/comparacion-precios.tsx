@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useLocation } from 'wouter';
 import { useQuery } from '@tanstack/react-query';
 import { customFetch } from '@workspace/api-client-react';
 import type { PriceComparisonEntry } from '@workspace/api-client-react';
-import { ArrowLeft, BarChart3, Star, TrendingDown, TrendingUp, ChevronRight } from 'lucide-react';
+import { ArrowLeft, BarChart3, Star, TrendingDown, TrendingUp, ChevronRight, Search, X } from 'lucide-react';
 
 interface IngredientSummary {
   ingredientId: string;
@@ -24,11 +24,18 @@ interface PriceComparisonResult {
 export default function ComparacionPrecios() {
   const [, setLocation] = useLocation();
   const [selectedIngredientId, setSelectedIngredientId] = useState<string | null>(null);
+  const [ingSearch, setIngSearch] = useState('');
 
-  const { data: ingredients = [], isLoading: loadingList } = useQuery<IngredientSummary[]>({
+  const { data: ingredients = [], isLoading: loadingList, refetch: refetchList } = useQuery<IngredientSummary[]>({
     queryKey: ['price-comparison-list'],
     queryFn: () => customFetch('/api/admin/price-comparison'),
   });
+
+  useEffect(() => {
+    const onVisibility = () => { if (!document.hidden) void refetchList(); };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, [refetchList]);
 
   const { data: comparison, isLoading: loadingComparison } = useQuery<PriceComparisonResult>({
     queryKey: ['price-comparison', selectedIngredientId],
@@ -37,6 +44,11 @@ export default function ComparacionPrecios() {
   });
 
   const minPrice = comparison ? parseFloat(comparison.minUnitPrice) : 0;
+  const filteredIngredients = useMemo(() => {
+    if (!ingSearch.trim()) return ingredients;
+    const q = ingSearch.toLowerCase();
+    return ingredients.filter(i => i.ingredientName.toLowerCase().includes(q));
+  }, [ingredients, ingSearch]);
 
   function priceDiffColor(pctVsMin: string) {
     const pct = parseFloat(pctVsMin);
@@ -54,12 +66,27 @@ export default function ComparacionPrecios() {
 
       <div className="flex h-[calc(100vh-3.5rem)]">
         {/* Left: ingredient list */}
-        <aside className="w-64 border-r border-border overflow-y-auto shrink-0">
+        <aside className="w-64 border-r border-border overflow-y-auto shrink-0 flex flex-col">
+          {/* Search */}
+          <div className="p-2 border-b border-border shrink-0">
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+              <input type="text" value={ingSearch} onChange={e => setIngSearch(e.target.value)}
+                placeholder="Buscar ingrediente…"
+                className="w-full pl-8 pr-7 py-1.5 text-sm bg-muted border border-border rounded-lg focus:outline-none focus:border-primary/50" />
+              {ingSearch && (
+                <button onClick={() => setIngSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+          </div>
+          <div className="flex-1 overflow-y-auto">
           {loadingList ? (
             <p className="p-4 text-sm text-muted-foreground">Cargando...</p>
-          ) : ingredients.length === 0 ? (
+          ) : filteredIngredients.length === 0 ? (
             <p className="p-4 text-sm text-muted-foreground">Sin ingredientes con múltiples proveedores</p>
-          ) : ingredients.map(ing => (
+          ) : filteredIngredients.map(ing => (
             <button key={ing.ingredientId} onClick={() => setSelectedIngredientId(ing.ingredientId)}
               className={`w-full text-left px-4 py-3 border-b border-border/50 hover:bg-muted/50 flex items-center gap-3 ${selectedIngredientId === ing.ingredientId ? 'bg-muted' : ''}`}>
               <div className="flex-1 min-w-0">
@@ -69,6 +96,7 @@ export default function ComparacionPrecios() {
               <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
             </button>
           ))}
+          </div>
         </aside>
 
         {/* Right: comparison table */}

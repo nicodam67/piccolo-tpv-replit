@@ -6,12 +6,13 @@ import { toast } from 'sonner';
 import {
   ChevronLeft, Trash2, Send, Clock, CheckCircle2, CircleDashed, Loader2, PenLine,
   Bell, Check, Plus, Minus, Receipt, Users, AlertTriangle, ChevronDown, Copy,
-  FileText, RefreshCw, History, ChevronUp,
+  FileText, RefreshCw, History, ChevronUp, Search, X as XIcon,
 } from 'lucide-react';
 import {
   useGetTableOrder,
   useGetCategories,
   useGetCategoryProducts,
+  useGetAdminProducts,
   useAddOrderItem,
   useDeleteOrderItem,
   useSendOrder,
@@ -210,6 +211,8 @@ export default function OrderPage() {
   const tableId = params.tableId!;
 
   const { onPointerDown: handlePointerDown, guard: guardedClick } = useScrollGuard();
+  const itemsListRef = useRef<HTMLDivElement>(null);
+  const savedItemsScrollRef = useRef(0);
 
   const [employeeId, setEmployeeId] = useState<string>('');
   const [employeeName, setEmployeeName] = useState<string>('');
@@ -320,6 +323,18 @@ export default function OrderPage() {
   const { data: products, isLoading: loadingProducts } = useGetCategoryProducts(activeCategoryId!, {
     query: { enabled: !!activeCategoryId, queryKey: activeCategoryId ? getGetCategoryProductsQueryKey(activeCategoryId) : [] }
   });
+
+  // Global product search — loads all active products so we can search across categories
+  const [productSearch, setProductSearch] = useState('');
+  const searchQuery = productSearch.trim().toLowerCase();
+  const { data: allProductsRaw = [] } = useGetAdminProducts({});
+  const searchResults = useMemo(() => {
+    if (!searchQuery) return null;
+    return (allProductsRaw as any[]).filter(p =>
+      p.active &&
+      (p.name.toLowerCase().includes(searchQuery) || (p.internalCode ?? '').toLowerCase().includes(searchQuery))
+    );
+  }, [allProductsRaw, searchQuery]);
 
   // Stock availability: fetch once on mount so we can show a low-stock warning
   // on product buttons without blocking the sale.
@@ -444,6 +459,13 @@ export default function OrderPage() {
         } else {
           socket.connect();
         }
+        // Restore items list scroll position after data re-fetches
+        const saved = savedItemsScrollRef.current;
+        if (saved > 0) {
+          requestAnimationFrame(() => {
+            if (itemsListRef.current) itemsListRef.current.scrollTop = saved;
+          });
+        }
       }
     };
     document.addEventListener('visibilitychange', handleVisibilityResume);
@@ -470,6 +492,17 @@ export default function OrderPage() {
     queryClient.invalidateQueries({ queryKey: getGetTableOrderQueryKey(tableId) });
   };
 
+  // Warn once per order when staff modify after a prefactura was printed
+  const prefacturaWarnedRef = useRef(false);
+  const warnIfPrefacturaWasPrinted = () => {
+    if (prefacturaStatus?.hasPrinted && !prefacturaWarnedRef.current) {
+      prefacturaWarnedRef.current = true;
+      toast.warning('La prefactura ya fue impresa — avisa al cliente del cambio', { duration: 5000 });
+      // Reset flag after a while so next modification shows the warning again
+      setTimeout(() => { prefacturaWarnedRef.current = false; }, 30_000);
+    }
+  };
+
   // Flow: tap product → check formats → check modifiers → addOrderItem
   const handleAddProduct = (product: Product) => {
     if (!actualOrderId) return;
@@ -477,6 +510,7 @@ export default function OrderPage() {
       toast.error('Cuenta solicitada — cancela la solicitud antes de añadir más productos');
       return;
     }
+    warnIfPrefacturaWasPrinted();
     // If product has formats, show format picker
     if (product.formats?.length) {
       setFormatPickerProduct(product);
@@ -527,6 +561,7 @@ export default function OrderPage() {
   };
 
   const handleDeleteItem = (itemId: string) => {
+    warnIfPrefacturaWasPrinted();
     suppressNextRefresh.current = true;
     deleteOrderItem.mutate({ itemId }, {
       onSuccess: invalidateOrder,
@@ -537,6 +572,7 @@ export default function OrderPage() {
   const handleQtyChange = (itemId: string, delta: number, currentQty: number) => {
     const newQty = currentQty + delta;
     if (newQty <= 0) { handleDeleteItem(itemId); return; }
+    warnIfPrefacturaWasPrinted();
     suppressNextRefresh.current = true;
     updateOrderItem.mutate({ itemId, data: { quantity: newQty } }, {
       onSuccess: invalidateOrder,
@@ -697,7 +733,17 @@ export default function OrderPage() {
                 <div className="absolute top-full right-0 mt-2 w-72 bg-card border-2 border-border rounded-xl shadow-xl z-50 overflow-hidden">
                   <div className="p-3 border-b border-border bg-secondary/50 font-bold flex justify-between items-center">
                     <span>Notificaciones</span>
-                    <span className="text-xs bg-primary text-primary-foreground px-2 py-0.5 rounded-full">{notificationsData?.length || 0}</span>
+                    <div className="flex items-center gap-2">
+                      {notificationsData && notificationsData.length > 1 && (
+                        <button
+                          onClick={() => notificationsData.forEach(n => handleMarkRead(n.id))}
+                          className="text-xs text-muted-foreground hover:text-foreground font-normal"
+                        >
+                          Limpiar todo
+                        </button>
+                      )}
+                      <span className="text-xs bg-primary text-primary-foreground px-2 py-0.5 rounded-full">{notificationsData?.length || 0}</span>
+                    </div>
                   </div>
                   <div className="max-h-64 overflow-y-auto">
                     {(!notificationsData || notificationsData.length === 0) ? (
@@ -720,29 +766,51 @@ export default function OrderPage() {
           </div>
         </header>
 
-        {/* Categories Tabs */}
-        <div className="bg-card border-b border-border px-2 pt-3 pb-0 flex overflow-x-auto hide-scrollbar shrink-0 gap-1 shadow-sm">
-          {loadingCategories ? (
-            <div className="flex gap-2 p-2 w-full">
-              {[1, 2, 3, 4, 5].map(i => <div key={i} className="w-24 h-10 bg-secondary rounded-t-lg animate-pulse shrink-0" />)}
-            </div>
-          ) : (
-            categories?.map(cat => (
-              <button
-                key={cat.id}
-                onPointerDown={handlePointerDown}
-                onClick={guardedClick(() => setActiveCategoryId(cat.id))}
-                className={`px-6 py-3 rounded-t-xl font-bold text-sm whitespace-nowrap transition-all ${
-                  activeCategoryId === cat.id
-                    ? 'bg-background text-primary border-t-2 border-x border-primary/50 border-b-0 shadow-[0_-4px_10px_rgba(0,0,0,0.1)] relative z-10'
-                    : 'text-muted-foreground hover:bg-secondary border-t-2 border-transparent border-b-0'
-                }`}
-              >
-                {cat.name}
+        {/* Product search bar */}
+        <div className="bg-card border-b border-border px-3 py-2 shrink-0">
+          <div className="relative">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+            <input
+              type="text"
+              placeholder="Buscar producto…"
+              value={productSearch}
+              autoFocus
+              onChange={e => setProductSearch(e.target.value)}
+              className="w-full pl-9 pr-8 py-2 rounded-xl bg-secondary border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+            />
+            {productSearch && (
+              <button onClick={() => setProductSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                <XIcon size={14} />
               </button>
-            ))
-          )}
+            )}
+          </div>
         </div>
+
+        {/* Categories Tabs — hidden while searching */}
+        {!searchQuery && (
+          <div className="bg-card border-b border-border px-2 pt-3 pb-0 flex overflow-x-auto hide-scrollbar shrink-0 gap-1 shadow-sm">
+            {loadingCategories ? (
+              <div className="flex gap-2 p-2 w-full">
+                {[1, 2, 3, 4, 5].map(i => <div key={i} className="w-24 h-10 bg-secondary rounded-t-lg animate-pulse shrink-0" />)}
+              </div>
+            ) : (
+              categories?.map(cat => (
+                <button
+                  key={cat.id}
+                  onPointerDown={handlePointerDown}
+                  onClick={guardedClick(() => setActiveCategoryId(cat.id))}
+                  className={`px-6 py-3 rounded-t-xl font-bold text-sm whitespace-nowrap transition-all ${
+                    activeCategoryId === cat.id
+                      ? 'bg-background text-primary border-t-2 border-x border-primary/50 border-b-0 shadow-[0_-4px_10px_rgba(0,0,0,0.1)] relative z-10'
+                      : 'text-muted-foreground hover:bg-secondary border-t-2 border-transparent border-b-0'
+                  }`}
+                >
+                  {cat.name}
+                </button>
+              ))
+            )}
+          </div>
+        )}
 
         {/* Bill-requested overlay — blocks product grid */}
         {order?.status === 'bill_requested' && (
@@ -765,7 +833,70 @@ export default function OrderPage() {
 
         {/* Products Grid */}
         {order?.status !== 'bill_requested' && <div className="flex-1 overflow-y-auto p-4 md:p-6 bg-background relative z-0">
-          {loadingProducts ? (
+          {searchQuery && searchResults !== null && (
+            <>
+              {searchResults.length === 0 ? (
+                <div className="text-center text-muted-foreground text-sm py-16">
+                  <p>Sin resultados para "{productSearch}"</p>
+                  <button onClick={() => setProductSearch('')} className="mt-2 text-primary font-semibold hover:underline">Borrar búsqueda</button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3 md:gap-4">
+                  {searchResults.map(p => {
+                    const isAdding = addOrderItem.isPending && addOrderItem.variables?.data?.productId === p.id;
+                    const isOutOfStock = p.outOfStock === true;
+                    const hasLowStock = !isOutOfStock && lowStockProductIds.has(p.id);
+                    const hasFormats = p.formats?.length > 0;
+                    const hasModifiers = p.hasModifiers;
+                    const allergens = p.allergens;
+                    return (
+                      <button
+                        key={p.id}
+                        onPointerDown={handlePointerDown}
+                        onClick={guardedClick(() => {
+                          if (isOutOfStock) return;
+                          if (hasLowStock) {
+                            const missing = stockAvailability?.find((e: any) => e.productId === p.id)?.zeroIngredients ?? [];
+                            toast.warning(`⚠️ Stock bajo en: ${missing.join(', ') || 'ingredientes'}`, { duration: 3000 });
+                          }
+                          handleAddProduct(p as any);
+                        })}
+                        disabled={!actualOrderId || isAdding || isOutOfStock}
+                        className={`bg-card border-2 rounded-2xl p-4 flex flex-col items-start text-left transition-all active:scale-[0.96] aspect-[4/3] justify-between group shadow-sm relative overflow-hidden
+                          ${isAdding ? 'opacity-70' : ''}
+                          ${isOutOfStock ? 'border-border opacity-50 cursor-not-allowed' : hasLowStock ? 'border-orange-500/40 hover:border-orange-500/60 hover:bg-orange-500/5' : 'border-border hover:border-primary/50 hover:bg-secondary/30'}
+                        `}
+                      >
+                        {isOutOfStock && (
+                          <div className="absolute inset-0 flex items-center justify-center bg-background/40 rounded-2xl">
+                            <span className="text-[10px] font-black uppercase tracking-widest bg-red-500/20 text-red-400 border border-red-500/30 px-2 py-1 rounded-lg">Agotado</span>
+                          </div>
+                        )}
+                        {hasLowStock && (
+                          <div className="absolute top-2 right-2 w-5 h-5 flex items-center justify-center rounded-full bg-orange-500/20 border border-orange-500/40">
+                            <AlertTriangle size={10} className="text-orange-400" />
+                          </div>
+                        )}
+                        <span className="font-bold text-foreground text-lg leading-tight group-hover:text-primary transition-colors line-clamp-3">{p.name}</span>
+                        <div className="flex w-full flex-col gap-1.5 mt-2">
+                          <div className="flex items-center gap-1 flex-wrap">
+                            {hasFormats && <span className="text-[9px] font-black uppercase tracking-wider bg-secondary text-muted-foreground px-1.5 py-0.5 rounded flex items-center gap-0.5"><ChevronDown size={9} />Formato</span>}
+                            {hasModifiers && <span className="text-[9px] font-black uppercase tracking-wider bg-secondary text-muted-foreground px-1.5 py-0.5 rounded">+Mod</span>}
+                            {allergens && <AllergenChips allergens={allergens} />}
+                          </div>
+                          <div className="flex w-full justify-between items-center">
+                            <span className="font-mono text-muted-foreground font-semibold bg-secondary/50 px-2 py-1 rounded-md">{p.price}€</span>
+                            {isAdding && <Loader2 className="w-5 h-5 animate-spin text-primary" />}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </>
+          )}
+          {!searchQuery && (loadingProducts ? (
             <div className="w-full h-full flex items-center justify-center">
               <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
             </div>
@@ -833,7 +964,7 @@ export default function OrderPage() {
                 );
               })}
             </div>
-          )}
+          ))}
         </div>}
       </div>
 
@@ -857,7 +988,8 @@ export default function OrderPage() {
         </div>
 
         {/* Items List */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-card/50">
+        <div ref={itemsListRef} className="flex-1 overflow-y-auto p-4 space-y-3 bg-card/50"
+          onScroll={() => { savedItemsScrollRef.current = itemsListRef.current?.scrollTop ?? 0; }}>
           {allItems.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-muted-foreground opacity-60">
               <CircleDashed size={48} className="mb-4" strokeWidth={1} />

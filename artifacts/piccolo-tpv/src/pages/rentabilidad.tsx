@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useLocation } from 'wouter';
-import { ChevronLeft, TrendingUp, TrendingDown, AlertTriangle, Loader2, RefreshCw, Clock } from 'lucide-react';
+import { ChevronLeft, TrendingUp, TrendingDown, AlertTriangle, Loader2, RefreshCw, Clock, X } from 'lucide-react';
 import {
   useGetAdminProfitability,
   useGetAdminProfitabilityByCategory,
@@ -31,6 +31,22 @@ export default function Rentabilidad() {
   const [tab, setTab] = useState<Tab>('productos');
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState<'name' | 'margin' | 'foodcost'>('margin');
+
+  // Re-fetch when returning to foreground so cost data stays fresh
+  useEffect(() => {
+    // refetch is handled by each sub-tab component — invalidating the cache
+    // forces them to reload on next render
+    const onVisibility = () => {
+      if (!document.hidden) {
+        // Dispatch a custom event that sub-components can pick up if needed;
+        // tanstack-query refetchOnWindowFocus does not work inside iframes,
+        // so we trigger manual invalidation via a storage ping
+        window.dispatchEvent(new Event('focus'));
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, []);
 
   const tabs: { id: Tab; label: string }[] = [
     { id: 'productos', label: 'Productos' },
@@ -103,8 +119,16 @@ function ProductosTab({
     <div className="max-w-4xl mx-auto px-4 py-4 space-y-3">
       {/* Toolbar */}
       <div className="flex gap-2">
-        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar producto…"
-          className="flex-1 px-3 py-2 rounded-lg bg-card border border-border text-sm focus:outline-none focus:border-primary/50" />
+        <div className="relative flex-1">
+          <input value={search} autoFocus
+            onChange={e => setSearch(e.target.value)} placeholder="Buscar producto…"
+            className="w-full px-3 py-2 pr-8 rounded-lg bg-card border border-border text-sm focus:outline-none focus:border-primary/50" />
+          {search && (
+            <button onClick={() => setSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+              <X size={14} />
+            </button>
+          )}
+        </div>
         <select value={sort} onChange={e => setSort(e.target.value as any)}
           className="px-2 py-2 rounded-lg bg-card border border-border text-xs text-muted-foreground focus:outline-none">
           <option value="margin">Margen ↓</option>
@@ -150,7 +174,14 @@ function ProductosTab({
           <div className="col-span-2 text-right">Food cost</div>
         </div>
         {list.length === 0 && (
-          <div className="px-4 py-8 text-center text-muted-foreground text-sm">Sin resultados</div>
+          <div className="px-4 py-8 text-center text-muted-foreground text-sm">
+            Sin resultados
+            {search && (
+              <button onClick={() => setSearch('')} className="block mx-auto mt-2 text-primary font-semibold hover:underline">
+                Borrar búsqueda
+              </button>
+            )}
+          </div>
         )}
         {list.map(p => (
           <div key={p.id} className="grid grid-cols-12 gap-1 px-3 py-2.5 border-t border-border hover:bg-secondary/10 transition-colors items-center">

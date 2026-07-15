@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useLocation } from 'wouter';
 import {
   ArrowLeft,
@@ -10,6 +10,8 @@ import {
   Loader2,
   ChevronDown,
   ChevronUp,
+  Search,
+  X,
 } from 'lucide-react';
 
 interface IngredientReport {
@@ -71,6 +73,7 @@ export default function InformesStock() {
   const [data, setData] = useState<ReportsData | null>(null);
   const [loading, setLoading] = useState(false);
   const [days, setDays] = useState(30);
+  const [ingredientSearch, setIngredientSearch] = useState('');
 
   async function loadReports() {
     setLoading(true);
@@ -94,9 +97,12 @@ export default function InformesStock() {
     }
   }
 
-  // Load on mount and when `days` changes
+  // Load on mount and when `days` changes; also re-fetch on foreground restore
   useEffect(() => {
     loadReports();
+    const onVisibility = () => { if (!document.hidden) loadReports(); };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [days]);
 
@@ -146,6 +152,23 @@ export default function InformesStock() {
 
         {data && (
           <>
+            {/* Search bar */}
+            <div className="relative">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+              <input
+                value={ingredientSearch}
+                autoFocus
+              onChange={e => setIngredientSearch(e.target.value)}
+                placeholder="Filtrar ingredientes…"
+                className="w-full pl-9 pr-8 py-2 rounded-xl bg-secondary border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+              />
+              {ingredientSearch && (
+                <button onClick={() => setIngredientSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                  <X size={13} />
+                </button>
+              )}
+            </div>
+
             {/* KPI strip */}
             <div className="grid grid-cols-2 gap-3">
               <div className="rounded-xl border border-border bg-card p-4">
@@ -169,7 +192,7 @@ export default function InformesStock() {
             {/* 1. Existencias actuales */}
             <Panel title="Existencias actuales" icon={<Package size={16} />}>
               <div className="divide-y divide-border">
-                {data.ingredients.map((ing) => {
+                {data.ingredients.filter(i => !ingredientSearch.trim() || i.name.toLowerCase().includes(ingredientSearch.trim().toLowerCase())).map((ing) => {
                   const cur = parseFloat(ing.currentStock);
                   const min = parseFloat(ing.minStock);
                   const opt = parseFloat(ing.optimalStock);
@@ -204,7 +227,7 @@ export default function InformesStock() {
               <div className="divide-y divide-border">
                 {[...data.ingredients]
                   .sort((a, b) => b.stockValue - a.stockValue)
-                  .filter((i) => i.stockValue > 0)
+                  .filter((i) => i.stockValue > 0 && (!ingredientSearch.trim() || i.name.toLowerCase().includes(ingredientSearch.trim().toLowerCase())))
                   .map((ing) => (
                     <div key={ing.id} className="px-4 py-2.5 flex items-center gap-3">
                       <p className="flex-1 text-sm font-semibold truncate">{ing.name}</p>
@@ -224,7 +247,7 @@ export default function InformesStock() {
             <Panel title={`Consumo medio diario (${data.periodDays} días)`} icon={<TrendingDown size={16} />}>
               <div className="divide-y divide-border">
                 {[...data.ingredients]
-                  .filter((i) => i.dailyConsumption > 0)
+                  .filter((i) => i.dailyConsumption > 0 && (!ingredientSearch.trim() || i.name.toLowerCase().includes(ingredientSearch.trim().toLowerCase())))
                   .sort((a, b) => b.dailyConsumption - a.dailyConsumption)
                   .map((ing) => (
                     <div key={ing.id} className="px-4 py-2.5 flex items-center gap-3">
@@ -243,9 +266,15 @@ export default function InformesStock() {
                       </p>
                     </div>
                   ))}
-                {data.ingredients.every((i) => i.dailyConsumption === 0) && (
+                {data.ingredients.filter(i => i.dailyConsumption > 0).length === 0 && !ingredientSearch.trim() && (
                   <div className="px-4 py-6 text-center text-muted-foreground text-sm">
                     Sin movimientos de venta en el período seleccionado.
+                  </div>
+                )}
+                {data.ingredients.filter(i => i.dailyConsumption > 0 && (!ingredientSearch.trim() || i.name.toLowerCase().includes(ingredientSearch.trim().toLowerCase()))).length === 0 && ingredientSearch.trim() && (
+                  <div className="px-4 py-6 text-center text-muted-foreground text-sm">
+                    <p>Sin resultados para "{ingredientSearch}"</p>
+                    <button onClick={() => setIngredientSearch('')} className="mt-1 text-primary font-semibold hover:underline">Borrar búsqueda</button>
                   </div>
                 )}
               </div>
@@ -255,7 +284,7 @@ export default function InformesStock() {
             <Panel title="Mermas" icon={<TrendingDown size={16} />} defaultOpen={false}>
               <div className="divide-y divide-border">
                 {[...data.ingredients]
-                  .filter((i) => i.wasteTotal > 0)
+                  .filter((i) => i.wasteTotal > 0 && (!ingredientSearch.trim() || i.name.toLowerCase().includes(ingredientSearch.trim().toLowerCase())))
                   .sort((a, b) => b.wasteTotal - a.wasteTotal)
                   .map((ing) => (
                     <div key={ing.id} className="px-4 py-2.5 flex items-center gap-3">
@@ -265,9 +294,15 @@ export default function InformesStock() {
                       </p>
                     </div>
                   ))}
-                {data.ingredients.every((i) => i.wasteTotal === 0) && (
+                {data.ingredients.filter(i => i.wasteTotal > 0).length === 0 && !ingredientSearch.trim() && (
                   <div className="px-4 py-6 text-center text-muted-foreground text-sm">
                     Sin mermas registradas en el período seleccionado.
+                  </div>
+                )}
+                {data.ingredients.filter(i => i.wasteTotal > 0 && (!ingredientSearch.trim() || i.name.toLowerCase().includes(ingredientSearch.trim().toLowerCase()))).length === 0 && ingredientSearch.trim() && (
+                  <div className="px-4 py-6 text-center text-muted-foreground text-sm">
+                    <p>Sin resultados para "{ingredientSearch}"</p>
+                    <button onClick={() => setIngredientSearch('')} className="mt-1 text-primary font-semibold hover:underline">Borrar búsqueda</button>
                   </div>
                 )}
               </div>

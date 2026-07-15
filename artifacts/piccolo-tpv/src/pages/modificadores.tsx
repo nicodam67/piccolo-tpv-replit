@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useLocation } from 'wouter';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
@@ -15,7 +15,7 @@ import {
 import type { AdminModifierGroup } from '@workspace/api-client-react';
 import {
   ArrowLeft, Sliders, Plus, Pencil, Trash2, Check, X, ChevronDown, ChevronRight,
-  ToggleLeft, ToggleRight,
+  ToggleLeft, ToggleRight, Search, Loader2,
 } from 'lucide-react';
 
 // ── Inline editable ───────────────────────────────────────────────────────────
@@ -110,8 +110,9 @@ function GroupRow({ group, onRefresh }: { group: AdminModifierGroup; onRefresh: 
             <span className="text-[10px] text-muted-foreground">{activeOptions.length} opción{activeOptions.length !== 1 ? 'es' : ''}</span>
           </div>
         </div>
-        <button onClick={(e) => { e.stopPropagation(); handleArchive(); }} className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors">
-          <Trash2 size={13} />
+        <button onClick={(e) => { e.stopPropagation(); handleArchive(); }} disabled={deleteGroup.isPending}
+          className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors disabled:opacity-50">
+          {deleteGroup.isPending ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
         </button>
         {expanded ? <ChevronDown size={14} className="text-muted-foreground" /> : <ChevronRight size={14} className="text-muted-foreground" />}
       </div>
@@ -140,7 +141,8 @@ function GroupRow({ group, onRefresh }: { group: AdminModifierGroup; onRefresh: 
                 <span className={`text-xs font-mono ${parseFloat(opt.priceDelta) > 0 ? 'text-green-400' : 'text-muted-foreground'}`}>
                   {parseFloat(opt.priceDelta) > 0 ? '+' : ''}{parseFloat(opt.priceDelta).toFixed(2)}€
                 </span>
-                <button onClick={() => handleArchiveOpt(opt.id)} className="w-6 h-6 flex items-center justify-center rounded-lg hover:bg-destructive/10 text-muted-foreground/50 hover:text-destructive transition-colors">
+                <button onClick={() => handleArchiveOpt(opt.id)} disabled={deleteModifier.isPending}
+                  className="w-6 h-6 flex items-center justify-center rounded-lg hover:bg-destructive/10 text-muted-foreground/50 hover:text-destructive transition-colors disabled:opacity-50">
                   <Trash2 size={11} />
                 </button>
               </div>
@@ -188,7 +190,13 @@ export default function ModificadoresPage() {
   const [addingGroup, setAddingGroup] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
 
-  const invalidate = () => qc.invalidateQueries({ queryKey: getGetAdminModifierGroupsQueryKey() });
+  const invalidate = useCallback(() => qc.invalidateQueries({ queryKey: getGetAdminModifierGroupsQueryKey() }), [qc]);
+
+  useEffect(() => {
+    const onVisibility = () => { if (!document.hidden) invalidate(); };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, [invalidate]);
 
   const handleAddGroup = async () => {
     if (!newGroupName.trim()) return;
@@ -198,7 +206,12 @@ export default function ModificadoresPage() {
     } catch { toast.error('Error al crear grupo'); }
   };
 
-  const activeGroups = groups.filter((g) => g.active);
+  const [modSearch, setModSearch] = useState('');
+
+  const activeGroups = useMemo(() => {
+    const q = modSearch.trim().toLowerCase();
+    return groups.filter((g) => g.active && (!q || g.name.toLowerCase().includes(q)));
+  }, [groups, modSearch]);
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -220,6 +233,25 @@ export default function ModificadoresPage() {
           </button>
         </div>
       </header>
+
+      {/* Search */}
+      <div className="px-4 py-2 border-b border-border bg-card/50 shrink-0">
+        <div className="relative max-w-2xl mx-auto">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+          <input
+            value={modSearch}
+            autoFocus
+            onChange={e => setModSearch(e.target.value)}
+            placeholder="Buscar grupo de modificadores…"
+            className="w-full pl-9 pr-8 py-2 rounded-xl bg-secondary border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+          />
+          {modSearch && (
+            <button onClick={() => setModSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+              <X size={13} />
+            </button>
+          )}
+        </div>
+      </div>
 
       <main className="flex-1 overflow-y-auto p-4 max-w-2xl mx-auto w-full space-y-3">
         {isLoading && <p className="text-center text-muted-foreground py-16 text-sm">Cargando…</p>}

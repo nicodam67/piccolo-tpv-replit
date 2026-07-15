@@ -55,8 +55,15 @@ export default function FichajeImportarAnviz() {
   const token = localStorage.getItem("token");
 
   useEffect(() => {
-    fetch(`${BASE}api/fichaje/import/history`, { headers: { Authorization: `Bearer ${token}` } })
-      .then(r => r.json()).then(d => setHistory(Array.isArray(d) ? d : [])).catch(() => {});
+    function loadHistory() {
+      fetch(`${BASE}api/fichaje/import/history`, { headers: { Authorization: `Bearer ${token}` } })
+        .then(r => r.json()).then(d => setHistory(Array.isArray(d) ? d : [])).catch(() => {});
+    }
+    loadHistory();
+    const onVisibility = () => { if (!document.hidden) loadHistory(); };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [result]);
 
   function handleFile(f: File) {

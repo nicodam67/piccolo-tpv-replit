@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useLocation } from 'wouter';
 import { ChevronLeft, Loader2, CheckCircle2, XCircle, AlertTriangle, Clock, Coins, Settings2, RefreshCw } from 'lucide-react';
 import {
@@ -34,11 +35,17 @@ export default function CajaAutomaticaEstado() {
     query: { queryKey: ['/api/admin/cash-machine/status'] as const, refetchInterval: 10000 },
   });
 
+  useEffect(() => {
+    const onVisibility = () => { if (!document.hidden) void refetchStatus(); };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, [refetchStatus]);
+
   const { data: cfg } = useGetCashMachineConfig({
     query: { queryKey: ['/api/admin/cash-machine/config'] as const },
   });
 
-  const { data: levels, isLoading: loadingLevels } = useGetCashMachineCashLevels({
+  const { data: levels, isLoading: loadingLevels, refetch: refetchLevels } = useGetCashMachineCashLevels({
     query: {
       queryKey: ['/api/admin/cash-machine/cash-levels'] as const,
       enabled: (status as any)?.supportsCashLevels === true,
@@ -111,10 +118,11 @@ export default function CajaAutomaticaEstado() {
               {s.jamDetected && (
                 <div className="flex items-center gap-3 p-4 bg-destructive/10 border border-destructive/30 rounded-2xl">
                   <AlertTriangle size={20} className="text-destructive shrink-0" />
-                  <div>
+                  <div className="flex-1">
                     <p className="font-black text-sm text-destructive">Atasco detectado</p>
                     <p className="text-xs text-muted-foreground">Abrir la máquina y liberar el atasco manualmente.</p>
                   </div>
+                  <button onClick={() => void refetchLevels()} className="shrink-0 text-xs font-bold text-destructive/70 hover:text-destructive underline">Reintentar</button>
                 </div>
               )}
               {s.doorOpen && (
@@ -144,10 +152,11 @@ export default function CajaAutomaticaEstado() {
               {s.status === 'disconnected' && (
                 <div className="flex items-center gap-3 p-4 bg-destructive/10 border border-destructive/30 rounded-2xl">
                   <XCircle size={20} className="text-destructive shrink-0" />
-                  <div>
+                  <div className="flex-1">
                     <p className="font-black text-sm text-destructive">Sin conexión</p>
                     <p className="text-xs text-muted-foreground">Comprueba el cable, la IP y que el dispositivo esté encendido.</p>
                   </div>
+                  <button onClick={() => void refetchLevels()} className="shrink-0 text-xs font-bold text-destructive/70 hover:text-destructive underline">Reintentar</button>
                 </div>
               )}
             </div>
@@ -156,7 +165,12 @@ export default function CajaAutomaticaEstado() {
           {/* Cash levels */}
           {s?.supportsCashLevels && (
             <div className="bg-card border border-border rounded-2xl p-5">
-              <h3 className="text-sm font-black uppercase tracking-widest text-muted-foreground mb-4">Niveles de efectivo</h3>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-black uppercase tracking-widest text-muted-foreground">Niveles de efectivo</h3>
+                <button onClick={() => void refetchLevels()} disabled={loadingLevels} className="p-1.5 rounded-lg hover:bg-secondary transition-colors text-muted-foreground" title="Actualizar niveles">
+                  <RefreshCw size={13} className={loadingLevels ? 'animate-spin' : ''} />
+                </button>
+              </div>
               {loadingLevels ? (
                 <div className="flex justify-center py-4"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>
               ) : !levels || (levels as any[]).length === 0 ? (

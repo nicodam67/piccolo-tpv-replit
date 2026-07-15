@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useLocation } from "wouter";
 import { useGetEmployeeLoginList, useAuthWithPin } from "@workspace/api-client-react";
-import { Loader2, Delete } from "lucide-react";
+import { Loader2, Delete, Search, X } from "lucide-react";
 import { toast } from "sonner";
 
 // ── PinKey — reliable touch feedback via pointer events ───────────────────────
@@ -43,7 +43,10 @@ export default function Login() {
   const { data: employees, isLoading: loadingEmployees } = useGetEmployeeLoginList();
   const auth = useAuthWithPin();
 
-  const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(() => {
+    // Pre-select the last employee who logged in so returning staff don't need to tap twice
+    try { return localStorage.getItem('lastEmployeeId') ?? null; } catch { return null; }
+  });
   const [pin, setPin] = useState("");
 
   const authMutateRef = useRef(auth.mutate);
@@ -62,6 +65,7 @@ export default function Login() {
           onSuccess: (res) => {
             localStorage.setItem("token", res.token);
             localStorage.setItem("employee", JSON.stringify(res.employee));
+            if (selectedEmployeeId) localStorage.setItem("lastEmployeeId", selectedEmployeeId);
             setLocation(res.employee?.role === "admin" ? "/admin" : "/tables");
           },
           onError: () => {
@@ -83,7 +87,13 @@ export default function Login() {
     setPin((prev) => prev.slice(0, -1));
   };
 
+  const [empFilter, setEmpFilter] = useState('');
   const selectedEmployee = employees?.find(e => e.id === selectedEmployeeId);
+
+  const visibleEmployees = useMemo(() => {
+    const q = empFilter.trim().toLowerCase();
+    return q ? (employees ?? []).filter(e => e.name.toLowerCase().includes(q)) : (employees ?? []);
+  }, [employees, empFilter]);
 
   return (
     <div className="min-h-screen w-full flex flex-col lg:flex-row bg-background">
@@ -102,8 +112,27 @@ export default function Login() {
             <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
           </div>
         ) : (
+          <>
+            {(employees?.length ?? 0) > 6 && (
+              <div className="relative mb-4">
+                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                <input
+                  value={empFilter}
+                  autoFocus
+                  onChange={e => setEmpFilter(e.target.value)}
+                  placeholder="Buscar empleado…"
+                  className="w-full pl-10 pr-8 py-2.5 rounded-xl bg-secondary border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+                />
+                {empFilter && (
+                  <button onClick={() => setEmpFilter('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
+            )}
           <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-4">
-            {employees?.map((emp) => {
+            {visibleEmployees.map((emp) => {
               const isSelected = selectedEmployeeId === emp.id;
               return (
                 <button
@@ -134,6 +163,7 @@ export default function Login() {
               );
             })}
           </div>
+          </>
         )}
       </div>
 

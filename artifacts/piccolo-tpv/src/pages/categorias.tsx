@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useLocation } from 'wouter';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
@@ -15,7 +15,7 @@ import {
 import type { AdminCategory, Subcategory } from '@workspace/api-client-react';
 import {
   ArrowLeft, Tag, Plus, Pencil, Trash2, ChevronDown, ChevronRight,
-  GripVertical, Check, X, Folder, FolderOpen,
+  GripVertical, Check, X, Folder, FolderOpen, Search,
 } from 'lucide-react';
 
 const PALETTE = [
@@ -94,8 +94,8 @@ function InlineEdit({ value, onSave, className = '' }: {
 
 // ── Category row ──────────────────────────────────────────────────────────────
 function CategoryRow({
-  cat, expanded, onToggle, onRename, onUpdateColor, onUpdateIcon, onArchive, onAddSubcat,
-  onRenameSubcat, onArchiveSubcat,
+  cat, expanded, onToggle, onRename, onUpdateColor, onUpdateIcon, onArchive, archiving,
+  onAddSubcat, onRenameSubcat, onArchiveSubcat,
 }: {
   cat: AdminCategory;
   expanded: boolean;
@@ -104,6 +104,7 @@ function CategoryRow({
   onUpdateColor: (color: string | null) => void;
   onUpdateIcon: (icon: string | null) => void;
   onArchive: () => void;
+  archiving?: boolean;
   onAddSubcat: (name: string) => void;
   onRenameSubcat: (id: string, name: string) => void;
   onArchiveSubcat: (id: string) => void;
@@ -143,7 +144,8 @@ function CategoryRow({
         </button>
         <button
           onClick={(e) => { e.stopPropagation(); onArchive(); }}
-          className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
+          disabled={archiving}
+          className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors disabled:opacity-50"
         >
           <Trash2 size={13} />
         </button>
@@ -226,7 +228,13 @@ export default function CategoriasPage() {
   const [newCatName, setNewCatName] = useState('');
   const [addingCat, setAddingCat] = useState(false);
 
-  const invalidate = () => qc.invalidateQueries({ queryKey: getGetAdminCategoriesQueryKey() });
+  const invalidate = useCallback(() => qc.invalidateQueries({ queryKey: getGetAdminCategoriesQueryKey() }), [qc]);
+
+  useEffect(() => {
+    const onVisibility = () => { if (!document.hidden) invalidate(); };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, [invalidate]);
 
   const toggle = (id: string) => setExpanded((prev) => {
     const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n;
@@ -280,7 +288,12 @@ export default function CategoriasPage() {
     catch { toast.error('Error al eliminar subcategoría'); }
   };
 
-  const activeCats = categories.filter((c) => c.active);
+  const [catSearch, setCatSearch] = useState('');
+
+  const activeCats = useMemo(() => {
+    const q = catSearch.trim().toLowerCase();
+    return categories.filter((c) => c.active && (!q || c.name.toLowerCase().includes(q)));
+  }, [categories, catSearch]);
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -302,6 +315,25 @@ export default function CategoriasPage() {
           </button>
         </div>
       </header>
+
+      {/* Search bar */}
+      <div className="px-4 py-2 border-b border-border bg-card/50 shrink-0">
+        <div className="relative max-w-2xl mx-auto">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+          <input
+            value={catSearch}
+            autoFocus
+            onChange={e => setCatSearch(e.target.value)}
+            placeholder="Buscar categoría…"
+            className="w-full pl-9 pr-8 py-2 rounded-xl bg-secondary border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+          />
+          {catSearch && (
+            <button onClick={() => setCatSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+              <X size={13} />
+            </button>
+          )}
+        </div>
+      </div>
 
       <main className="flex-1 overflow-y-auto p-4 max-w-2xl mx-auto w-full space-y-3">
         {isLoading && <p className="text-center text-muted-foreground py-16 text-sm">Cargando…</p>}

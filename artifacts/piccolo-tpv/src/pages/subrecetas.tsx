@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useLocation } from 'wouter';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
@@ -10,6 +10,7 @@ import {
   X,
   ChevronRight,
   Loader2,
+  Search,
 } from 'lucide-react';
 import {
   useGetAdminSubrecipes,
@@ -87,12 +88,16 @@ function CreateSubrecipeForm({ onClose, onCreated }: { onClose: () => void; onCr
     <div className="rounded-xl border border-primary/30 bg-primary/5 p-4 space-y-3">
       <p className="text-xs font-bold text-primary">Nueva subreceta</p>
       <input value={name} onChange={e => setName(e.target.value)} placeholder="Nombre (ej. Salsa de tomate)"
+        autoFocus
+        onKeyDown={e => { if (e.key === 'Enter') void handleCreate(); if (e.key === 'Escape') onClose(); }}
         className="w-full px-3 py-2 rounded-lg bg-card border border-border text-sm focus:outline-none focus:border-primary/50" />
       <div className="flex gap-2">
         <div className="flex-1">
           <label className="text-[10px] font-bold text-muted-foreground block mb-0.5">Unidad de medida</label>
-          <input value={unit} onChange={e => setUnit(e.target.value)} placeholder="ud / L / kg"
-            className="w-full px-3 py-2 rounded-lg bg-card border border-border text-sm focus:outline-none focus:border-primary/50" />
+          <select value={unit} onChange={e => setUnit(e.target.value)}
+            className="w-full px-3 py-2 rounded-lg bg-card border border-border text-sm focus:outline-none focus:border-primary/50">
+            {['ud', 'kg', 'g', 'l', 'ml', 'cl', 'docena', 'porción'].map(u => <option key={u} value={u}>{u}</option>)}
+          </select>
         </div>
         <div className="w-24">
           <label className="text-[10px] font-bold text-muted-foreground block mb-0.5">Rendimiento</label>
@@ -114,14 +119,18 @@ function CreateSubrecipeForm({ onClose, onCreated }: { onClose: () => void; onCr
 // ── Subrecipe list ────────────────────────────────────────────────────────────
 function SubrecipeListItems({ onSelect }: { onSelect: (id: string) => void }) {
   const { data: subrecipes = [], isLoading } = useGetAdminSubrecipes();
+  const [search, setSearch] = useState('');
+
+  const list = (subrecipes as Subrecipe[]);
+  const filtered = search.trim()
+    ? list.filter(sr => sr.name.toLowerCase().includes(search.toLowerCase()))
+    : list;
 
   if (isLoading) return (
     <div className="flex items-center justify-center py-16 text-muted-foreground">
       <Loader2 size={20} className="animate-spin" />
     </div>
   );
-
-  const list = (subrecipes as Subrecipe[]);
 
   if (!list.length) return (
     <div className="flex flex-col items-center justify-center py-16 gap-2 text-muted-foreground">
@@ -132,7 +141,29 @@ function SubrecipeListItems({ onSelect }: { onSelect: (id: string) => void }) {
 
   return (
     <div className="space-y-2">
-      {list.map(sr => (
+      {/* Search */}
+      <div className="relative mb-2">
+        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+        <input
+          value={search}
+          autoFocus
+            onChange={e => setSearch(e.target.value)}
+          placeholder="Buscar subreceta…"
+          className="w-full pl-9 pr-8 py-2 rounded-xl bg-secondary border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+        />
+        {search && (
+          <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+            <X size={13} />
+          </button>
+        )}
+      </div>
+      {filtered.length === 0 && (
+        <div className="text-center text-muted-foreground text-sm py-8">
+          <p>Sin resultados para "{search}"</p>
+          <button onClick={() => setSearch('')} className="mt-2 text-primary font-semibold hover:underline">Borrar búsqueda</button>
+        </div>
+      )}
+      {filtered.map(sr => (
         <button key={sr.id} onClick={() => onSelect(sr.id)}
           className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-border bg-card hover:border-primary/40 transition-colors text-left">
           <FlaskConical size={16} className="text-primary shrink-0" />
@@ -173,10 +204,16 @@ function SubrecipeDetail({ id, onBack }: { id: string; onBack: () => void }) {
   const [addWaste, setAddWaste] = useState('0');
   const [ingSearch, setIngSearch] = useState('');
 
-  const invalidate = () => {
+  const invalidate = useCallback(() => {
     qc.invalidateQueries({ queryKey: getGetAdminSubrecipeQueryKey(id) });
     qc.invalidateQueries({ queryKey: getGetAdminSubrecipesQueryKey() });
-  };
+  }, [qc, id]);
+
+  useEffect(() => {
+    const onVisibility = () => { if (!document.hidden) invalidate(); };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, [invalidate]);
 
   if (isLoading) return (
     <div className="min-h-screen bg-background flex items-center justify-center">
@@ -246,9 +283,9 @@ function SubrecipeDetail({ id, onBack }: { id: string; onBack: () => void }) {
         </button>
         <FlaskConical size={16} className="text-primary" />
         <h1 className="font-bold text-sm flex-1 truncate">{sr.name}</h1>
-        <button onClick={handleArchive}
-          className="text-[11px] text-muted-foreground hover:text-destructive px-2 py-1 rounded border border-border hover:border-destructive/40 transition-colors">
-          Archivar
+        <button onClick={handleArchive} disabled={archive.isPending}
+          className="text-[11px] text-muted-foreground hover:text-destructive px-2 py-1 rounded border border-border hover:border-destructive/40 transition-colors disabled:opacity-60">
+          {archive.isPending ? 'Archivando…' : 'Archivar'}
         </button>
       </header>
 
@@ -346,7 +383,12 @@ function SubrecipeDetail({ id, onBack }: { id: string; onBack: () => void }) {
                       <span className="text-[10px] text-muted-foreground">{parseFloat(i.purchaseCost).toFixed(3)}€/{i.unit}</span>
                     </button>
                   ))}
-                  {filteredIng.length === 0 && <p className="px-3 py-2 text-xs text-muted-foreground">Sin resultados</p>}
+                  {filteredIng.length === 0 && (
+                    <div className="px-3 py-2 text-xs text-muted-foreground">
+                      <span>Sin resultados</span>
+                      {ingSearch && <button onClick={() => setIngSearch('')} className="ml-2 text-primary hover:underline">Borrar</button>}
+                    </div>
+                  )}
                 </div>
               )}
             </div>

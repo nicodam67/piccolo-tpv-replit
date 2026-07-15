@@ -1,7 +1,7 @@
 /**
  * Retirada de Lotes — lot recall and block management
  */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useLocation } from 'wouter';
 import { toast } from 'sonner';
 import {
@@ -59,7 +59,13 @@ export default function RetiradasLote() {
     }
   }
 
-  useEffect(() => { fetchBlocks(); }, []);
+  useEffect(() => {
+    fetchBlocks();
+    const onVisibility = () => { if (!document.hidden) fetchBlocks(); };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function handleResolve() {
     if (!selectedBlock) return;
@@ -81,11 +87,21 @@ export default function RetiradasLote() {
     }
   }
 
-  const filtered = blocks.filter(b =>
-    filter === 'all' ? true
-    : filter === 'active' ? !b.resolvedAt
-    : !!b.resolvedAt
-  );
+  const [blockSearch, setBlockSearch] = useState('');
+
+  const filtered = useMemo(() => {
+    const q = blockSearch.trim().toLowerCase();
+    return blocks.filter(b => {
+      if (filter === 'active' && b.resolvedAt) return false;
+      if (filter === 'resolved' && !b.resolvedAt) return false;
+      if (!q) return true;
+      return (
+        (b.lotNumber ?? '').toLowerCase().includes(q) ||
+        (b.ingredientName ?? '').toLowerCase().includes(q) ||
+        (b.reason ?? '').toLowerCase().includes(q)
+      );
+    });
+  }, [blocks, filter, blockSearch]);
 
   const activeCount = blocks.filter(b => !b.resolvedAt).length;
 
@@ -111,20 +127,37 @@ export default function RetiradasLote() {
 
       <div className="flex-1 overflow-y-auto p-4">
         <div className="max-w-4xl mx-auto space-y-4">
-          {/* Filters + New recall button */}
-          <div className="flex items-center justify-between">
-            <div className="flex gap-1">
-              {(['all', 'active', 'resolved'] as const).map(f => (
-                <button key={f} onClick={() => setFilter(f)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${filter === f ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground hover:text-foreground'}`}>
-                  {f === 'all' ? 'Todas' : f === 'active' ? 'Activas' : 'Resueltas'}
-                </button>
-              ))}
+          {/* Filters + Search */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex gap-1">
+                {(['all', 'active', 'resolved'] as const).map(f => (
+                  <button key={f} onClick={() => setFilter(f)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${filter === f ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground hover:text-foreground'}`}>
+                    {f === 'all' ? 'Todas' : f === 'active' ? 'Activas' : 'Resueltas'}
+                  </button>
+                ))}
+              </div>
+              <button onClick={() => setLocation('/admin/trazabilidad-lotes')}
+                className="px-3 py-1.5 rounded-lg bg-secondary text-xs font-bold flex items-center gap-1.5 hover:bg-secondary/80">
+                <Search size={12} /> Trazabilidad
+              </button>
             </div>
-            <button onClick={() => setLocation('/admin/trazabilidad-lotes')}
-              className="px-3 py-1.5 rounded-lg bg-secondary text-xs font-bold flex items-center gap-1.5 hover:bg-secondary/80">
-              <Search size={12} /> Buscar lote
-            </button>
+            <div className="relative">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+              <input
+                value={blockSearch}
+                autoFocus
+              onChange={e => setBlockSearch(e.target.value)}
+                placeholder="Buscar por nº lote, ingrediente o motivo…"
+                className="w-full pl-9 pr-8 py-2 rounded-xl bg-secondary border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+              />
+              {blockSearch && (
+                <button onClick={() => setBlockSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                  <X size={13} />
+                </button>
+              )}
+            </div>
           </div>
 
           {loading ? (
@@ -134,7 +167,10 @@ export default function RetiradasLote() {
           ) : filtered.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-32 text-muted-foreground gap-2">
               <CheckCircle size={32} className="text-green-400 opacity-60" />
-              <p className="text-sm">Sin retiradas {filter === 'active' ? 'activas' : filter === 'resolved' ? 'resueltas' : ''}</p>
+              <p className="text-sm">{blockSearch ? `Sin resultados para "${blockSearch}"` : `Sin retiradas ${filter === 'active' ? 'activas' : filter === 'resolved' ? 'resueltas' : ''}`}</p>
+              {blockSearch && (
+                <button onClick={() => setBlockSearch('')} className="text-primary font-semibold text-sm hover:underline">Borrar búsqueda</button>
+              )}
             </div>
           ) : (
             <div className="space-y-3">

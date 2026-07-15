@@ -1,10 +1,11 @@
+import React, { useState } from 'react';
 import { useParams, useLocation } from 'wouter';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { customFetch } from '@workspace/api-client-react';
 import {
   ArrowLeft, CheckCircle2, AlertTriangle, XCircle, Link2,
   TrendingUp, TrendingDown, Minus, Loader2, Package, ShoppingCart,
-  FileText, ClipboardList,
+  FileText, ClipboardList, Search, X,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -75,11 +76,20 @@ export default function ConciliacionFactura() {
   const [, navigate] = useLocation();
   const qc = useQueryClient();
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, refetch } = useQuery({
     queryKey: ['invoice-reconciliation', id],
     queryFn: () => customFetch(`/api/admin/invoice-scanner/${id}/reconciliation`),
     enabled: !!id,
   });
+
+  // Re-fetch when returning from another screen
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  React.useEffect(() => {
+    const onVisibility = () => { if (!document.hidden) void refetch(); };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refetch]);
 
   const { data: orders = [] } = useQuery({
     queryKey: ['purchase-orders-received'],
@@ -118,8 +128,22 @@ export default function ConciliacionFactura() {
 
   const { document: doc, summary, diffs, invoiceLines, receiptItems, orderItems } = data as any;
 
+  const [diffSearch, setDiffSearch] = useState('');
+  const [showOnlyDiscrepancies, setShowOnlyDiscrepancies] = useState(false);
+
   const totalDiff = parseFloat(summary.totalDiff ?? '0');
   const hasDiscrepancies = diffs.some((d: any) => Math.abs(d.qtyDiff ?? 0) > 0.001 || Math.abs(d.priceDiff ?? 0) > 0.001 || !d.inReceipt || !d.inInvoice);
+
+  const filteredDiffs = diffs.filter((d: any) => {
+    if (diffSearch.trim() && !d.name?.toLowerCase().includes(diffSearch.trim().toLowerCase())) return false;
+    if (showOnlyDiscrepancies) {
+      const hasQtyDiff = Math.abs(d.qtyDiff ?? 0) > 0.001;
+      const hasPriceDiff = Math.abs(d.priceDiff ?? 0) > 0.001;
+      const missing = !d.inReceipt || !d.inInvoice;
+      if (!hasQtyDiff && !hasPriceDiff && !missing) return false;
+    }
+    return true;
+  });
 
   return (
     <div className="min-h-screen bg-zinc-950 text-white">
@@ -221,20 +245,52 @@ export default function ConciliacionFactura() {
 
         {/* Diff table */}
         <div className="rounded-xl border border-zinc-800 overflow-hidden">
-          <div className="px-4 py-3 border-b border-zinc-800 bg-zinc-900/60">
-            <h3 className="text-sm font-medium">Comparativa línea a línea</h3>
-            <p className="text-xs text-zinc-500 mt-0.5">
-              {diffs.length} productos · {diffs.filter((d: any) => !d.inReceipt && d.inInvoice).length} facturados no recibidos · {diffs.filter((d: any) => !d.inInvoice && d.inReceipt).length} recibidos no facturados
-            </p>
+          <div className="px-4 py-3 border-b border-zinc-800 bg-zinc-900/60 space-y-2">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-medium">Comparativa línea a línea</h3>
+                <p className="text-xs text-zinc-500 mt-0.5">
+                  {filteredDiffs.length}/{diffs.length} productos
+                  {diffs.filter((d: any) => !d.inReceipt && d.inInvoice).length > 0 && ` · ${diffs.filter((d: any) => !d.inReceipt && d.inInvoice).length} no recibidos`}
+                </p>
+              </div>
+              <button
+                onClick={() => setShowOnlyDiscrepancies(v => !v)}
+                className={`text-xs px-2.5 py-1.5 rounded-lg border font-medium transition-colors ${showOnlyDiscrepancies ? 'bg-amber-900/40 border-amber-700/40 text-amber-400' : 'border-zinc-700 text-zinc-400 hover:border-zinc-600'}`}
+              >
+                Solo diferencias
+              </button>
+            </div>
+            <div className="relative">
+              <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 pointer-events-none" />
+              <input
+                value={diffSearch}
+                autoFocus
+              onChange={e => setDiffSearch(e.target.value)}
+                placeholder="Buscar producto…"
+                className="w-full pl-9 pr-8 py-1.5 rounded-lg bg-zinc-800/60 border border-zinc-700 text-sm text-white focus:outline-none focus:ring-1 focus:ring-zinc-500 placeholder:text-zinc-600"
+              />
+              {diffSearch && (
+                <button onClick={() => setDiffSearch('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300">
+                  <X size={12} />
+                </button>
+              )}
+            </div>
           </div>
           {diffs.length === 0 ? (
             <div className="py-12 text-center">
               <Link2 size={28} className="mx-auto text-zinc-700 mb-2" />
               <p className="text-sm text-zinc-500">Enlaza un albarán o pedido para ver la comparativa</p>
             </div>
+          ) : filteredDiffs.length === 0 ? (
+            <div className="py-8 text-center text-zinc-500 text-sm">
+              <p>Sin resultados para "{diffSearch}"</p>
+              <button onClick={() => setDiffSearch('')} className="mt-1 text-zinc-400 hover:text-zinc-200 text-xs underline">Borrar búsqueda</button>
+            </div>
           ) : (
             <table className="w-full text-sm">
-              <thead className="bg-zinc-900/60">
+              <thead className="bg-zinc-900/60 sticky top-0">
                 <tr>
                   <th className="px-4 py-3 text-left text-xs text-zinc-500 font-medium">Producto</th>
                   <th className="px-4 py-3 text-center text-xs text-zinc-500 font-medium">Cant. factura</th>
@@ -245,7 +301,7 @@ export default function ConciliacionFactura() {
                 </tr>
               </thead>
               <tbody>
-                {diffs.map((diff: any, i: number) => <DiffRow key={i} diff={diff} />)}
+                {filteredDiffs.map((diff: any, i: number) => <DiffRow key={i} diff={diff} />)}
               </tbody>
             </table>
           )}

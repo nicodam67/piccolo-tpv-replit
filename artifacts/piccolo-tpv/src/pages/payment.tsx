@@ -204,6 +204,7 @@ function DiscountPanel({ orderId, orderTotal, userRole, onClose, onApplied }: Di
             </label>
             <input type="number" step="0.01" min="0" max={type === 'percentage' ? '100' : undefined}
               value={value} onChange={e => setValue(e.target.value)} placeholder="0"
+              onKeyDown={e => { if (e.key === 'Escape') onClose(); }}
               className="w-full bg-background border-2 border-border rounded-xl px-4 py-3 text-2xl font-black font-mono text-center focus:outline-none focus:border-primary transition-colors"
             />
           </div>
@@ -224,10 +225,17 @@ function DiscountPanel({ orderId, orderTotal, userRole, onClose, onApplied }: Di
           {/* Reason */}
           <div>
             <label className="block text-xs font-black text-muted-foreground uppercase tracking-widest mb-2">Motivo *</label>
-            <textarea rows={2} value={reason} onChange={e => setReason(e.target.value)}
-              placeholder="Ej. Descuento empleado, Promoción..."
-              className="w-full bg-background border border-border rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-primary resize-none transition-colors"
-            />
+            <div className="relative">
+              <textarea rows={2} value={reason} onChange={e => setReason(e.target.value)}
+                placeholder="Ej. Descuento empleado, Promoción..."
+                className="w-full bg-background border border-border rounded-xl px-4 py-3 pr-8 text-sm focus:outline-none focus:border-primary resize-none transition-colors"
+              />
+              {reason && (
+                <button type="button" onClick={() => setReason('')} className="absolute right-3 top-3 text-muted-foreground hover:text-foreground">
+                  <X size={13} />
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
@@ -312,6 +320,8 @@ function TipModal({ paymentId, onClose, onSaved }: TipModalProps) {
 
           {/* Input */}
           <input type="number" step="0.01" min="0" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00"
+            autoFocus
+            onKeyDown={e => { if (e.key === 'Enter' && amount && parseFloat(amount) > 0) handleSave(); if (e.key === 'Escape') onClose(); }}
             className="w-full bg-background border-2 border-border rounded-xl px-4 py-3 text-2xl font-black font-mono text-center focus:outline-none focus:border-primary transition-colors"
           />
         </div>

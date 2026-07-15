@@ -1,6 +1,18 @@
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap');
 @import 'tailwindcss';
 @import 'tw-animate-css';
+
+/* KDS — flash animation for newly arrived cards */
+@keyframes kds-flash-in {
+  0%   { box-shadow: 0 0 0 0 rgba(245,158,11,0); transform: scale(0.97); opacity: 0.7; }
+  15%  { box-shadow: 0 0 0 8px rgba(245,158,11,0.55); transform: scale(1.02); opacity: 1; }
+  40%  { box-shadow: 0 0 0 14px rgba(245,158,11,0.25); }
+  70%  { box-shadow: 0 0 0 6px rgba(245,158,11,0.1); }
+  100% { box-shadow: 0 0 0 0 rgba(245,158,11,0); transform: scale(1); opacity: 1; }
+}
+.kds-flash-in {
+  animation: kds-flash-in 1.4s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
 @plugin "@tailwindcss/typography";
 
 @custom-variant dark (&:is(.dark *));

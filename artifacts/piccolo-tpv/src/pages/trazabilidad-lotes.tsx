@@ -67,7 +67,13 @@ export default function TrazabilidadLotes() {
     }
   }
 
-  useEffect(() => { fetchLots(); }, []);
+  useEffect(() => {
+    fetchLots();
+    const onVisibility = () => { if (!document.hidden) fetchLots(); };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function openTrace(lot: Lot) {
     setTraceLoading(true);
@@ -144,11 +150,17 @@ export default function TrazabilidadLotes() {
             <div className="relative">
               <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
               <input
-                className="w-full pl-8 pr-3 py-2 rounded-lg bg-secondary border border-border text-sm focus:outline-none focus:border-primary/50"
+                className="w-full pl-8 pr-8 py-2 rounded-lg bg-secondary border border-border text-sm focus:outline-none focus:border-primary/50"
                 placeholder="Lote, ingrediente, proveedor…"
                 value={q}
-                onChange={e => { setQ(e.target.value); if (e.target.value.length === 0 || e.target.value.length >= 2) fetchLots(e.target.value); }}
+                autoFocus
+              onChange={e => { const v = e.target.value; setQ(v); clearTimeout((window as any).__trazDebounce); (window as any).__trazDebounce = setTimeout(() => fetchLots(v), 300); }}
               />
+              {q && (
+                <button onClick={() => { setQ(''); fetchLots(''); }} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                  <X size={13} />
+                </button>
+              )}
             </div>
           </div>
           <div className="flex-1 overflow-y-auto divide-y divide-border">
@@ -157,7 +169,12 @@ export default function TrazabilidadLotes() {
                 <Loader2 size={18} className="animate-spin mr-2" /> Cargando…
               </div>
             ) : filtered.length === 0 ? (
-              <div className="p-6 text-center text-muted-foreground text-sm">Sin lotes</div>
+              <div className="p-6 text-center text-muted-foreground text-sm">
+                <p>{q ? `Sin lotes para "${q}"` : 'Sin lotes'}</p>
+                {q && (
+                  <button onClick={() => { setQ(''); fetchLots(''); }} className="mt-1 text-primary font-semibold hover:underline">Borrar búsqueda</button>
+                )}
+              </div>
             ) : filtered.map(lot => (
               <button
                 key={lot.id}

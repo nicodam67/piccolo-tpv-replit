@@ -38,6 +38,13 @@ export default function CajaAutomatica() {
   const [testResult, setTestResult] = useState<{ ok: boolean; latencyMs?: number; error?: string } | null>(null);
   const [saving, setSaving] = useState(false);
 
+  // Re-fetch config when returning to foreground
+  useEffect(() => {
+    const onVisibility = () => { if (!document.hidden) void refetch(); };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, [refetch]);
+
   useEffect(() => {
     if (cfg) {
       setForm({

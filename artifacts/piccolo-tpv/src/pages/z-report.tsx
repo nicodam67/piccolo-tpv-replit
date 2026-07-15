@@ -1,6 +1,6 @@
-import React, { useRef } from 'react';
+import React, { useRef, useEffect } from 'react';
 import { useParams, useLocation } from 'wouter';
-import { ChevronLeft, Printer, FileDown, Loader2, CheckCircle2, AlertCircle, Wallet, TrendingUp, TrendingDown, Receipt } from 'lucide-react';
+import { ChevronLeft, Printer, FileDown, Loader2, CheckCircle2, AlertCircle, Wallet, TrendingUp, TrendingDown, Receipt, RefreshCw, AlertTriangle } from 'lucide-react';
 import { useGetCashSessionReport, useGetCashMachineSessionSummary } from '@workspace/api-client-react';
 import type { ZReport, TaxBreakdownItem } from '@workspace/api-client-react';
 
@@ -20,9 +20,15 @@ export default function ZReport() {
   const [, setLocation] = useLocation();
   const printRef = useRef<HTMLDivElement>(null);
 
-  const { data: report, isLoading } = useGetCashSessionReport(sessionId!, {
+  const { data: report, isLoading, refetch } = useGetCashSessionReport(sessionId!, {
     query: { enabled: !!sessionId, queryKey: [`/api/cash-sessions/${sessionId}/report`] as const },
   });
+
+  useEffect(() => {
+    const onVisibility = () => { if (!document.hidden) void refetch(); };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, [refetch]);
 
   const { data: cashMachineSummary } = useGetCashMachineSessionSummary(sessionId!, {
     query: {
@@ -44,10 +50,22 @@ export default function ZReport() {
     setTimeout(() => el.remove(), 800);
   };
 
-  if (isLoading || !report) {
+  if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <Loader2 className="w-10 h-10 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (!report) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-background gap-4 p-4 text-center">
+        <AlertTriangle size={36} className="text-destructive" />
+        <p className="text-muted-foreground text-sm">No se pudo cargar el informe Z</p>
+        <button onClick={() => void refetch()} className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground font-bold rounded-xl text-sm">
+          <RefreshCw size={14} /> Reintentar
+        </button>
       </div>
     );
   }
@@ -87,6 +105,11 @@ export default function ZReport() {
           <h1 className="text-xl font-bold">Informe Z — {session.terminalName || 'Caja'}</h1>
         </div>
         <div className="flex gap-2">
+          <button onClick={() => void refetch()}
+            className="flex items-center gap-2 px-3 py-2 bg-secondary text-muted-foreground font-bold rounded-xl text-sm hover:bg-secondary/80 transition-colors"
+            title="Actualizar datos">
+            <RefreshCw size={15} />
+          </button>
           <button onClick={handlePrint}
             className="flex items-center gap-2 px-4 py-2 bg-secondary text-foreground font-bold rounded-xl text-sm hover:bg-secondary/80 transition-colors">
             <Printer size={16} /> Imprimir

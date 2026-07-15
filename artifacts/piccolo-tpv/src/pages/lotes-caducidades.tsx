@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useLocation } from 'wouter';
 import { useQuery } from '@tanstack/react-query';
 import { customFetch } from '@workspace/api-client-react';
 import type { IngredientLot } from '@workspace/api-client-react';
-import { ArrowLeft, Package, AlertTriangle, Calendar, Clock } from 'lucide-react';
+import { ArrowLeft, Package, AlertTriangle, Calendar, Clock, Search, X } from 'lucide-react';
 
 interface ExpiringLotsResponse {
   days: number;
@@ -13,13 +13,26 @@ interface ExpiringLotsResponse {
 export default function LotesCaducidades() {
   const [, setLocation] = useLocation();
   const [days, setDays] = useState(30);
+  const [search, setSearch] = useState('');
 
-  const { data, isLoading } = useQuery<ExpiringLotsResponse>({
+  const { data, isLoading, refetch } = useQuery<ExpiringLotsResponse>({
     queryKey: ['expiring-lots', days],
     queryFn: () => customFetch(`/api/admin/purchase-reports/expiring-lots?days=${days}`),
   });
 
-  const lots = data?.lots ?? [];
+  useEffect(() => {
+    const onVisibility = () => { if (!document.hidden) void refetch(); };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, [refetch]);
+
+  const allLots = data?.lots ?? [];
+  const lots = useMemo(() => {
+    if (!search.trim()) return allLots;
+    const q = search.toLowerCase();
+    return allLots.filter(l => (l.ingredientName ?? '').toLowerCase().includes(q) || (l.lotNumber ?? '').toLowerCase().includes(q) || (l.supplierName ?? '').toLowerCase().includes(q));
+  }, [allLots, search]);
+
   const expired = lots.filter(l => l.isExpired);
   const expiringSoon = lots.filter(l => !l.isExpired && (l.daysUntilExpiry ?? 999) <= 7);
   const expiring = lots.filter(l => !l.isExpired && (l.daysUntilExpiry ?? 999) > 7);
@@ -75,8 +88,25 @@ export default function LotesCaducidades() {
         <button onClick={() => setLocation('/admin')} className="p-2 rounded-lg hover:bg-muted"><ArrowLeft className="w-5 h-5" /></button>
         <h1 className="font-bold text-lg">Lotes y caducidades</h1>
         <div className="ml-auto flex items-center gap-2">
+          {/* Inline search */}
+          <div className="relative block">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+            <input
+              type="text"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              autoFocus
+              placeholder="Buscar lote…"
+              className="pl-8 pr-8 py-1.5 text-sm bg-muted border border-border rounded-lg focus:outline-none focus:border-primary/50 w-40"
+            />
+            {search && (
+              <button onClick={() => setSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
           <Calendar className="w-4 h-4 text-muted-foreground" />
-          <span className="text-sm text-muted-foreground">Próximos</span>
+          <span className="text-sm text-muted-foreground hidden sm:inline">Próximos</span>
           <select value={days} onChange={e => setDays(parseInt(e.target.value))}
             className="bg-muted border border-border rounded-lg px-2 py-1 text-sm">
             <option value="7">7 días</option>
@@ -94,7 +124,10 @@ export default function LotesCaducidades() {
         ) : lots.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 gap-3 text-muted-foreground">
             <Package className="w-16 h-16 opacity-20" />
-            <p className="text-sm">✓ No hay lotes que caduquen en los próximos {days} días</p>
+            <p className="text-sm">{search ? `Sin lotes para "${search}"` : `✓ No hay lotes que caduquen en los próximos ${days} días`}</p>
+            {search && (
+              <button onClick={() => setSearch('')} className="text-primary font-semibold text-sm hover:underline">Borrar búsqueda</button>
+            )}
           </div>
         ) : (
           <>

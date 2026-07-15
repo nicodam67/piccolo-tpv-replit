@@ -1,10 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useLocation } from 'wouter';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { customFetch } from '@workspace/api-client-react';
 import type { PurchaseOrder, PurchaseOrderItem, PurchaseProposalItem } from '@workspace/api-client-react';
-import { ArrowLeft, Plus, Send, CheckCircle, XCircle, Copy, Zap, ChevronRight, X, Trash2, Pencil, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Plus, Send, CheckCircle, XCircle, Copy, Zap, ChevronRight, X, Trash2, Pencil, AlertTriangle, Search, Loader2 } from 'lucide-react';
 
 type Supplier = { id: string; commercialName: string };
 type Ingredient = { id: string; name: string; unit: string };
@@ -37,8 +37,16 @@ export default function PedidosCompra() {
   const [showCreate, setShowCreate] = useState(false);
   const [showProposal, setShowProposal] = useState(false);
   const [filterStatus, setFilterStatus] = useState('');
+  const [supplierSearch, setSupplierSearch] = useState('');
 
-  const { data: orders = [], isLoading } = useQuery<PurchaseOrder[]>({
+  useEffect(() => {
+    const onVisibility = () => { if (!document.hidden) void refetchOrders(); };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refetchOrders]);
+
+  const { data: orders = [], isLoading, refetch: refetchOrders } = useQuery<PurchaseOrder[]>({
     queryKey: ['purchase-orders', filterStatus],
     queryFn: () => customFetch(`/api/admin/purchase-orders${filterStatus ? `?status=${filterStatus}` : ''}`),
   });
@@ -149,17 +157,33 @@ export default function PedidosCompra() {
       <div className="flex h-[calc(100vh-3.5rem)]">
         {/* Left: order list */}
         <aside className="w-72 border-r border-border flex flex-col shrink-0">
-          <div className="p-2 border-b border-border">
+          <div className="p-2 border-b border-border space-y-1.5">
             <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
               className="w-full bg-muted border border-border rounded-lg px-2 py-1.5 text-sm">
               <option value="">Todos los estados</option>
               {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
             </select>
+            <div className="relative">
+              <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+              <input
+                value={supplierSearch}
+                autoFocus
+                onChange={e => setSupplierSearch(e.target.value)}
+                placeholder="Buscar proveedor…"
+                className="w-full pl-8 pr-6 py-1.5 rounded-lg bg-muted border border-border text-sm focus:outline-none focus:ring-1 focus:ring-primary/40"
+              />
+               {supplierSearch && (
+                 <button onClick={() => setSupplierSearch('')}
+                   className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                   <X size={12} />
+                 </button>
+               )}
+            </div>
           </div>
           <div className="flex-1 overflow-y-auto">
             {isLoading ? <p className="p-4 text-sm text-muted-foreground">Cargando...</p> :
               orders.length === 0 ? <p className="p-4 text-sm text-muted-foreground">Sin pedidos</p> :
-              orders.map(order => (
+              orders.filter(o => !supplierSearch.trim() || (o.supplierName ?? '').toLowerCase().includes(supplierSearch.trim().toLowerCase())).map(order => (
                 <button key={order.id} onClick={() => setSelectedId(order.id)}
                   className={`w-full text-left px-4 py-3 border-b border-border/50 hover:bg-muted/50 ${selectedId === order.id ? 'bg-muted' : ''}`}>
                   <div className="flex items-center justify-between mb-1">
@@ -193,9 +217,9 @@ export default function PedidosCompra() {
                 </div>
                 <div className="flex items-center gap-2">
                   <span className={`text-sm px-2 py-1 rounded-full ${STATUS_COLORS[detail.status] ?? ''}`}>{STATUS_LABELS[detail.status] ?? detail.status}</span>
-                  <button onClick={() => copyOrder.mutate(detail.id)}
-                    className="p-1.5 rounded-lg border border-border hover:bg-muted" title="Copiar pedido">
-                    <Copy className="w-4 h-4" />
+                  <button onClick={() => copyOrder.mutate(detail.id)} disabled={copyOrder.isPending}
+                    className="p-1.5 rounded-lg border border-border hover:bg-muted disabled:opacity-50" title="Copiar pedido">
+                    {copyOrder.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Copy className="w-4 h-4" />}
                   </button>
                 </div>
               </div>
@@ -211,7 +235,8 @@ export default function PedidosCompra() {
                       transition.mutate({ id: detail.id, status: ns });
                     }
                   }}
-                    className={`px-3 py-1.5 rounded-lg text-sm flex items-center gap-1.5 ${
+                    disabled={transition.isPending}
+                    className={`px-3 py-1.5 rounded-lg text-sm flex items-center gap-1.5 disabled:opacity-60 ${
                       ns === 'cancelled' ? 'border border-red-800 text-red-400 hover:bg-red-950' : 'bg-primary text-primary-foreground hover:bg-primary/90'
                     }`}>
                     {ns === 'cancelled' ? <XCircle className="w-4 h-4" /> : <CheckCircle className="w-4 h-4" />}

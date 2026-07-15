@@ -44,6 +44,18 @@ export default function Prefactura() {
       refetchOnWindowFocus: true,
     },
   });
+
+  // Refresh prefactura status + summary when returning to foreground
+  useEffect(() => {
+    const onVisibility = () => {
+      if (!document.hidden) {
+        void refetchStatus();
+        queryClient.invalidateQueries({ queryKey: getGetOrderPaymentSummaryQueryKey(orderId!) });
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, [refetchStatus, queryClient, orderId]);
   const createPrint = useCreatePrefacturaPrint();
 
   const now = new Date().toLocaleString('es-ES');
@@ -143,6 +155,13 @@ export default function Prefactura() {
               {order.employeeName}
             </span>
           </div>
+          <button
+            onClick={() => { void queryClient.invalidateQueries(); }}
+            className="w-9 h-9 flex items-center justify-center rounded-lg hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors active:scale-95"
+            title="Actualizar"
+          >
+            <RefreshCw size={16} />
+          </button>
           <span className="px-3 py-1 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-black uppercase tracking-wider">
             Prefactura
           </span>

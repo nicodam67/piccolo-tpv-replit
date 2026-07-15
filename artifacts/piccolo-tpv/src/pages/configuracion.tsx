@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useLocation } from 'wouter';
 import { useQueryClient } from '@tanstack/react-query';
 import { io } from 'socket.io-client';
-import { ChevronLeft, Plus, Pencil, Trash2, LayoutDashboard, Check, X, Loader2, GripVertical, Palette, Copy, Eye, EyeOff, Smile, FileText } from 'lucide-react';
+import { ChevronLeft, Plus, Pencil, Trash2, LayoutDashboard, Check, X, Loader2, GripVertical, Palette, Copy, Eye, EyeOff, Smile, FileText, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   DndContext,
@@ -478,6 +478,12 @@ export default function Configuracion() {
     if (serverZones) setLocalZones(serverZones as Zone[]);
   }, [serverZones]);
 
+  const [zoneSearch, setZoneSearch] = useState('');
+  const filteredZones = useMemo(() => {
+    const q = zoneSearch.trim().toLowerCase();
+    return q ? localZones.filter(z => z.name.toLowerCase().includes(q)) : localZones;
+  }, [localZones, zoneSearch]);
+
   const createZone    = useCreateZone();
   const updateZone    = useUpdateZone();
   const deleteZone    = useDeleteZone();
@@ -495,10 +501,17 @@ export default function Configuracion() {
   const reorderQueueRef = useRef<ReorderQueueItem[]>(loadReorderQueue());
   const isFlushing = useRef(false);
 
-  const invalidate = () => {
+  const invalidate = React.useCallback(() => {
     queryClient.invalidateQueries({ queryKey: getGetZonesQueryKey() });
     queryClient.invalidateQueries({ queryKey: [...getGetZonesQueryKey(), 'all'] });
-  };
+  }, [queryClient]);
+
+  // Re-fetch zones when returning from another screen
+  React.useEffect(() => {
+    const onVisibility = () => { if (!document.hidden) invalidate(); };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, [invalidate]);
 
   // ─── Flush queued reorder operations ────────────────────────────────────────
   // Processes queued items one-by-one in FIFO order. Called on reconnect.
@@ -837,14 +850,35 @@ export default function Configuracion() {
           </div>
         ) : (
           <>
+            <div className="relative mb-4">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+              <input
+                value={zoneSearch}
+                autoFocus
+              onChange={e => setZoneSearch(e.target.value)}
+                placeholder="Buscar sala…"
+                className="w-full pl-9 pr-8 py-2 rounded-xl bg-secondary border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+              />
+              {zoneSearch && (
+                <button onClick={() => setZoneSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                  <X size={13} />
+                </button>
+              )}
+            </div>
             <p className="text-xs text-muted-foreground mb-4 flex items-center gap-1.5">
               <GripVertical size={13} className="opacity-60" />
               Arrastra las salas para cambiar el orden · El ojo activa o desactiva la sala
             </p>
-            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={zoneSearch ? undefined : handleDragEnd}>
               <SortableContext items={localZones.map(z => z.id)} strategy={verticalListSortingStrategy}>
                 <div className="flex flex-col gap-3">
-                  {localZones.map(zone => (
+                  {filteredZones.length === 0 && zoneSearch && (
+                    <div className="text-center text-muted-foreground text-sm py-8">
+                      <p>Sin salas para "{zoneSearch}"</p>
+                      <button onClick={() => setZoneSearch('')} className="mt-2 text-primary font-semibold hover:underline">Borrar búsqueda</button>
+                    </div>
+                  )}
+                  {filteredZones.map(zone => (
                     <SortableZoneCard
                       key={zone.id}
                       zone={zone}

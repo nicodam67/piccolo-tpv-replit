@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useLocation } from 'wouter';
 import { toast } from 'sonner';
 import {
@@ -10,6 +10,7 @@ import {
   RefreshCw,
   Plus,
   X,
+  Search,
 } from 'lucide-react';
 import {
   useGetStockAlerts,
@@ -36,6 +37,7 @@ export default function StockPage() {
   const [, setLocation] = useLocation();
   const qc = useQueryClient();
   const [tab, setTab] = useState<'alerts' | 'movements'>('alerts');
+  const [alertSearch, setAlertSearch] = useState<string>('');
   const [filterType, setFilterType] = useState<string>('');
   const [filterIngredient, setFilterIngredient] = useState<string>('');
   const [showNewMovSheet, setShowNewMovSheet] = useState(false);
@@ -46,11 +48,18 @@ export default function StockPage() {
   const { data: ingredients = [] } = useGetAdminIngredients();
   const createMov = useCreateStockMovement();
 
-  const invalidate = () => {
+  const invalidate = useCallback(() => {
     qc.invalidateQueries({ queryKey: getGetAdminIngredientsQueryKey() });
     qc.invalidateQueries({ queryKey: getGetStockAlertsQueryKey() });
     qc.invalidateQueries({ queryKey: ['/api/admin/stock/movements'] });
-  };
+  }, [qc]);
+
+  // Re-fetch when returning to this tab from another screen
+  useEffect(() => {
+    const onVisibility = () => { if (!document.hidden) invalidate(); };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, [invalidate]);
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -92,7 +101,7 @@ export default function StockPage() {
       {/* Content */}
       <div className="flex-1 overflow-auto px-4 pb-6">
         {tab === 'alerts' && (
-          <AlertsPanel alerts={alerts} isLoading={alertsLoading} />
+          <AlertsPanel alerts={alerts} isLoading={alertsLoading} search={alertSearch} onSearch={setAlertSearch} />
         )}
         {tab === 'movements' && (
           <MovementsPanel
@@ -126,22 +135,51 @@ export default function StockPage() {
 }
 
 // ─── Alerts panel ─────────────────────────────────────────────────────────────
-function AlertsPanel({ alerts, isLoading }: { alerts: Ingredient[]; isLoading: boolean }) {
+function AlertsPanel({ alerts, isLoading, search, onSearch }: { alerts: Ingredient[]; isLoading: boolean; search: string; onSearch: (s: string) => void }) {
+  const filtered = search.trim()
+    ? alerts.filter(i => i.name.toLowerCase().includes(search.toLowerCase()))
+    : alerts;
+
   if (isLoading) return <div className="flex items-center justify-center py-20 text-muted-foreground text-sm">Cargando…</div>;
-  if (alerts.length === 0) return (
-    <div className="flex flex-col items-center justify-center py-20 gap-3 text-muted-foreground">
-      <Boxes size={36} strokeWidth={1.2} className="text-green-500/50" />
-      <p className="text-sm font-semibold text-green-500">Todo el stock está por encima del mínimo</p>
-    </div>
-  );
 
   return (
     <div className="flex flex-col gap-2 mt-2">
-      <div className="flex items-center gap-2 px-1 mb-1">
-        <AlertTriangle size={14} className="text-orange-400" />
-        <p className="text-sm font-bold text-orange-400">{alerts.length} {alerts.length === 1 ? 'ingrediente' : 'ingredientes'} bajo mínimo</p>
+      {/* Search */}
+      <div className="relative mb-1">
+        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+        <input
+          value={search}
+          autoFocus
+            onChange={e => onSearch(e.target.value)}
+          placeholder="Buscar ingrediente…"
+          className="w-full pl-9 pr-8 py-2 rounded-xl bg-secondary border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+        />
+        {search && (
+          <button onClick={() => onSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+            <X size={13} />
+          </button>
+        )}
       </div>
-      {alerts.map(ing => {
+
+      {filtered.length === 0 && !search && (
+        <div className="flex flex-col items-center justify-center py-20 gap-3 text-muted-foreground">
+          <Boxes size={36} strokeWidth={1.2} className="text-green-500/50" />
+          <p className="text-sm font-semibold text-green-500">Todo el stock está por encima del mínimo</p>
+        </div>
+      )}
+      {filtered.length === 0 && search && (
+        <div className="text-center text-muted-foreground text-sm py-8">
+          <p>Sin resultados para "{search}"</p>
+          <button onClick={() => onSearch('')} className="mt-2 text-primary font-semibold hover:underline">Borrar búsqueda</button>
+        </div>
+      )}
+      {filtered.length > 0 && (
+        <div className="flex items-center gap-2 px-1 mb-1">
+          <AlertTriangle size={14} className="text-orange-400" />
+          <p className="text-sm font-bold text-orange-400">{filtered.length} {filtered.length === 1 ? 'ingrediente' : 'ingredientes'} bajo mínimo</p>
+        </div>
+      )}
+      {filtered.map(ing => {
         const cur = parseFloat(ing.currentStock);
         const min = parseFloat(ing.minStock);
         const pct = min > 0 ? Math.min((cur / min) * 100, 100) : 0;
@@ -186,6 +224,14 @@ function MovementsPanel({
   onFilterType: (v: string) => void;
   onFilterIngredient: (v: string) => void;
 }) {
+  const [movSearch, setMovSearch] = useState('');
+  const displayed = movSearch.trim()
+    ? movements.filter(m =>
+        (m.ingredientName ?? '').toLowerCase().includes(movSearch.toLowerCase()) ||
+        (m.reason ?? '').toLowerCase().includes(movSearch.toLowerCase())
+      )
+    : movements;
+
   return (
     <div className="flex flex-col gap-3 mt-2">
       {/* Filters */}
@@ -211,6 +257,23 @@ function MovementsPanel({
           {ingredients.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
         </select>
       </div>
+      {/* Text search */}
+      <div className="relative">
+        <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+        <input
+          value={movSearch}
+          autoFocus
+          onChange={e => setMovSearch(e.target.value)}
+          placeholder="Buscar por ingrediente o motivo…"
+          className="w-full pl-8 pr-8 py-2 rounded-xl bg-secondary border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+        />
+         {movSearch && (
+           <button onClick={() => setMovSearch('')}
+             className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+             <X size={13} />
+           </button>
+         )}
+      </div>
 
       {isLoading ? (
         <div className="flex items-center justify-center py-20 text-muted-foreground text-sm">Cargando…</div>
@@ -219,9 +282,15 @@ function MovementsPanel({
           <Boxes size={36} strokeWidth={1.2} />
           <p className="text-sm">No hay movimientos todavía</p>
         </div>
+      ) : displayed.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-20 gap-3 text-muted-foreground">
+          <Boxes size={36} strokeWidth={1.2} />
+          <p className="text-sm">Sin resultados para "{movSearch}"</p>
+          <button onClick={() => setMovSearch('')} className="text-primary font-semibold text-sm hover:underline">Borrar búsqueda</button>
+        </div>
       ) : (
         <div className="flex flex-col gap-1.5">
-          {movements.map(m => {
+          {displayed.map(m => {
             const t = m.movementType as MovType;
             const meta = MOV_LABELS[t] ?? { label: t, color: '#888', icon: null };
             const qty = parseFloat(m.quantity);

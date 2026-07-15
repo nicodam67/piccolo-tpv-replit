@@ -33,10 +33,16 @@ export default function FichajeReloj() {
   }, []);
 
   useEffect(() => {
-    fetch(`${BASE}api/fichaje/public/employees`)
-      .then(r => r.json()).then(setEmployees).catch(() => {});
-    fetch(`${BASE}api/fichaje/public/clock-status`)
-      .then(r => r.json()).then(d => setMobileEnabled(d.mobileClockEnabled)).catch(() => {});
+    function loadPublicData() {
+      fetch(`${BASE}api/fichaje/public/employees`)
+        .then(r => r.json()).then(setEmployees).catch(() => {});
+      fetch(`${BASE}api/fichaje/public/clock-status`)
+        .then(r => r.json()).then(d => setMobileEnabled(d.mobileClockEnabled)).catch(() => {});
+    }
+    loadPublicData();
+    const onVisibility = () => { if (!document.hidden) loadPublicData(); };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
   }, []);
 
   async function selectEmployee(emp: Employee) {

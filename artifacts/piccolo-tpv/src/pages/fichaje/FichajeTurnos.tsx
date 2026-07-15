@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { Plus, Trash2, Edit2, Calendar } from "lucide-react";
+import { useState, useEffect, useMemo } from "react";
+import { Plus, Trash2, Edit2, Calendar, Search, X } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL;
 
@@ -89,6 +89,7 @@ export default function FichajeTurnos() {
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState<{ open: boolean; shift?: Shift }>({ open: false });
   const [week, setWeek] = useState(() => new Date().toISOString().slice(0, 10));
+  const [empSearch, setEmpSearch] = useState("");
   const token = localStorage.getItem("token");
 
   function getWeekRange(dateStr: string) {
@@ -114,7 +115,13 @@ export default function FichajeTurnos() {
       .then(r => r.json()).then(d => setEmployees(Array.isArray(d) ? d : []));
   }, []);
 
-  useEffect(() => { load(); }, [week]);
+  useEffect(() => {
+    load();
+    const onVisibility = () => { if (!document.hidden) load(); };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [week]);
 
   async function deleteShift(id: string) {
     if (!confirm("¿Eliminar este turno?")) return;
@@ -134,10 +141,25 @@ export default function FichajeTurnos() {
       </div>
 
       {/* Week navigator */}
-      <div className="bg-white border border-gray-200 rounded-xl p-4 mb-4 flex items-center gap-4">
+      <div className="bg-white border border-gray-200 rounded-xl p-4 mb-4 flex items-center gap-4 flex-wrap">
         <Calendar className="w-4 h-4 text-gray-400" />
         <input type="date" value={week} onChange={e => setWeek(e.target.value)} className="border rounded-lg px-3 py-1.5 text-sm" />
         <span className="text-sm text-gray-500">Semana: {from} — {to}</span>
+        <div className="relative ml-auto">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+          <input
+            value={empSearch}
+            autoFocus
+            onChange={e => setEmpSearch(e.target.value)}
+            placeholder="Buscar empleado…"
+            className="pl-9 pr-8 py-1.5 rounded-xl border border-gray-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-teal-400/40"
+          />
+            {empSearch && (
+              <button onClick={() => setEmpSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700">
+                <X size={13} />
+              </button>
+            )}
+        </div>
       </div>
 
       {loading ? (
@@ -157,7 +179,7 @@ export default function FichajeTurnos() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {shifts.map(s => (
+              {shifts.filter(s => !empSearch.trim() || s.employeeName.toLowerCase().includes(empSearch.trim().toLowerCase())).map(s => (
                 <tr key={s.id} className="hover:bg-gray-50">
                   <td className="px-4 py-3 font-medium text-gray-900">{s.employeeName}</td>
                   <td className="px-4 py-3 text-gray-700">{new Date(s.shiftDate + "T12:00:00").toLocaleDateString("es-ES", { weekday: "short", day: "numeric", month: "short" })}</td>

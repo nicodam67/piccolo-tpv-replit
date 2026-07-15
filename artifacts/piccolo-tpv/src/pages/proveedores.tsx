@@ -1,10 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useLocation } from 'wouter';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { customFetch } from '@workspace/api-client-react';
 import type { Supplier, SupplierWithCatalogue, SupplierCatalogItem } from '@workspace/api-client-react';
-import { ArrowLeft, Plus, Pencil, Trash2, Star, Package, ChevronRight, Search, X } from 'lucide-react';
+import { ArrowLeft, Plus, Pencil, Trash2, Star, Package, ChevronRight, Search, X, Loader2 } from 'lucide-react';
 
 const API = (path: string) => `/api${path}`;
 
@@ -18,10 +18,23 @@ export default function Proveedores() {
   const [showCatalogueForm, setShowCatalogueForm] = useState(false);
   const [editingCatalogItem, setEditingCatalogItem] = useState<SupplierCatalogItem | null>(null);
 
-  const { data: suppliers = [], isLoading } = useQuery<Supplier[]>({
+  const { data: suppliers = [], isLoading, refetch: refetchSuppliers } = useQuery<Supplier[]>({
     queryKey: ['suppliers', search],
     queryFn: () => customFetch(`/api/admin/suppliers?search=${search}`),
   });
+
+  const invalidateAll = useCallback(() => {
+    qc.invalidateQueries({ queryKey: ['suppliers'] });
+    if (selectedId) qc.invalidateQueries({ queryKey: ['supplier', selectedId] });
+  }, [qc, selectedId]);
+
+  useEffect(() => {
+    const onVisibility = () => { if (!document.hidden) invalidateAll(); };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, [invalidateAll]);
+
+  void refetchSuppliers;
 
   const { data: detail } = useQuery<SupplierWithCatalogue>({
     queryKey: ['supplier', selectedId],
@@ -107,7 +120,12 @@ export default function Proveedores() {
           <div className="p-3 border-b border-border flex gap-2">
             <div className="flex-1 flex items-center gap-2 bg-muted rounded-lg px-3 py-2 text-sm">
               <Search className="w-4 h-4 text-muted-foreground shrink-0" />
-              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar..." className="bg-transparent flex-1 outline-none" />
+              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar..." autoFocus className="bg-transparent flex-1 outline-none min-w-0" />
+              {search && (
+                <button onClick={() => setSearch('')} className="text-muted-foreground hover:text-foreground shrink-0">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
             <button onClick={() => { setShowForm(true); setEditingSupplier(null); }} className="p-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90">
               <Plus className="w-4 h-4" />
@@ -154,8 +172,9 @@ export default function Proveedores() {
                     <Pencil className="w-3.5 h-3.5" /> Editar
                   </button>
                   <button onClick={() => deactivateMutation.mutate(detail.id)}
-                    className="px-3 py-1.5 rounded-lg border border-red-800 text-red-400 hover:bg-red-950 text-sm flex items-center gap-1.5">
-                    <Trash2 className="w-3.5 h-3.5" /> Desactivar
+                    disabled={deactivateMutation.isPending}
+                    className="px-3 py-1.5 rounded-lg border border-red-800 text-red-400 hover:bg-red-950 text-sm flex items-center gap-1.5 disabled:opacity-60">
+                    {deactivateMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />} Desactivar
                   </button>
                 </div>
               </div>
@@ -240,7 +259,9 @@ export default function Proveedores() {
             <Field name="notes" label="Notas" defaultValue={editingSupplier?.notes ?? ''} multiline />
             <div className="flex justify-end gap-2 pt-2">
               <button type="button" onClick={() => { setShowForm(false); setEditingSupplier(null); }} className="px-4 py-2 rounded-lg border border-border hover:bg-muted text-sm">Cancelar</button>
-              <button type="submit" className="px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 text-sm">
+              <button type="submit" disabled={createMutation.isPending || updateMutation.isPending}
+                className="px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 text-sm disabled:opacity-60 flex items-center gap-2">
+                {(createMutation.isPending || updateMutation.isPending) && <Loader2 className="w-4 h-4 animate-spin" />}
                 {editingSupplier ? 'Guardar cambios' : 'Crear proveedor'}
               </button>
             </div>
@@ -277,7 +298,9 @@ export default function Proveedores() {
             <Field name="transportCost" label="Coste transporte (€)" type="number" step="0.0001" defaultValue={editingCatalogItem?.transportCost ?? '0'} />
             <div className="flex justify-end gap-2 pt-2">
               <button type="button" onClick={() => { setShowCatalogueForm(false); setEditingCatalogItem(null); }} className="px-4 py-2 rounded-lg border border-border hover:bg-muted text-sm">Cancelar</button>
-              <button type="submit" className="px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 text-sm">
+              <button type="submit" disabled={updateCatalogItem.isPending}
+                className="px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 text-sm disabled:opacity-60 flex items-center gap-2">
+                {updateCatalogItem.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
                 {editingCatalogItem ? 'Guardar' : 'Añadir'}
               </button>
             </div>

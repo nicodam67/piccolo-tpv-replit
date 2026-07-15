@@ -1,10 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useLocation } from 'wouter';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { customFetch } from '@workspace/api-client-react';
 import type { GoodsReceipt, PurchaseOrder, PurchaseOrderItem } from '@workspace/api-client-react';
-import { ArrowLeft, Plus, Truck, ClipboardCheck, X, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Plus, Truck, ClipboardCheck, X, AlertTriangle, Search, Loader2 } from 'lucide-react';
 
 type Supplier = { id: string; commercialName: string };
 type Ingredient = { id: string; name: string; unit: string };
@@ -25,16 +25,32 @@ export default function RecepcionMercancia() {
   const qc = useQueryClient();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [sidebarSearch, setSidebarSearch] = useState('');
   const [formOrderId, setFormOrderId] = useState('');
   const [formSupplierId, setFormSupplierId] = useState('');
   const [lines, setLines] = useState<ReceiptLineForm[]>([]);
   const [forceDeviation, setForceDeviation] = useState(false);
   const [deviationWarning, setDeviationWarning] = useState<any>(null);
 
-  const { data: receipts = [], isLoading } = useQuery<GoodsReceipt[]>({
+  const { data: receipts = [], isLoading, refetch: refetchReceipts } = useQuery<GoodsReceipt[]>({
     queryKey: ['goods-receipts'],
     queryFn: () => customFetch('/api/admin/goods-receipts'),
   });
+
+  const filteredReceipts = useMemo(() => {
+    const q = sidebarSearch.trim().toLowerCase();
+    if (!q) return receipts as GoodsReceipt[];
+    return (receipts as GoodsReceipt[]).filter(r =>
+      (r as any).supplierName?.toLowerCase().includes(q) ||
+      ((r as any).receiptNumber ?? '').toLowerCase().includes(q)
+    );
+  }, [receipts, sidebarSearch]);
+
+  useEffect(() => {
+    const onVisibility = () => { if (!document.hidden) void refetchReceipts(); };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, [refetchReceipts]);
 
   const { data: detail } = useQuery<GoodsReceipt>({
     queryKey: ['goods-receipt', selectedId],
@@ -152,10 +168,28 @@ export default function RecepcionMercancia() {
 
       <div className="flex h-[calc(100vh-3.5rem)]">
         {/* Left: receipt list */}
-        <aside className="w-72 border-r border-border overflow-y-auto shrink-0">
+        <aside className="w-72 border-r border-border overflow-y-auto shrink-0 flex flex-col">
+          <div className="p-2 border-b border-border shrink-0">
+            <div className="relative">
+              <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+              <input
+                value={sidebarSearch}
+                autoFocus
+                onChange={e => setSidebarSearch(e.target.value)}
+                placeholder="Buscar proveedor o nº albarán…"
+                className="w-full pl-8 pr-6 py-1.5 text-xs bg-secondary rounded-lg focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+              {sidebarSearch && (
+                <button onClick={() => setSidebarSearch('')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                  <X size={12} />
+                </button>
+              )}
+            </div>
+          </div>
           {isLoading ? <p className="p-4 text-sm text-muted-foreground">Cargando...</p> :
-            receipts.length === 0 ? <p className="p-4 text-sm text-muted-foreground">Sin albaranes</p> :
-            receipts.map(r => (
+            filteredReceipts.length === 0 ? <p className="p-4 text-sm text-muted-foreground">Sin albaranes</p> :
+            filteredReceipts.map(r => (
               <button key={r.id} onClick={() => setSelectedId(r.id)}
                 className={`w-full text-left px-4 py-3 border-b border-border/50 hover:bg-muted/50 ${selectedId === r.id ? 'bg-muted' : ''}`}>
                 <div className="flex justify-between items-center mb-1">
@@ -354,9 +388,9 @@ export default function RecepcionMercancia() {
 
               <div className="px-5 py-4 border-t border-border flex justify-end gap-2 shrink-0">
                 <button type="button" onClick={() => setShowForm(false)} className="px-4 py-2 rounded-lg border border-border hover:bg-muted text-sm">Cancelar</button>
-                <button type="submit" disabled={!formSupplierId || lines.length === 0}
+                <button type="submit" disabled={!formSupplierId || lines.length === 0 || createReceipt.isPending}
                   className="px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 text-sm disabled:opacity-50 flex items-center gap-2">
-                  <ClipboardCheck className="w-4 h-4" /> Confirmar recepción
+                  {createReceipt.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <ClipboardCheck className="w-4 h-4" />} Confirmar recepción
                 </button>
               </div>
             </form>

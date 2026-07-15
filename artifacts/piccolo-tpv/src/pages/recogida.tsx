@@ -61,7 +61,11 @@ export default function RecogidaPage() {
     socket.on('connect', invalidate);
     socket.on('kds:refresh', invalidate);
 
-    return () => { socket.disconnect(); };
+    // Also re-fetch when returning to foreground
+    const onVisibility = () => { if (!document.hidden) invalidate(); };
+    document.addEventListener('visibilitychange', onVisibility);
+
+    return () => { socket.disconnect(); document.removeEventListener('visibilitychange', onVisibility); };
   }, [queryClient]);
 
   // Group tasks by orderId for cleaner display

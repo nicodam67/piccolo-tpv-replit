@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useLocation } from 'wouter';
 import {
   UtensilsCrossed,
@@ -33,8 +33,11 @@ import {
   Timer,
   ShieldAlert,
   Fingerprint,
+  Search,
+  X as XIcon,
 } from 'lucide-react';
-import { useGetDashboardSummary } from '@workspace/api-client-react';
+import { useGetDashboardSummary, getGetDashboardSummaryQueryKey, customFetch } from '@workspace/api-client-react';
+import { useQuery } from '@tanstack/react-query';
 
 // ─── Module definitions ───────────────────────────────────────────────────────
 interface ModuleCard {
@@ -48,6 +51,7 @@ interface ModuleCard {
   border: string;
   iconBg: string;
   iconColor: string;
+  badge?: number;
   glow: string;
 }
 
@@ -175,7 +179,7 @@ const MODULES: ModuleCard[] = [
     title: 'Reservas',
     description: 'Agenda y gestión de reservas',
     href: '/reservas',
-    ready: false,
+    ready: true,
     accent: 'rgba(50,185,210,0.07)',
     border: 'rgba(50,185,210,0.22)',
     iconBg: 'rgba(50,185,210,0.12)',
@@ -578,8 +582,18 @@ function useNow() {
 export default function AdminDashboard() {
   const [, setLocation] = useLocation();
   const [employeeName, setEmployeeName] = useState('Admin');
+  const [moduleSearch, setModuleSearch] = useState('');
   const now = useNow();
-  const { data: summary } = useGetDashboardSummary();
+  const { data: summary, refetch: refetchSummary } = useGetDashboardSummary({ query: { refetchInterval: 30000, queryKey: getGetDashboardSummaryQueryKey() } });
+
+  // Today's reservations count for the badge on the Reservas module button
+  const todayDate = now.toISOString().slice(0, 10);
+  const { data: todayReservations = [] } = useQuery<{ id: string; status: string }[]>({
+    queryKey: ['reservations-today-badge', todayDate],
+    queryFn: () => customFetch(`/api/reservations?date=${todayDate}`),
+    refetchInterval: 60000,
+  });
+  const reservasBadge = todayReservations.filter((r: { status: string }) => r.status !== 'cancelled' && r.status !== 'noshow').length;
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -591,6 +605,17 @@ export default function AdminDashboard() {
       setEmployeeName(emp.name ?? 'Admin');
     } catch { setLocation('/'); }
   }, [setLocation]);
+
+  // Refresh KPI tiles when returning to foreground
+  useEffect(() => {
+    const onVisibility = () => {
+      if (!document.hidden) {
+        void refetchSummary();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, [refetchSummary]);
 
   const handleLogout = () => {
     localStorage.removeItem('token');
@@ -704,11 +729,38 @@ export default function AdminDashboard() {
           </div>
         )}
 
+        {/* ── Module search ── */}
+        <div className="relative mb-2">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+          <input
+            value={moduleSearch}
+            autoFocus
+            onChange={e => setModuleSearch(e.target.value)}
+            placeholder="Buscar módulo…"
+            className="w-full pl-9 pr-8 py-2.5 rounded-xl bg-secondary border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+          />
+          {moduleSearch && (
+            <button onClick={() => setModuleSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+              <XIcon size={14} />
+            </button>
+          )}
+        </div>
+
         {/* ── Module grid ── */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-          {MODULES.map(card => (
-            <ModuleButton key={card.id} card={card} onClick={() => card.ready && setLocation(card.href)} />
+          {MODULES.filter(card => !moduleSearch.trim() || card.title.toLowerCase().includes(moduleSearch.trim().toLowerCase()) || card.description.toLowerCase().includes(moduleSearch.trim().toLowerCase())).map(card => (
+            <ModuleButton
+              key={card.id}
+              card={{ ...card, badge: card.id === 'reservas' && reservasBadge > 0 ? reservasBadge : undefined }}
+              onClick={() => card.ready && setLocation(card.href)}
+            />
           ))}
+          {moduleSearch.trim() && MODULES.filter(card => card.title.toLowerCase().includes(moduleSearch.trim().toLowerCase()) || card.description.toLowerCase().includes(moduleSearch.trim().toLowerCase())).length === 0 && (
+            <div className="col-span-full py-12 text-center text-muted-foreground text-sm">
+              <p>Sin módulos para "{moduleSearch}"</p>
+              <button onClick={() => setModuleSearch('')} className="mt-2 text-primary font-semibold hover:underline">Borrar búsqueda</button>
+            </div>
+          )}
         </div>
 
         <p className="text-center text-xs text-muted-foreground/40 mt-10 font-medium tracking-wide">
@@ -761,6 +813,13 @@ function ModuleButton({ card, onClick }: { card: ModuleCard; onClick: () => void
       {!card.ready && (
         <span className="absolute top-3 right-3 text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full bg-secondary/80 text-muted-foreground border border-border/60">
           Próximo
+        </span>
+      )}
+
+      {/* Count badge */}
+      {card.ready && card.badge !== undefined && (
+        <span className="absolute top-3 right-3 min-w-[22px] h-[22px] px-1.5 flex items-center justify-center text-[11px] font-black rounded-full bg-primary text-primary-foreground shadow-sm">
+          {card.badge}
         </span>
       )}
 

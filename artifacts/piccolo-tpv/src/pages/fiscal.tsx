@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useLocation } from 'wouter';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
@@ -8,7 +8,7 @@ import {
   useUpdateProductFormatTaxRate,
   getGetAdminProductsQueryKey,
 } from '@workspace/api-client-react';
-import { ArrowLeft, Percent, ChevronDown, ChevronRight, Receipt } from 'lucide-react';
+import { ArrowLeft, Percent, ChevronDown, ChevronRight, Receipt, Search, X } from 'lucide-react';
 
 const TAX_RATES = [4, 10, 21] as const;
 type TaxRate = 4 | 10 | 21;
@@ -80,6 +80,13 @@ export default function FiscalPage() {
 
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [loadingId, setLoadingId] = useState<string | null>(null);
+  const [fiscalSearch, setFiscalSearch] = useState('');
+
+  useEffect(() => {
+    const onVisibility = () => { if (!document.hidden) qc.invalidateQueries({ queryKey: getGetAdminProductsQueryKey() }); };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, [qc]);
 
   const toggle = (id: string) =>
     setExpanded((prev) => {
@@ -114,8 +121,18 @@ export default function FiscalPage() {
     }
   };
 
-  // Group by category
-  const byCategory = products.reduce<Record<string, { name: string; items: typeof products }>>((acc, p) => {
+  // Group by category (apply search filter)
+  const filteredProducts = useMemo(() => {
+    const q = fiscalSearch.trim().toLowerCase();
+    if (!q) return products;
+    return products.filter(p =>
+      p.name.toLowerCase().includes(q) ||
+      p.categoryName.toLowerCase().includes(q) ||
+      (p.internalCode ?? '').toLowerCase().includes(q)
+    );
+  }, [products, fiscalSearch]);
+
+  const byCategory = filteredProducts.reduce<Record<string, { name: string; items: typeof products }>>((acc, p) => {
     if (!acc[p.categoryId]) acc[p.categoryId] = { name: p.categoryName, items: [] };
     acc[p.categoryId].items.push(p);
     return acc;
@@ -143,9 +160,35 @@ export default function FiscalPage() {
         </div>
       </header>
 
+      {/* Search bar */}
+      <div className="px-4 py-2.5 border-b border-border bg-card/50 shrink-0">
+        <div className="relative max-w-3xl mx-auto">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+          <input
+            value={fiscalSearch}
+            autoFocus
+              onChange={e => setFiscalSearch(e.target.value)}
+            placeholder="Buscar producto por nombre, categoría o código…"
+            className="w-full pl-9 pr-8 py-2 rounded-xl bg-secondary border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+          />
+          {fiscalSearch && (
+            <button onClick={() => setFiscalSearch('')}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+              <X size={13} />
+            </button>
+          )}
+        </div>
+      </div>
+
       <main className="flex-1 overflow-y-auto p-4 max-w-3xl mx-auto w-full space-y-4">
         {isLoading && (
           <div className="text-center text-muted-foreground py-16 text-sm">Cargando productos…</div>
+        )}
+        {fiscalSearch && !isLoading && Object.keys(byCategory).length === 0 && (
+          <div className="text-center text-muted-foreground text-sm py-16">
+            <p>Sin resultados para "{fiscalSearch}"</p>
+            <button onClick={() => setFiscalSearch('')} className="mt-2 text-primary font-semibold hover:underline">Borrar búsqueda</button>
+          </div>
         )}
 
         {Object.entries(byCategory).map(([catId, cat]) => (

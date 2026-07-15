@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { Users, LogIn, LogOut, Coffee, Clock, AlertCircle } from "lucide-react";
+import { useState, useEffect, useMemo } from "react";
+import { Users, LogIn, LogOut, Coffee, Clock, AlertCircle, Search, X } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL;
 
@@ -39,15 +39,34 @@ export default function FichajePanelDiario() {
   }, []);
 
   useEffect(() => {
-    fetch(`${BASE}api/fichaje/records/today`, { headers: { Authorization: `Bearer ${token}` } })
-      .then(r => r.json())
-      .then(d => setRecords(Array.isArray(d) ? d : []))
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    function loadToday() {
+      fetch(`${BASE}api/fichaje/records/today`, { headers: { Authorization: `Bearer ${token}` } })
+        .then(r => r.json())
+        .then(d => setRecords(Array.isArray(d) ? d : []))
+        .catch(() => {})
+        .finally(() => setLoading(false));
+    }
+    loadToday();
+    const onVisibility = () => { if (!document.hidden) loadToday(); };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [now.getMinutes()]); // Refresh every minute
+
+  const [empSearch, setEmpSearch] = useState('');
 
   const present = records.filter(r => !r.clockOut);
   const gone = records.filter(r => r.clockOut);
+
+  const filteredPresent = useMemo(() => {
+    const q = empSearch.trim().toLowerCase();
+    return q ? present.filter(r => r.employeeName.toLowerCase().includes(q)) : present;
+  }, [present, empSearch]);
+
+  const filteredGone = useMemo(() => {
+    const q = empSearch.trim().toLowerCase();
+    return q ? gone.filter(r => r.employeeName.toLowerCase().includes(q)) : gone;
+  }, [gone, empSearch]);
 
   return (
     <div className="p-6 max-w-4xl mx-auto">
@@ -80,6 +99,25 @@ export default function FichajePanelDiario() {
         </div>
       </div>
 
+      {/* Search */}
+      {!loading && records.length > 0 && (
+        <div className="relative mb-4">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+          <input
+            value={empSearch}
+            autoFocus
+            onChange={e => setEmpSearch(e.target.value)}
+            placeholder="Buscar empleado…"
+            className="w-full pl-9 pr-8 py-2 rounded-xl border border-gray-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-teal-400/40"
+          />
+          {empSearch && (
+            <button onClick={() => setEmpSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700">
+              <X size={13} />
+            </button>
+          )}
+        </div>
+      )}
+
       {loading ? (
         <div className="text-center text-gray-400 py-12">Cargando...</div>
       ) : records.length === 0 ? (
@@ -90,7 +128,7 @@ export default function FichajePanelDiario() {
       ) : (
         <div className="space-y-3">
           {/* Present employees */}
-          {present.map(r => (
+          {filteredPresent.map(r => (
             <div key={r.id} className="bg-white border border-green-200 rounded-xl p-4 flex items-center justify-between shadow-sm">
               <div className="flex items-center gap-3">
                 <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
@@ -107,7 +145,7 @@ export default function FichajePanelDiario() {
           ))}
 
           {/* Gone employees */}
-          {gone.map(r => (
+          {filteredGone.map(r => (
             <div key={r.id} className="bg-white border border-gray-100 rounded-xl p-4 flex items-center justify-between shadow-sm opacity-70">
               <div className="flex items-center gap-3">
                 <div className="w-2 h-2 rounded-full bg-gray-400" />

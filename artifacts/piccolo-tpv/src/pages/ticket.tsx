@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useLocation } from 'wouter';
 import {
   useGetOrderTicket,
@@ -29,9 +29,15 @@ export default function Ticket() {
   const [, setLocation] = useLocation();
   const [reprinting, setReprinting] = useState(false);
 
-  const { data, isLoading } = useGetOrderTicket(orderId!, {
+  const { data, isLoading, refetch } = useGetOrderTicket(orderId!, {
     query: { enabled: !!orderId, queryKey: getGetOrderTicketQueryKey(orderId!) }
   });
+
+  useEffect(() => {
+    const onVisibility = () => { if (!document.hidden) void refetch(); };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, [refetch]);
   const { data: businessConfig } = useGetBusinessConfig({
     query: { queryKey: getGetBusinessConfigQueryKey() },
   });
@@ -99,9 +105,14 @@ export default function Ticket() {
 
   if (!data) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-background p-4 text-center">
-        <div className="text-destructive text-xl font-bold mb-4">Error: No se pudo cargar el ticket</div>
-        <button onClick={() => setLocation('/tables')} className="px-8 py-4 bg-secondary text-foreground font-black rounded-xl">Volver a mesas</button>
+      <div className="min-h-screen flex flex-col items-center justify-center bg-background p-4 text-center gap-4">
+        <div className="text-destructive text-xl font-bold">Error: No se pudo cargar el ticket</div>
+        <div className="flex gap-3">
+          <button onClick={() => void refetch()} className="flex items-center gap-2 px-5 py-3 bg-primary text-primary-foreground font-bold rounded-xl text-sm">
+            <RefreshCw size={14} /> Reintentar
+          </button>
+          <button onClick={() => setLocation('/tables')} className="px-5 py-3 bg-secondary text-foreground font-black rounded-xl text-sm">Volver a mesas</button>
+        </div>
       </div>
     );
   }

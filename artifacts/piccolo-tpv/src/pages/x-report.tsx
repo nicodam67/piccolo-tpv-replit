@@ -1,6 +1,6 @@
-import React, { useRef } from 'react';
+import React, { useRef, useEffect } from 'react';
 import { useParams, useLocation } from 'wouter';
-import { ChevronLeft, Printer, FileDown, Loader2, Wallet, TrendingUp, TrendingDown, Receipt, AlertTriangle } from 'lucide-react';
+import { ChevronLeft, Printer, FileDown, Loader2, Wallet, TrendingUp, TrendingDown, Receipt, AlertTriangle, RefreshCw } from 'lucide-react';
 import { useGetCashSessionXReport } from '@workspace/api-client-react';
 import type { ZReport, TaxBreakdownItem } from '@workspace/api-client-react';
 
@@ -28,9 +28,15 @@ export default function XReport() {
   const [, setLocation] = useLocation();
   const printRef = useRef<HTMLDivElement>(null);
 
-  const { data: report, isLoading } = useGetCashSessionXReport(sessionId!, {
+  const { data: report, isLoading, refetch } = useGetCashSessionXReport(sessionId!, {
     query: { enabled: !!sessionId, queryKey: [`/api/cash-sessions/${sessionId}/x-report`] as const },
   });
+
+  useEffect(() => {
+    const onVisibility = () => { if (!document.hidden) void refetch(); };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, [refetch]);
 
   const handlePrint = () => { window.print(); };
 
@@ -43,10 +49,22 @@ export default function XReport() {
     setTimeout(() => el.remove(), 800);
   };
 
-  if (isLoading || !report) {
+  if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <Loader2 className="w-10 h-10 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (!report) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-background gap-4 p-4 text-center">
+        <AlertTriangle size={36} className="text-destructive" />
+        <p className="text-muted-foreground text-sm">No se pudo cargar el informe X</p>
+        <button onClick={() => void refetch()} className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground font-bold rounded-xl text-sm">
+          <RefreshCw size={14} /> Reintentar
+        </button>
       </div>
     );
   }
@@ -86,6 +104,11 @@ export default function XReport() {
           <h1 className="text-xl font-bold">Informe X — {session.terminalName || 'Caja'}</h1>
         </div>
         <div className="flex gap-2">
+          <button onClick={() => void refetch()}
+            className="flex items-center gap-2 px-3 py-2 bg-secondary text-muted-foreground font-bold rounded-xl text-sm hover:bg-secondary/80 transition-colors"
+            title="Actualizar datos">
+            <RefreshCw size={15} />
+          </button>
           <button onClick={handlePrint}
             className="flex items-center gap-2 px-4 py-2 bg-secondary text-foreground font-bold rounded-xl text-sm hover:bg-secondary/80 transition-colors">
             <Printer size={16} /> Imprimir
@@ -104,10 +127,13 @@ export default function XReport() {
           {/* PROVISIONAL banner */}
           <div className="flex items-center gap-3 bg-amber-500/10 border-2 border-amber-500/40 rounded-2xl p-4">
             <AlertTriangle className="text-amber-400 shrink-0" size={24} />
-            <div>
+            <div className="flex-1">
               <p className="font-black text-amber-400 uppercase tracking-widest text-sm">Informe provisional</p>
               <p className="text-xs text-muted-foreground mt-0.5">La sesión sigue abierta. Los datos pueden cambiar hasta el cierre definitivo.</p>
             </div>
+            <button onClick={() => void refetch()} className="shrink-0 flex items-center gap-1.5 text-xs font-bold text-amber-400/70 hover:text-amber-400">
+              <RefreshCw size={12} /> Actualizar
+            </button>
           </div>
 
           {/* Title block */}

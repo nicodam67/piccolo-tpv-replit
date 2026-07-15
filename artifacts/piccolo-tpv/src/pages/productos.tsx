@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { useLocation } from 'wouter';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
@@ -30,6 +30,7 @@ import {
   ChevronRight, Eye, EyeOff, Tag, Sliders, ImageIcon, Save,
   ToggleLeft, ToggleRight, CircleOff, CircleCheck,
   FlaskConical, TrendingUp, Download, Upload, FileDown, FileUp,
+  RefreshCw, ShieldCheck,
 } from 'lucide-react';
 
 const TAX_RATES = [4, 10, 21] as const;
@@ -138,7 +139,10 @@ function FormatRow({ fmt, productTaxRate, onUpdate, onDelete }: {
 
   return (
     <div className="p-3 rounded-lg border border-primary bg-secondary/10 space-y-2">
-      <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nombre" className="w-full bg-secondary rounded-lg px-3 py-1.5 text-sm outline-none" />
+      <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nombre"
+        autoFocus
+        onKeyDown={e => { if (e.key === 'Escape') setEditing(false); }}
+        className="w-full bg-secondary rounded-lg px-3 py-1.5 text-sm outline-none" />
       <div className="flex gap-2">
         <input value={price} onChange={(e) => setPrice(e.target.value)} placeholder="PVP €" className="flex-1 bg-secondary rounded-lg px-3 py-1.5 text-sm outline-none" />
         <input value={cost} onChange={(e) => setCost(e.target.value)} placeholder="Coste €" className="flex-1 bg-secondary rounded-lg px-3 py-1.5 text-sm outline-none" />
@@ -414,7 +418,15 @@ function ProductSheet({
               )}
 
               <div>
-                <label className="text-xs text-muted-foreground font-semibold block mb-1">Alérgenos (lista separada por comas)</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs text-muted-foreground font-semibold">Alérgenos (lista separada por comas)</label>
+                  {!isNew && product && (
+                    <AllergenRecalcButton
+                      productId={product.id}
+                      onResult={(computed) => setAllergens(computed)}
+                    />
+                  )}
+                </div>
                 <input value={allergens} onChange={(e) => setAllergens(e.target.value)} placeholder="gluten, leche, huevos…"
                   className="w-full bg-secondary rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-1 focus:ring-primary" />
               </div>
@@ -741,6 +753,13 @@ function RecipeLineRow({
   const [qty, setQty] = useState(line.quantity);
   const [waste, setWaste] = useState(line.wastePercent);
 
+  // Real-time cost preview while editing qty or waste
+  const unitCost = parseFloat((line as any).ingredientCost ?? '0');
+  const previewCost =
+    (editQty || editWaste)
+      ? unitCost * parseFloat(qty || '0') * (1 + parseFloat(waste || '0') / 100)
+      : null;
+
   return (
     <div className="flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-2.5">
       <div className="flex-1 min-w-0">
@@ -776,14 +795,56 @@ function RecipeLineRow({
         </div>
       </div>
       <div className="text-right shrink-0">
-        <p className="text-sm font-bold">{parseFloat(line.lineCost).toFixed(4)}€</p>
-        <p className="text-[10px] text-muted-foreground">{parseFloat(line.ingredientCost).toFixed(4)}€/{line.ingredientUnit}</p>
+        {previewCost !== null ? (
+          <p className="text-sm font-bold text-primary">{previewCost.toFixed(4)}€</p>
+        ) : (
+          <p className="text-sm font-bold">{parseFloat(line.lineCost).toFixed(4)}€</p>
+        )}
+        <p className="text-[10px] text-muted-foreground">{parseFloat((line as any).ingredientCost ?? '0').toFixed(4)}€/{(line as any).ingredientUnit ?? line.unit}</p>
       </div>
-      <button onClick={() => onDelete(line.id)}
+      <button onClick={() => onDelete(line.id)} disabled={false}
         className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors shrink-0">
         <X size={13} />
       </button>
     </div>
+  );
+}
+
+// ── Allergen recalculate button ───────────────────────────────────────────────
+const BASE_URL_PROD = import.meta.env.BASE_URL.replace(/\/$/, '');
+function AllergenRecalcButton({ productId, onResult }: { productId: string; onResult: (computed: string) => void }) {
+  const [loading, setLoading] = useState(false);
+  const handle = async () => {
+    setLoading(true);
+    try {
+      const token = localStorage.getItem('token');
+      const headers = { Authorization: `Bearer ${token}` };
+      // Trigger recalculation
+      await fetch(`${BASE_URL_PROD}/api/admin/products/${productId}/allergens/recalculate`, { method: 'POST', headers });
+      // Fetch updated cache
+      const res = await fetch(`${BASE_URL_PROD}/api/admin/products/${productId}/allergens`, { headers });
+      if (!res.ok) throw new Error();
+      const data: { allergenCode: string; type: string }[] = await res.json();
+      if (data.length === 0) {
+        toast.info('No se detectaron alérgenos en los ingredientes de esta receta');
+      } else {
+        const list = data.map(a => a.allergenCode).join(', ');
+        onResult(list);
+        toast.success('Alérgenos actualizados desde los ingredientes');
+      }
+    } catch {
+      toast.error('Error al recalcular alérgenos');
+    } finally {
+      setLoading(false);
+    }
+  };
+  return (
+    <button onClick={handle} disabled={loading}
+      className="flex items-center gap-1 text-[10px] font-bold text-primary hover:text-primary/80 disabled:opacity-50 transition-colors"
+      title="Calcular alérgenos desde los ingredientes de la receta">
+      {loading ? <RefreshCw size={10} className="animate-spin" /> : <ShieldCheck size={10} />}
+      {loading ? 'Calculando…' : 'Desde ingredientes'}
+    </button>
   );
 }
 
@@ -798,18 +859,32 @@ export default function ProductosPage() {
   const [search, setSearch] = useState('');
   const [filterCat, setFilterCat] = useState('');
   const [showArchived, setShowArchived] = useState(false);
+  const [sortBy, setSortBy] = useState<'name' | 'price'>('name');
   const [editingProduct, setEditingProduct] = useState<AdminProduct | null | 'new'>(null);
   const [showImportExport, setShowImportExport] = useState(false);
 
-  const filtered = products.filter((p) => {
-    if (!showArchived && !p.active) return false;
-    if (filterCat && p.categoryId !== filterCat) return false;
-    if (search) {
-      const s = search.toLowerCase();
-      return p.name.toLowerCase().includes(s) || (p.internalCode ?? '').toLowerCase().includes(s);
-    }
-    return true;
-  });
+  useEffect(() => {
+    const onVisibility = () => {
+      if (!document.hidden) qc.invalidateQueries({ queryKey: getGetAdminProductsQueryKey() });
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, [qc]);
+
+  const filtered = products
+    .filter((p) => {
+      if (!showArchived && !p.active) return false;
+      if (filterCat && p.categoryId !== filterCat) return false;
+      if (search) {
+        const s = search.toLowerCase();
+        return p.name.toLowerCase().includes(s) || (p.internalCode ?? '').toLowerCase().includes(s);
+      }
+      return true;
+    })
+    .sort((a, b) => {
+      if (sortBy === 'price') return parseFloat(a.price ?? '0') - parseFloat(b.price ?? '0');
+      return a.name.localeCompare(b.name, 'es');
+    });
 
   const activeCategories = (categories as AdminCategory[]).filter((c) => c.active);
 
@@ -849,6 +924,7 @@ export default function ProductosPage() {
           <input
             value={search} onChange={(e) => setSearch(e.target.value)}
             placeholder="Buscar por nombre o código…"
+              autoFocus
             className="w-full pl-8 pr-3 py-2 bg-secondary rounded-xl text-sm outline-none focus:ring-1 focus:ring-primary"
           />
         </div>
@@ -856,6 +932,11 @@ export default function ProductosPage() {
           className="bg-secondary rounded-xl px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-primary">
           <option value="">Todas las cat.</option>
           {activeCategories.map((c) => <option key={c.id} value={c.id}>{c.icon} {c.name}</option>)}
+        </select>
+        <select value={sortBy} onChange={e => setSortBy(e.target.value as typeof sortBy)}
+          className="bg-secondary rounded-xl px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-primary">
+          <option value="name">A-Z</option>
+          <option value="price">Precio ↑</option>
         </select>
         <button onClick={() => setShowArchived(!showArchived)}
           className={`w-9 h-9 flex items-center justify-center rounded-xl border transition-colors ${showArchived ? 'bg-amber-500/15 border-amber-500/30 text-amber-400' : 'bg-secondary border-border text-muted-foreground hover:text-foreground'}`}
@@ -871,7 +952,9 @@ export default function ProductosPage() {
           <div className="text-center text-muted-foreground py-16 text-sm">
             <Package size={40} className="mx-auto mb-3 opacity-20" />
             <p>{search || filterCat ? 'Sin resultados para este filtro.' : 'No hay productos todavía.'}</p>
-            {!search && !filterCat && (
+            {(search || filterCat) ? (
+              <button onClick={() => { setSearch(''); setFilterCat(''); }} className="mt-2 text-primary underline">Borrar filtros</button>
+            ) : (
               <button onClick={() => setEditingProduct('new')} className="mt-2 text-primary underline">Crear el primero</button>
             )}
           </div>

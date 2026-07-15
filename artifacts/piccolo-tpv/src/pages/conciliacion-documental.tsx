@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useLocation } from 'wouter';
 import { useQuery } from '@tanstack/react-query';
 import { customFetch } from '@workspace/api-client-react';
 import type { PurchaseOrder } from '@workspace/api-client-react';
-import { ArrowLeft, GitCompare, CheckCircle2, AlertTriangle, XCircle, ChevronRight } from 'lucide-react';
+import { ArrowLeft, GitCompare, CheckCircle2, AlertTriangle, XCircle, ChevronRight, Search, X } from 'lucide-react';
 
 interface ReconciliationData {
   order: PurchaseOrder & { supplierName: string };
@@ -28,11 +28,26 @@ const STATUS_LABELS: Record<string, string> = {
 export default function ConciliacionDocumental() {
   const [, setLocation] = useLocation();
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [sidebarSearch, setSidebarSearch] = useState('');
 
-  const { data: orders = [], isLoading } = useQuery<PurchaseOrder[]>({
+  const { data: orders = [], isLoading, refetch: refetchOrders } = useQuery<PurchaseOrder[]>({
     queryKey: ['orders-for-reconciliation'],
     queryFn: () => customFetch('/api/admin/purchase-reports/order-vs-receipt'),
   });
+
+  const filteredOrders = useMemo(() => {
+    const q = sidebarSearch.trim().toLowerCase();
+    if (!q) return orders as any[];
+    return (orders as any[]).filter(o =>
+      (o.supplierName ?? '').toLowerCase().includes(q)
+    );
+  }, [orders, sidebarSearch]);
+
+  useEffect(() => {
+    const onVisibility = () => { if (!document.hidden) void refetchOrders(); };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, [refetchOrders]);
 
   const { data: reconciliation, isLoading: loadingRecon } = useQuery<ReconciliationData>({
     queryKey: ['reconciliation', selectedId],
@@ -72,13 +87,30 @@ export default function ConciliacionDocumental() {
 
       <div className="flex h-[calc(100vh-3.5rem)]">
         {/* Left: order list */}
-        <aside className="w-72 border-r border-border overflow-y-auto shrink-0">
-          <div className="p-3 border-b border-border">
-            <p className="text-xs text-muted-foreground">Pedidos recibidos (parcial o total)</p>
+        <aside className="w-72 border-r border-border overflow-y-auto shrink-0 flex flex-col">
+          <div className="p-2 border-b border-border space-y-1.5 shrink-0">
+            <p className="text-xs text-muted-foreground px-1">Pedidos recibidos (parcial o total)</p>
+            <div className="relative">
+              <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+              <input
+                value={sidebarSearch}
+                autoFocus
+               onChange={e => setSidebarSearch(e.target.value)}
+                placeholder="Buscar proveedor…"
+                className="w-full pl-8 pr-2 py-1.5 text-xs bg-secondary rounded-lg focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+            </div>
           </div>
           {isLoading ? <p className="p-4 text-sm text-muted-foreground">Cargando...</p> :
-            (orders as any[]).length === 0 ? <p className="p-4 text-sm text-muted-foreground">Sin pedidos para conciliar</p> :
-            (orders as any[]).map(order => (
+            filteredOrders.length === 0 ? (
+              <div className="p-4 text-sm text-muted-foreground">
+                <p>Sin pedidos para conciliar{sidebarSearch ? ` para "${sidebarSearch}"` : ''}</p>
+                {sidebarSearch && (
+                  <button onClick={() => setSidebarSearch('')} className="mt-1 text-primary font-semibold hover:underline">Borrar búsqueda</button>
+                )}
+              </div>
+            ) :
+            filteredOrders.map(order => (
               <button key={order.id} onClick={() => setSelectedId(order.id)}
                 className={`w-full text-left px-4 py-3 border-b border-border/50 hover:bg-muted/50 flex items-center gap-3 ${selectedId === order.id ? 'bg-muted' : ''}`}>
                 <div className="flex-1 min-w-0">
