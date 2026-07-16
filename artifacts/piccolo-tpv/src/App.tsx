@@ -47,6 +47,8 @@ import TrazabilidadLotes from './pages/trazabilidad-lotes';
 import RetiradasLote from './pages/retirada-lote';
 import HRPage from './pages/hr/HRPage';
 import DirectorPage from './pages/director/DirectorPage';
+import SetupWelcome from './pages/setup/SetupWelcome';
+import SetupWizardPage from './pages/setup/SetupWizardPage';
 import { OfflineBanner } from './components/OfflineBanner';
 import BackupPage from './pages/backup/BackupPage';
 import DiagnosticsPage from './pages/backup/DiagnosticsPage';
@@ -171,6 +173,9 @@ function Router() {
       {/* Delivery module */}
       <Route path="/delivery" component={DeliveryPage} />
       <Route path="/admin/repartidores" component={AdminRepartidores} />
+      {/* Setup Wizard */}
+      <Route path="/setup" component={SetupWelcome} />
+      <Route path="/setup/:sessionId/:step" component={SetupWizardPage} />
       {/* Public menu with QR table session support */}
       <Route path="/menu" component={MenuPage} />
       <Route component={NotFound} />

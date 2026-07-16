@@ -30,3 +30,4 @@ export * from "./hr";
 export * from "./director";
 export * from "./backups";
 export * from "./backup-offline";
+export * from "./setup-wizard";

@@ -51,6 +51,10 @@ router.put(
       email,
       web,
       logoUrl,
+      tagline,
+      moneda,
+      idioma,
+      regimenFiscal,
     } = req.body as Record<string, string>;
 
     const existing = await db.select().from(businessConfigTable).limit(1);
@@ -72,6 +76,10 @@ router.put(
           email: email ?? "",
           web: web ?? "",
           logoUrl: logoUrl ?? "",
+          tagline: tagline ?? "",
+          moneda: moneda ?? "EUR",
+          idioma: idioma ?? "es",
+          regimenFiscal: regimenFiscal ?? "general",
         })
         .returning();
     } else {
@@ -90,6 +98,10 @@ router.put(
           email: email ?? existing[0].email,
           web: web ?? existing[0].web,
           logoUrl: logoUrl ?? existing[0].logoUrl,
+          tagline: tagline !== undefined ? tagline : existing[0].tagline,
+          moneda: moneda !== undefined ? moneda : existing[0].moneda,
+          idioma: idioma !== undefined ? idioma : existing[0].idioma,
+          regimenFiscal: regimenFiscal !== undefined ? regimenFiscal : existing[0].regimenFiscal,
           updatedAt: new Date(),
         })
         .where(eq(businessConfigTable.id, existing[0].id))

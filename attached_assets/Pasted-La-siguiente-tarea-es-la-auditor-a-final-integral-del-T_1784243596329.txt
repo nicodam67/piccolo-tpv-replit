@@ -1,0 +1,862 @@
+La siguiente tarea es la auditoría final integral del TPV, para comprobar que todos los módulos trabajan juntos y detectar errores antes de utilizarlo en Piccolo.
+Escritura
+TAREA: Auditoría final integral, estabilización y preparación real para producción
+Realizar una auditoría completa de todo el sistema TPV Piccolo.
+El objetivo es comprobar que todos los módulos existentes están conectados correctamente, que no existen duplicidades ni errores críticos y que el sistema está preparado para trabajar en un restaurante real.
+Esta tarea no consiste en añadir grandes módulos nuevos. Su prioridad es revisar, corregir, estabilizar, simplificar y documentar todo lo ya construido.
+1. Revisión inicial obligatoria
+Antes de modificar código:
+Analizar toda la estructura del proyecto.
+Identificar frontend, backend, base de datos y almacenamiento.
+Identificar todas las tablas y relaciones.
+Identificar servicios externos.
+Identificar tareas programadas.
+Identificar módulos completos, parciales y simulados.
+Identificar código duplicado.
+Identificar funciones sin utilizar.
+Identificar datos de demostración.
+Identificar migraciones pendientes.
+Identificar errores actuales de compilación, consola y servidor.
+Entregar primero un resumen breve con:
+Módulos encontrados.
+Estado estimado de cada módulo.
+Riesgos principales.
+Duplicidades detectadas.
+Prioridad de corrección.
+No eliminar ni reemplazar funcionalidades sin comprobar previamente su uso.
+2. Inventario completo de módulos
+Revisar como mínimo:
+Inicio de sesión.
+Usuarios.
+Roles y permisos.
+Empleados.
+Turnos.
+Fichaje.
+Importación universal de fichajes.
+Plano de mesas.
+Sala.
+Comandas.
+Modificadores y extras.
+KDS.
+Expedición y recogida de platos.
+Prefacturas.
+Tickets.
+Facturas completas.
+Facturas rectificativas.
+IVA.
+VERI*FACTU.
+Caja.
+Arqueos.
+Formas de pago.
+Caja de autocobro.
+Productos.
+Carta.
+Carta QR.
+Pedidos online.
+Recogida.
+Reparto.
+Reservas.
+Lista de espera.
+Clientes.
+Fidelización.
+Promociones.
+Tarjetas regalo.
+Stock.
+Escandallos.
+Compras.
+Proveedores.
+Inventarios.
+Mermas.
+Informes.
+Panel de dirección.
+Copias de seguridad.
+Restauración.
+Modo sin conexión.
+Impresoras.
+Dispositivos.
+Asistente de configuración.
+3. Clasificación del estado de cada módulo
+Clasificar cada módulo como:
+Funcional.
+Funcional con incidencias menores.
+Parcialmente funcional.
+Solo interfaz.
+Simulado.
+No conectado al backend.
+No probado.
+Bloqueado.
+Duplicado.
+Obsoleto.
+Mostrar esta clasificación en una pantalla o informe técnico.
+No marcar un módulo como funcional únicamente porque exista su interfaz.
+4. Revisión de base de datos
+Comprobar:
+Tablas duplicadas.
+Campos duplicados.
+Relaciones inexistentes.
+Claves foráneas incorrectas.
+Registros huérfanos.
+Valores nulos inesperados.
+Tipos incompatibles.
+Índices ausentes.
+Índices innecesarios.
+Datos de prueba mezclados con datos reales.
+Estados inconsistentes.
+Fechas y zonas horarias.
+Campos fiscales obligatorios.
+Historiales incompletos.
+Crear migraciones seguras para corregir problemas.
+No borrar datos sin copia previa.
+5. Entidades únicas
+Comprobar que exista una única fuente principal para:
+Productos.
+Categorías.
+Clientes.
+Empleados.
+Usuarios.
+Mesas.
+Pedidos.
+Ventas.
+Facturas.
+Formas de pago.
+Proveedores.
+Ingredientes.
+Stock.
+Reservas.
+Eliminar dependencias de bases duplicadas únicamente mediante migración segura.
+6. Flujo completo de una mesa
+Probar el proceso:
+Iniciar sesión como camarero.
+Abrir una mesa.
+Indicar comensales.
+Añadir productos.
+Añadir modificadores.
+Añadir observaciones.
+Enviar la comanda.
+Recibirla en las partidas correctas.
+Preparar los platos.
+Mostrar los platos en expedición.
+Marcar los platos como recogidos.
+Añadir una segunda comanda.
+Cambiar un producto de mesa.
+Dividir la cuenta.
+Generar prefactura.
+Cobrar con un método.
+Cobrar con pago mixto.
+Generar ticket.
+Solicitar factura completa.
+Cerrar la mesa.
+Actualizar caja.
+Actualizar stock.
+Actualizar informes.
+Corregir cualquier punto donde se pierdan o dupliquen datos.
+7. Flujo de anulaciones
+Probar:
+Anular un producto antes de enviarlo.
+Anular un producto enviado.
+Anular un producto preparado.
+Anular una comanda.
+Anular una venta.
+Anular un cobro.
+Realizar devolución parcial.
+Realizar devolución total.
+Crear factura rectificativa.
+Comprobar:
+Permisos.
+Motivos obligatorios.
+Autorización de encargado.
+Stock.
+Caja.
+Facturación.
+KDS.
+Auditoría.
+Informes.
+8. Prefacturas y facturación
+Verificar que:
+La prefactura no sea una factura fiscal.
+La prefactura no se envíe como factura a la AEAT.
+La prefactura no consuma numeración fiscal.
+La prefactura quede identificada claramente.
+El ticket use la serie correcta.
+La factura completa use la serie correcta.
+Las rectificativas estén vinculadas al documento original.
+No existan saltos injustificados.
+No se dupliquen números.
+Los totales cuadren.
+Las bases imponibles cuadren.
+El IVA se calcule correctamente.
+9. Tipos de IVA
+Comprobar correctamente:
+IVA del 4 %.
+IVA del 10 %.
+IVA del 21 %.
+Productos exentos, si se configuran.
+Descuentos.
+Promociones.
+Propinas.
+Reparto.
+Envases.
+Tarjetas regalo.
+Devoluciones.
+En hostelería no aplicar automáticamente el 10 % a absolutamente todos los conceptos sin revisar la categoría fiscal configurada.
+10. Revisión de VERI*FACTU
+Comprobar:
+Configuración de series.
+Estado de cada registro.
+Generación del registro fiscal.
+Encadenamiento.
+Huella.
+Fecha y hora.
+Código QR, cuando corresponda.
+Envíos pendientes.
+Envíos aceptados.
+Envíos rechazados.
+Reintentos.
+Trabajo sin conexión.
+Rectificaciones.
+Trazabilidad.
+No simular comunicaciones reales con la AEAT.
+Separar claramente:
+Desarrollo.
+Pruebas.
+Producción.
+11. Caja y arqueos
+Probar:
+Apertura de caja.
+Fondo inicial.
+Cobro en efectivo.
+Cobro con tarjeta.
+Bizum.
+Pago online.
+Pago mixto.
+Entrada manual.
+Salida manual.
+Devolución.
+Cambio de forma de pago.
+Liquidación de repartidor.
+Cierre.
+Diferencia de caja.
+Reapertura autorizada.
+Comprobar que todos los movimientos cuadren con las ventas.
+12. Caja de autocobro
+Revisar:
+Estado de integración.
+Envío del importe.
+Confirmación.
+Cancelación.
+Tiempo de espera.
+Error de comunicación.
+Pago parcial.
+Pago duplicado.
+Conciliación.
+Auditoría.
+Nunca marcar una venta como pagada sin confirmación válida.
+13. KDS
+Comprobar:
+Enrutamiento por partidas.
+Cocina.
+Pizza.
+Ensaladas.
+Barra.
+Expedición.
+Orden de llegada.
+Prioridades.
+Modificadores.
+Alergias.
+Observaciones.
+Estados.
+Sonidos.
+Tiempos.
+Reapertura.
+Anulaciones.
+Pedidos duplicados.
+Reconexión.
+Modo offline.
+14. Stock y escandallos
+Probar:
+Venta con escandallo.
+Venta sin escandallo.
+Modificadores.
+Extras.
+Media ración.
+Producto para llevar.
+Envases.
+Anulación.
+Devolución.
+Merma.
+Inventario.
+Recepción de mercancía.
+Cambio de coste.
+Transferencia entre almacenes.
+Comprobar que una venta no descuente dos veces.
+15. Compras y proveedores
+Verificar:
+Pedido de compra.
+Recepción parcial.
+Recepción completa.
+Diferencias.
+Albarán.
+Factura.
+Abono.
+Actualización de stock.
+Actualización de coste medio.
+IVA de compras.
+Vencimientos.
+Duplicados.
+16. Reservas y plano de mesas
+Probar:
+Crear reserva.
+Confirmarla.
+Asignar mesa.
+Cambiar mesa.
+Unir mesas.
+Detectar solapamientos.
+Marcar llegada.
+Sentar cliente.
+Abrir mesa en TPV.
+Finalizar reserva.
+Registrar no presentado.
+Lista de espera.
+Depósito.
+Comprobar que no se creen mesas o clientes duplicados.
+17. Pedidos online y carta QR
+Verificar:
+Productos sincronizados.
+Precios.
+IVA.
+Horarios.
+Disponibilidad.
+Productos agotados.
+Modificadores.
+Alérgenos.
+Carrito.
+Pago.
+Confirmación.
+Idempotencia.
+Entrada en TPV.
+Entrada en KDS.
+Descuento de stock.
+Facturación.
+Cancelaciones.
+Reembolsos.
+18. QR de mesa
+Comprobar:
+QR único.
+Token seguro.
+Activación de sesión.
+Caducidad.
+Cierre al finalizar mesa.
+Pedido adicional.
+Reenvío.
+Doble pulsación.
+Pérdida de conexión.
+Pedido fuera del restaurante.
+Validación en backend.
+No confiar únicamente en el número de mesa incluido en la URL.
+19. Reparto y recogida
+Probar:
+Pedido inmediato.
+Pedido programado.
+Zona.
+Tarifa.
+Pedido mínimo.
+Dirección.
+Asignación de repartidor.
+KDS.
+Preparación.
+Salida.
+Entrega.
+Incidencia.
+Cobro.
+Liquidación.
+Reembolso.
+Cancelación.
+20. Clientes y fidelización
+Comprobar:
+Identificación.
+Duplicados.
+Historial.
+Puntos.
+Canje.
+Cupones.
+Promociones.
+Tarjetas regalo.
+Monedero.
+Devoluciones.
+Caducidades.
+Consentimientos.
+Bloqueos.
+Evitar saldos negativos y usos duplicados.
+21. Empleados y fichaje
+Probar:
+Alta de empleado.
+Vinculación con usuario.
+Entrada.
+Salida.
+Pausa.
+Turno partido.
+Corrección.
+Solicitud.
+Vacaciones.
+Cierre mensual.
+Costes.
+Portal móvil.
+Comprobar que fichaje e inicio de sesión sean conceptos separados.
+22. Importación universal de fichajes
+Probar archivos:
+CSV.
+XLS.
+XLSX.
+TXT.
+XML.
+JSON.
+Comprobar:
+Mapeo de columnas.
+Plantillas.
+Codificación.
+Fechas.
+Horas.
+Empleados desconocidos.
+Duplicados.
+Archivo repetido.
+Filas erróneas.
+Importación parcial.
+Reversión.
+Trazabilidad.
+No añadir dependencia exclusiva con ninguna marca.
+23. Usuarios y permisos
+Probar cada rol:
+Administrador.
+Gerente.
+Encargado.
+Camarero.
+Caja.
+Cocina.
+Repartidor.
+Empleado.
+Comprobar:
+Botones ocultos.
+Rutas protegidas.
+APIs protegidas.
+Acceso directo por URL.
+Operaciones sensibles.
+Autorización con PIN.
+Sesiones.
+Bloqueo por inactividad.
+Dispositivos autorizados.
+Los permisos deben validarse en backend.
+24. Seguridad
+Revisar:
+Contraseñas.
+PIN.
+Sesiones.
+Tokens.
+Cookies.
+Protección CSRF.
+Protección XSS.
+Inyección.
+Subida de archivos.
+Validación de archivos.
+Límites de tamaño.
+Rate limiting.
+Datos personales.
+Secretos.
+Variables de entorno.
+Logs.
+Copias.
+Acceso administrativo.
+No incluir secretos dentro del código fuente.
+25. Privacidad
+Comprobar:
+Acceso a datos personales.
+Consentimientos.
+Marketing.
+Exportación de datos.
+Anonimización.
+Eliminación.
+Conservación.
+Auditoría.
+Acceso a documentos laborales.
+Acceso a costes y salarios.
+26. Copias de seguridad
+Probar:
+Copia manual.
+Copia automática.
+Verificación.
+Copia fallida.
+Restauración de prueba.
+Restauración completa.
+Conservación.
+Cifrado.
+Descarga.
+Auditoría.
+Punto de recuperación.
+No marcar una copia como válida sin comprobarla.
+27. Modo sin conexión
+Probar:
+Pérdida de Internet.
+Creación de comanda.
+Envío a KDS local.
+Cobro permitido.
+Impresión.
+Recuperación de conexión.
+Sincronización.
+Reintento.
+Conflicto.
+Operación duplicada.
+Caja cerrada desde otro dispositivo.
+Mesa cobrada desde otro terminal.
+28. Impresoras
+Probar:
+Ticket.
+Cocina.
+Pizza.
+Ensaladas.
+Barra.
+Reparto.
+Factura.
+Etiqueta.
+Comprobar:
+Enrutamiento.
+Corte.
+Caracteres.
+Logo.
+Copias.
+Reintento.
+Cola.
+Impresora alternativa.
+Cajón portamonedas.
+Desconexión.
+29. Dispositivos
+Verificar:
+Ordenador principal.
+TPV.
+Tablets.
+KDS.
+Móvil de reparto.
+Terminal de fichaje.
+Caja de autocobro.
+Comprobar:
+Autorización.
+Versión.
+Sesión.
+Estado.
+Sincronización.
+Modo offline.
+Revocación.
+Bloqueo.
+30. Rendimiento
+Medir:
+Inicio de sesión.
+Carga del plano.
+Apertura de mesa.
+Búsqueda de productos.
+Envío de comanda.
+Carga de KDS.
+Cobro.
+Generación de factura.
+Panel de dirección.
+Informes.
+Inventario.
+Importación.
+Sincronización.
+Optimizar consultas lentas y cargas innecesarias.
+31. Pruebas con volumen
+Crear pruebas con:
+Miles de productos.
+Miles de clientes.
+Miles de tickets.
+Miles de movimientos de stock.
+Varias cajas.
+Varias tablets.
+Varios KDS.
+Pedidos simultáneos.
+Importaciones grandes.
+Informes de periodos largos.
+No utilizar únicamente cinco registros de demostración para validar rendimiento.
+32. Errores y experiencia de usuario
+Revisar:
+Mensajes incomprensibles.
+Botones sin acción.
+Formularios que no guardan.
+Pantallas vacías.
+Cargas infinitas.
+Doble clic.
+Volver atrás.
+Pérdida de datos.
+Falta de confirmación.
+Errores sin explicación.
+Interfaz móvil.
+Interfaz de tablet.
+Tamaño de botones.
+Contraste.
+Texto cortado.
+33. Accesibilidad
+Comprobar:
+Navegación con teclado.
+Etiquetas.
+Contraste.
+Tamaño de texto.
+Botones táctiles.
+Mensajes de error.
+Lectores de pantalla en funciones básicas.
+Estados no comunicados solo por color.
+34. Limpieza del proyecto
+Identificar y resolver:
+Código muerto.
+Componentes duplicados.
+Servicios duplicados.
+Dependencias no utilizadas.
+Archivos temporales.
+Logs de depuración.
+Credenciales de prueba.
+Datos simulados.
+Rutas antiguas.
+Funciones obsoletas.
+Comentarios incorrectos.
+No eliminar código sin comprobar dependencias.
+35. Datos de demostración
+Separar claramente:
+Datos reales.
+Datos de prueba.
+Datos de simulación.
+Datos de desarrollo.
+Crear una herramienta segura para eliminar únicamente los datos de demostración.
+36. Gestión de errores
+Implementar un sistema central para:
+Errores de frontend.
+Errores de backend.
+Errores de base de datos.
+Errores de impresión.
+Errores de KDS.
+Errores de sincronización.
+Errores fiscales.
+Errores de pago.
+Errores de importación.
+Cada error debe incluir un código útil para diagnóstico.
+37. Alertas críticas
+Comprobar que existan alertas para:
+Venta no finalizada.
+Pago confirmado sin factura.
+Factura sin pago asociado.
+Doble cobro.
+Stock descontado dos veces.
+Caja descuadrada.
+Registro fiscal rechazado.
+Copia fallida.
+Sincronización bloqueada.
+Impresora crítica desconectada.
+KDS desconectado.
+Operaciones offline antiguas.
+38. Pruebas automatizadas mínimas
+Crear o completar pruebas:
+Unitarias.
+Integración.
+API.
+Permisos.
+Base de datos.
+Flujos completos.
+Idempotencia.
+Fiscalidad.
+Caja.
+Stock.
+KDS.
+Reservas.
+Pedidos online.
+Fichaje.
+Importaciones.
+Copias.
+Offline.
+Rendimiento básico.
+39. Pruebas de regresión
+Comprobar que una corrección no rompa:
+Mesas.
+Comandas.
+KDS.
+Cobros.
+Facturación.
+Stock.
+Caja.
+Reservas.
+Reparto.
+Fichaje.
+Informes.
+Permisos.
+Crear una lista automática de pruebas obligatorias antes de publicar.
+40. Entorno de pruebas y producción
+Separar claramente:
+Desarrollo.
+Pruebas.
+Producción.
+Comprobar que:
+Los datos no se mezclen.
+Los pagos de prueba no sean reales.
+Las facturas de prueba no consuman numeración.
+Los correos de prueba estén identificados.
+Los webhooks de prueba estén separados.
+Los datos fiscales de prueba no entren en producción.
+41. Lista de errores
+Crear una pantalla o informe con:
+Código.
+Módulo.
+Descripción.
+Severidad.
+Estado.
+Fecha de detección.
+Responsable.
+Solución aplicada.
+Fecha de resolución.
+Prueba realizada.
+Severidades:
+Bloqueante.
+Crítica.
+Alta.
+Media.
+Baja.
+Mejora.
+42. Orden de corrección
+Corregir primero:
+Pérdida o corrupción de datos.
+Duplicación de cobros o facturas.
+Errores fiscales.
+Errores de caja.
+Errores de stock.
+Permisos y seguridad.
+Comandas y KDS.
+Sincronización offline.
+Rendimiento.
+Diseño y mejoras menores.
+No dedicar primero el trabajo a detalles visuales mientras existan errores críticos.
+43. Informe final de auditoría
+Entregar un informe que incluya:
+Resumen ejecutivo.
+Estado general.
+Módulos funcionales.
+Módulos parciales.
+Módulos simulados.
+Errores corregidos.
+Errores pendientes.
+Riesgos.
+Seguridad.
+Rendimiento.
+Estado fiscal.
+Estado de copias.
+Cobertura de pruebas.
+Recomendaciones.
+Preparación para producción.
+44. Semáforo de preparación
+Mostrar un semáforo por área:
+Verde: preparado.
+Amarillo: preparado con observaciones.
+Naranja: requiere corrección.
+Rojo: no debe utilizarse en producción.
+Áreas:
+Sala.
+Cocina.
+Caja.
+Facturación.
+Fiscalidad.
+Stock.
+Reservas.
+Reparto.
+Personal.
+Seguridad.
+Copias.
+Offline.
+Rendimiento.
+45. Bloqueo de producción
+No permitir marcar el sistema como preparado para producción mientras exista:
+Doble cobro posible.
+Doble factura posible.
+Numeración fiscal insegura.
+Pérdida de comandas.
+Stock duplicado.
+Caja inconsistente.
+Copias no verificadas.
+Permisos críticos incorrectos.
+Migración fallida.
+Error bloqueante abierto.
+El administrador podrá ver el motivo exacto del bloqueo.
+46. Simulación final de un día completo
+Ejecutar una simulación con:
+Apertura de caja.
+Inicio de empleados.
+Fichajes.
+Reservas.
+Apertura de mesas.
+Comandas.
+KDS.
+Modificadores.
+Anulación autorizada.
+Prefactura.
+Cuenta dividida.
+Pago mixto.
+Factura completa.
+Pedido online.
+Recogida.
+Reparto.
+Devolución.
+Merma.
+Recepción de compra.
+Cierre de mesas.
+Arqueo.
+Cierre de caja.
+Informe diario.
+Copia de seguridad.
+Los datos deben quedar marcados como simulación y poder eliminarse.
+47. Documentación técnica
+Documentar:
+Arquitectura.
+Base de datos.
+Módulos.
+Relaciones.
+Variables de entorno.
+Servicios.
+Tareas programadas.
+Impresoras.
+KDS.
+Copias.
+Recuperación.
+Publicación.
+Actualizaciones.
+Solución de errores.
+48. Manual operativo básico
+Crear un manual sencillo para:
+Abrir el restaurante.
+Abrir caja.
+Abrir mesa.
+Enviar comandas.
+Usar KDS.
+Cobrar.
+Hacer una factura.
+Realizar una devolución.
+Cerrar caja.
+Consultar alertas.
+Trabajar sin conexión.
+Actuar ante fallo de impresora.
+Actuar ante fallo de Internet.
+49. Criterios de aceptación
+La tarea estará terminada cuando:
+Todos los módulos estén inventariados y clasificados.
+Se hayan detectado duplicidades.
+Se hayan corregido los errores bloqueantes y críticos.
+El flujo completo de mesa funcione.
+Caja, facturación y stock cuadren.
+Las prefacturas estén separadas de las facturas fiscales.
+Los tipos de IVA funcionen correctamente.
+Los permisos se validen en backend.
+El KDS no duplique ni pierda comandas.
+Los pedidos online sean idempotentes.
+El fichaje y las importaciones no creen duplicados.
+Las copias estén verificadas.
+El modo offline se sincronice correctamente.
+Las impresoras tengan rutas alternativas.
+No existan datos de prueba mezclados con producción.
+Existan pruebas automáticas de los flujos críticos.
+Se complete una simulación de jornada.
+Exista informe final y semáforo de preparación.
+Se documenten errores pendientes.
+Replit entregue un resumen exacto de archivos modificados, migraciones, pruebas, errores corregidos y riesgos pendientes.
+No declarar el TPV preparado para producción únicamente porque compile o porque las pantallas se abran.
+Debe considerarse preparado solo cuando los flujos operativos, fiscales, económicos y de seguridad hayan sido probados de principio a fin.
+Después de esta auditoría, la siguiente tarea será preparar la instalación real en Piccolo: ordenador principal, cinco tablets TPV, KDS e impresoras por zonas.

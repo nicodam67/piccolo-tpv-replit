@@ -45,6 +45,7 @@ import {
   HardDrive,
   Activity,
   Smartphone,
+  Wand2,
 } from 'lucide-react';
 import { useGetDashboardSummary, getGetDashboardSummaryQueryKey, customFetch } from '@workspace/api-client-react';
 import { useQuery } from '@tanstack/react-query';
@@ -577,6 +578,20 @@ const MODULES: ModuleCard[] = [
     iconBg: 'rgba(251,146,60,0.15)',
     iconColor: '#fb923c',
     glow: 'rgba(251,146,60,0.12)',
+  },
+  // ─── Asistente de configuración ──────────────────────────────────────────
+  {
+    id: 'setup-wizard',
+    icon: <Wand2 size={28} />,
+    title: 'Asistente de configuración',
+    description: 'Guía de puesta en marcha · 16 pasos · simulación · go-live',
+    href: '/setup',
+    ready: true,
+    accent: 'rgba(245,158,11,0.07)',
+    border: 'rgba(245,158,11,0.40)',
+    iconBg: 'rgba(245,158,11,0.18)',
+    iconColor: '#f59e0b',
+    glow: 'rgba(245,158,11,0.15)',
   },
   // ─── Sistema ─────────────────────────────────────────────────────────────
   {

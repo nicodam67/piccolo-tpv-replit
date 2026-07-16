@@ -54,6 +54,7 @@ import directorManagementRouter from "./director-management";
 import backupRouter from "./backup";
 import diagnosticsRouter from "./diagnostics";
 import offlineRouter from "./offline";
+import setupRouter from "./setup";
 
 const router: IRouter = Router();
 
@@ -112,5 +113,6 @@ router.use(directorManagementRouter);
 router.use(backupRouter);
 router.use(diagnosticsRouter);
 router.use(offlineRouter);
+router.use(setupRouter);
 
 export default router;

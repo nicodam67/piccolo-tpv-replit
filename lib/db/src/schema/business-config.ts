@@ -40,6 +40,17 @@ export const businessConfigTable = pgTable("business_config", {
   printMode: text("print_mode").notNull().default("kds_only"),
   /** PrintTemplateConfig stored as jsonb */
   printTemplateConfig: jsonb("print_template_config"),
+  // ── Setup wizard / onboarding ──────────────────────────────────────────────
+  /** ISO 4217 currency code, e.g. "EUR" */
+  moneda: text("moneda").notNull().default("EUR"),
+  /** BCP-47 locale, e.g. "es" */
+  idioma: text("idioma").notNull().default("es"),
+  /** "general" | "simplificado" | "recargo_equivalencia" | "regimen_especial" */
+  regimenFiscal: text("regimen_fiscal").notNull().default("general"),
+  /** Whether the restaurant has been fully set up and is in production */
+  setupCompleted: boolean("setup_completed").notNull().default(false),
+  /** When production mode was activated */
+  goLiveAt: timestamp("go_live_at", { withTimezone: true }),
 });
 
 export type BusinessConfig = typeof businessConfigTable.$inferSelect;
