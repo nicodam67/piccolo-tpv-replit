@@ -67,6 +67,8 @@ import AdminMermas from './pages/admin-mermas';
 import AdminCategoriasIngredientes from './pages/admin-categorias-ingredientes';
 import AdminAlmacenes from './pages/admin-almacenes';
 import AdminTurnosReservas from './pages/admin-turnos-reservas';
+import DeliveryPage from './pages/delivery';
+import AdminRepartidores from './pages/admin-repartidores';
 import NotFound from './pages/not-found';
 
 const queryClient = new QueryClient({
@@ -151,6 +153,9 @@ function Router() {
       <Route path="/admin/almacenes" component={AdminAlmacenes} />
       {/* Reservations extensions */}
       <Route path="/admin/reservas/turnos" component={AdminTurnosReservas} />
+      {/* Delivery module */}
+      <Route path="/delivery" component={DeliveryPage} />
+      <Route path="/admin/repartidores" component={AdminRepartidores} />
       <Route component={NotFound} />
     </Switch>
   );

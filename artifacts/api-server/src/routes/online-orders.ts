@@ -50,6 +50,7 @@ import {
   modifiersTable,
   productModifierGroupsTable,
   modifierGroupsTable,
+  deliveryOrderStatusHistoryTable,
 } from "@workspace/db";
 import { eq, and, inArray, desc, asc, gte, lte, count, avg, sum, sql } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
@@ -1063,16 +1064,55 @@ router.get("/courier/:courierId/deliveries", async (req, res): Promise<void> => 
   res.json(enriched);
 });
 
+// ── COURIER: GET /courier/:courierId/summary — token-authenticated shift summary ──
+// Returns persisted courier counters so the driver app can show accurate shift totals.
+
+router.get("/courier/:courierId/summary", async (req, res): Promise<void> => {
+  const courierId = req.params.courierId as string;
+  const token = (req.query.token as string | undefined) ?? "";
+
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!token || !UUID_RE.test(courierId)) {
+    res.status(401).json({ error: "Token no válido." });
+    return;
+  }
+
+  const [courier] = await db
+    .select({
+      id: couriersTable.id, name: couriersTable.name, token: couriersTable.token,
+      status: couriersTable.status,
+      earnedCashPending: (couriersTable as any).earnedCashPending,
+      earnedCardPending: (couriersTable as any).earnedCardPending,
+      totalDeliveries: (couriersTable as any).totalDeliveries,
+    })
+    .from(couriersTable)
+    .where(eq(couriersTable.id, courierId));
+
+  if (!courier || !courier.token || courier.token !== token) {
+    res.status(401).json({ error: "Token no válido." });
+    return;
+  }
+
+  res.json({
+    courier: {
+      id: courier.id, name: courier.name, status: courier.status,
+      earnedCashPending: courier.earnedCashPending ?? "0",
+      earnedCardPending: courier.earnedCardPending ?? "0",
+      totalDeliveries: courier.totalDeliveries ?? 0,
+    },
+  });
+});
+
 // ── COURIER: PATCH /courier/:courierId/orders/:orderId/status ─────────────────
 // Token-authenticated (same ?token= as the deliveries endpoint).
-// Only allows transitions to 'in_delivery' or 'delivered' for orders assigned
-// to this specific courier — no staff auth required.
+// Allows transitions to 'in_delivery', 'delivered', or 'incident'.
+// Accepts an optional 'note' for delivery receipts and incident details.
 
 router.patch("/courier/:courierId/orders/:orderId/status", async (req, res): Promise<void> => {
   const courierId = req.params.courierId as string;
   const orderId = req.params.orderId as string;
   const token = (req.query.token as string | undefined) ?? "";
-  const { status } = req.body as { status?: string };
+  const { status, note = "" } = req.body as { status?: string; note?: string };
 
   const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   if (!token || !UUID_RE.test(courierId) || !UUID_RE.test(orderId)) {
@@ -1080,7 +1120,7 @@ router.patch("/courier/:courierId/orders/:orderId/status", async (req, res): Pro
     return;
   }
 
-  const ALLOWED_STATUSES = ["in_delivery", "delivered"];
+  const ALLOWED_STATUSES = ["in_delivery", "delivered", "incident"];
   if (!status || !ALLOWED_STATUSES.includes(status)) {
     res.status(400).json({ error: "Estado no permitido desde la vista de repartidor." });
     return;
@@ -1088,7 +1128,7 @@ router.patch("/courier/:courierId/orders/:orderId/status", async (req, res): Pro
 
   // Validate courier token
   const [courier] = await db
-    .select({ id: couriersTable.id, token: couriersTable.token })
+    .select({ id: couriersTable.id, token: couriersTable.token, name: couriersTable.name })
     .from(couriersTable)
     .where(eq(couriersTable.id, courierId));
 
@@ -1113,11 +1153,75 @@ router.patch("/courier/:courierId/orders/:orderId/status", async (req, res): Pro
     return;
   }
 
+  const prevStatus = order.status;
+
+  // ── State-transition guard ─────────────────────────────────────────────────
+  // Define allowed transitions to prevent replayed calls from corrupting stats.
+  const ALLOWED_TRANSITIONS: Record<string, string[]> = {
+    "delivered":  ["waiting_courier", "in_delivery", "ready_to_collect"],
+    "in_delivery": ["waiting_courier", "ready_to_collect", "confirmed"],
+    "incident":   ["waiting_courier", "in_delivery", "confirmed"],
+  };
+  const allowed = ALLOWED_TRANSITIONS[status] ?? [];
+  if (allowed.length > 0 && !allowed.includes(prevStatus)) {
+    // Idempotent: if already in the target status, just return OK without side effects
+    if (prevStatus === status) {
+      res.json({ ok: true, status, note, idempotent: true });
+      return;
+    }
+    res.status(409).json({ error: `Transición no permitida: ${prevStatus} → ${status}` });
+    return;
+  }
+
   await db.update(ordersTable)
     .set({ status } as any)
     .where(eq(ordersTable.id, orderId));
 
-  res.json({ ok: true, status });
+  // ── Persist status history ─────────────────────────────────────────────────
+  try {
+    await db.insert(deliveryOrderStatusHistoryTable).values({
+      orderId,
+      fromStatus: prevStatus,
+      toStatus: status,
+      changedBy: courier.id,
+      changedByName: courier.name,
+      device: "driver-app",
+      note: note ?? "",
+    });
+  } catch { /* non-fatal */ }
+
+  // ── Side effects (only run when transition was valid, not idempotent) ───────
+  if (status === "delivered") {
+    await db.update(couriersTable)
+      .set({ status: "available" } as any)
+      .where(eq(couriersTable.id, courierId));
+    await db.execute(sql`UPDATE couriers SET total_deliveries = total_deliveries + 1 WHERE id = ${courierId}`);
+    // Accumulate cash from this delivery if not paid online
+    const [ord] = await db.select({
+      paymentStatus: (ordersTable as any).onlinePaymentStatus,
+      deliveryFee: (ordersTable as any).deliveryFee,
+    }).from(ordersTable).where(eq(ordersTable.id, orderId));
+    if (ord && (ord as any).paymentStatus !== "paid") {
+      await db.execute(sql`
+        UPDATE couriers
+        SET earned_cash_pending = COALESCE(earned_cash_pending, 0) + (
+          SELECT COALESCE(SUM(unit_price::numeric * quantity), 0)
+                 + COALESCE(${(ord as any).deliveryFee ?? "0"}::numeric, 0)
+          FROM order_items WHERE order_id = ${orderId}
+        )
+        WHERE id = ${courierId}
+      `);
+    }
+  } else if (status === "in_delivery") {
+    await db.update(couriersTable)
+      .set({ status: "busy" } as any)
+      .where(eq(couriersTable.id, courierId));
+  }
+
+  // Emit WebSocket refresh so the board updates
+  try { getIO().emit("online-orders:refresh", {}); } catch { /* ignore */ }
+
+  res.json({ ok: true, status, note });
 });
 
 // ── ADMIN: GET /admin/online-reports ─────────────────────────────────────────

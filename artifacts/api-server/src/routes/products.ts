@@ -102,6 +102,47 @@ router.delete("/products/formats/:formatId", requireAuth, requireRole("admin"), 
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Staff product search — accessible to all authenticated staff roles
+// Used by delivery/pickup order forms where admin role is not required.
+// GET /products?q=term&limit=8
+// ─────────────────────────────────────────────────────────────────────────────
+
+router.get("/products", requireAuth, async (req, res): Promise<void> => {
+  const { q = "", limit = "20" } = req.query as { q?: string; limit?: string };
+  const maxRows = Math.min(parseInt(limit, 10) || 20, 50);
+
+  const conditions: any[] = [eq(productsTable.active, true)];
+  if (q.trim().length >= 2) {
+    conditions.push(
+      or(
+        ilike(productsTable.name, `%${q.trim()}%`),
+        ilike(productsTable.internalCode, `%${q.trim()}%`),
+      )!
+    );
+  }
+
+  const rows = await db
+    .select({
+      id: productsTable.id,
+      name: productsTable.name,
+      price: productsTable.price,
+      taxRate: productsTable.taxRate,
+      active: productsTable.active,
+      outOfStock: productsTable.outOfStock,
+      imageUrl: productsTable.imageUrl,
+      categoryId: productsTable.categoryId,
+      tpvVisible: productsTable.tpvVisible,
+      deliveryVisible: productsTable.deliveryVisible,
+    })
+    .from(productsTable)
+    .where(and(...conditions))
+    .orderBy(asc(productsTable.name))
+    .limit(maxRows);
+
+  res.json(rows);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Admin product CRUD
 // ─────────────────────────────────────────────────────────────────────────────
 

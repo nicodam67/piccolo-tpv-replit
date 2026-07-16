@@ -72,14 +72,58 @@ export const couriersTable = pgTable("couriers", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),
   phone: text("phone").notNull().default(""),
-  /** Status: available | busy | off */
+  /** Status: available | busy | off | pause */
   status: text("status").notNull().default("available"),
   active: boolean("active").notNull().default(true),
   /** Per-courier auth token for the driver view — treated as a bearer credential */
   token: text("token").notNull().$defaultFn(() => crypto.randomUUID()),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  // ── Extended profile (migration 0006) ──────────────────────────────────────
+  /** moto | car | bike | walking */
+  vehicleType: text("vehicle_type").notNull().default("moto"),
+  plate: text("plate").notNull().default(""),
+  zonaHabitual: text("zona_habitual").notNull().default(""),
+  turno: text("turno").notNull().default(""),
+  earnedCashPending: numeric("earned_cash_pending", { precision: 10, scale: 2 }).notNull().default("0"),
+  earnedCardPending: numeric("earned_card_pending", { precision: 10, scale: 2 }).notNull().default("0"),
+  totalDeliveries: integer("total_deliveries").notNull().default(0),
+  avgDeliveryMinutes: integer("avg_delivery_minutes").notNull().default(0),
 });
 export type Courier = typeof couriersTable.$inferSelect;
+
+// ── Delivery Order Status History ─────────────────────────────────────────────
+export const deliveryOrderStatusHistoryTable = pgTable("delivery_order_status_history", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orderId: uuid("order_id").notNull(),
+  fromStatus: text("from_status"),
+  toStatus: text("to_status").notNull(),
+  changedBy: uuid("changed_by"),
+  changedByName: text("changed_by_name").notNull().default(""),
+  device: text("device").notNull().default(""),
+  note: text("note").notNull().default(""),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+export type DeliveryOrderStatusHistory = typeof deliveryOrderStatusHistoryTable.$inferSelect;
+
+// ── Courier Settlements ────────────────────────────────────────────────────────
+export const courierSettlementsTable = pgTable("courier_settlements", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  courierId: uuid("courier_id").notNull(),
+  periodStart: timestamp("period_start", { withTimezone: true }).notNull(),
+  periodEnd: timestamp("period_end", { withTimezone: true }).notNull(),
+  ordersCount: integer("orders_count").notNull().default(0),
+  totalCash: numeric("total_cash", { precision: 10, scale: 2 }).notNull().default("0"),
+  totalCard: numeric("total_card", { precision: 10, scale: 2 }).notNull().default("0"),
+  totalOnline: numeric("total_online", { precision: 10, scale: 2 }).notNull().default("0"),
+  tips: numeric("tips", { precision: 10, scale: 2 }).notNull().default("0"),
+  expenses: numeric("expenses", { precision: 10, scale: 2 }).notNull().default("0"),
+  differences: numeric("differences", { precision: 10, scale: 2 }).notNull().default("0"),
+  closedBy: uuid("closed_by"),
+  closedByName: text("closed_by_name").notNull().default(""),
+  notes: text("notes").notNull().default(""),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+export type CourierSettlement = typeof courierSettlementsTable.$inferSelect;
 
 // ── Online Order Audit ────────────────────────────────────────────────────────
 export const onlineOrderAuditTable = pgTable("online_order_audit", {
