@@ -132,6 +132,12 @@ router.get("/admin/products", requireAuth, requireRole("admin"), async (req, res
       sortOrder: productsTable.sortOrder,
       imageUrl: productsTable.imageUrl,
       videoUrl: productsTable.videoUrl,
+      halfPortionPrice: productsTable.halfPortionPrice,
+      quantity: productsTable.quantity,
+      isVegetariano: productsTable.isVegetariano,
+      isVegano: productsTable.isVegano,
+      isSinGluten: productsTable.isSinGluten,
+      isPicante: productsTable.isPicante,
     })
     .from(productsTable)
     .$dynamic();
@@ -187,11 +193,15 @@ router.post("/admin/products", requireAuth, requireRole("admin"), async (req, re
     categoryId, subcategoryId, name, internalCode, description, price, cost,
     prepZone = "cocina", active = true, tpvVisible = true, qrVisible = true,
     deliveryVisible = false, taxRate = 10, sortOrder = 0, allergens = "",
+    halfPortionPrice, quantity, isVegetariano = false, isVegano = false,
+    isSinGluten = false, isPicante = false,
   } = req.body as {
     categoryId: string; subcategoryId?: string; name: string; internalCode?: string;
     description?: string; price: string; cost?: string; prepZone?: string;
     active?: boolean; tpvVisible?: boolean; qrVisible?: boolean; deliveryVisible?: boolean;
     taxRate?: number; sortOrder?: number; allergens?: string;
+    halfPortionPrice?: string; quantity?: string;
+    isVegetariano?: boolean; isVegano?: boolean; isSinGluten?: boolean; isPicante?: boolean;
   };
 
   if (!categoryId || !name?.trim() || price == null) {
@@ -208,6 +218,9 @@ router.post("/admin/products", requireAuth, requireRole("admin"), async (req, re
       cost: cost != null ? String(cost) : null,
       prepZone, active, tpvVisible, qrVisible, deliveryVisible,
       taxRate, sortOrder: Number(sortOrder), allergens: allergens ?? "",
+      halfPortionPrice: halfPortionPrice != null ? String(halfPortionPrice) : null,
+      quantity: quantity ?? null,
+      isVegetariano, isVegano, isSinGluten, isPicante,
     })
     .returning();
 
@@ -232,6 +245,7 @@ router.patch("/admin/products/:productId", requireAuth, requireRole("admin"), as
     categoryId, subcategoryId, name, internalCode, description, price, cost,
     prepZone, active, tpvVisible, qrVisible, deliveryVisible, outOfStock,
     taxRate, sortOrder, allergens, imageUrl, videoUrl,
+    halfPortionPrice, quantity, isVegetariano, isVegano, isSinGluten, isPicante,
   } = req.body as Record<string, unknown>;
 
   if (taxRate != null && !isValidTaxRate(taxRate as number)) {
@@ -257,6 +271,12 @@ router.patch("/admin/products/:productId", requireAuth, requireRole("admin"), as
   if (allergens !== undefined) updates.allergens = allergens;
   if (imageUrl !== undefined) updates.imageUrl = imageUrl;
   if (videoUrl !== undefined) updates.videoUrl = videoUrl;
+  if (halfPortionPrice !== undefined) updates.halfPortionPrice = halfPortionPrice != null ? String(halfPortionPrice) : null;
+  if (quantity !== undefined) updates.quantity = quantity;
+  if (isVegetariano != null) updates.isVegetariano = isVegetariano;
+  if (isVegano != null) updates.isVegano = isVegano;
+  if (isSinGluten != null) updates.isSinGluten = isSinGluten;
+  if (isPicante != null) updates.isPicante = isPicante;
 
   if (!Object.keys(updates).length) { res.status(400).json({ error: "Sin cambios" }); return; }
 

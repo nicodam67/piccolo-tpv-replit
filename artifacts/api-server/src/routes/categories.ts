@@ -6,6 +6,7 @@ import {
   productsTable,
   productFormatsTable,
   productModifierGroupsTable,
+  businessConfigTable,
 } from "@workspace/db";
 import { eq, and, asc, inArray, sql } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
@@ -105,7 +106,14 @@ router.get("/public/menu", async (_req, res): Promise<void> => {
       price: productsTable.price,
       allergens: productsTable.allergens,
       imageUrl: productsTable.imageUrl,
+      videoUrl: productsTable.videoUrl,
       outOfStock: productsTable.outOfStock,
+      halfPortionPrice: productsTable.halfPortionPrice,
+      quantity: productsTable.quantity,
+      isVegetariano: productsTable.isVegetariano,
+      isVegano: productsTable.isVegano,
+      isSinGluten: productsTable.isSinGluten,
+      isPicante: productsTable.isPicante,
     })
     .from(productsTable)
     .where(and(eq(productsTable.active, true), eq(productsTable.qrVisible, true)))

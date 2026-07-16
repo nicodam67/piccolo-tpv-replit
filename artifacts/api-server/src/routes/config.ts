@@ -110,4 +110,137 @@ router.put(
   }
 );
 
+// ── Public branding endpoint (no auth required) ───────────────────────────────
+
+router.get("/public/branding", async (_req, res): Promise<void> => {
+  const rows = await db.select().from(businessConfigTable).limit(1);
+  if (rows.length === 0) {
+    res.json({
+      nombreComercial: "",
+      tagline: "",
+      heroImageUrl: "",
+      heroVideoUrl: "",
+      address: "",
+      phone: "",
+      foundedYear: null,
+      openingHours: null,
+      cardLayout: "grid",
+      accentColor: "#ef4444",
+      logoUrl: "",
+    });
+    return;
+  }
+  const r = rows[0];
+  res.json({
+    nombreComercial: r.nombreComercial,
+    tagline: r.tagline,
+    heroImageUrl: r.heroImageUrl,
+    heroVideoUrl: r.heroVideoUrl,
+    address: r.address,
+    phone: r.phone,
+    foundedYear: r.foundedYear,
+    openingHours: r.openingHours ?? null,
+    cardLayout: r.cardLayout,
+    accentColor: r.accentColor,
+    logoUrl: r.logoUrl,
+  });
+});
+
+// ── Admin branding CRUD ───────────────────────────────────────────────────────
+
+router.get("/admin/branding", requireAuth, requireRole("admin"), async (_req, res): Promise<void> => {
+  const rows = await db.select().from(businessConfigTable).limit(1);
+  if (rows.length === 0) {
+    res.json({
+      nombreComercial: "", tagline: "", heroImageUrl: "", heroVideoUrl: "",
+      address: "", phone: "", foundedYear: null, openingHours: null,
+      cardLayout: "grid", accentColor: "#ef4444", logoUrl: "",
+    });
+    return;
+  }
+  const r = rows[0];
+  res.json({
+    nombreComercial: r.nombreComercial,
+    tagline: r.tagline,
+    heroImageUrl: r.heroImageUrl,
+    heroVideoUrl: r.heroVideoUrl,
+    address: r.address,
+    phone: r.phone,
+    foundedYear: r.foundedYear,
+    openingHours: r.openingHours ?? null,
+    cardLayout: r.cardLayout,
+    accentColor: r.accentColor,
+    logoUrl: r.logoUrl,
+  });
+});
+
+router.patch("/admin/branding", requireAuth, requireRole("admin"), async (req, res): Promise<void> => {
+  const {
+    nombreComercial, tagline, heroImageUrl, heroVideoUrl,
+    address, phone, foundedYear, openingHours, cardLayout, accentColor, logoUrl,
+  } = req.body as Record<string, unknown>;
+
+  const existing = await db.select().from(businessConfigTable).limit(1);
+
+  const updates: Record<string, unknown> = { updatedAt: new Date() };
+  if (nombreComercial !== undefined) updates.nombreComercial = nombreComercial;
+  if (tagline !== undefined) updates.tagline = tagline;
+  if (heroImageUrl !== undefined) updates.heroImageUrl = heroImageUrl;
+  if (heroVideoUrl !== undefined) updates.heroVideoUrl = heroVideoUrl;
+  if (address !== undefined) updates.address = address;
+  if (phone !== undefined) updates.phone = phone;
+  if (foundedYear !== undefined) updates.foundedYear = foundedYear;
+  if (openingHours !== undefined) updates.openingHours = openingHours;
+  if (cardLayout !== undefined) updates.cardLayout = cardLayout;
+  if (accentColor !== undefined) updates.accentColor = accentColor;
+  if (logoUrl !== undefined) updates.logoUrl = logoUrl;
+
+  let result;
+  if (existing.length === 0) {
+    [result] = await db.insert(businessConfigTable).values({
+      nombreComercial: (nombreComercial as string) ?? "",
+      razonSocial: "", nif: "", direccionFiscal: "", codigoPostal: "",
+      poblacion: "", provincia: "", pais: "España", telefono: "", email: "", web: "",
+      logoUrl: (logoUrl as string) ?? "",
+      tagline: (tagline as string) ?? "",
+      heroImageUrl: (heroImageUrl as string) ?? "",
+      heroVideoUrl: (heroVideoUrl as string) ?? "",
+      address: (address as string) ?? "",
+      phone: (phone as string) ?? "",
+      foundedYear: (foundedYear as number) ?? null,
+      openingHours: (openingHours as any) ?? null,
+      cardLayout: (cardLayout as string) ?? "grid",
+      accentColor: (accentColor as string) ?? "#ef4444",
+    }).returning();
+  } else {
+    [result] = await db.update(businessConfigTable)
+      .set(updates as any)
+      .where(eq(businessConfigTable.id, existing[0].id))
+      .returning();
+  }
+
+  const employee = (req as any).user;
+  await logDocumentAction({
+    action: "update_branding",
+    documentType: "config",
+    documentId: result.id,
+    employeeId: employee.id,
+    employeeName: employee.name,
+  });
+
+  res.json({
+    nombreComercial: result.nombreComercial,
+    tagline: result.tagline,
+    heroImageUrl: result.heroImageUrl,
+    heroVideoUrl: result.heroVideoUrl,
+    address: result.address,
+    phone: result.phone,
+    foundedYear: result.foundedYear,
+    openingHours: result.openingHours ?? null,
+    cardLayout: result.cardLayout,
+    accentColor: result.accentColor,
+    logoUrl: result.logoUrl,
+  });
+});
+
 export default router;

@@ -211,6 +211,13 @@ function ProductSheet({
   const [active, setActive] = useState(product?.active ?? true);
   const [allergens, setAllergens] = useState(product?.allergens ?? '');
   const [imageUrl, setImageUrl] = useState(product?.imageUrl ?? '');
+  // QR carta extra fields
+  const [halfPortionPrice, setHalfPortionPrice] = useState((product as any)?.halfPortionPrice ?? '');
+  const [quantity, setQuantity] = useState((product as any)?.quantity ?? '');
+  const [isVegetariano, setIsVegetariano] = useState((product as any)?.isVegetariano ?? false);
+  const [isVegano, setIsVegano] = useState((product as any)?.isVegano ?? false);
+  const [isSinGluten, setIsSinGluten] = useState((product as any)?.isSinGluten ?? false);
+  const [isPicante, setIsPicante] = useState((product as any)?.isPicante ?? false);
 
   // Formats state
   const [formats, setFormats] = useState(product?.formats ?? []);
@@ -234,11 +241,11 @@ function ProductSheet({
 
     try {
       if (isNew) {
-        await createProduct.mutateAsync({ data: { name: name.trim(), categoryId, price, cost: cost || undefined, taxRate, prepZone, tpvVisible, qrVisible, deliveryVisible, internalCode: internalCode || undefined, description: description || undefined, allergens } });
+        await createProduct.mutateAsync({ data: { name: name.trim(), categoryId, price, cost: cost || undefined, taxRate, prepZone, tpvVisible, qrVisible, deliveryVisible, internalCode: internalCode || undefined, description: description || undefined, allergens, halfPortionPrice: halfPortionPrice || undefined, quantity: quantity || undefined, isVegetariano, isVegano, isSinGluten, isPicante } });
       } else {
         await updateProduct.mutateAsync({
           productId: product.id,
-          data: { name: name.trim(), categoryId, price, cost: cost || null, taxRate, prepZone, tpvVisible, qrVisible, deliveryVisible, active, internalCode: internalCode || null, description: description || null, allergens, imageUrl: imageUrl || null },
+          data: { name: name.trim(), categoryId, price, cost: cost || null, taxRate, prepZone, tpvVisible, qrVisible, deliveryVisible, active, internalCode: internalCode || null, description: description || null, allergens, imageUrl: imageUrl || null, halfPortionPrice: halfPortionPrice || null, quantity: quantity || null, isVegetariano, isVegano, isSinGluten, isPicante },
         });
         // Assign modifier groups
         await assignGroups.mutateAsync({ productId: product.id, data: { modifierGroupIds: Array.from(selectedGroupIds) } });
@@ -416,6 +423,43 @@ function ProductSheet({
                   </div>
                 </div>
               )}
+
+              {/* QR Carta extra fields */}
+              <div className="border border-border rounded-xl p-3 space-y-3 bg-secondary/10">
+                <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Carta QR</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs text-muted-foreground font-semibold block mb-1">Precio media ración</label>
+                    <input type="number" step="0.01" value={halfPortionPrice} onChange={e => setHalfPortionPrice(e.target.value)} placeholder="0.00"
+                      className="w-full bg-secondary rounded-xl px-3 py-2.5 text-sm outline-none font-mono focus:ring-1 focus:ring-primary" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground font-semibold block mb-1">Cantidad / Volumen</label>
+                    <input value={quantity} onChange={e => setQuantity(e.target.value)} placeholder="330 ml, 200 g…"
+                      className="w-full bg-secondary rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-1 focus:ring-primary" />
+                  </div>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground font-semibold mb-2">Etiquetas dietéticas</p>
+                  <div className="flex flex-wrap gap-2">
+                    {([
+                      { key: 'isVegetariano', label: '🥦 Vegetariano', value: isVegetariano, set: setIsVegetariano },
+                      { key: 'isVegano', label: '🌿 Vegano', value: isVegano, set: setIsVegano },
+                      { key: 'isSinGluten', label: '🚫🌾 Sin gluten', value: isSinGluten, set: setIsSinGluten },
+                      { key: 'isPicante', label: '🌶️ Picante', value: isPicante, set: setIsPicante },
+                    ] as const).map(({ key, label, value, set }) => (
+                      <button
+                        key={key}
+                        onClick={() => set(!value)}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all ${value ? 'bg-primary/15 text-primary border-primary/30' : 'bg-secondary/30 text-muted-foreground border-border hover:bg-secondary'}`}
+                      >
+                        {value && <Check size={11} />}
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
 
               <div>
                 <div className="flex items-center justify-between mb-1">

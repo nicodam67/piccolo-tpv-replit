@@ -422,8 +422,30 @@ export interface AdminProduct {
   sortOrder: number;
   imageUrl?: string | null;
   videoUrl?: string | null;
+  /** Half-portion price shown on QR carta */
+  halfPortionPrice?: string | null;
+  /** Volume/weight shown on QR carta, e.g. "330 ml" */
+  quantity?: string | null;
+  isVegetariano: boolean;
+  isVegano: boolean;
+  isSinGluten: boolean;
+  isPicante: boolean;
   formats: ProductFormat[];
   modifierGroups: { productId: string; groupId: string; groupName: string; required: boolean }[];
+}
+
+export interface PublicBranding {
+  nombreComercial: string;
+  tagline: string;
+  heroImageUrl: string;
+  heroVideoUrl: string;
+  address: string;
+  phone: string;
+  foundedYear?: number | null;
+  openingHours?: Record<string, { open: string; close: string; open2?: string; close2?: string }> | null;
+  cardLayout: string;
+  accentColor: string;
+  logoUrl: string;
 }
 
 export interface Subcategory {
@@ -487,6 +509,12 @@ export interface CreateProductInput {
   taxRate?: number;
   sortOrder?: number;
   allergens?: string;
+  halfPortionPrice?: string;
+  quantity?: string;
+  isVegetariano?: boolean;
+  isVegano?: boolean;
+  isSinGluten?: boolean;
+  isPicante?: boolean;
 }
 
 export interface UpdateProductInput {
@@ -508,6 +536,26 @@ export interface UpdateProductInput {
   allergens?: string;
   imageUrl?: string | null;
   videoUrl?: string | null;
+  halfPortionPrice?: string | null;
+  quantity?: string | null;
+  isVegetariano?: boolean;
+  isVegano?: boolean;
+  isSinGluten?: boolean;
+  isPicante?: boolean;
+}
+
+export interface BrandingInput {
+  nombreComercial?: string;
+  tagline?: string;
+  heroImageUrl?: string;
+  heroVideoUrl?: string;
+  address?: string;
+  phone?: string;
+  foundedYear?: number | null;
+  openingHours?: Record<string, { open: string; close: string; open2?: string; close2?: string }> | null;
+  cardLayout?: string;
+  accentColor?: string;
+  logoUrl?: string;
 }
 
 export interface CreateProductFormatFullInput {

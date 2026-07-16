@@ -55,6 +55,7 @@ import FichajeInformes from './pages/fichaje/FichajeInformes';
 import FichajeConfiguracion from './pages/fichaje/FichajeConfiguracion';
 import Verifactu from './pages/verifactu';
 import Crm from './pages/crm';
+import Branding from './pages/branding';
 import NotFound from './pages/not-found';
 
 const queryClient = new QueryClient({
@@ -98,6 +99,7 @@ function Router() {
       <Route path="/admin/inventario/informes" component={InformesStock} />
       <Route path="/admin/subrecetas" component={Subrecetas} />
       <Route path="/admin/rentabilidad" component={Rentabilidad} />
+      <Route path="/admin/branding" component={Branding} />
       <Route path="/admin/simulador-precios" component={SimuladorPrecios} />
       <Route path="/admin/proveedores" component={Proveedores} />
       <Route path="/admin/comparacion-precios" component={ComparacionPrecios} />

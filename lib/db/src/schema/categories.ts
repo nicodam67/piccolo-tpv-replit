@@ -1,5 +1,6 @@
 import { boolean, numeric, pgTable, text, uuid, integer } from "drizzle-orm/pg-core";
 
+
 export const categoriesTable = pgTable("categories", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),
@@ -42,6 +43,15 @@ export const productsTable = pgTable("products", {
   sortOrder: integer("sort_order").notNull().default(0),
   /** Applicable VAT rate for this product: 4 | 10 | 21 (Spain). Prices are VAT-inclusive. */
   taxRate: integer("tax_rate").notNull().default(10),
+  /** Optional half-portion price shown on the QR carta */
+  halfPortionPrice: numeric("half_portion_price", { precision: 10, scale: 2 }),
+  /** Volume or weight shown on QR carta, e.g. "330 ml", "200 g" */
+  quantity: text("quantity"),
+  /** Dietary tags for QR carta filters */
+  isVegetariano: boolean("is_vegetariano").notNull().default(false),
+  isVegano: boolean("is_vegano").notNull().default(false),
+  isSinGluten: boolean("is_sin_gluten").notNull().default(false),
+  isPicante: boolean("is_picante").notNull().default(false),
 });
 
 export const productFormatsTable = pgTable("product_formats", {
