@@ -2155,3 +2155,242 @@ export interface GetVerifactuRecordsParams {
   limit?: number;
   offset?: number;
 }
+
+// ─── CRM types ────────────────────────────────────────────────────────────────
+
+export interface CrmClient {
+  id: string;
+  nombre: string;
+  apellidos: string;
+  telefono: string;
+  email: string;
+  fechaNacimiento: string | null;
+  direccion: string;
+  observaciones: string;
+  activo: boolean;
+  rgpdConsentimiento: boolean;
+  rgpdFecha: string | null;
+  totalGasto: string;
+  totalVisitas: number;
+  ultimaVisita: string | null;
+  puntosSaldo: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateCrmClientInput {
+  nombre: string;
+  apellidos?: string;
+  telefono?: string;
+  email?: string;
+  fechaNacimiento?: string;
+  direccion?: string;
+  observaciones?: string;
+  rgpdConsentimiento?: boolean;
+}
+
+export interface UpdateCrmClientInput {
+  nombre?: string;
+  apellidos?: string;
+  telefono?: string;
+  email?: string;
+  fechaNacimiento?: string | null;
+  direccion?: string;
+  observaciones?: string;
+  activo?: boolean;
+  rgpdConsentimiento?: boolean;
+}
+
+export interface CrmLoyaltyConfig {
+  id: string;
+  activo: boolean;
+  puntosPorEuro: string;
+  valorPunto: string;
+  caducidadDias: number;
+  canjeMinimo: number;
+  bonificacionesCategorias: Record<string, number>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UpdateCrmLoyaltyConfigInput {
+  activo?: boolean;
+  puntosPorEuro?: string;
+  valorPunto?: string;
+  caducidadDias?: number;
+  canjeMinimo?: number;
+  bonificacionesCategorias?: Record<string, number>;
+}
+
+export interface CrmLoyaltyPoint {
+  id: string;
+  clientId: string;
+  tipo: 'emision' | 'canje' | 'expiracion' | 'ajuste_positivo' | 'ajuste_negativo';
+  puntos: number;
+  saldoAnterior: number;
+  saldoPosterior: number;
+  descripcion: string;
+  orderId: string | null;
+  empleadoId: string | null;
+  empleadoNombre: string;
+  expiraEn: string | null;
+  createdAt: string;
+}
+
+export interface IssueCrmPointsInput {
+  puntos: number;
+  descripcion?: string;
+}
+
+export interface RedeemCrmPointsInput {
+  puntos: number;
+  orderId?: string;
+}
+
+export interface CrmGiftCard {
+  id: string;
+  codigo: string;
+  saldoInicial: string;
+  saldoActual: string;
+  clientId: string | null;
+  estado: 'activa' | 'bloqueada' | 'consumida' | 'caducada';
+  fechaCaducidad: string | null;
+  notas: string;
+  empleadoId: string | null;
+  empleadoNombre: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateCrmGiftCardInput {
+  saldo: string;
+  clientId?: string;
+  fechaCaducidad?: string;
+  notas?: string;
+}
+
+export interface RechargeCrmGiftCardInput {
+  importe: string;
+}
+
+export interface PayWithCrmGiftCardInput {
+  codigo: string;
+  importe: string;
+  orderId?: string;
+}
+
+export interface CrmPromotion {
+  id: string;
+  nombre: string;
+  descripcion: string;
+  tipo: 'descuento_fijo' | 'descuento_porcentual' | '2x1' | 'menu_promocional';
+  valor: string;
+  codigo: string;
+  activo: boolean;
+  fechaInicio: string | null;
+  fechaFin: string | null;
+  diasSemana: number[];
+  horaInicio: string;
+  horaFin: string;
+  categoriaIds: string[];
+  productIds: string[];
+  montoMinimo: string;
+  usoMaximo: number;
+  usoActual: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateCrmPromotionInput {
+  nombre: string;
+  tipo: string;
+  valor?: string;
+  descripcion?: string;
+  codigo?: string;
+  activo?: boolean;
+  fechaInicio?: string;
+  fechaFin?: string;
+  diasSemana?: number[];
+  horaInicio?: string;
+  horaFin?: string;
+  categoriaIds?: string[];
+  productIds?: string[];
+  montoMinimo?: string;
+  usoMaximo?: number;
+}
+
+export interface ValidateCrmPromotionInput {
+  promoId?: string;
+  codigo?: string;
+  orderAmount: number;
+}
+
+export interface ValidateCrmPromotionResult {
+  valid: boolean;
+  reason?: string;
+  descuento: number;
+  promo: CrmPromotion;
+}
+
+export interface CrmAuditLog {
+  id: string;
+  accion: string;
+  clientId: string | null;
+  entidadTipo: string;
+  entidadId: string | null;
+  empleadoId: string | null;
+  empleadoNombre: string;
+  terminal: string;
+  datos: unknown;
+  createdAt: string;
+}
+
+export interface CrmClientHistory {
+  client: CrmClient;
+  orders: Array<{ id: string; createdAt: string; status: string }>;
+  reservations: unknown[];
+  points: CrmLoyaltyPoint[];
+  giftCards: CrmGiftCard[];
+  stats: {
+    totalGasto: number;
+    totalVisitas: number;
+    ticketMedio: number;
+    puntosSaldo: number;
+    ultimaVisita: string | null;
+  };
+}
+
+export interface CrmReports {
+  clientes: {
+    total: number;
+    activos: number;
+    nuevos30d: number;
+    inactivos90d: number;
+    gastoTotal: number;
+  };
+  topClientes: Array<{
+    id: string;
+    nombre: string;
+    apellidos: string;
+    totalGasto: string;
+    totalVisitas: number;
+    puntosSaldo: number;
+  }>;
+  puntos: { totalEmitidos: number; totalCanjeados: number };
+  tarjetasRegalo: { totalActivas: number; totalConsumidas: number; saldoTotal: string };
+  promociones: { totalPromociones: number; activas: number; totalUsos: string };
+}
+
+export interface GetCrmClientsParams {
+  q?: string;
+  limit?: number;
+}
+
+export interface GetCrmGiftCardsParams {
+  q?: string;
+}
+
+export interface GetCrmAuditParams {
+  limit?: number;
+  clientId?: string;
+}

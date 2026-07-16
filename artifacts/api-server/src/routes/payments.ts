@@ -18,6 +18,7 @@ import { requireAuth, requireRole } from "../middlewares/auth";
 import { getIO } from "../lib/socket";
 import { logDocumentAction } from "../lib/document-audit";
 import { calcMultiRateBreakdown } from "../lib/tax";
+import { issuePoints } from "./crm.js";
 
 // Roles allowed to process payments (excludes kitchen staff)
 const PAYMENT_ROLES = ["waiter", "cashier", "manager", "admin"];
@@ -337,6 +338,21 @@ router.post("/orders/:id/payments", requireAuth, requireRole(...PAYMENT_ROLES), 
 
     return { payment, ticket, change: change.toFixed(2), newRemaining: Math.max(0, newRemaining) };
   });
+
+  // Auto-issue loyalty points when order is fully paid and has a client
+  if (result.ticket && order.clientId) {
+    try {
+      await issuePoints({
+        clientId: order.clientId,
+        orderId: orderId,
+        importeTotal: parseFloat(result.ticket.total ?? "0"),
+        empleadoId: employeeId ?? null,
+        empleadoNombre: (req as any).user?.name ?? "",
+      });
+    } catch {
+      // Points issuance failure must never block payment confirmation
+    }
+  }
 
   // Emit table refresh so floor plan updates
   try {

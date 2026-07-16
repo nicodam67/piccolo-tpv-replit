@@ -23,3 +23,4 @@ export * from "./invoice-scanner";
 export * from "./allergens";
 export * from "./fichaje";
 export * from "./verifactu";
+export * from "./crm";
