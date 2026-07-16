@@ -1,0 +1,772 @@
+TAREA: Copias de seguridad, restauración, diagnóstico técnico y funcionamiento sin conexión
+
+Implementar un sistema profesional de continuidad operativa para el TPV Piccolo, conectado con todos los módulos existentes.
+
+El objetivo es proteger los datos, reducir el riesgo de pérdida de información y permitir que el restaurante continúe trabajando ante fallos de Internet, errores del sistema o problemas de dispositivos.
+
+1. Revisión previa obligatoria
+
+Antes de programar:
+
+- Revisar la arquitectura actual.
+- Revisar la base de datos.
+- Revisar almacenamiento de archivos y documentos.
+- Revisar autenticación, usuarios y permisos.
+- Revisar TPV, mesas, comandas, KDS, caja, facturación, stock, reservas, pedidos online, empleados e informes.
+- Revisar si ya existen copias de seguridad o exportaciones.
+- No crear un segundo sistema paralelo de almacenamiento.
+- No duplicar datos.
+- No sustituir componentes que ya funcionen.
+
+Replit debe explicar brevemente qué sistemas existentes reutilizará.
+
+2. Tipos de copia de seguridad
+
+Implementar:
+
+- Copia completa.
+- Copia incremental.
+- Copia de configuración.
+- Copia de documentos y archivos.
+- Copia manual.
+- Copia automática.
+- Copia previa a una actualización importante.
+- Copia previa a una migración.
+- Copia previa a una restauración.
+
+Distinguir claramente entre:
+
+- Copia de seguridad.
+- Exportación de datos.
+- Archivo histórico.
+- Restauración.
+
+3. Contenido de las copias
+
+Las copias deben incluir, según configuración:
+
+- Restaurante y configuración.
+- Usuarios.
+- Roles y permisos.
+- Empleados.
+- Fichajes.
+- Turnos.
+- Mesas y plano de sala.
+- Productos.
+- Categorías.
+- Precios.
+- Impuestos.
+- Modificadores.
+- Escandallos.
+- Stock.
+- Proveedores.
+- Compras.
+- Clientes.
+- Reservas.
+- Pedidos.
+- Reparto.
+- Caja.
+- Facturas.
+- Prefacturas.
+- Series fiscales.
+- Registros de auditoría.
+- Informes configurados.
+- Alertas.
+- Documentos adjuntos.
+- Imágenes.
+- Configuración de impresoras.
+- Configuración de KDS.
+- Preferencias del sistema.
+
+No incluir secretos sensibles sin cifrado.
+
+4. Frecuencia automática
+
+Permitir configurar copias:
+
+- Cada hora.
+- Cada 6 horas.
+- Diarias.
+- Semanales.
+- Mensuales.
+- Antes del cierre de jornada.
+- Después del cierre de jornada.
+- Antes de una actualización.
+- Manualmente.
+
+La frecuencia debe poder configurarse por administrador.
+
+5. Política de conservación
+
+Permitir definir:
+
+- Número de copias horarias.
+- Número de copias diarias.
+- Número de copias semanales.
+- Número de copias mensuales.
+- Conservación mínima.
+- Eliminación automática de copias antiguas.
+- Protección de copias marcadas como importantes.
+- Conservación especial de cierres fiscales.
+
+No eliminar una copia protegida automáticamente.
+
+6. Almacenamiento de copias
+
+Preparar soporte para:
+
+- Almacenamiento interno seguro.
+- Descarga manual.
+- Carpeta local autorizada.
+- Unidad externa.
+- Almacenamiento en nube.
+- Servidor remoto.
+- SFTP.
+- Proveedor compatible con almacenamiento de objetos.
+
+No depender de un único destino.
+
+Permitir configurar varios destinos cuando sea posible.
+
+7. Cifrado y seguridad
+
+Las copias deben:
+
+- Estar cifradas.
+- Tener firma o hash de integridad.
+- Usar acceso restringido.
+- Registrar quién las crea, descarga o restaura.
+- No incluir contraseñas en texto plano.
+- No incluir claves privadas sin protección.
+- No exponer datos personales sin autorización.
+
+Permitir utilizar una contraseña de cifrado o clave gestionada de forma segura.
+
+8. Verificación automática
+
+Después de crear una copia:
+
+- Verificar que el archivo existe.
+- Verificar tamaño.
+- Verificar integridad.
+- Verificar estructura.
+- Comprobar que puede leerse.
+- Registrar resultado.
+- Marcar la copia como válida o fallida.
+
+Una copia no verificada no debe mostrarse como copia correcta.
+
+9. Historial de copias
+
+Crear una pantalla con:
+
+- Fecha y hora.
+- Tipo.
+- Tamaño.
+- Estado.
+- Destino.
+- Usuario.
+- Versión del sistema.
+- Base de datos incluida.
+- Archivos incluidos.
+- Duración.
+- Resultado de verificación.
+- Observaciones.
+- Motivo de creación.
+
+Estados:
+
+- Programada.
+- En proceso.
+- Completada.
+- Verificada.
+- Fallida.
+- Incompleta.
+- Protegida.
+- Eliminada.
+
+10. Restauración
+
+Permitir restaurar:
+
+- Sistema completo.
+- Configuración.
+- Productos y carta.
+- Clientes.
+- Reservas.
+- Empleados.
+- Fichajes.
+- Stock.
+- Caja.
+- Facturación.
+- Documentos.
+- Módulo específico, cuando sea técnicamente seguro.
+
+Antes de restaurar:
+
+- Mostrar el contenido.
+- Mostrar fecha.
+- Mostrar versión.
+- Mostrar módulos afectados.
+- Mostrar posibles conflictos.
+- Crear una copia automática del estado actual.
+- Solicitar confirmación y permiso.
+
+11. Restauración en entorno de prueba
+
+Crear un modo de restauración de prueba que permita:
+
+- Validar una copia sin sobrescribir producción.
+- Comprobar tablas.
+- Comprobar relaciones.
+- Comprobar archivos.
+- Comprobar versiones.
+- Generar informe.
+- Detectar incompatibilidades.
+
+No considerar válida una copia solo porque se pueda descargar.
+
+12. Restauración selectiva
+
+Permitir restauración selectiva únicamente cuando:
+
+- Las relaciones sean consistentes.
+- No se dupliquen registros.
+- Se mantenga trazabilidad.
+- Se comprueben dependencias.
+- Exista permiso específico.
+
+Ejemplos permitidos:
+
+- Recuperar una configuración.
+- Recuperar una imagen.
+- Recuperar un documento.
+- Recuperar una plantilla.
+- Recuperar un producto eliminado, si no genera conflictos.
+
+No permitir restauraciones parciales peligrosas sin advertencia.
+
+13. Punto de recuperación
+
+Antes de acciones críticas, crear punto de recuperación:
+
+- Migraciones.
+- Actualizaciones.
+- Importaciones masivas.
+- Cambios fiscales.
+- Restauraciones.
+- Eliminaciones masivas.
+- Modificaciones de estructura.
+- Actualización de precios masiva.
+
+Permitir volver al estado anterior cuando sea técnicamente posible.
+
+14. Exportación de emergencia
+
+Crear una opción de exportación de emergencia que genere:
+
+- Ventas.
+- Facturas.
+- Caja.
+- Clientes.
+- Productos.
+- Stock.
+- Empleados.
+- Fichajes.
+- Reservas.
+- Pedidos.
+- Configuración básica.
+
+Formatos:
+
+- CSV.
+- XLSX.
+- JSON.
+- PDF para informes principales.
+
+Esta exportación no sustituye la copia completa.
+
+15. Diagnóstico técnico
+
+Crear un panel de diagnóstico con:
+
+- Estado de base de datos.
+- Estado del servidor.
+- Estado de almacenamiento.
+- Espacio disponible.
+- Estado de sincronización.
+- Estado de Internet.
+- Estado de impresoras.
+- Estado del KDS.
+- Estado de terminales.
+- Estado de tareas programadas.
+- Estado de copias.
+- Estado de notificaciones.
+- Estado de integraciones externas.
+- Errores recientes.
+
+16. Pruebas de conectividad
+
+Permitir comprobar:
+
+- Conexión con servidor.
+- Latencia.
+- Disponibilidad de base de datos.
+- Acceso al almacenamiento.
+- Acceso a impresoras.
+- Comunicación con KDS.
+- Comunicación con terminales.
+- Estado de servicios externos.
+- Hora del dispositivo.
+- Desfase horario.
+
+Mostrar resultados claros:
+
+- Correcto.
+- Degradado.
+- Sin conexión.
+- Error.
+- Requiere revisión.
+
+17. Registro técnico
+
+Crear un registro de eventos técnicos con:
+
+- Fecha y hora.
+- Dispositivo.
+- Usuario.
+- Módulo.
+- Nivel.
+- Mensaje.
+- Código de error.
+- Datos técnicos seguros.
+- Acción realizada.
+- Estado resuelto o pendiente.
+
+Niveles:
+
+- Información.
+- Advertencia.
+- Error.
+- Crítico.
+
+No guardar contraseñas, datos de tarjeta ni información sensible innecesaria.
+
+18. Descarga de informe técnico
+
+Permitir generar un paquete de diagnóstico para soporte con:
+
+- Versión de la aplicación.
+- Estado de módulos.
+- Errores recientes.
+- Configuración técnica no sensible.
+- Estado de base de datos.
+- Estado de red.
+- Estado de dispositivos.
+- Estado de copias.
+- Pasos de reproducción añadidos por el usuario.
+
+Antes de generar:
+
+- Ocultar datos personales.
+- Ocultar secretos.
+- Informar qué se incluirá.
+
+19. Modo sin conexión
+
+Implementar funcionamiento limitado sin Internet para operaciones críticas.
+
+Debe permitir, cuando sea técnicamente posible:
+
+- Iniciar sesión con credenciales previamente autorizadas.
+- Consultar carta y productos.
+- Abrir mesas.
+- Crear comandas.
+- Añadir productos.
+- Enviar a KDS local o cola pendiente.
+- Consultar mesas abiertas.
+- Registrar cobros permitidos.
+- Imprimir tickets locales.
+- Mantener una cola de sincronización.
+
+20. Límites del modo sin conexión
+
+En modo sin conexión, bloquear o limitar:
+
+- Cambios de configuración.
+- Alta de usuarios.
+- Cambios de permisos.
+- Restauraciones.
+- Importaciones masivas.
+- Exportaciones sensibles.
+- Modificaciones fiscales.
+- Operaciones que requieran validación externa.
+- Pedidos online externos.
+- Pagos online.
+- Funciones que dependan del servidor.
+
+Mostrar claramente que el sistema está trabajando sin conexión.
+
+21. Cola local de operaciones
+
+Cada operación sin conexión debe guardar:
+
+- Identificador único.
+- Dispositivo.
+- Usuario.
+- Fecha y hora local.
+- Tipo de operación.
+- Datos mínimos necesarios.
+- Dependencias.
+- Número de intento.
+- Estado.
+- Error, si existe.
+
+Estados:
+
+- Pendiente.
+- Enviando.
+- Sincronizada.
+- Conflicto.
+- Fallida.
+- Cancelada.
+
+22. Sincronización al recuperar conexión
+
+Al volver Internet:
+
+- Detectar conexión.
+- Validar sesión.
+- Enviar operaciones pendientes.
+- Mantener orden lógico.
+- Evitar duplicados.
+- Confirmar recepción.
+- Actualizar estados.
+- Mostrar resumen.
+
+No borrar la operación local hasta recibir confirmación del servidor.
+
+23. Idempotencia
+
+Implementar identificadores únicos para evitar:
+
+- Mesas duplicadas.
+- Comandas duplicadas.
+- Pagos duplicados.
+- Tickets duplicados.
+- Movimientos de caja duplicados.
+- Descuentos dobles de stock.
+- Fichajes duplicados.
+- Reservas duplicadas.
+
+Reintentar una sincronización no debe repetir la operación.
+
+24. Conflictos de sincronización
+
+Detectar conflictos como:
+
+- Mesa modificada desde dos dispositivos.
+- Producto cambiado mientras estaba sin conexión.
+- Cuenta cobrada desde otro terminal.
+- Pedido anulado desde otro dispositivo.
+- Precio cambiado.
+- Usuario bloqueado.
+- Caja cerrada.
+- Stock actualizado.
+
+El sistema debe:
+
+- No sobrescribir silenciosamente.
+- Mostrar el conflicto.
+- Aplicar reglas seguras.
+- Permitir resolución autorizada.
+- Mantener ambas versiones cuando sea necesario.
+- Registrar la resolución.
+
+25. Operaciones fiscales sin conexión
+
+Preparar el sistema para gestionar operaciones fiscales sin conexión conforme a la configuración legal aplicable.
+
+Debe:
+
+- Guardar fecha y hora.
+- Mantener numeración controlada.
+- Registrar la falta de conexión.
+- Evitar duplicados.
+- Enviar o regularizar cuando vuelva la conexión.
+- Mantener trazabilidad.
+- Mostrar operaciones pendientes.
+
+No inventar ni simular envíos a la AEAT.
+
+26. Cobros sin conexión
+
+Permitir configurar qué cobros están autorizados:
+
+- Efectivo.
+- Tarjeta mediante terminal independiente.
+- Otros medios manuales.
+
+Bloquear:
+
+- Pago online no verificable.
+- Cobro duplicado.
+- Devolución no autorizada.
+- Reembolso externo no confirmado.
+
+Mostrar una advertencia cuando el cobro requiera conciliación posterior.
+
+27. KDS sin conexión
+
+Cuando exista red local pero no Internet:
+
+- Mantener envío de comandas al KDS local.
+- Mostrar comandas.
+- Cambiar estados.
+- Guardar tiempos.
+- Sincronizar posteriormente.
+
+Si tampoco existe red local:
+
+- Guardar comandas pendientes.
+- Permitir impresión alternativa.
+- Mostrar alerta visible.
+- Reenviar al recuperar comunicación.
+
+28. Impresión de emergencia
+
+Permitir:
+
+- Impresión local directa.
+- Cola de impresión.
+- Reintento.
+- Selección de impresora alternativa.
+- Impresión manual.
+- Reimpresión autorizada.
+
+Registrar:
+
+- Documento.
+- Impresora.
+- Hora.
+- Resultado.
+- Reintentos.
+- Usuario.
+
+29. Modo degradado
+
+Crear niveles de funcionamiento:
+
+- Normal.
+- Conectividad lenta.
+- Sin Internet.
+- Sin servidor.
+- Sin base de datos remota.
+- Sin impresora.
+- Sin KDS.
+- Solo lectura.
+- Emergencia.
+
+Cada nivel debe mostrar qué funciones están disponibles.
+
+30. Avisos visibles
+
+Mostrar avisos claros para:
+
+- Sin Internet.
+- Sincronización pendiente.
+- Conflictos.
+- Copia fallida.
+- Espacio insuficiente.
+- Base de datos no disponible.
+- Impresora desconectada.
+- KDS desconectado.
+- Hora incorrecta.
+- Restauración pendiente.
+- Actualización incompleta.
+
+No ocultar errores críticos en segundo plano.
+
+31. Control de dispositivos
+
+Crear una pantalla con:
+
+- Nombre del dispositivo.
+- Tipo.
+- Última conexión.
+- Versión.
+- Usuario activo.
+- Estado.
+- Operaciones pendientes.
+- Errores.
+- Dirección local opcional.
+- Centro de trabajo.
+- Autorización para modo offline.
+
+Permitir:
+
+- Bloquear dispositivo.
+- Cerrar sesión.
+- Marcar como perdido.
+- Revocar acceso offline.
+- Forzar sincronización.
+- Consultar diagnóstico.
+
+32. Actualizaciones seguras
+
+Antes de aplicar actualizaciones:
+
+- Comprobar compatibilidad.
+- Comprobar espacio.
+- Crear copia.
+- Verificar copia.
+- Mostrar cambios.
+- Ejecutar migraciones.
+- Validar resultado.
+- Permitir reversión cuando sea posible.
+
+No actualizar durante operaciones críticas sin advertencia.
+
+33. Mantenimiento
+
+Crear herramientas para:
+
+- Limpiar archivos temporales.
+- Limpiar caché.
+- Reindexar búsquedas.
+- Revisar integridad.
+- Reparar colas bloqueadas.
+- Reintentar tareas.
+- Verificar documentos huérfanos.
+- Detectar duplicados.
+- Consultar espacio utilizado.
+
+No eliminar información fiscal ni auditorías desde mantenimiento normal.
+
+34. Alertas técnicas
+
+Crear alertas para:
+
+- Copia fallida.
+- Copia no verificada.
+- Falta de espacio.
+- Restauración fallida.
+- Sincronización bloqueada.
+- Operaciones offline antiguas.
+- Conflictos sin resolver.
+- Dispositivo sin conexión.
+- Impresora caída.
+- KDS caído.
+- Error de base de datos.
+- Tarea programada fallida.
+- Integración externa caída.
+- Certificado próximo a caducar.
+
+35. Permisos
+
+Crear permisos específicos para:
+
+- Ver copias.
+- Crear copias.
+- Descargar copias.
+- Eliminar copias.
+- Proteger copias.
+- Restaurar.
+- Restaurar parcialmente.
+- Probar restauraciones.
+- Ver diagnóstico.
+- Descargar informe técnico.
+- Ver registros.
+- Limpiar caché.
+- Ejecutar mantenimiento.
+- Gestionar dispositivos.
+- Resolver conflictos.
+- Activar modo emergencia.
+- Ver operaciones fiscales pendientes.
+
+36. Auditoría
+
+Registrar:
+
+- Creación de copias.
+- Descarga.
+- Eliminación.
+- Restauración.
+- Pruebas de restauración.
+- Cambios de conservación.
+- Cambios de destino.
+- Activación de modo emergencia.
+- Resolución de conflictos.
+- Reintentos manuales.
+- Bloqueo de dispositivos.
+- Exportaciones de emergencia.
+- Cambios técnicos sensibles.
+
+37. Datos de demostración
+
+Crear casos de prueba:
+
+- Copia correcta.
+- Copia fallida.
+- Copia no verificada.
+- Restauración de prueba.
+- Dispositivo sin conexión.
+- Comanda offline.
+- Sincronización correcta.
+- Operación duplicada.
+- Conflicto de mesa.
+- Impresora desconectada.
+- KDS desconectado.
+- Error de espacio.
+- Alerta crítica.
+
+Los datos de demostración deben poder eliminarse fácilmente.
+
+38. Pruebas automáticas
+
+Crear pruebas para:
+
+- Creación de copia.
+- Verificación de copia.
+- Restauración de prueba.
+- Restauración completa.
+- Permisos.
+- Cifrado.
+- Integridad.
+- Conservación.
+- Idempotencia.
+- Cola offline.
+- Reintentos.
+- Conflictos.
+- Cobros offline.
+- Comandas offline.
+- Sincronización.
+- Fallos parciales.
+- Recuperación después de error.
+
+39. Criterios de aceptación
+
+La tarea estará terminada cuando:
+
+1. Se puedan crear copias manuales y automáticas.
+2. Las copias se verifiquen.
+3. Exista historial.
+4. Se pueda probar una restauración sin afectar producción.
+5. Se cree una copia antes de restaurar.
+6. Exista exportación de emergencia.
+7. El panel de diagnóstico muestre el estado real del sistema.
+8. Se puedan descargar informes técnicos sin datos sensibles.
+9. El TPV pueda trabajar de forma limitada sin Internet.
+10. Las operaciones offline se sincronicen después.
+11. No existan operaciones duplicadas.
+12. Los conflictos se detecten y no se sobrescriban silenciosamente.
+13. El KDS y la impresión tengan alternativas de emergencia.
+14. Los dispositivos puedan controlarse.
+15. Funcionen permisos y auditoría.
+16. Existan alertas técnicas.
+17. Las pruebas automáticas sean correctas.
+18. Replit entregue un resumen de archivos modificados, tablas, procesos de copia, restauración, sincronización, conflictos y pruebas realizadas.
+
+Antes de programar, revisar todos los módulos ya existentes y explicar qué componentes se reutilizarán.
+
+No crear una falsa garantía de recuperación. Toda copia debe verificarse y toda restauración debe probarse antes de considerarse segura.
