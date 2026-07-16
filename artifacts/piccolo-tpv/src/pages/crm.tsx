@@ -10,7 +10,9 @@ import {
   Search, Plus, X, Check, Edit2, Trash2, RefreshCw,
   Phone, Mail, MapPin, Calendar, AlertCircle, Shield,
   TrendingUp, CreditCard, Percent, Clock, Lock, Unlock,
-  ChevronRight, Eye,
+  ChevronRight, Eye, Megaphone, Trophy, Wallet, Coins,
+  Target, Hash, QrCode, SendHorizontal, Zap, Play,
+  Filter, Download, ChevronDown, ChevronUp,
 } from 'lucide-react';
 import { customFetch } from '@workspace/api-client-react';
 import { toast } from 'sonner';
@@ -23,11 +25,43 @@ interface CrmClient {
   observaciones: string; activo: boolean; rgpdConsentimiento: boolean;
   totalGasto: string; totalVisitas: number; ultimaVisita: string | null;
   puntosSaldo: number; createdAt: string;
+  // v2 fields
+  numCliente?: number; qrToken?: string;
+  nivelId?: string | null; nivelNombre?: string;
+  saldoMonedero?: string;
+}
+
+interface LoyaltyLevel {
+  id: string; nombre: string; descripcion: string; orden: number;
+  requisitosGasto: string; requisitosVisitas: number;
+  multiplicadorPuntos: string; descuentoPct: string;
+  beneficios: string[]; color: string; icono: string; activo: boolean;
 }
 
 interface LoyaltyConfig {
   id: string; activo: boolean; puntosPorEuro: string; valorPunto: string;
   caducidadDias: number; canjeMinimo: number;
+  // v2
+  puntosExtraCumpleanos?: number; puntosExtraPrimeraCompra?: number;
+  puntosExtraReserva?: number; puntosExtraOnline?: number;
+  canjeMaxPorOperacion?: number; caducidadAvisoDias?: number;
+  nivelesActivos?: boolean; monederoActivo?: boolean;
+}
+
+interface CrmWallet {
+  id: string; clientId: string;
+  saldoReal: string; saldoPromo: string; saldoCompensacion: string;
+  updatedAt: string;
+}
+
+interface CrmCampaign {
+  id: string; nombre: string; descripcion: string; tipo: string;
+  estado: string; canal: string; asunto: string; contenido: string;
+  segmento: Record<string, unknown>;
+  fechaEnvio: string | null;
+  totalDestinatarios: number; totalEnviados: number;
+  totalFallidos: number; totalUsados: number;
+  promotionId: string | null; empleadoNombre: string; createdAt: string;
 }
 
 interface LoyaltyPoint {
@@ -84,8 +118,10 @@ function fmtMoney(v: string | number | null | undefined) {
 const TABS = [
   { id: 'clientes',     label: 'Clientes',        icon: Users },
   { id: 'fidelizacion', label: 'Fidelización',     icon: Star },
+  { id: 'niveles',      label: 'Niveles',          icon: Trophy },
   { id: 'tarjetas',     label: 'Tarjetas Regalo',  icon: Gift },
   { id: 'promociones',  label: 'Promociones',      icon: Tag },
+  { id: 'campanas',     label: 'Campañas',         icon: Megaphone },
   { id: 'informes',     label: 'Informes',         icon: BarChart3 },
 ];
 
@@ -148,8 +184,10 @@ export default function Crm() {
       <div className="flex-1 overflow-hidden">
         {tab === 'clientes'     && <ClientesTab />}
         {tab === 'fidelizacion' && <FidelizacionTab />}
+        {tab === 'niveles'      && <NivelesTab />}
         {tab === 'tarjetas'     && <TarjetasTab />}
         {tab === 'promociones'  && <PromocionesTab />}
+        {tab === 'campanas'     && <CampañasTab />}
         {tab === 'informes'     && <InformesTab />}
       </div>
     </div>
@@ -380,11 +418,27 @@ function ClientDetail({ client, history, onEdit, onRefresh }: { client: CrmClien
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         <StatMini label="Gasto total" value={fmtMoney(client.totalGasto)} color="#10b981" />
         <StatMini label="Visitas" value={String(client.totalVisitas)} color="#6082dc" />
-        <StatMini label="Ticket medio" value={fmtMoney(history?.stats?.ticketMedio)} color="#d2a032" />
         <StatMini label="Puntos" value={String(client.puntosSaldo)} color="#f59e0b" />
+        {parseFloat(client.saldoMonedero ?? '0') > 0 && (
+          <StatMini label="Monedero" value={fmtMoney(client.saldoMonedero)} color="#a855f7" />
+        )}
+        {client.nivelNombre && (
+          <div className="rounded-2xl border border-border bg-card p-3 space-y-1 col-span-1">
+            <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wide">Nivel</p>
+            <p className="text-base font-black leading-none" style={{ color: '#10b981' }}>
+              {client.nivelNombre}
+            </p>
+          </div>
+        )}
+        {client.numCliente && (
+          <div className="rounded-2xl border border-border bg-card p-3 space-y-1">
+            <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wide">Nº cliente</p>
+            <p className="text-base font-black leading-none font-mono">#{client.numCliente}</p>
+          </div>
+        )}
       </div>
 
       {/* Info */}
@@ -519,6 +573,34 @@ function FidelizacionTab() {
           <Row label="Caducidad (días, 0 = nunca)">
             <input type="number" step="1" min="0" value={form.caducidadDias ?? ''} onChange={e => setForm(f => ({ ...f, caducidadDias: parseInt(e.target.value) }))} className={inputCls} />
           </Row>
+          <div className="pt-1">
+            <h3 className="text-xs font-black text-muted-foreground uppercase tracking-wide mb-3">Puntos bonificados</h3>
+            <div className="grid grid-cols-2 gap-3">
+              <Row label="Bonus cumpleaños (pts)">
+                <input type="number" step="1" min="0" value={form.puntosExtraCumpleanos ?? 0} onChange={e => setForm(f => ({ ...f, puntosExtraCumpleanos: parseInt(e.target.value) }))} className={inputCls} />
+              </Row>
+              <Row label="Bonus 1ª compra (pts)">
+                <input type="number" step="1" min="0" value={form.puntosExtraPrimeraCompra ?? 0} onChange={e => setForm(f => ({ ...f, puntosExtraPrimeraCompra: parseInt(e.target.value) }))} className={inputCls} />
+              </Row>
+              <Row label="Bonus reserva (pts)">
+                <input type="number" step="1" min="0" value={form.puntosExtraReserva ?? 0} onChange={e => setForm(f => ({ ...f, puntosExtraReserva: parseInt(e.target.value) }))} className={inputCls} />
+              </Row>
+              <Row label="Bonus pedido online (pts)">
+                <input type="number" step="1" min="0" value={form.puntosExtraOnline ?? 0} onChange={e => setForm(f => ({ ...f, puntosExtraOnline: parseInt(e.target.value) }))} className={inputCls} />
+              </Row>
+            </div>
+          </div>
+          <div className="pt-1 space-y-2">
+            <h3 className="text-xs font-black text-muted-foreground uppercase tracking-wide">Módulos</h3>
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <input type="checkbox" checked={form.nivelesActivos ?? false} onChange={e => setForm(f => ({ ...f, nivelesActivos: e.target.checked }))} className="rounded" />
+              <Trophy size={14} className="text-amber-400" /> Niveles de fidelización activos
+            </label>
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <input type="checkbox" checked={form.monederoActivo ?? false} onChange={e => setForm(f => ({ ...f, monederoActivo: e.target.checked }))} className="rounded" />
+              <Wallet size={14} className="text-purple-400" /> Monedero (wallet) activo
+            </label>
+          </div>
           <div className="flex gap-3 pt-2">
             <button onClick={() => { setEditing(false); setForm(config); }} className="flex-1 py-2.5 rounded-xl border border-border text-sm font-semibold hover:bg-secondary transition-colors">Cancelar</button>
             <button onClick={save} disabled={saving} className="flex-1 py-2.5 rounded-xl bg-emerald-500 text-white text-sm font-black hover:bg-emerald-600 transition-colors disabled:opacity-50">
@@ -532,6 +614,12 @@ function FidelizacionTab() {
           <ConfigRow label="Valor por punto" value={`${config.valorPunto} €`} />
           <ConfigRow label="Mínimo para canjear" value={`${config.canjeMinimo} pts`} />
           <ConfigRow label="Caducidad" value={config.caducidadDias > 0 ? `${config.caducidadDias} días` : 'Sin caducidad'} />
+          {(config.puntosExtraCumpleanos ?? 0) > 0 && <ConfigRow label="Bonus cumpleaños" value={`+${config.puntosExtraCumpleanos} pts`} />}
+          {(config.puntosExtraPrimeraCompra ?? 0) > 0 && <ConfigRow label="Bonus 1ª compra" value={`+${config.puntosExtraPrimeraCompra} pts`} />}
+          {(config.puntosExtraReserva ?? 0) > 0 && <ConfigRow label="Bonus reserva" value={`+${config.puntosExtraReserva} pts`} />}
+          {(config.puntosExtraOnline ?? 0) > 0 && <ConfigRow label="Bonus online" value={`+${config.puntosExtraOnline} pts`} />}
+          {config.nivelesActivos && <ConfigRow label="Niveles" value="✓ Activos" />}
+          {config.monederoActivo && <ConfigRow label="Monedero" value="✓ Activo" />}
         </div>
       )}
 
@@ -1098,6 +1186,607 @@ function InformesTab() {
               </div>
             ))}
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Tab: Niveles de Fidelización
+// ═══════════════════════════════════════════════════════════════════════════
+
+function NivelesTab() {
+  const [levels, setLevels] = useState<LoyaltyLevel[]>([]);
+  const [editing, setEditing] = useState<LoyaltyLevel | null | 'new'>(null);
+  const [loading, setLoading] = useState(true);
+  const [demoLoading, setDemoLoading] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await apiFetch<LoyaltyLevel[]>(API('/crm/loyalty/levels'));
+      setLevels(data);
+    } catch { toast.error('Error al cargar niveles'); }
+    finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const del = async (id: string) => {
+    if (!confirm('¿Eliminar este nivel?')) return;
+    try {
+      await customFetch(API(`/crm/loyalty/levels/${id}`), { method: 'DELETE' });
+      toast.success('Nivel eliminado');
+      void load();
+    } catch { toast.error('Error al eliminar'); }
+  };
+
+  const runDemoData = async () => {
+    setDemoLoading(true);
+    try {
+      const res = await customFetch<{ created: number }>(API('/crm/demo-data'), { method: 'POST' });
+      toast.success(`Datos de demo creados (${(res as any).created} registros)`);
+      void load();
+    } catch { toast.error('Error al crear datos demo'); }
+    finally { setDemoLoading(false); }
+  };
+
+  const reviewLevels = async () => {
+    try {
+      const res = await customFetch<{ updated: number }>(API('/crm/auto/review-levels'), { method: 'POST' });
+      toast.success(`Niveles recalculados: ${(res as any).updated} clientes actualizados`);
+    } catch { toast.error('Error al recalcular'); }
+  };
+
+  if (loading) return <LoadingState label="Cargando niveles…" />;
+
+  const TIER_COLORS: Record<string, string> = { Bronce: '#cd7f32', Plata: '#c0c0c0', Oro: '#ffd700', VIP: '#a855f7' };
+
+  return (
+    <div className="p-6 max-w-3xl">
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h2 className="font-black text-lg">Niveles de Fidelización</h2>
+          <p className="text-sm text-muted-foreground mt-0.5">Define los niveles automáticos según gasto y visitas</p>
+        </div>
+        <div className="flex gap-2">
+          <button
+            onClick={reviewLevels}
+            className="px-3 py-2 rounded-xl border border-border text-sm font-semibold flex items-center gap-1.5 hover:bg-secondary transition-colors"
+          >
+            <RefreshCw size={13} /> Recalcular
+          </button>
+          <button
+            onClick={() => setEditing('new')}
+            className="px-3 py-2 rounded-xl bg-emerald-500 text-white text-sm font-black hover:bg-emerald-600 transition-colors flex items-center gap-1.5"
+          >
+            <Plus size={13} /> Nuevo nivel
+          </button>
+        </div>
+      </div>
+
+      {/* Level cards */}
+      {levels.length === 0 ? (
+        <div className="flex flex-col items-center justify-center h-48 gap-3 text-muted-foreground border-2 border-dashed border-border rounded-2xl">
+          <Trophy size={36} className="opacity-30" />
+          <p className="text-sm">Sin niveles. Crea uno o genera datos de demo.</p>
+          <button
+            onClick={runDemoData}
+            disabled={demoLoading}
+            className="px-4 py-2 rounded-xl bg-emerald-500/20 text-emerald-400 text-sm font-semibold hover:bg-emerald-500/30 transition-colors"
+          >
+            {demoLoading ? 'Creando…' : '⚡ Generar datos de demo'}
+          </button>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {levels.map(l => (
+            <div key={l.id} className="rounded-2xl border border-border bg-card overflow-hidden">
+              <div className="h-1.5" style={{ background: l.color }} />
+              <div className="p-4 flex items-center gap-4">
+                <div className="text-3xl shrink-0">{l.icono}</div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <p className="font-black text-base">{l.nombre}</p>
+                    {!l.activo && <span className="px-2 py-0.5 rounded-full bg-secondary text-muted-foreground text-xs">Inactivo</span>}
+                  </div>
+                  <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
+                    <span>≥ {fmtMoney(l.requisitosGasto)} gasto</span>
+                    {l.requisitosVisitas > 0 && <span>≥ {l.requisitosVisitas} visitas</span>}
+                    <span className="text-amber-400 font-semibold">×{parseFloat(l.multiplicadorPuntos).toFixed(2)} puntos</span>
+                    {parseFloat(l.descuentoPct) > 0 && <span className="text-emerald-400 font-semibold">{l.descuentoPct}% dto.</span>}
+                  </div>
+                  {l.beneficios?.length > 0 && (
+                    <p className="text-xs text-muted-foreground mt-1">{l.beneficios.join(' · ')}</p>
+                  )}
+                </div>
+                <div className="flex gap-2 shrink-0">
+                  <button onClick={() => setEditing(l)} className="w-8 h-8 flex items-center justify-center rounded-lg border border-border hover:bg-secondary transition-colors">
+                    <Edit2 size={13} />
+                  </button>
+                  <button onClick={() => del(l.id)} className="w-8 h-8 flex items-center justify-center rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10 transition-colors">
+                    <Trash2 size={13} />
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {levels.length > 0 && (
+        <div className="mt-6 flex items-center justify-between">
+          <button
+            onClick={runDemoData}
+            disabled={demoLoading}
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1.5"
+          >
+            <Zap size={12} /> {demoLoading ? 'Creando…' : 'Generar datos de demo'}
+          </button>
+        </div>
+      )}
+
+      {/* Create / Edit form */}
+      {editing !== null && (
+        <NivelForm
+          initial={editing === 'new' ? undefined : editing}
+          onSave={async () => { setEditing(null); await load(); }}
+          onCancel={() => setEditing(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+function NivelForm({ initial, onSave, onCancel }: { initial?: LoyaltyLevel; onSave: () => void; onCancel: () => void }) {
+  const isNew = !initial?.id;
+  const [form, setForm] = useState({
+    nombre: initial?.nombre ?? '',
+    descripcion: initial?.descripcion ?? '',
+    orden: initial?.orden ?? 1,
+    requisitosGasto: initial?.requisitosGasto ?? '0',
+    requisitosVisitas: initial?.requisitosVisitas ?? 0,
+    multiplicadorPuntos: initial?.multiplicadorPuntos ?? '1.00',
+    descuentoPct: initial?.descuentoPct ?? '0',
+    color: initial?.color ?? '#10b981',
+    icono: initial?.icono ?? '⭐',
+    activo: initial?.activo ?? true,
+  });
+  const [saving, setSaving] = useState(false);
+
+  const save = async () => {
+    if (!form.nombre.trim()) { toast.error('El nombre es obligatorio'); return; }
+    setSaving(true);
+    try {
+      if (isNew) {
+        await customFetch(API('/crm/loyalty/levels'), { method: 'POST', body: JSON.stringify(form) });
+        toast.success('Nivel creado');
+      } else {
+        await customFetch(API(`/crm/loyalty/levels/${initial!.id}`), { method: 'PATCH', body: JSON.stringify(form) });
+        toast.success('Nivel actualizado');
+      }
+      onSave();
+    } catch { toast.error('Error al guardar'); }
+    finally { setSaving(false); }
+  };
+
+  const ICON_OPTIONS = ['⭐','🥉','🥈','🥇','💜','💎','👑','🔥','🌟'];
+
+  return (
+    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+      <div className="bg-card border border-border rounded-2xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="font-black text-lg">{isNew ? 'Nuevo nivel' : `Editar: ${initial!.nombre}`}</h3>
+          <button onClick={onCancel}><X size={18} className="text-muted-foreground" /></button>
+        </div>
+        <Row label="Nombre">
+          <input value={form.nombre} onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))} className={inputCls} placeholder="Ej: Plata" />
+        </Row>
+        <Row label="Descripción">
+          <input value={form.descripcion} onChange={e => setForm(f => ({ ...f, descripcion: e.target.value }))} className={inputCls} placeholder="Descripción del nivel" />
+        </Row>
+        <div className="grid grid-cols-2 gap-3">
+          <Row label="Ícono">
+            <select value={form.icono} onChange={e => setForm(f => ({ ...f, icono: e.target.value }))} className={inputCls}>
+              {ICON_OPTIONS.map(i => <option key={i} value={i}>{i}</option>)}
+            </select>
+          </Row>
+          <Row label="Color">
+            <div className="flex gap-2 items-center">
+              <input type="color" value={form.color} onChange={e => setForm(f => ({ ...f, color: e.target.value }))} className="h-9 w-12 rounded-lg border border-border cursor-pointer bg-secondary" />
+              <input value={form.color} onChange={e => setForm(f => ({ ...f, color: e.target.value }))} className={inputCls} />
+            </div>
+          </Row>
+        </div>
+        <Row label="Gasto mínimo acumulado (€)">
+          <input type="number" step="1" min="0" value={form.requisitosGasto} onChange={e => setForm(f => ({ ...f, requisitosGasto: e.target.value }))} className={inputCls} />
+        </Row>
+        <Row label="Visitas mínimas">
+          <input type="number" step="1" min="0" value={form.requisitosVisitas} onChange={e => setForm(f => ({ ...f, requisitosVisitas: parseInt(e.target.value) }))} className={inputCls} />
+        </Row>
+        <Row label="Multiplicador de puntos (ej. 1.5 = ×1.5)">
+          <input type="number" step="0.1" min="1" value={form.multiplicadorPuntos} onChange={e => setForm(f => ({ ...f, multiplicadorPuntos: e.target.value }))} className={inputCls} />
+        </Row>
+        <Row label="Descuento base (%)">
+          <input type="number" step="0.5" min="0" max="100" value={form.descuentoPct} onChange={e => setForm(f => ({ ...f, descuentoPct: e.target.value }))} className={inputCls} />
+        </Row>
+        <Row label="Orden (menor = nivel más bajo)">
+          <input type="number" step="1" min="1" value={form.orden} onChange={e => setForm(f => ({ ...f, orden: parseInt(e.target.value) }))} className={inputCls} />
+        </Row>
+        <label className="flex items-center gap-2 text-sm cursor-pointer">
+          <input type="checkbox" checked={form.activo} onChange={e => setForm(f => ({ ...f, activo: e.target.checked }))} className="rounded" />
+          Nivel activo
+        </label>
+        <div className="flex gap-3 pt-2">
+          <button onClick={onCancel} className="flex-1 py-2.5 rounded-xl border border-border text-sm font-semibold hover:bg-secondary transition-colors">Cancelar</button>
+          <button onClick={save} disabled={saving} className="flex-1 py-2.5 rounded-xl bg-emerald-500 text-white text-sm font-black hover:bg-emerald-600 transition-colors disabled:opacity-50">
+            {saving ? 'Guardando…' : isNew ? 'Crear nivel' : 'Actualizar'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Tab: Campañas de Marketing
+// ═══════════════════════════════════════════════════════════════════════════
+
+const CAMPAIGN_ESTADO_STYLE: Record<string, string> = {
+  borrador:   'bg-secondary text-muted-foreground border-border',
+  programada: 'bg-blue-500/10 text-blue-400 border-blue-500/30',
+  enviando:   'bg-amber-500/10 text-amber-400 border-amber-500/30',
+  completada: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30',
+  pausada:    'bg-red-500/10 text-red-400 border-red-500/30',
+};
+
+const CANAL_ICONS: Record<string, string> = {
+  email: '📧', sms: '💬', whatsapp: '🟢', web: '🌐', ticket: '🧾', cupon_cuenta: '🎫',
+};
+
+function CampañasTab() {
+  const [campaigns, setCampaigns] = useState<CrmCampaign[]>([]);
+  const [selected, setSelected] = useState<CrmCampaign | null>(null);
+  const [showCreate, setShowCreate] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await apiFetch<CrmCampaign[]>(API('/crm/campaigns'));
+      setCampaigns(data);
+    } catch { toast.error('Error al cargar campañas'); }
+    finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const sendCampaign = async (id: string) => {
+    if (!confirm('¿Enviar esta campaña ahora?')) return;
+    setSending(id);
+    try {
+      const res = await customFetch<{ destinatarios: number; enviados: number }>(
+        API(`/crm/campaigns/${id}/send`), { method: 'POST' }
+      );
+      toast.success(`Campaña enviada a ${(res as any).destinatarios} clientes`);
+      void load();
+    } catch { toast.error('Error al enviar'); }
+    finally { setSending(null); }
+  };
+
+  const del = async (id: string) => {
+    if (!confirm('¿Eliminar esta campaña?')) return;
+    try {
+      await customFetch(API(`/crm/campaigns/${id}`), { method: 'DELETE' });
+      toast.success('Campaña eliminada');
+      setSelected(null);
+      void load();
+    } catch { toast.error('Error al eliminar'); }
+  };
+
+  if (loading) return <LoadingState label="Cargando campañas…" />;
+
+  return (
+    <div className="flex h-full overflow-hidden">
+      {/* Left list */}
+      <div className="w-72 shrink-0 flex flex-col border-r border-border bg-card">
+        <div className="p-3 border-b border-border flex gap-2 items-center">
+          <p className="font-black text-sm flex-1">Campañas</p>
+          <button
+            onClick={() => { setSelected(null); setShowCreate(true); }}
+            className="w-8 h-8 flex items-center justify-center rounded-lg bg-emerald-500 text-white hover:bg-emerald-600 transition-colors shrink-0"
+          >
+            <Plus size={15} />
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto">
+          {campaigns.length === 0 && (
+            <p className="text-center text-sm text-muted-foreground py-8">Sin campañas</p>
+          )}
+          {campaigns.map(c => (
+            <button
+              key={c.id}
+              onClick={() => { setSelected(c); setShowCreate(false); }}
+              className={`w-full text-left px-3 py-3 border-b border-border/50 hover:bg-secondary transition-colors ${selected?.id === c.id ? 'bg-emerald-500/10 border-l-2 border-l-emerald-500' : ''}`}
+            >
+              <div className="flex items-start gap-2">
+                <span className="text-base shrink-0 mt-0.5">{CANAL_ICONS[c.canal] ?? '📢'}</span>
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold text-sm truncate">{c.nombre}</p>
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    <span className={`px-1.5 py-0.5 rounded-full text-xs font-semibold border ${CAMPAIGN_ESTADO_STYLE[c.estado] ?? ''}`}>
+                      {c.estado}
+                    </span>
+                  </div>
+                </div>
+                {c.totalDestinatarios > 0 && (
+                  <span className="text-xs text-muted-foreground shrink-0">{c.totalDestinatarios}</span>
+                )}
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Right: detail or create form */}
+      <div className="flex-1 overflow-y-auto p-6">
+        {showCreate && (
+          <CampaignForm
+            onSave={async () => { setShowCreate(false); await load(); }}
+            onCancel={() => setShowCreate(false)}
+          />
+        )}
+        {selected && !showCreate && (
+          <CampaignDetail
+            campaign={selected}
+            sending={sending === selected.id}
+            onSend={() => sendCampaign(selected.id)}
+            onDelete={() => del(selected.id)}
+            onRefresh={async () => { await load(); }}
+          />
+        )}
+        {!selected && !showCreate && (
+          <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-3">
+            <Megaphone size={40} className="opacity-30" />
+            <p className="text-sm">Selecciona una campaña o crea una nueva</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CampaignForm({ onSave, onCancel }: { onSave: () => void; onCancel: () => void }) {
+  const [nombre, setNombre] = useState('');
+  const [tipo, setTipo] = useState('manual');
+  const [canal, setCanal] = useState('email');
+  const [asunto, setAsunto] = useState('');
+  const [contenido, setContenido] = useState('');
+  const [seg, setSeg] = useState<Record<string, string | boolean | number>>({});
+  const [preview, setPreview] = useState<number | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const previewSegment = async () => {
+    setPreviewLoading(true);
+    try {
+      const res = await customFetch<{ total: number }>(API('/crm/segment/preview'), {
+        method: 'POST', body: JSON.stringify(seg),
+      });
+      setPreview((res as any).total ?? 0);
+    } catch { toast.error('Error al previsualizar'); }
+    finally { setPreviewLoading(false); }
+  };
+
+  const save = async () => {
+    if (!nombre.trim()) { toast.error('El nombre es obligatorio'); return; }
+    setSaving(true);
+    try {
+      await customFetch(API('/crm/campaigns'), {
+        method: 'POST', body: JSON.stringify({ nombre, tipo, canal, asunto, contenido, segmento: seg }),
+      });
+      toast.success('Campaña creada');
+      onSave();
+    } catch { toast.error('Error al crear'); }
+    finally { setSaving(false); }
+  };
+
+  const TIPOS = [
+    { value: 'manual', label: 'Manual' },
+    { value: 'automatica', label: 'Automática' },
+    { value: 'cumpleanos', label: 'Cumpleaños' },
+    { value: 'inactividad', label: 'Inactividad' },
+    { value: 'puntos_caducidad', label: 'Puntos próximos a caducar' },
+  ];
+  const CANALES = [
+    { value: 'email', label: '📧 Email' },
+    { value: 'sms', label: '💬 SMS' },
+    { value: 'whatsapp', label: '🟢 WhatsApp' },
+    { value: 'ticket', label: '🧾 Ticket / Mensaje en TPV' },
+  ];
+
+  return (
+    <div className="max-w-2xl space-y-5">
+      <div className="flex items-center justify-between">
+        <h2 className="font-black text-lg">Nueva campaña</h2>
+        <button onClick={onCancel}><X size={18} className="text-muted-foreground" /></button>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <Row label="Nombre *">
+          <input value={nombre} onChange={e => setNombre(e.target.value)} className={inputCls} placeholder="Ej: Cumpleaños junio" />
+        </Row>
+        <Row label="Tipo">
+          <select value={tipo} onChange={e => setTipo(e.target.value)} className={inputCls}>
+            {TIPOS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+          </select>
+        </Row>
+        <Row label="Canal">
+          <select value={canal} onChange={e => setCanal(e.target.value)} className={inputCls}>
+            {CANALES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+          </select>
+        </Row>
+        <Row label="Asunto">
+          <input value={asunto} onChange={e => setAsunto(e.target.value)} className={inputCls} placeholder="Asunto del mensaje" />
+        </Row>
+      </div>
+
+      <Row label="Contenido del mensaje">
+        <textarea
+          value={contenido} onChange={e => setContenido(e.target.value)}
+          className={inputCls + ' h-28 resize-none'}
+          placeholder="Escribe el mensaje para tus clientes…"
+        />
+      </Row>
+
+      {/* Segment builder */}
+      <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
+        <h3 className="font-black text-sm flex items-center gap-2"><Target size={14} className="text-emerald-400" /> Segmentación de destinatarios</h3>
+        <div className="grid grid-cols-2 gap-3">
+          <Row label="Gasto mínimo (€)">
+            <input type="number" min="0" step="10"
+              value={(seg.gastoMinimo as number) ?? ''}
+              onChange={e => setSeg(s => e.target.value ? { ...s, gastoMinimo: e.target.value } : Object.fromEntries(Object.entries(s).filter(([k]) => k !== 'gastoMinimo')))}
+              className={inputCls} placeholder="0 = todos" />
+          </Row>
+          <Row label="Mínimo de visitas">
+            <input type="number" min="0" step="1"
+              value={(seg.visitasMinimas as number) ?? ''}
+              onChange={e => setSeg(s => e.target.value ? { ...s, visitasMinimas: parseInt(e.target.value) } : Object.fromEntries(Object.entries(s).filter(([k]) => k !== 'visitasMinimas')))}
+              className={inputCls} placeholder="0 = todos" />
+          </Row>
+          <Row label="Puntos mínimos">
+            <input type="number" min="0" step="50"
+              value={(seg.puntosMinimos as number) ?? ''}
+              onChange={e => setSeg(s => e.target.value ? { ...s, puntosMinimos: parseInt(e.target.value) } : Object.fromEntries(Object.entries(s).filter(([k]) => k !== 'puntosMinimos')))}
+              className={inputCls} placeholder="0 = todos" />
+          </Row>
+          <Row label="Inactivo hace (días)">
+            <input type="number" min="0" step="10"
+              value={(seg.inactivoDias as number) ?? ''}
+              onChange={e => setSeg(s => e.target.value ? { ...s, inactivoDias: parseInt(e.target.value) } : Object.fromEntries(Object.entries(s).filter(([k]) => k !== 'inactivoDias')))}
+              className={inputCls} placeholder="Ej: 90" />
+          </Row>
+        </div>
+        <div className="flex items-center gap-4">
+          <label className="flex items-center gap-2 text-sm cursor-pointer">
+            <input type="checkbox"
+              checked={!!seg.cumpleanosEsteMes}
+              onChange={e => setSeg(s => e.target.checked ? { ...s, cumpleanosEsteMes: true } : Object.fromEntries(Object.entries(s).filter(([k]) => k !== 'cumpleanosEsteMes')))}
+              className="rounded" />
+            Cumpleaños este mes
+          </label>
+          <label className="flex items-center gap-2 text-sm cursor-pointer">
+            <input type="checkbox"
+              checked={!!seg.requiereConsentimientoMarketing}
+              onChange={e => setSeg(s => e.target.checked ? { ...s, requiereConsentimientoMarketing: true } : Object.fromEntries(Object.entries(s).filter(([k]) => k !== 'requiereConsentimientoMarketing')))}
+              className="rounded" />
+            Solo con consentimiento marketing
+          </label>
+        </div>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={previewSegment}
+            disabled={previewLoading}
+            className="px-4 py-2 rounded-xl border border-emerald-500/40 text-emerald-400 text-sm font-semibold hover:bg-emerald-500/10 transition-colors flex items-center gap-1.5"
+          >
+            <Eye size={13} /> {previewLoading ? 'Calculando…' : 'Previsualizar destinatarios'}
+          </button>
+          {preview !== null && (
+            <span className="text-sm font-black text-emerald-400">{preview} cliente{preview !== 1 ? 's' : ''}</span>
+          )}
+        </div>
+      </div>
+
+      <div className="flex gap-3 pt-2">
+        <button onClick={onCancel} className="flex-1 py-2.5 rounded-xl border border-border text-sm font-semibold hover:bg-secondary transition-colors">Cancelar</button>
+        <button onClick={save} disabled={saving} className="flex-1 py-2.5 rounded-xl bg-emerald-500 text-white text-sm font-black hover:bg-emerald-600 transition-colors disabled:opacity-50">
+          {saving ? 'Creando…' : 'Crear campaña'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function CampaignDetail({ campaign, sending, onSend, onDelete, onRefresh }: {
+  campaign: CrmCampaign; sending: boolean;
+  onSend: () => void; onDelete: () => void; onRefresh: () => void;
+}) {
+  const canSend = campaign.estado !== 'completada' && campaign.estado !== 'enviando';
+
+  return (
+    <div className="max-w-2xl space-y-5">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h2 className="text-xl font-black">{campaign.nombre}</h2>
+          <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+            <span className={`px-2 py-0.5 rounded-full text-xs font-semibold border ${CAMPAIGN_ESTADO_STYLE[campaign.estado] ?? ''}`}>
+              {campaign.estado}
+            </span>
+            <span className="text-sm text-muted-foreground">{CANAL_ICONS[campaign.canal] ?? '📢'} {campaign.canal}</span>
+            <span className="text-sm text-muted-foreground capitalize">{campaign.tipo.replace(/_/g, ' ')}</span>
+          </div>
+        </div>
+        <div className="flex gap-2 shrink-0">
+          <button onClick={onRefresh} className="w-9 h-9 flex items-center justify-center rounded-lg border border-border hover:bg-secondary transition-colors">
+            <RefreshCw size={15} />
+          </button>
+          <button
+            onClick={onDelete}
+            className="w-9 h-9 flex items-center justify-center rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10 transition-colors"
+          >
+            <Trash2 size={15} />
+          </button>
+        </div>
+      </div>
+
+      {/* Stats */}
+      {campaign.totalDestinatarios > 0 && (
+        <div className="grid grid-cols-4 gap-3">
+          <StatMini label="Destinatarios" value={String(campaign.totalDestinatarios)} color="#6b7280" />
+          <StatMini label="Enviados" value={String(campaign.totalEnviados)} color="#3b82f6" />
+          <StatMini label="Fallidos" value={String(campaign.totalFallidos)} color="#ef4444" />
+          <StatMini label="Usados" value={String(campaign.totalUsados)} color="#10b981" />
+        </div>
+      )}
+
+      {/* Content preview */}
+      <div className="rounded-2xl border border-border bg-card p-4 space-y-2">
+        {campaign.asunto && <p className="font-black text-sm">{campaign.asunto}</p>}
+        <p className="text-sm text-muted-foreground whitespace-pre-wrap">{campaign.contenido || '(Sin contenido)'}</p>
+      </div>
+
+      {/* Segmentation */}
+      {Object.keys(campaign.segmento ?? {}).length > 0 && (
+        <div className="rounded-2xl border border-border bg-card p-4 space-y-2">
+          <h3 className="font-black text-xs text-muted-foreground uppercase tracking-wide">Segmento</h3>
+          <div className="flex flex-wrap gap-2">
+            {Object.entries(campaign.segmento).map(([k, v]) => (
+              <span key={k} className="px-2 py-0.5 rounded-full bg-secondary text-xs font-semibold">
+                {k}: {String(v)}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Send button */}
+      {canSend && (
+        <button
+          onClick={onSend}
+          disabled={sending}
+          className="w-full py-3 rounded-2xl bg-emerald-500 text-white font-black hover:bg-emerald-600 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+        >
+          <SendHorizontal size={16} />
+          {sending ? 'Enviando…' : 'Enviar campaña ahora'}
+        </button>
+      )}
+
+      {campaign.estado === 'completada' && (
+        <div className="flex items-center gap-2 px-4 py-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-sm font-semibold">
+          <Check size={16} /> Campaña completada · {campaign.totalEnviados} envíos realizados
         </div>
       )}
     </div>

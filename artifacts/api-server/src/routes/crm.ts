@@ -364,18 +364,47 @@ router.post("/crm/clients", requireAuth, requireRole(...CRM_STAFF), async (req, 
     return;
   }
 
+  // Duplicate check by phone or email
+  const tel = String(telefono ?? "").trim();
+  const mail = String(email ?? "").trim();
+  if (tel || mail) {
+    const dupeConditions = [];
+    if (tel) dupeConditions.push(eq(crmClientsTable.telefono, tel));
+    if (mail) dupeConditions.push(eq(crmClientsTable.email, mail));
+    const [dupe] = await db
+      .select({ id: crmClientsTable.id, nombre: crmClientsTable.nombre })
+      .from(crmClientsTable)
+      .where(or(...dupeConditions))
+      .limit(1);
+    if (dupe) {
+      res.status(409).json({ error: `Ya existe un cliente con ese teléfono o email (${dupe.nombre})`, clienteExistente: dupe });
+      return;
+    }
+  }
+
+  // Generate unique QR token
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const seg = (n: number) => Array.from({ length: n }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
+  const qrToken = `CL-${seg(4)}-${seg(4)}`;
+
+  // Get next customer number from sequence
+  const seqResult = await db.execute(sql`SELECT nextval('crm_num_cliente_seq') as n`);
+  const numCliente = Number(seqResult.rows[0]?.n ?? 1000);
+
   const [client] = await db
     .insert(crmClientsTable)
     .values({
       nombre: String(nombre).trim(),
       apellidos: String(apellidos ?? ""),
-      telefono: String(telefono ?? ""),
-      email: String(email ?? ""),
+      telefono: tel,
+      email: mail,
       fechaNacimiento: fechaNacimiento ? String(fechaNacimiento) : null,
       direccion: String(direccion ?? ""),
       observaciones: String(observaciones ?? ""),
       rgpdConsentimiento: Boolean(rgpdConsentimiento),
       rgpdFecha: rgpdConsentimiento ? new Date() : null,
+      qrToken,
+      numCliente,
     })
     .returning();
 

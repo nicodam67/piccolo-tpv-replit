@@ -46,6 +46,7 @@ import serviceShiftsRouter from "./service-shifts";
 import waitingListRouter from "./waiting-list";
 import deliveryOrdersRouter from "./delivery-orders";
 import onlineOrdersV2Router from "./online-orders-v2";
+import loyaltyExtendedRouter from "./loyalty-extended";
 
 const router: IRouter = Router();
 
@@ -96,5 +97,6 @@ router.use(serviceShiftsRouter);
 router.use(waitingListRouter);
 router.use(deliveryOrdersRouter);
 router.use(onlineOrdersV2Router);
+router.use(loyaltyExtendedRouter);
 
 export default router;
