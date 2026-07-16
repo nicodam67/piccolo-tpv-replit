@@ -268,47 +268,37 @@ describe("POST /api/orders/:orderId/send — emits kds:refresh and orders:refres
     process.env["SESSION_SECRET"] = "test-secret";
   });
 
-  it("emits kds:refresh and orders:refresh after successfully sending draft items", async () => {
-    // 1. order guard select
-    mockDb.select.mockReturnValueOnce(makeChain([{ status: "open" }]));
-    // 2. draft items query (select + innerJoin)
-    mockDb.select.mockReturnValueOnce(makeChain([DRAFT_ROW]));
-    // 3. modifiers query (inArray on draftItemIds)
-    mockDb.select.mockReturnValueOnce(makeChain([]));
-    // 3. transaction — execute callback with a minimal tx mock
+  // Helper: sets up the full mock chain for a successful send, with a given printMode.
+  function setupSendMocks(printMode: string, draftRow: unknown = DRAFT_ROW) {
+    mockDb.select.mockReturnValueOnce(makeChain([{ status: "open" }]));          // 1. guard
+    mockDb.select.mockReturnValueOnce(makeChain([{ printMode }]));                // 2. businessCfg
+    mockDb.select.mockReturnValueOnce(makeChain([{ sentAt: null }]));             // 3. preUpdate
+    mockDb.select.mockReturnValueOnce(makeChain([draftRow]));                     // 4. draftItems
+    mockDb.select.mockReturnValueOnce(makeChain([]));                             // 5. modifiers
     mockDb.transaction.mockImplementationOnce(async (cb: (tx: Record<string, unknown>) => Promise<void>) => {
-      const tx = {
-        insert: vi.fn(() => makeChain([])),
-        update: vi.fn(() => makeChain([])),
-      };
-      await cb(tx);
+      const txInsert = vi.fn(() => makeChain([]));
+      const txUpdate = vi.fn(() => makeChain([]));
+      await cb({ insert: txInsert, update: txUpdate });
+      return { txInsert, txUpdate };
     });
-    // 4. final select → updated order
-    mockDb.select.mockReturnValueOnce(makeChain([UPDATED_ORDER]));
+    mockDb.select.mockReturnValueOnce(makeChain([UPDATED_ORDER]));                // 6. updated order
+  }
+
+  it("emits kds:refresh and orders:refresh after successfully sending draft items (kds_only mode)", async () => {
+    setupSendMocks("kds_only");
 
     const res = await request(app)
       .post(`/api/orders/${ORDER_ID}/send`)
       .set("Authorization", AUTH);
 
     expect(res.status).toBe(200);
-    // Both events must be emitted
     expect(mockEmit).toHaveBeenCalledWith("kds:refresh", expect.objectContaining({ employeeName: "Test Waiter" }));
     expect(mockEmit).toHaveBeenCalledWith("orders:refresh", expect.objectContaining({ orderId: ORDER_ID }));
     expect(mockEmit).toHaveBeenCalledTimes(2);
   });
 
   it("emits kds:refresh before orders:refresh (kitchen display updates first)", async () => {
-    mockDb.select.mockReturnValueOnce(makeChain([{ status: "open" }]));
-    mockDb.select.mockReturnValueOnce(makeChain([DRAFT_ROW]));
-    mockDb.select.mockReturnValueOnce(makeChain([]));
-    mockDb.transaction.mockImplementationOnce(async (cb: (tx: Record<string, unknown>) => Promise<void>) => {
-      const tx = {
-        insert: vi.fn(() => makeChain([])),
-        update: vi.fn(() => makeChain([])),
-      };
-      await cb(tx);
-    });
-    mockDb.select.mockReturnValueOnce(makeChain([UPDATED_ORDER]));
+    setupSendMocks("kds_only");
 
     await request(app)
       .post(`/api/orders/${ORDER_ID}/send`)
@@ -322,10 +312,86 @@ describe("POST /api/orders/:orderId/send — emits kds:refresh and orders:refres
     expect(ordersIndex).toBeGreaterThan(kdsIndex);
   });
 
-  it("returns 400 and does NOT emit any socket event when there are no draft items", async () => {
-    // order guard passes, then draft items query returns empty → 400
+  it("printers_only mode: does NOT emit kds:refresh, still emits orders:refresh", async () => {
+    setupSendMocks("printers_only");
+
+    const res = await request(app)
+      .post(`/api/orders/${ORDER_ID}/send`)
+      .set("Authorization", AUTH);
+
+    expect(res.status).toBe(200);
+    // No KDS event — kitchen display should not receive this
+    expect(mockEmit).not.toHaveBeenCalledWith("kds:refresh", expect.anything());
+    // But the orders panel must still update
+    expect(mockEmit).toHaveBeenCalledWith("orders:refresh", expect.objectContaining({ orderId: ORDER_ID }));
+  });
+
+  it("printers_only mode: transaction does NOT insert KDS tasks", async () => {
     mockDb.select.mockReturnValueOnce(makeChain([{ status: "open" }]));
+    mockDb.select.mockReturnValueOnce(makeChain([{ printMode: "printers_only" }]));
+    mockDb.select.mockReturnValueOnce(makeChain([{ sentAt: null }]));
+    mockDb.select.mockReturnValueOnce(makeChain([DRAFT_ROW]));
     mockDb.select.mockReturnValueOnce(makeChain([]));
+
+    let txInsertCalls = 0;
+    mockDb.transaction.mockImplementationOnce(async (cb: (tx: Record<string, unknown>) => Promise<void>) => {
+      const txInsert = vi.fn(() => { txInsertCalls++; return makeChain([]); });
+      const txUpdate = vi.fn(() => makeChain([]));
+      await cb({ insert: txInsert, update: txUpdate });
+    });
+    mockDb.select.mockReturnValueOnce(makeChain([UPDATED_ORDER]));
+
+    const res = await request(app)
+      .post(`/api/orders/${ORDER_ID}/send`)
+      .set("Authorization", AUTH);
+
+    expect(res.status).toBe(200);
+    // In printers_only mode the transaction must NOT create kitchenTask rows
+    expect(txInsertCalls).toBe(0);
+  });
+
+  it("both mode: emits kds:refresh AND orders:refresh (full dual path)", async () => {
+    setupSendMocks("both");
+
+    const res = await request(app)
+      .post(`/api/orders/${ORDER_ID}/send`)
+      .set("Authorization", AUTH);
+
+    expect(res.status).toBe(200);
+    expect(mockEmit).toHaveBeenCalledWith("kds:refresh", expect.objectContaining({ employeeName: "Test Waiter" }));
+    expect(mockEmit).toHaveBeenCalledWith("orders:refresh", expect.objectContaining({ orderId: ORDER_ID }));
+  });
+
+  it("both mode: transaction creates KDS tasks", async () => {
+    mockDb.select.mockReturnValueOnce(makeChain([{ status: "open" }]));
+    mockDb.select.mockReturnValueOnce(makeChain([{ printMode: "both" }]));
+    mockDb.select.mockReturnValueOnce(makeChain([{ sentAt: null }]));
+    mockDb.select.mockReturnValueOnce(makeChain([DRAFT_ROW]));
+    mockDb.select.mockReturnValueOnce(makeChain([]));
+
+    let txInsertCalls = 0;
+    mockDb.transaction.mockImplementationOnce(async (cb: (tx: Record<string, unknown>) => Promise<void>) => {
+      const txInsert = vi.fn(() => { txInsertCalls++; return makeChain([]); });
+      const txUpdate = vi.fn(() => makeChain([]));
+      await cb({ insert: txInsert, update: txUpdate });
+    });
+    mockDb.select.mockReturnValueOnce(makeChain([UPDATED_ORDER]));
+
+    const res = await request(app)
+      .post(`/api/orders/${ORDER_ID}/send`)
+      .set("Authorization", AUTH);
+
+    expect(res.status).toBe(200);
+    // In both mode the transaction MUST create kitchenTask rows
+    expect(txInsertCalls).toBeGreaterThan(0);
+  });
+
+  it("returns 400 and does NOT emit any socket event when there are no draft items", async () => {
+    // order guard passes, businessCfg loads, then draft items query returns empty → 400
+    mockDb.select.mockReturnValueOnce(makeChain([{ status: "open" }]));
+    mockDb.select.mockReturnValueOnce(makeChain([{ printMode: "kds_only" }]));
+    mockDb.select.mockReturnValueOnce(makeChain([{ sentAt: null }]));
+    mockDb.select.mockReturnValueOnce(makeChain([])); // empty draft items
 
     const res = await request(app)
       .post(`/api/orders/${ORDER_ID}/send`)

@@ -61,6 +61,8 @@ import OnlineOrdersInbox from './pages/online-orders-inbox';
 import DriverView from './pages/driver-view';
 import OrderStatus from './pages/order-status';
 import OnlineReports from './pages/online-reports';
+import AdminImpresoras from './pages/admin-impresoras';
+import AdminColaImpresion from './pages/admin-cola-impresion';
 import NotFound from './pages/not-found';
 
 const queryClient = new QueryClient({
@@ -136,6 +138,9 @@ function Router() {
       <Route path="/admin/online-reports" component={OnlineReports} />
       <Route path="/order-status/:orderNumber" component={OrderStatus} />
       <Route path="/driver/:courierId" component={DriverView} />
+      {/* Printing module */}
+      <Route path="/admin/impresoras" component={AdminImpresoras} />
+      <Route path="/admin/cola-impresion" component={AdminColaImpresion} />
       <Route component={NotFound} />
     </Switch>
   );

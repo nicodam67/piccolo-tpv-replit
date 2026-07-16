@@ -38,6 +38,7 @@ import fichajeRouter from "./fichaje";
 import verifactuRouter from "./verifactu";
 import crmRouter from "./crm";
 import onlineOrdersRouter from "./online-orders";
+import printersRouter from "./printers";
 
 const router: IRouter = Router();
 
@@ -80,5 +81,6 @@ router.use(fichajeRouter);
 router.use(verifactuRouter);
 router.use(crmRouter);
 router.use(onlineOrdersRouter);
+router.use(printersRouter);
 
 export default router;

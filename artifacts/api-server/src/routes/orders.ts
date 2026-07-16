@@ -12,6 +12,7 @@ import {
   waiterNotificationsTable,
   auditLogTable,
   prefacturaPrintsTable,
+  businessConfigTable,
 } from "@workspace/db";
 import { eq, and, inArray, desc, asc, sql } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
@@ -555,7 +556,7 @@ router.delete("/order-items/:itemId", requireAuth, async (req, res): Promise<voi
 router.post("/orders/:orderId/send", requireAuth, async (req, res): Promise<void> => {
   const orderId = req.params.orderId as string;
 
-  // Guard: cannot send to KDS when bill is already requested
+  // Guard: cannot send when bill is already requested
   const [currentOrder] = await db
     .select({ status: ordersTable.status })
     .from(ordersTable)
@@ -564,6 +565,26 @@ router.post("/orders/:orderId/send", requireAuth, async (req, res): Promise<void
   if (currentOrder.status === "bill_requested") {
     res.status(409).json({ error: "No se puede enviar a cocina: la cuenta ya ha sido solicitada" }); return;
   }
+
+  // Load print mode — determines whether KDS tasks and socket events are created.
+  // kds_only (default): KDS tasks + kds:refresh, no physical printing.
+  // printers_only: no KDS tasks, no kds:refresh, physical printing only.
+  // both: KDS tasks + kds:refresh + physical printing.
+  const [businessCfg] = await db
+    .select({ printMode: businessConfigTable.printMode })
+    .from(businessConfigTable)
+    .limit(1);
+  const printMode = (businessCfg?.printMode ?? "kds_only") as "kds_only" | "printers_only" | "both";
+  const sendToKds = printMode !== "printers_only";
+
+  // Capture sentAt BEFORE the transaction so isAdded is correct on first send.
+  // After the transaction, sentAt is always non-null, so deriving it post-update
+  // would wrongly flag every first send as "AÑADIDO".
+  const [preUpdateOrder] = await db
+    .select({ sentAt: ordersTable.sentAt })
+    .from(ordersTable)
+    .where(eq(ordersTable.id, orderId));
+  const wasAlreadySent = preUpdateOrder?.sentAt !== null;
 
   const draftItems = await db
     .select()
@@ -592,26 +613,30 @@ router.post("/orders/:orderId/send", requireAuth, async (req, res): Promise<void
   }
 
   await db.transaction(async (tx) => {
-    for (const row of draftItems) {
-      const item = row.order_items;
-      const product = row.products;
+    // Only create KDS tasks when the mode includes KDS (kds_only or both).
+    // printers_only mode routes entirely through physical printers — no KDS tasks.
+    if (sendToKds) {
+      for (const row of draftItems) {
+        const item = row.order_items;
+        const product = row.products;
 
-      const mods = modsByItem.get(item.id) ?? [];
-      const modText = mods.map((m) => m.modifierName).join(", ");
-      const formatPart = item.formatName ? `[${item.formatName}]` : "";
-      const fullNote = [formatPart, modText, item.notes].filter(Boolean).join(" | ");
+        const mods = modsByItem.get(item.id) ?? [];
+        const modText = mods.map((m) => m.modifierName).join(", ");
+        const formatPart = item.formatName ? `[${item.formatName}]` : "";
+        const fullNote = [formatPart, modText, item.notes].filter(Boolean).join(" | ");
 
-      await tx.insert(kitchenTasksTable).values({
-        orderId,
-        orderItemId: item.id,
-        prepZone: product.prepZone,
-        productName: product.name + (item.formatName ? ` (${item.formatName})` : ""),
-        quantity: item.quantity,
-        status: "new",
-        notes: fullNote,
-        allergyNote: item.allergyNote,
-        hasAllergy: item.hasAllergy,
-      });
+        await tx.insert(kitchenTasksTable).values({
+          orderId,
+          orderItemId: item.id,
+          prepZone: product.prepZone,
+          productName: product.name + (item.formatName ? ` (${item.formatName})` : ""),
+          quantity: item.quantity,
+          status: "new",
+          notes: fullNote,
+          allergyNote: item.allergyNote,
+          hasAllergy: item.hasAllergy,
+        });
+      }
     }
 
     await tx
@@ -632,9 +657,67 @@ router.post("/orders/:orderId/send", requireAuth, async (req, res): Promise<void
 
   try {
     const io = getIO();
-    io.emit("kds:refresh", { employeeName: req.user?.name ?? null });
+    // kds:refresh is only meaningful when KDS is active (kds_only or both).
+    // printers_only mode skips KDS socket event to avoid confusing KDS screens.
+    if (sendToKds) {
+      io.emit("kds:refresh", { employeeName: req.user?.name ?? null });
+    }
     emitRefresh(orderId, req.user?.name);
   } catch { /* ignore */ }
+
+  // ── Print dispatch (non-blocking, does not affect KDS flow) ──────────────
+  try {
+    const { dispatchKitchenPrint } = await import("../lib/print-dispatch");
+    // isAdded is true only when the order had already been sent BEFORE this
+    // request — derived from the pre-transaction snapshot captured above.
+    const isAdded = wasAlreadySent;
+
+    const printItems = draftItems.map(row => {
+      const item = row.order_items;
+      const product = row.products;
+      const mods = (modsByItem.get(item.id) ?? []).map(m => m.modifierName);
+      return {
+        productId: product.id,
+        categoryId: product.categoryId,
+        prepZone: product.prepZone,
+        ticketItem: {
+          quantity: item.quantity,
+          name: product.name,
+          formatName: item.formatName,
+          notes: item.notes,
+          allergyNote: item.allergyNote,
+          hasAllergy: item.hasAllergy,
+          modifiers: mods,
+        },
+      };
+    });
+
+    const tableName = updated?.tableId
+      ? (await db.select({ name: restaurantTablesTable.name })
+          .from(restaurantTablesTable)
+          .where(eq(restaurantTablesTable.id, updated.tableId)))[0]?.name
+      : null;
+
+    await dispatchKitchenPrint({
+      order: {
+        id: orderId,
+        tableName: tableName ?? null,
+        orderNumber: updated?.orderNumber ?? null,
+        orderType: updated?.orderType,
+        deliveryType: updated?.deliveryType,
+        clientName: updated?.clientName,
+        guestCount: updated?.guestCount,
+        employeeName: req.user?.name,
+        estimatedReadyAt: updated?.estimatedReadyAt,
+        sentAt: updated?.sentAt,
+        createdAt: updated?.createdAt,
+      },
+      items: printItems,
+      isAdded,
+      actorId: req.user?.id,
+      actorName: req.user?.name,
+    });
+  } catch { /* print errors never fail the order send */ }
 
   res.json(updated);
 });

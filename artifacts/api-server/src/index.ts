@@ -4,6 +4,7 @@ import { logger } from "./lib/logger";
 import { initSocket } from "./lib/socket";
 import { seedDocuments } from "./lib/seed-documents";
 import { seedCash } from "./lib/seed-cash";
+import { startPrintWorker } from "./lib/print-worker";
 
 const rawPort = process.env["PORT"];
 
@@ -28,6 +29,7 @@ server.listen(port, async () => {
   } catch (err) {
     logger.error({ err }, "Seed documents failed — continuing");
   }
+  startPrintWorker();
 });
 
 server.on("error", (err) => {

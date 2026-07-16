@@ -39,6 +39,8 @@ import {
   Globe,
   Bike,
   BarChart2,
+  PrinterIcon,
+  ListOrdered,
 } from 'lucide-react';
 import { useGetDashboardSummary, getGetDashboardSummaryQueryKey, customFetch } from '@workspace/api-client-react';
 import { useQuery } from '@tanstack/react-query';
@@ -544,6 +546,33 @@ const MODULES: ModuleCard[] = [
     iconBg: 'rgba(52,211,153,0.15)',
     iconColor: '#34d399',
     glow: 'rgba(52,211,153,0.12)',
+  },
+  // ─── Impresión ────────────────────────────────────────────────────────────
+  {
+    id: 'impresoras',
+    icon: <PrinterIcon size={28} />,
+    title: 'Impresoras',
+    description: 'Configurar · modo · plantilla de tickets',
+    href: '/admin/impresoras',
+    ready: true,
+    accent: 'rgba(161,161,170,0.07)',
+    border: 'rgba(161,161,170,0.28)',
+    iconBg: 'rgba(161,161,170,0.15)',
+    iconColor: '#a1a1aa',
+    glow: 'rgba(161,161,170,0.12)',
+  },
+  {
+    id: 'cola-impresion',
+    icon: <ListOrdered size={28} />,
+    title: 'Cola de Impresión',
+    description: 'Pendientes · errores · reimpresiones',
+    href: '/admin/cola-impresion',
+    ready: true,
+    accent: 'rgba(251,146,60,0.07)',
+    border: 'rgba(251,146,60,0.28)',
+    iconBg: 'rgba(251,146,60,0.15)',
+    iconColor: '#fb923c',
+    glow: 'rgba(251,146,60,0.12)',
   },
   // ─── Personal · Fichaje ───────────────────────────────────────────────────
   {

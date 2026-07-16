@@ -35,6 +35,11 @@ export const businessConfigTable = pgTable("business_config", {
   cardLayout: text("card_layout").notNull().default("grid"),
   /** Accent/primary color for the QR carta, e.g. "#ef4444" */
   accentColor: text("accent_color").notNull().default("#ef4444"),
+  // ── Printing module ────────────────────────────────────────────────────────
+  /** kds_only | printers_only | both */
+  printMode: text("print_mode").notNull().default("kds_only"),
+  /** PrintTemplateConfig stored as jsonb */
+  printTemplateConfig: jsonb("print_template_config"),
 });
 
 export type BusinessConfig = typeof businessConfigTable.$inferSelect;
