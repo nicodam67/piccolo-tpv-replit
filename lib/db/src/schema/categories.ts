@@ -8,6 +8,8 @@ export const categoriesTable = pgTable("categories", {
   active: boolean("active").notNull().default(true),
   color: text("color"),
   icon: text("icon"),
+  /** English translation for the public menu */
+  nameEn: text("name_en").notNull().default(""),
 });
 
 export const subcategoriesTable = pgTable("subcategories", {
@@ -52,6 +54,11 @@ export const productsTable = pgTable("products", {
   isVegano: boolean("is_vegano").notNull().default(false),
   isSinGluten: boolean("is_sin_gluten").notNull().default(false),
   isPicante: boolean("is_picante").notNull().default(false),
+  /** Translations for multilingual public menu */
+  nameEn: text("name_en").notNull().default(""),
+  descriptionEn: text("description_en").notNull().default(""),
+  nameEs: text("name_es").notNull().default(""),
+  descriptionEs: text("description_es").notNull().default(""),
 });
 
 export const productFormatsTable = pgTable("product_formats", {

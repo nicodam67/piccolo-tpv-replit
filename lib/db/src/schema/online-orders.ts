@@ -46,6 +46,13 @@ export const onlineOrdersConfigTable = pgTable("online_orders_config", {
   maxOrdersPerSlot: integer("max_orders_per_slot").notNull().default(10),
   paused: boolean("paused").notNull().default(false),
   pauseReason: text("pause_reason").notNull().default(""),
+  // v2 additions (migration 0007_online_v2)
+  tipEnabled: boolean("tip_enabled").notNull().default(false),
+  tipPercentages: jsonb("tip_percentages").$type<number[]>().notNull().default([5, 10, 15, 20]),
+  tableOrderingEnabled: boolean("table_ordering_enabled").notNull().default(false),
+  stripePublishableKey: text("stripe_publishable_key").notNull().default(""),
+  stripeSecretKey: text("stripe_secret_key").notNull().default(""),
+  stripeWebhookSecret: text("stripe_webhook_secret").notNull().default(""),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 export type OnlineOrdersConfig = typeof onlineOrdersConfigTable.$inferSelect;
@@ -148,3 +155,72 @@ export const notificationLogTable = pgTable("notification_log", {
   simulated: boolean("simulated").notNull().default(true),
 });
 export type NotificationLog = typeof notificationLogTable.$inferSelect;
+
+// ── Table Sessions (v2) ───────────────────────────────────────────────────────
+/** Created when a customer scans a QR code at a dine-in table. */
+export const tableSessionsTable = pgTable("table_sessions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  /** Optional FK to tables — nullable to survive table deletions */
+  tableId: uuid("table_id"),
+  zoneId: uuid("zone_id"),
+  tableLabel: text("table_label").notNull().default(""),
+  zoneLabel: text("zone_label").notNull().default(""),
+  /** Unguessable token embedded in the QR code URL */
+  token: text("token").notNull(),
+  /** open | closed | expired */
+  status: text("status").notNull().default("open"),
+  guestName: text("guest_name").notNull().default(""),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  closedAt: timestamp("closed_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+export type TableSession = typeof tableSessionsTable.$inferSelect;
+
+// ── Online Carts (v2) ─────────────────────────────────────────────────────────
+/** Server-side cart so customers can resume their order after a page reload. */
+export const onlineCartsTable = pgTable("online_carts", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  /** Matches table_sessions.token or a guest cookie UUID */
+  sessionToken: text("session_token").notNull(),
+  deliveryType: text("delivery_type").notNull().default("takeaway"),
+  items: jsonb("items").notNull().default([]),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+export type OnlineCart = typeof onlineCartsTable.$inferSelect;
+
+// ── Payment Attempts (v2) ─────────────────────────────────────────────────────
+/** Tracks every payment-gateway interaction (Stripe or simulator). */
+export const paymentAttemptsTable = pgTable("payment_attempts", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orderId: uuid("order_id"),
+  /** stripe | simulator */
+  provider: text("provider").notNull().default("stripe"),
+  /** Stripe PaymentIntent id or SIM-{timestamp} */
+  externalId: text("external_id").notNull().default(""),
+  /** pending | succeeded | failed | refunded */
+  status: text("status").notNull().default("pending"),
+  amountCents: integer("amount_cents").notNull().default(0),
+  currency: text("currency").notNull().default("eur"),
+  errorMessage: text("error_message").notNull().default(""),
+  rawResponse: jsonb("raw_response"),
+  refundedAt: timestamp("refunded_at", { withTimezone: true }),
+  refundRef: text("refund_ref").notNull().default(""),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+export type PaymentAttempt = typeof paymentAttemptsTable.$inferSelect;
+
+// ── Product Availability Rules (v2) ──────────────────────────────────────────
+/** Restrict product/category visibility on the public menu by time and day. */
+export const productAvailabilityRulesTable = pgTable("product_availability_rules", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  productId: uuid("product_id"),
+  categoryId: uuid("category_id"),
+  label: text("label").notNull().default(""),
+  /** Array of day-of-week numbers: 0=Sun … 6=Sat */
+  daysOfWeek: jsonb("days_of_week").notNull().default([0, 1, 2, 3, 4, 5, 6]),
+  timeFrom: text("time_from").notNull().default("00:00"),
+  timeTo: text("time_to").notNull().default("23:59"),
+  active: boolean("active").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+export type ProductAvailabilityRule = typeof productAvailabilityRulesTable.$inferSelect;

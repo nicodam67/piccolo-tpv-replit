@@ -7,6 +7,7 @@ import { seedCash } from "./lib/seed-cash";
 import { seedStockDemo } from "./lib/seed-stock-demo";
 import { seedReservationsDemo } from "./lib/seed-reservations-demo";
 import { seedDeliveryDemo } from "./lib/seed-delivery-demo";
+import { seedOnlineDemo } from "./lib/seed-online-demo";
 import { startPrintWorker } from "./lib/print-worker";
 
 const rawPort = process.env["PORT"];
@@ -34,6 +35,7 @@ server.listen(port, async () => {
       await seedStockDemo();
       await seedReservationsDemo();
       await seedDeliveryDemo();
+      await seedOnlineDemo();
     }
   } catch (err) {
     logger.error({ err }, "Seed documents failed — continuing");

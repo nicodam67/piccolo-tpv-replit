@@ -57,7 +57,15 @@ app.use(
     credentials: false,
   }),
 );
-app.use(express.json());
+// Capture raw request body for Stripe webhook signature verification.
+// The verify callback runs before JSON parsing; we store the raw Buffer on the
+// request object so the webhook route can pass it verbatim to
+// stripe.webhooks.constructEvent().
+app.use(express.json({
+  verify: (req: any, _res, buf) => {
+    req.rawBody = buf;
+  },
+}));
 app.use(express.urlencoded({ extended: true }));
 
 app.use("/api", router);

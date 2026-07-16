@@ -69,6 +69,7 @@ import AdminAlmacenes from './pages/admin-almacenes';
 import AdminTurnosReservas from './pages/admin-turnos-reservas';
 import DeliveryPage from './pages/delivery';
 import AdminRepartidores from './pages/admin-repartidores';
+import MenuPage from './pages/menu';
 import NotFound from './pages/not-found';
 
 const queryClient = new QueryClient({
@@ -156,6 +157,8 @@ function Router() {
       {/* Delivery module */}
       <Route path="/delivery" component={DeliveryPage} />
       <Route path="/admin/repartidores" component={AdminRepartidores} />
+      {/* Public menu with QR table session support */}
+      <Route path="/menu" component={MenuPage} />
       <Route component={NotFound} />
     </Switch>
   );

@@ -45,6 +45,7 @@ import wasteRecordsRouter from "./waste-records";
 import serviceShiftsRouter from "./service-shifts";
 import waitingListRouter from "./waiting-list";
 import deliveryOrdersRouter from "./delivery-orders";
+import onlineOrdersV2Router from "./online-orders-v2";
 
 const router: IRouter = Router();
 
@@ -94,5 +95,6 @@ router.use(wasteRecordsRouter);
 router.use(serviceShiftsRouter);
 router.use(waitingListRouter);
 router.use(deliveryOrdersRouter);
+router.use(onlineOrdersV2Router);
 
 export default router;

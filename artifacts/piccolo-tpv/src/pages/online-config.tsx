@@ -6,7 +6,7 @@ import { useState, useEffect } from 'react';
 import { useLocation } from 'wouter';
 import {
   ArrowLeft, Save, Settings, Clock, MapPin, Users,
-  Plus, Trash2, Truck, Pause, Play, Package,
+  Plus, Trash2, Truck, Pause, Play, Package, QrCode, RefreshCw, ExternalLink, Copy,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { customFetch } from '@workspace/api-client-react';
@@ -418,6 +418,171 @@ function TabRepartidores({ couriers, onRefresh }: { couriers: Courier[]; onRefre
   );
 }
 
+// ── Tab: QR Mesas ─────────────────────────────────────────────────────────────
+
+interface TableSessionRow {
+  id: string;
+  tableLabel: string;
+  zoneLabel: string;
+  token: string;
+  status: string;
+  expiresAt: string;
+  createdAt: string;
+}
+
+function TabQR() {
+  const [sessions, setSessions] = useState<TableSessionRow[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [form, setForm] = useState({ tableLabel: '', zoneLabel: '' });
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  const menuBase = `${window.location.origin}${import.meta.env.BASE_URL.replace(/\/$/, '')}/menu`;
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const data = await api('/api/admin/table-sessions?status=open') as TableSessionRow[];
+      setSessions(Array.isArray(data) ? data : []);
+    } catch { /* ignore */ }
+    finally { setLoading(false); }
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const createSession = async () => {
+    if (!form.tableLabel.trim()) return;
+    setCreating(true);
+    try {
+      const res = await apiJSON('/api/public/table-sessions', 'POST', {
+        tableLabel: form.tableLabel.trim(),
+        zoneLabel: form.zoneLabel.trim(),
+      }) as TableSessionRow;
+      setSessions(prev => [res, ...prev]);
+      setForm({ tableLabel: '', zoneLabel: '' });
+    } catch { toast.error('Error creando sesión'); }
+    finally { setCreating(false); }
+  };
+
+  const closeSession = async (id: string) => {
+    try {
+      await apiJSON(`/api/admin/table-sessions/${id}`, 'PATCH', { status: 'closed' });
+      setSessions(prev => prev.filter(s => s.id !== id));
+    } catch { toast.error('Error cerrando sesión'); }
+  };
+
+  const copyUrl = (token: string, id: string) => {
+    navigator.clipboard.writeText(`${menuBase}?token=${token}`);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Info banner */}
+      <div className="bg-blue-500/10 border border-blue-500/20 rounded-2xl p-4 text-sm text-blue-300">
+        <p className="font-semibold mb-1">📱 Pedidos desde la mesa por QR</p>
+        <p className="text-blue-300/70 text-xs leading-relaxed">
+          Genera una sesión por mesa. Imprime o muestra el código QR en la mesa para que los clientes pidan desde su móvil.
+          Cada sesión expira a las 4 horas.
+        </p>
+      </div>
+
+      {/* Create session */}
+      <div className="bg-zinc-800/60 border border-zinc-700 rounded-2xl p-4 space-y-3">
+        <p className="text-xs font-black uppercase tracking-widest text-zinc-500">Generar QR para nueva sesión</p>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className={LABEL_STYLE}>Nombre de mesa *</label>
+            <input className={INPUT_STYLE} placeholder="Mesa 1" value={form.tableLabel}
+              onChange={e => setForm(p => ({ ...p, tableLabel: e.target.value }))} />
+          </div>
+          <div>
+            <label className={LABEL_STYLE}>Zona / Sala</label>
+            <input className={INPUT_STYLE} placeholder="Terraza" value={form.zoneLabel}
+              onChange={e => setForm(p => ({ ...p, zoneLabel: e.target.value }))} />
+          </div>
+        </div>
+        <button onClick={createSession} disabled={creating || !form.tableLabel.trim()}
+          className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-sm disabled:opacity-50 transition-colors">
+          <QrCode size={16} /> {creating ? 'Generando…' : 'Generar QR'}
+        </button>
+      </div>
+
+      {/* Sessions list */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <p className="text-xs font-black uppercase tracking-widest text-zinc-500">Sesiones activas ({sessions.length})</p>
+          <button onClick={load} disabled={loading}
+            className="flex items-center gap-1.5 text-xs text-zinc-400 hover:text-white transition-colors">
+            <RefreshCw size={12} className={loading ? 'animate-spin' : ''} /> Actualizar
+          </button>
+        </div>
+
+        {sessions.length === 0 && !loading && (
+          <div className="text-center py-10 text-zinc-600 text-sm">
+            <QrCode size={32} className="mx-auto mb-2 opacity-30" />
+            <p>No hay sesiones activas</p>
+          </div>
+        )}
+
+        {sessions.map(s => {
+          const url = `${menuBase}?token=${s.token}`;
+          const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(url)}&bgcolor=ffffff&color=000000&margin=1`;
+          const expires = new Date(s.expiresAt);
+          const isExpired = expires < new Date();
+
+          return (
+            <div key={s.id}
+              className={`bg-zinc-800 rounded-2xl p-4 flex gap-4 items-start ${isExpired ? 'opacity-50' : ''}`}>
+              {/* QR image */}
+              <div className="shrink-0 bg-white rounded-xl p-1.5">
+                <img src={qrImageUrl} alt="QR Code" width={80} height={80} className="rounded-lg" />
+              </div>
+
+              {/* Info */}
+              <div className="flex-1 min-w-0 space-y-1.5">
+                <div>
+                  <p className="font-bold text-sm text-white">
+                    {s.tableLabel}{s.zoneLabel ? <span className="text-zinc-400 font-normal"> · {s.zoneLabel}</span> : ''}
+                  </p>
+                  <p className="text-[10px] text-zinc-500 font-mono mt-0.5 truncate">{s.token}</p>
+                </div>
+                <p className={`text-xs ${isExpired ? 'text-red-400' : 'text-zinc-400'}`}>
+                  {isExpired ? '⛔ Caducada' : `Expira: ${expires.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}`}
+                </p>
+
+                {/* Actions */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button onClick={() => copyUrl(s.token, s.id)}
+                    className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-zinc-700 hover:bg-zinc-600 text-zinc-300 transition-colors">
+                    <Copy size={11} />
+                    {copiedId === s.id ? '¡Copiado!' : 'Copiar URL'}
+                  </button>
+                  <a href={url} target="_blank" rel="noopener noreferrer"
+                    className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-zinc-700 hover:bg-zinc-600 text-zinc-300 transition-colors">
+                    <ExternalLink size={11} /> Abrir menú
+                  </a>
+                  <button onClick={() => closeSession(s.id)}
+                    className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-400 transition-colors ml-auto">
+                    <Trash2 size={11} /> Cerrar sesión
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Demo URL */}
+      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-xs text-zinc-500">
+        <p className="font-semibold mb-1">URL base del menú:</p>
+        <p className="font-mono text-zinc-400 break-all">{menuBase}?token=TU_TOKEN</p>
+      </div>
+    </div>
+  );
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 const DEFAULT_CFG: OnlineConfig = {
@@ -429,7 +594,7 @@ const DEFAULT_CFG: OnlineConfig = {
 
 export default function OnlineConfig() {
   const [, navigate] = useLocation();
-  const [activeTab, setActiveTab] = useState<'general' | 'horarios' | 'zonas' | 'repartidores'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'horarios' | 'zonas' | 'repartidores' | 'qr'>('general');
   const [cfg, setCfg] = useState<OnlineConfig>(DEFAULT_CFG);
   const [schedule, setSchedule] = useState<Record<string, { open: string; close: string; open2?: string; close2?: string }>>({});
   const [zones, setZones] = useState<DeliveryZone[]>([]);
@@ -466,6 +631,7 @@ export default function OnlineConfig() {
     { key: 'horarios', label: '🕐 Horarios', icon: <Clock size={14} /> },
     { key: 'zonas', label: '📍 Zonas', icon: <MapPin size={14} /> },
     { key: 'repartidores', label: '🚴 Repartidores', icon: <Truck size={14} /> },
+    { key: 'qr', label: '📱 QR Mesas', icon: <QrCode size={14} /> },
   ] as const;
 
   return (
@@ -507,6 +673,9 @@ export default function OnlineConfig() {
             )}
             {activeTab === 'repartidores' && (
               <TabRepartidores couriers={couriers} onRefresh={load} />
+            )}
+            {activeTab === 'qr' && (
+              <TabQR />
             )}
           </>
         )}

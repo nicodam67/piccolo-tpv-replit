@@ -182,6 +182,11 @@ router.get("/public/online-config", async (_req, res): Promise<void> => {
     maxOrdersPerSlot: cfg.maxOrdersPerSlot,
     paused: cfg.paused,
     pauseReason: cfg.pauseReason,
+    // v2 fields
+    tipEnabled: cfg.tipEnabled ?? false,
+    tipPercentages: Array.isArray(cfg.tipPercentages) ? cfg.tipPercentages : [5, 10, 15, 20],
+    tableOrderingEnabled: cfg.tableOrderingEnabled ?? false,
+    stripePublishableKey: cfg.stripePublishableKey ?? "",
     zones: zones.map((z) => ({
       id: z.id,
       name: z.name,

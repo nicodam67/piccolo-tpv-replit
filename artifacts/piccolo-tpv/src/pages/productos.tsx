@@ -57,10 +57,16 @@ function ToggleField({ label, value, onChange }: { label: string; value: boolean
 }
 
 // ── Product card in grid ──────────────────────────────────────────────────────
-function ProductCard({ product, onEdit }: { product: AdminProduct; onEdit: () => void }) {
+function ProductCard({ product, onEdit, onToggleSoldout }: {
+  product: AdminProduct;
+  onEdit: () => void;
+  onToggleSoldout: (id: string, outOfStock: boolean) => void;
+}) {
   const margin = product.cost && product.price
     ? ((parseFloat(product.price) - parseFloat(product.cost)) / parseFloat(product.price) * 100).toFixed(0)
     : null;
+
+  const outOfStock = (product as any).outOfStock ?? false;
 
   return (
     <button
@@ -72,6 +78,20 @@ function ProductCard({ product, onEdit }: { product: AdminProduct; onEdit: () =>
         <span className="absolute top-2 right-2 text-[9px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-full bg-secondary/80 text-muted-foreground border border-border/60">
           Archivado
         </span>
+      )}
+      {/* Quick soldout toggle — stop propagation so it doesn't open the edit sheet */}
+      {product.active && (
+        <button
+          onClick={e => { e.stopPropagation(); onToggleSoldout(product.id, !outOfStock); }}
+          title={outOfStock ? 'Marcar disponible' : 'Marcar agotado'}
+          className={`absolute top-2 left-2 flex items-center gap-0.5 text-[9px] font-black px-1.5 py-0.5 rounded-full border transition-all ${
+            outOfStock
+              ? 'bg-red-500/20 text-red-400 border-red-500/40 hover:bg-red-500/30'
+              : 'bg-secondary/50 text-muted-foreground border-border/40 hover:bg-secondary opacity-0 group-hover:opacity-100'
+          }`}
+        >
+          {outOfStock ? '⛔ Agotado' : <CircleOff size={10} />}
+        </button>
       )}
       {product.imageUrl && (
         <div className="w-full h-20 rounded-lg overflow-hidden bg-secondary/30">
@@ -1005,7 +1025,19 @@ export default function ProductosPage() {
         )}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
           {filtered.map((p) => (
-            <ProductCard key={p.id} product={p} onEdit={() => setEditingProduct(p)} />
+            <ProductCard key={p.id} product={p} onEdit={() => setEditingProduct(p)}
+              onToggleSoldout={async (id, outOfStock) => {
+                try {
+                  const BASE = import.meta.env.BASE_URL.replace(/\/$/, '');
+                  await fetch(`${BASE}/api/admin/products/${id}/soldout`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('token') ?? ''}` },
+                    body: JSON.stringify({ outOfStock }),
+                  });
+                  qc.invalidateQueries({ queryKey: getGetAdminProductsQueryKey() });
+                } catch { /* ignore */ }
+              }}
+            />
           ))}
         </div>
       </main>
