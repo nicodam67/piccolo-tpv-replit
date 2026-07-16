@@ -1,0 +1,730 @@
+La siguiente tarea es crear un asistente de configuración y puesta en marcha, para dejar el TPV preparado paso a paso sin depender de conocimientos técnicos.
+Escritura
+TAREA: Asistente de configuración inicial, instalación y puesta en marcha del restaurante
+Implementar un asistente profesional de configuración inicial para el TPV Piccolo.
+El objetivo es que el sistema pueda instalarse y prepararse mediante pasos guiados, claros y seguros, sin necesidad de conocimientos técnicos avanzados.
+1. Revisión previa obligatoria
+Antes de programar:
+Revisar la configuración actual del restaurante.
+Revisar productos, categorías, impuestos, mesas, zonas y usuarios.
+Revisar impresoras, KDS, caja, empleados y fichaje.
+Revisar pedidos online, reparto, reservas y stock.
+Revisar si ya existe algún asistente inicial.
+No crear configuraciones duplicadas.
+No borrar datos existentes.
+Detectar automáticamente qué partes ya están configuradas.
+Replit debe explicar qué módulos actuales reutilizará.
+2. Modos del asistente
+Crear varios modos:
+Configuración inicial completa.
+Configuración rápida.
+Revisión de configuración existente.
+Añadir un nuevo dispositivo.
+Añadir una nueva impresora.
+Añadir una nueva pantalla KDS.
+Añadir una nueva zona.
+Añadir un nuevo usuario.
+Cambiar de local o centro de trabajo.
+Recuperar configuración después de restauración.
+El asistente debe poder retomarse donde se dejó.
+3. Barra de progreso
+Mostrar:
+Paso actual.
+Pasos completados.
+Pasos pendientes.
+Porcentaje de avance.
+Errores.
+Advertencias.
+Recomendaciones.
+Botón guardar y continuar después.
+No obligar a terminar toda la configuración en una sola sesión.
+4. Identificación del restaurante
+Solicitar:
+Nombre comercial.
+Razón social.
+NIF o CIF.
+Dirección.
+Código postal.
+Localidad.
+Provincia.
+País.
+Teléfono.
+Correo electrónico.
+Página web.
+Nombre fiscal.
+Moneda.
+Zona horaria.
+Idioma principal.
+Idiomas adicionales.
+Logo.
+Imagen principal.
+Frase de marca.
+Configurar inicialmente la frase:
+“Cocina con sabor italiano”
+Permitir modificarla después.
+5. Datos fiscales
+Configurar:
+Régimen fiscal.
+Series de facturación.
+Series por tipo de documento.
+Numeración inicial.
+IVA aplicable.
+Datos fiscales del emisor.
+Factura simplificada.
+Factura completa.
+Factura rectificativa.
+Prefactura.
+Configuración de VERI*FACTU.
+Certificados o credenciales, cuando corresponda.
+Modo de pruebas.
+Modo de producción.
+Mostrar advertencias claras si faltan datos fiscales.
+No activar producción fiscal automáticamente sin confirmación.
+6. Tipos de IVA
+Permitir configurar y verificar:
+IVA del 4 %.
+IVA del 10 %.
+IVA del 21 %.
+Otros tipos futuros.
+Configurar por defecto para hostelería:
+Productos de restauración: 10 %, salvo excepción.
+Productos especiales: según configuración.
+No aplicar un único IVA a todos los productos sin revisión.
+Crear una pantalla para detectar productos sin impuesto asignado.
+7. Configuración de servicios
+Permitir activar o desactivar:
+Consumo en local.
+Barra.
+Terraza.
+Recogida.
+Reparto.
+Pedidos online.
+Carta QR.
+Reservas.
+Lista de espera.
+Fidelización.
+Tarjetas regalo.
+Fichaje.
+Stock.
+Escandallos.
+Compras.
+KDS.
+Impresoras.
+Caja de autocobro.
+Mostrar únicamente la configuración de los módulos activados.
+8. Horarios
+Configurar:
+Horario general.
+Comida.
+Cena.
+Cocina.
+Reparto.
+Recogida.
+Pedidos online.
+Reservas.
+Días cerrados.
+Vacaciones.
+Festivos.
+Horarios especiales.
+Primer y segundo turno.
+Permitir copiar horarios entre días.
+9. Zonas del restaurante
+Crear o revisar zonas como:
+Sala.
+Terraza.
+Barra.
+Cocina.
+Pizza.
+Ensaladas.
+Reparto.
+Almacén.
+Cámara frigorífica.
+Congelador.
+Cada zona debe permitir:
+Nombre.
+Tipo.
+Color.
+Orden.
+Estado.
+Impresora asociada.
+KDS asociado.
+Productos asociados.
+Usuarios autorizados.
+10. Plano de mesas
+Integrar el editor de plano existente.
+Permitir:
+Crear salas.
+Añadir mesas.
+Añadir paredes.
+Añadir columnas.
+Añadir ventanas.
+Añadir puertas.
+Añadir elementos decorativos.
+Cambiar tamaño y forma.
+Asignar número de comensales.
+Duplicar elementos.
+Alinear.
+Bloquear elementos.
+Definir zonas.
+Verificar que al tocar cualquier elemento del menú de añadir se cree correctamente en el plano, igual que ocurre con las mesas.
+11. Productos y carta
+Permitir:
+Empezar con carta vacía.
+Importar productos.
+Utilizar plantilla de demostración.
+Copiar categorías existentes.
+Importar desde CSV o XLSX.
+Revisar productos ya existentes.
+Configurar:
+Categorías.
+Subcategorías.
+Productos.
+Precio.
+IVA.
+Descripción.
+Imagen.
+Alérgenos.
+Etiquetas.
+Tamaños.
+Media ración.
+Modificadores.
+Extras.
+Disponibilidad.
+Canales de venta.
+Partida de cocina.
+12. Importación de productos
+Crear un asistente de importación para:
+CSV.
+XLS.
+XLSX.
+JSON.
+Permitir mapear:
+Código.
+Nombre.
+Categoría.
+Precio.
+IVA.
+Descripción.
+Alérgenos.
+Coste.
+Unidad.
+Código de barras.
+Estado.
+Canal.
+Partida.
+Mostrar vista previa y detectar duplicados.
+13. Productos incompletos
+Crear una comprobación para detectar:
+Producto sin precio.
+Producto sin IVA.
+Producto sin categoría.
+Producto sin partida.
+Producto sin nombre.
+Producto duplicado.
+Producto sin escandallo.
+Producto sin imagen.
+Producto no disponible.
+Modificador incompleto.
+Distinguir entre error obligatorio y recomendación.
+14. Usuarios iniciales
+Crear usuarios iniciales:
+Administrador.
+Gerente.
+Encargado.
+Camarero.
+Caja.
+Cocina.
+Repartidor.
+Permitir:
+Crear PIN.
+Asignar rol.
+Asignar permisos.
+Vincular con empleado.
+Activar acceso a dispositivos.
+Obligar a cambiar el PIN inicial.
+No usar claves de demostración inseguras en producción.
+15. Empleados y fichaje
+Permitir:
+Crear empleados manualmente.
+Importar empleados.
+Vincular empleado con usuario.
+Configurar PIN.
+Configurar jornada.
+Configurar puesto.
+Configurar fichaje.
+Activar PWA.
+Importar fichajes desde distintos formatos.
+No incluir integración directa con ninguna marca concreta.
+16. Caja
+Configurar:
+Número de cajas.
+Nombre de cada caja.
+Terminal asociado.
+Importe inicial habitual.
+Formas de pago.
+Cajón portamonedas.
+Impresora.
+Arqueo obligatorio.
+Cierre diario.
+Permisos.
+Caja principal.
+Caja secundaria.
+Caja de reparto.
+Caja de autocobro.
+17. Formas de pago
+Permitir configurar:
+Efectivo.
+Tarjeta.
+Bizum.
+Transferencia.
+Pago online.
+Tarjeta regalo.
+Monedero.
+Pago mixto.
+Otros.
+Para cada forma:
+Activa o inactiva.
+Requiere referencia.
+Permite devolución.
+Visible en TPV.
+Visible online.
+Incluida en caja.
+Requiere conciliación.
+18. Impresoras
+Crear un asistente para añadir impresoras:
+Ticket.
+Cocina.
+Pizza.
+Ensaladas.
+Barra.
+Reparto.
+Facturas.
+Etiquetas.
+Permitir conexión por:
+Red local.
+USB.
+Bluetooth, si el dispositivo lo permite.
+Servicio de impresión local.
+Cola interna.
+Cada impresora debe permitir:
+Nombre.
+Tipo.
+Dirección o puerto.
+Ancho de papel.
+Copias.
+Corte automático.
+Apertura de cajón.
+Plantilla.
+Zona.
+Productos.
+Estado.
+19. Prueba de impresora
+El asistente debe:
+Detectar impresora, cuando sea posible.
+Enviar página de prueba.
+Confirmar ancho.
+Confirmar caracteres.
+Confirmar corte.
+Confirmar apertura de cajón.
+Mostrar resultado.
+Permitir seleccionar alternativa.
+No marcar una impresora como lista sin prueba o confirmación manual.
+20. Enrutamiento de impresión
+Configurar reglas:
+Pizzas a impresora de pizza.
+Platos de cocina a cocina.
+Ensaladas a ensaladas.
+Bebidas a barra.
+Reparto a impresora de reparto.
+Facturas a impresora principal.
+Permitir:
+Varias copias.
+Impresora alternativa.
+Reenvío.
+Impresión por zona.
+Impresión por producto.
+Impresión por canal.
+21. KDS
+Crear un asistente para configurar pantallas KDS:
+Cocina.
+Pizza.
+Ensaladas.
+Barra.
+Recogida de platos.
+Expedición de reparto.
+Cada KDS debe permitir:
+Nombre.
+Zona.
+Partidas visibles.
+Estados.
+Sonido.
+Prioridad.
+Tiempo objetivo.
+Vista.
+Tamaño de texto.
+Dispositivo autorizado.
+22. KDS de recogida de platos
+Configurar una pantalla específica para el punto donde los camareros recogen los platos.
+Debe mostrar:
+Mesa.
+Pedido.
+Plato.
+Partida.
+Estado.
+Tiempo.
+Prioridad.
+Platos pendientes de la misma mesa.
+Pedido completo o incompleto.
+Botón recogido.
+Aviso cuando todos los platos estén listos.
+23. Prueba completa de KDS
+Crear una prueba guiada:
+Generar una comanda de prueba.
+Enviarla a las partidas.
+Confirmar recepción.
+Cambiar estados.
+Marcar platos preparados.
+Verlos en expedición.
+Marcar recogidos.
+Confirmar cierre de prueba.
+Eliminar después los datos de prueba o marcarlos claramente.
+24. Dispositivos
+Configurar dispositivos:
+Ordenador principal.
+TPV.
+Tablets de camareros.
+KDS.
+Móvil de repartidor.
+Terminal de fichaje.
+Caja de autocobro.
+Panel de administración.
+Cada dispositivo debe guardar:
+Nombre.
+Tipo.
+Zona.
+Función.
+Usuario permitido.
+Estado.
+Versión.
+Modo offline.
+Impresora predeterminada.
+Caja asociada.
+KDS asociado.
+25. Tablets de camareros
+Crear configuración específica:
+Vista de mesas.
+Toma de comandas.
+Cambio de mesa.
+Envío a cocina.
+Consulta de cuenta.
+Cobro, si tiene permiso.
+Inicio de sesión por PIN.
+Bloqueo por inactividad.
+Modo offline autorizado.
+Impresora predeterminada.
+26. Caja de autocobro
+Permitir activar la integración con caja de autocobro.
+Configurar:
+Nombre.
+Fabricante o sistema.
+Tipo de integración.
+Caja asociada.
+Formas de pago.
+Estados.
+Tiempo de espera.
+Confirmación de cobro.
+Cancelaciones.
+Devoluciones.
+Modo offline.
+Auditoría.
+No marcar una venta como pagada hasta recibir confirmación válida.
+27. Reservas
+Configurar:
+Turnos.
+Capacidad.
+Duración por mesa.
+Intervalos.
+Zonas.
+Antelación.
+Confirmación.
+Depósitos.
+Lista de espera.
+No presentados.
+Mensajes.
+Crear una reserva de prueba y comprobar su asignación a mesa.
+28. Reparto
+Configurar:
+Zonas.
+Tarifas.
+Pedido mínimo.
+Horarios.
+Repartidores.
+Tiempo estimado.
+Forma de pago.
+Impresora.
+KDS.
+Liquidación.
+Crear un pedido de prueba sin enviarlo a producción.
+29. Pedidos online y carta QR
+Configurar:
+Dominio o enlace.
+Activación.
+Idiomas.
+Carta.
+Horarios.
+Recogida.
+Reparto.
+Pedido en mesa.
+Pagos.
+Diseño.
+Alérgenos.
+Textos legales.
+Mantener:
+Diseño moderno y minimalista.
+Frase “Cocina con sabor italiano”.
+Sin productos destacados obligatorios.
+Sin botón de llamada en la pantalla principal.
+30. QR de mesas
+Generar:
+QR único por mesa.
+QR seguro.
+Token de sesión.
+PDF imprimible.
+Vista previa.
+Nombre de mesa.
+Logo opcional.
+Permitir descargar:
+Un QR.
+Todos los QR.
+Hoja por zona.
+Diseño para sobremesa.
+31. Stock y escandallos
+Permitir:
+Activar stock.
+Crear almacenes.
+Importar ingredientes.
+Crear escandallos.
+Configurar unidades.
+Configurar mermas.
+Configurar stock mínimo.
+Elegir momento de descuento.
+Realizar inventario inicial.
+No obligar a completar todos los escandallos para iniciar el TPV, pero mostrar advertencias.
+32. Proveedores y compras
+Permitir:
+Crear proveedores.
+Importar proveedores.
+Configurar condiciones.
+Crear pedido de prueba.
+Registrar recepción.
+Configurar unidades.
+Configurar IVA de compras.
+33. Fidelización
+Permitir activar:
+Puntos.
+Cupones.
+Niveles.
+Tarjetas regalo.
+Monedero.
+Campañas.
+Configurar reglas iniciales o dejar el módulo desactivado.
+34. Documentos y diseño
+Configurar:
+Ticket.
+Prefactura.
+Factura simplificada.
+Factura completa.
+Factura rectificativa.
+Albarán.
+Pedido de cocina.
+Etiqueta de reparto.
+Cierre de caja.
+Permitir personalizar:
+Logo.
+Cabecera.
+Pie.
+Tipografía.
+Tamaño.
+Datos fiscales.
+Mensaje de agradecimiento.
+Código QR.
+Información legal.
+35. Prueba de ticket y factura
+Generar documentos de prueba para comprobar:
+Logo.
+Datos fiscales.
+IVA.
+Serie.
+Numeración.
+Productos.
+Totales.
+Formas de pago.
+Código QR fiscal, cuando corresponda.
+Impresión.
+PDF.
+Los documentos de prueba no deben entrar en la numeración fiscal real.
+36. Copias de seguridad
+Configurar:
+Frecuencia.
+Destino.
+Conservación.
+Cifrado.
+Alertas.
+Copia inicial.
+Verificación.
+Restauración de prueba.
+No marcar el sistema como completamente preparado si no existe al menos una copia verificada.
+37. Diagnóstico final
+Ejecutar una revisión automática de:
+Base de datos.
+Usuarios.
+Permisos.
+Productos.
+IVA.
+Mesas.
+Caja.
+Impresoras.
+KDS.
+Dispositivos.
+Fichaje.
+Stock.
+Reservas.
+Pedidos online.
+Facturación.
+Copias.
+Conectividad.
+Modo offline.
+Clasificar:
+Correcto.
+Pendiente.
+Recomendado.
+Error crítico.
+38. Simulación completa del servicio
+Crear un modo de prueba guiado:
+Abrir caja de prueba.
+Iniciar sesión como camarero.
+Abrir mesa.
+Añadir comanda.
+Enviar a cocina.
+Procesar en KDS.
+Marcar platos preparados.
+Recoger platos.
+Generar prefactura.
+Dividir cuenta.
+Cobrar.
+Generar ticket de prueba.
+Cerrar mesa.
+Cerrar caja de prueba.
+Revisar informe.
+Todo debe quedar marcado como simulación y no mezclarse con producción.
+39. Puesta en producción
+Crear un último paso con:
+Resumen.
+Errores pendientes.
+Advertencias.
+Copia verificada.
+Usuarios creados.
+Impresoras probadas.
+KDS probados.
+Datos fiscales revisados.
+Caja configurada.
+Productos revisados.
+Confirmación del administrador.
+Solo el administrador podrá activar el modo producción.
+40. Lista de control final
+Mostrar una lista con:
+Datos del restaurante.
+Datos fiscales.
+Usuarios.
+Productos.
+IVA.
+Mesas.
+Caja.
+Formas de pago.
+Impresoras.
+KDS.
+Dispositivos.
+Empleados.
+Fichaje.
+Stock.
+Reservas.
+Reparto.
+Carta QR.
+Pedidos online.
+Copias.
+Simulación.
+Producción.
+Permitir imprimir o exportar la lista.
+41. Ayuda contextual
+Cada paso debe incluir:
+Explicación sencilla.
+Ejemplo.
+Recomendación.
+Error común.
+Botón de ayuda.
+Enlace al módulo relacionado.
+Usar lenguaje comprensible para una persona sin experiencia técnica.
+42. Permisos
+Crear permisos para:
+Iniciar asistente.
+Modificar configuración.
+Configurar fiscalidad.
+Configurar caja.
+Configurar impresoras.
+Configurar KDS.
+Configurar dispositivos.
+Ejecutar pruebas.
+Generar documentos de prueba.
+Activar producción.
+Reiniciar asistente.
+Exportar configuración.
+43. Auditoría
+Registrar:
+Inicio del asistente.
+Cambios realizados.
+Pasos completados.
+Pruebas ejecutadas.
+Errores ignorados.
+Activación de producción.
+Reinicio del asistente.
+Cambios fiscales.
+Cambios de dispositivos.
+Cambios de impresoras.
+44. Requisitos técnicos
+Reutilizar módulos existentes.
+No duplicar configuraciones.
+Guardar progreso.
+Permitir volver atrás.
+Validar en backend.
+No borrar datos existentes.
+Crear migraciones seguras.
+Diseñar para ordenador y tablet.
+Permitir uso desde móvil en pasos sencillos.
+Crear pruebas automáticas.
+No mezclar datos de simulación y producción.
+No generar numeración fiscal real durante pruebas.
+No activar servicios externos sin confirmación.
+45. Criterios de aceptación
+La tarea estará terminada cuando:
+El asistente detecte la configuración existente.
+Se pueda completar por etapas.
+Se pueda configurar restaurante, fiscalidad, servicios y horarios.
+Se puedan configurar usuarios, empleados y caja.
+Se puedan configurar impresoras y probarlas.
+Se puedan configurar KDS y ejecutar una prueba completa.
+Se puedan registrar dispositivos.
+Se pueda revisar la carta y los tipos de IVA.
+Se pueda configurar QR, reservas, reparto y pedidos online.
+Se pueda configurar stock y fichaje.
+Se genere una copia inicial verificada.
+Se ejecute diagnóstico final.
+Exista una simulación completa de servicio.
+Los datos de prueba no afecten producción.
+Solo un administrador pueda activar producción.
+Se pueda exportar la lista de control.
+Funcionen permisos y auditoría.
+Todas las pruebas automáticas sean correctas.
+Replit entregue un resumen de archivos modificados, configuraciones, pruebas y resultados del diagnóstico.
+Antes de programar, revisar todo el proyecto y explicar brevemente qué pantallas, tablas y servicios serán reutilizados.
+El asistente debe simplificar la puesta en marcha y no crear una segunda configuración paralela.
+La siguiente tarea recomendable será una auditoría final integral del TPV, revisando todos los módulos, conexiones, errores, seguridad y preparación real para trabajar en Piccolo.
