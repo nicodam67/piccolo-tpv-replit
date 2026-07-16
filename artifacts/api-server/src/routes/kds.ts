@@ -35,9 +35,13 @@ const TASK_FIELDS = {
   collectedAt: kitchenTasksTable.collectedAt,
   servedAt: kitchenTasksTable.servedAt,
   cancelledAt: kitchenTasksTable.cancelledAt,
+  // LEFT JOIN — null when the order has no table (takeaway/delivery online orders)
   tableName: restaurantTablesTable.name,
   employeeName: employeesTable.name,
   employeeId: ordersTable.employeeId,
+  // Online order fields — present for takeaway/delivery
+  orderType: ordersTable.orderType,
+  clientName: ordersTable.clientName,
 };
 
 // ── GET /kds/history — recent completed/cancelled tasks (last 8 hours) ─────────
@@ -50,7 +54,7 @@ router.get("/kds/history", requireAuth, async (req, res): Promise<void> => {
     .select(TASK_FIELDS)
     .from(kitchenTasksTable)
     .innerJoin(ordersTable, eq(kitchenTasksTable.orderId, ordersTable.id))
-    .innerJoin(restaurantTablesTable, eq(ordersTable.tableId, restaurantTablesTable.id))
+    .leftJoin(restaurantTablesTable, eq(ordersTable.tableId, restaurantTablesTable.id))
     .leftJoin(employeesTable, eq(ordersTable.employeeId, employeesTable.id))
     .where(inArray(kitchenTasksTable.status, ["collected", "served", "cancelled"]))
     .orderBy(desc(kitchenTasksTable.updatedAt))
@@ -75,7 +79,7 @@ router.get("/kds/:zone", requireAuth, async (req, res): Promise<void> => {
     .select(TASK_FIELDS)
     .from(kitchenTasksTable)
     .innerJoin(ordersTable, eq(kitchenTasksTable.orderId, ordersTable.id))
-    .innerJoin(restaurantTablesTable, eq(ordersTable.tableId, restaurantTablesTable.id))
+    .leftJoin(restaurantTablesTable, eq(ordersTable.tableId, restaurantTablesTable.id))
     .leftJoin(employeesTable, eq(ordersTable.employeeId, employeesTable.id));
 
   const rawTasks =

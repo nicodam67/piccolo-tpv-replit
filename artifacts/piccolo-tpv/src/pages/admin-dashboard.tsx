@@ -36,6 +36,9 @@ import {
   Search,
   X as XIcon,
   Shield,
+  Globe,
+  Bike,
+  BarChart2,
 } from 'lucide-react';
 import { useGetDashboardSummary, getGetDashboardSummaryQueryKey, customFetch } from '@workspace/api-client-react';
 import { useQuery } from '@tanstack/react-query';
@@ -501,6 +504,46 @@ const MODULES: ModuleCard[] = [
     iconBg: 'rgba(96,130,220,0.15)',
     iconColor: '#6082dc',
     glow: 'rgba(96,130,220,0.12)',
+  },
+  // ─── Pedidos Online ───────────────────────────────────────────────────────
+  {
+    id: 'online-config',
+    icon: <Globe size={28} />,
+    title: 'Pedidos Online',
+    description: 'Recogida · reparto · zonas · repartidores',
+    href: '/admin/online-orders-config',
+    ready: true,
+    accent: 'rgba(99,102,241,0.07)',
+    border: 'rgba(99,102,241,0.28)',
+    iconBg: 'rgba(99,102,241,0.15)',
+    iconColor: '#818cf8',
+    glow: 'rgba(99,102,241,0.12)',
+  },
+  {
+    id: 'online-inbox',
+    icon: <Bike size={28} />,
+    title: 'Bandeja de pedidos online',
+    description: 'Confirmar · rechazar · asignar repartidor',
+    href: '/online-orders',
+    ready: true,
+    accent: 'rgba(56,189,248,0.07)',
+    border: 'rgba(56,189,248,0.28)',
+    iconBg: 'rgba(56,189,248,0.15)',
+    iconColor: '#38bdf8',
+    glow: 'rgba(56,189,248,0.12)',
+  },
+  {
+    id: 'online-reports',
+    icon: <BarChart2 size={28} />,
+    title: 'Informes online',
+    description: 'Ventas · tickets medios · por canal',
+    href: '/admin/online-reports',
+    ready: true,
+    accent: 'rgba(52,211,153,0.07)',
+    border: 'rgba(52,211,153,0.28)',
+    iconBg: 'rgba(52,211,153,0.15)',
+    iconColor: '#34d399',
+    glow: 'rgba(52,211,153,0.12)',
   },
   // ─── Personal · Fichaje ───────────────────────────────────────────────────
   {

@@ -37,6 +37,7 @@ import traceabilityRouter from "./traceability";
 import fichajeRouter from "./fichaje";
 import verifactuRouter from "./verifactu";
 import crmRouter from "./crm";
+import onlineOrdersRouter from "./online-orders";
 
 const router: IRouter = Router();
 
@@ -78,5 +79,6 @@ router.use(traceabilityRouter);
 router.use(fichajeRouter);
 router.use(verifactuRouter);
 router.use(crmRouter);
+router.use(onlineOrdersRouter);
 
 export default router;

@@ -56,6 +56,11 @@ import FichajeConfiguracion from './pages/fichaje/FichajeConfiguracion';
 import Verifactu from './pages/verifactu';
 import Crm from './pages/crm';
 import Branding from './pages/branding';
+import OnlineConfig from './pages/online-config';
+import OnlineOrdersInbox from './pages/online-orders-inbox';
+import DriverView from './pages/driver-view';
+import OrderStatus from './pages/order-status';
+import OnlineReports from './pages/online-reports';
 import NotFound from './pages/not-found';
 
 const queryClient = new QueryClient({
@@ -125,6 +130,12 @@ function Router() {
       <Route path="/admin/fichaje/configuracion" component={FichajeConfiguracion} />
       <Route path="/admin/verifactu" component={Verifactu} />
       <Route path="/admin/crm" component={Crm} />
+      {/* Online Orders module */}
+      <Route path="/online-orders" component={OnlineOrdersInbox} />
+      <Route path="/admin/online-orders-config" component={OnlineConfig} />
+      <Route path="/admin/online-reports" component={OnlineReports} />
+      <Route path="/order-status/:orderNumber" component={OrderStatus} />
+      <Route path="/driver/:courierId" component={DriverView} />
       <Route component={NotFound} />
     </Switch>
   );

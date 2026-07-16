@@ -8,9 +8,10 @@ import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ArrowLeft, X, Phone, Clock, ChevronDown, ChevronUp,
-  LayoutGrid, LayoutList, AlignJustify, MapPin,
+  LayoutGrid, LayoutList, AlignJustify, MapPin, Plus,
 } from 'lucide-react';
 import { EU_ALLERGENS, parseAllergens } from '../lib/allergens';
+import { CartCheckout, type CartItem } from './CartCheckout';
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, '');
 
@@ -150,9 +151,21 @@ function ScheduleDialog({ branding, accentColor, onClose }: { branding: Branding
 
 // ── Item detail bottom-sheet ──────────────────────────────────────────────────
 
-function ItemDetailModal({ product: p, accentColor, onClose }: {
+function ItemDetailModal({ product: p, accentColor, onClose, onAddToCart }: {
   product: CartaProduct; accentColor: string; onClose: () => void;
+  onAddToCart?: (product: CartaProduct, formatId?: string, formatName?: string) => void;
 }) {
+  const [selectedFormat, setSelectedFormat] = useState<{ id: string; name: string; price: string } | null>(
+    p.formats && p.formats.length > 0 ? p.formats[0] : null
+  );
+  const [added, setAdded] = useState(false);
+
+  const handleAdd = () => {
+    if (!onAddToCart) return;
+    onAddToCart(p, selectedFormat?.id, selectedFormat?.name);
+    setAdded(true);
+    setTimeout(() => setAdded(false), 1500);
+  };
   const allergenCodes = parseAllergens(p.allergens);
 
   const dietTags = [
@@ -250,10 +263,17 @@ function ItemDetailModal({ product: p, accentColor, onClose }: {
                   <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-zinc-500 mb-2">Formatos</p>
                   <div className="flex flex-wrap gap-2">
                     {p.formats.map(f => (
-                      <div key={f.id} className="px-3 py-1.5 rounded-xl bg-gray-100 dark:bg-zinc-800 text-sm">
+                      <button
+                        key={f.id}
+                        onClick={() => setSelectedFormat(f)}
+                        className={`px-3 py-1.5 rounded-xl text-sm transition-all ${selectedFormat?.id === f.id ? '' : 'bg-gray-100 dark:bg-zinc-800'}`}
+                        style={selectedFormat?.id === f.id
+                          ? { backgroundColor: `${accentColor}20`, color: accentColor, outline: `2px solid ${accentColor}`, outlineOffset: '0px' }
+                          : {}}
+                      >
                         <span className="font-semibold">{f.name}</span>
                         <span className="text-gray-500 dark:text-zinc-400 ml-1.5">{parseFloat(f.price).toFixed(2)}€</span>
-                      </div>
+                      </button>
                     ))}
                   </div>
                 </div>
@@ -288,6 +308,25 @@ function ItemDetailModal({ product: p, accentColor, onClose }: {
                     })}
                   </div>
                 </div>
+              )}
+
+              {/* Add to cart */}
+              {onAddToCart && !p.outOfStock && (
+                <button
+                  onClick={handleAdd}
+                  className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl font-black text-white text-base transition-all"
+                  style={{ backgroundColor: added ? '#22c55e' : accentColor }}
+                >
+                  {added ? (
+                    <><span>✓</span> Añadido al carrito</>
+                  ) : (
+                    <><Plus size={18} /> Añadir al carrito
+                      {selectedFormat
+                        ? ` — ${parseFloat(selectedFormat.price).toFixed(2)}€`
+                        : ` — ${parseFloat(p.price).toFixed(2)}€`}
+                    </>
+                  )}
+                </button>
               )}
             </div>
           </div>
@@ -639,6 +678,46 @@ export default function CartaPage() {
     });
   }, []);
 
+  // ── Cart ──────────────────────────────────────────────────────────────────
+  const [cart, setCart] = useState<CartItem[]>([]);
+
+  const addToCart = useCallback((product: CartaProduct, formatId?: string, formatName?: string) => {
+    const unitPrice = formatId
+      ? parseFloat(product.formats?.find(f => f.id === formatId)?.price ?? product.price)
+      : parseFloat(product.price);
+    const key = `${product.id}-${formatId ?? ''}`;
+    setCart(prev => {
+      const existing = prev.find(i => i.productId === product.id && i.formatId === formatId);
+      if (existing) {
+        return prev.map(i => i.productId === product.id && i.formatId === formatId
+          ? { ...i, quantity: i.quantity + 1 } : i);
+      }
+      return [...prev, {
+        productId: product.id,
+        productName: product.name,
+        quantity: 1,
+        unitPrice,
+        taxRate: 10,
+        formatId,
+        formatName,
+        image: product.imageUrl ?? undefined,
+      }];
+    });
+  }, []);
+
+  const updateCartQty = useCallback((productId: string, formatId: string | undefined, delta: number) => {
+    setCart(prev => {
+      return prev
+        .map(i => i.productId === productId && i.formatId === formatId
+          ? { ...i, quantity: i.quantity + delta } : i)
+        .filter(i => i.quantity > 0);
+    });
+  }, []);
+
+  const removeFromCart = useCallback((productId: string, formatId: string | undefined) => {
+    setCart(prev => prev.filter(i => !(i.productId === productId && i.formatId === formatId)));
+  }, []);
+
   // Modals
   const [selectedProduct, setSelectedProduct] = useState<CartaProduct | null>(null);
   const [showSchedule, setShowSchedule] = useState(false);
@@ -881,6 +960,7 @@ export default function CartaPage() {
             product={selectedProduct}
             accentColor={accentColor}
             onClose={() => setSelectedProduct(null)}
+            onAddToCart={addToCart}
           />
         )}
       </AnimatePresence>
@@ -895,6 +975,15 @@ export default function CartaPage() {
           />
         )}
       </AnimatePresence>
+
+      {/* ── Cart & Checkout ── */}
+      <CartCheckout
+        cart={cart}
+        onUpdateQty={updateCartQty}
+        onRemove={removeFromCart}
+        onClear={() => setCart([])}
+        accentColor={accentColor}
+      />
     </div>
   );
 }
