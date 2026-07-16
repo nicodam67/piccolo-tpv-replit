@@ -225,20 +225,23 @@ router.post("/admin/goods-receipts", requireAuth, requireRole("admin"), async (r
         const [ingredient] = await tx.select().from(ingredientsTable).where(eq(ingredientsTable.id, item.ingredientId));
         if (ingredient) {
           const oldStock = parseFloat(ingredient.currentStock ?? "0");
-          const oldCost = parseFloat(ingredient.purchaseCost ?? "0");
+          // Use running weighted average as the base (falls back to purchaseCost for legacy rows)
+          const oldCost = parseFloat(String(ingredient.averageCost ?? ingredient.purchaseCost ?? "0"));
           const newUnitPrice = parseFloat(item.unitPrice);
           const newStock = oldStock + qtyAccepted;
 
-          // Weighted average cost: (oldStock * oldCost + qtyAccepted * newUnitPrice) / newStock
+          // Weighted average cost per consumption unit
           const newAvgCost = newStock > 0
             ? (oldStock * oldCost + qtyAccepted * newUnitPrice) / newStock
             : newUnitPrice;
 
-          // Update ingredient stock and cost
+          // Update ingredient: stock, weighted average cost, last purchase price
           await tx.update(ingredientsTable)
             .set({
               currentStock: newStock.toFixed(4),
-              purchaseCost: newAvgCost.toFixed(4),
+              averageCost: newAvgCost.toFixed(4),
+              lastPurchaseCost: newUnitPrice.toFixed(4),
+              purchaseCost: newUnitPrice.toFixed(4),  // tracks last known purchase price
               updatedAt: new Date(),
             })
             .where(eq(ingredientsTable.id, item.ingredientId));

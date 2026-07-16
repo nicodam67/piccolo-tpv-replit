@@ -63,6 +63,9 @@ import OrderStatus from './pages/order-status';
 import OnlineReports from './pages/online-reports';
 import AdminImpresoras from './pages/admin-impresoras';
 import AdminColaImpresion from './pages/admin-cola-impresion';
+import AdminMermas from './pages/admin-mermas';
+import AdminCategoriasIngredientes from './pages/admin-categorias-ingredientes';
+import AdminAlmacenes from './pages/admin-almacenes';
 import NotFound from './pages/not-found';
 
 const queryClient = new QueryClient({
@@ -141,6 +144,10 @@ function Router() {
       {/* Printing module */}
       <Route path="/admin/impresoras" component={AdminImpresoras} />
       <Route path="/admin/cola-impresion" component={AdminColaImpresion} />
+      {/* Stock extensions */}
+      <Route path="/admin/mermas" component={AdminMermas} />
+      <Route path="/admin/categorias-ingredientes" component={AdminCategoriasIngredientes} />
+      <Route path="/admin/almacenes" component={AdminAlmacenes} />
       <Route component={NotFound} />
     </Switch>
   );

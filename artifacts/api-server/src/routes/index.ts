@@ -39,6 +39,9 @@ import verifactuRouter from "./verifactu";
 import crmRouter from "./crm";
 import onlineOrdersRouter from "./online-orders";
 import printersRouter from "./printers";
+import ingredientCategoriesRouter from "./ingredient-categories";
+import storageLocationsRouter from "./storage-locations";
+import wasteRecordsRouter from "./waste-records";
 
 const router: IRouter = Router();
 
@@ -82,5 +85,8 @@ router.use(verifactuRouter);
 router.use(crmRouter);
 router.use(onlineOrdersRouter);
 router.use(printersRouter);
+router.use(ingredientCategoriesRouter);
+router.use(storageLocationsRouter);
+router.use(wasteRecordsRouter);
 
 export default router;

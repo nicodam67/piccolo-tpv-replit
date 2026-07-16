@@ -34,23 +34,36 @@ router.get("/admin/ingredients", requireAuth, requireRole("admin"), async (req, 
 // ── POST /admin/ingredients ───────────────────────────────────────────────────
 router.post("/admin/ingredients", requireAuth, requireRole("admin"), async (req, res): Promise<void> => {
   const {
-    name, internalCode, unit = "ud", purchaseCost = "0",
-    currentStock = "0", minStock = "0", optimalStock = "0", supplierName, allergenTags = [],
-  } = req.body as {
-    name: string; internalCode?: string; unit?: string;
-    purchaseCost?: string; currentStock?: string; minStock?: string;
-    optimalStock?: string; supplierName?: string; allergenTags?: string[];
-  };
+    name, internalCode,
+    unit = "ud", purchaseUnit = "ud", consumptionUnit = "ud", conversionFactor = "1",
+    purchaseCost = "0", averageCost,
+    currentStock = "0", minStock = "0", optimalStock = "0", maxStock = "0",
+    supplierName, allergenTags = [],
+    categoryId, locationId,
+  } = req.body as Record<string, unknown>;
 
-  if (!name?.trim()) { res.status(400).json({ error: "name es obligatorio" }); return; }
+  if (!name || !(name as string).trim()) { res.status(400).json({ error: "name es obligatorio" }); return; }
+
+  const resolvedAvgCost = averageCost ?? purchaseCost ?? "0";
 
   const [ingredient] = await db.insert(ingredientsTable).values({
-    name: name.trim(), internalCode: internalCode ?? null,
-    unit, purchaseCost: String(purchaseCost),
-    currentStock: String(currentStock), minStock: String(minStock),
+    name: (name as string).trim(),
+    internalCode: (internalCode as string | undefined) ?? null,
+    unit: String(unit),
+    purchaseUnit: String(purchaseUnit),
+    consumptionUnit: String(consumptionUnit),
+    conversionFactor: String(conversionFactor),
+    purchaseCost: String(purchaseCost),
+    averageCost: String(resolvedAvgCost),
+    lastPurchaseCost: String(purchaseCost),
+    currentStock: String(currentStock),
+    minStock: String(minStock),
     optimalStock: String(optimalStock),
-    supplierName: supplierName ?? null,
-    allergenTags: allergenTags,
+    maxStock: String(maxStock),
+    supplierName: (supplierName as string | undefined) ?? null,
+    allergenTags: (allergenTags as string[]),
+    categoryId: (categoryId as string | undefined) ?? null,
+    locationId: (locationId as string | undefined) ?? null,
   }).returning();
 
   // If initial stock > 0, record a purchase movement
@@ -73,9 +86,13 @@ router.post("/admin/ingredients", requireAuth, requireRole("admin"), async (req,
 router.patch("/admin/ingredients/:id", requireAuth, requireRole("admin"), async (req, res): Promise<void> => {
   const id = req.params.id as string;
   const {
-    name, internalCode, unit, purchaseCost,
-    currentStock, minStock, optimalStock, supplierName, allergenTags, active,
-    reason, // optional reason for cost change
+    name, internalCode, unit,
+    purchaseUnit, consumptionUnit, conversionFactor,
+    purchaseCost, averageCost,
+    currentStock, minStock, optimalStock, maxStock,
+    supplierName, allergenTags, active,
+    categoryId, locationId,
+    reason,
   } = req.body as Record<string, unknown>;
 
   const [existing] = await db.select().from(ingredientsTable).where(eq(ingredientsTable.id, id));
@@ -85,12 +102,19 @@ router.patch("/admin/ingredients/:id", requireAuth, requireRole("admin"), async 
   if (name != null) updates.name = (name as string).trim();
   if (internalCode !== undefined) updates.internalCode = internalCode;
   if (unit != null) updates.unit = unit;
+  if (purchaseUnit != null) updates.purchaseUnit = purchaseUnit;
+  if (consumptionUnit != null) updates.consumptionUnit = consumptionUnit;
+  if (conversionFactor != null) updates.conversionFactor = String(conversionFactor);
   if (purchaseCost !== undefined) updates.purchaseCost = String(purchaseCost);
+  if (averageCost !== undefined) updates.averageCost = String(averageCost);
   if (minStock !== undefined) updates.minStock = String(minStock);
   if (optimalStock !== undefined) updates.optimalStock = String(optimalStock);
+  if (maxStock !== undefined) updates.maxStock = String(maxStock);
   if (supplierName !== undefined) updates.supplierName = supplierName;
   if (allergenTags !== undefined) updates.allergenTags = allergenTags;
   if (active != null) updates.active = active;
+  if (categoryId !== undefined) updates.categoryId = categoryId ?? null;
+  if (locationId !== undefined) updates.locationId = locationId ?? null;
   updates.updatedAt = new Date();
 
   // If currentStock is being set directly (inventory adjustment)
@@ -143,7 +167,7 @@ router.delete("/admin/ingredients/:id", requireAuth, requireRole("admin"), async
 });
 
 // ── POST /admin/ingredients/:id/stock-in ─────────────────────────────────────
-// Manual stock entry (purchase receipt)
+// Manual stock entry — updates stock and computes weighted average cost.
 router.post("/admin/ingredients/:id/stock-in", requireAuth, requireRole("admin"), async (req, res): Promise<void> => {
   const id = req.params.id as string;
   const {
@@ -160,33 +184,44 @@ router.post("/admin/ingredients/:id/stock-in", requireAuth, requireRole("admin")
   if (!ingredient) { res.status(404).json({ error: "Ingrediente no encontrado" }); return; }
 
   const user = (req as any).user;
-  const newStock = parseFloat(String(ingredient.currentStock)) + parseFloat(String(quantity));
-  const costToUse = unitCost ?? ingredient.purchaseCost;
-
+  const inQty = parseFloat(String(quantity));
+  const prevStock = parseFloat(String(ingredient.currentStock));
+  const newStock = prevStock + inQty;
+  const costToUse = unitCost ? parseFloat(String(unitCost)) : parseFloat(String(ingredient.purchaseCost));
   const prevCost = ingredient.purchaseCost;
+
+  // Weighted average cost: (prev_stock * prev_avg + in_qty * in_cost) / new_stock
+  const prevAvg = parseFloat(String(ingredient.averageCost ?? ingredient.purchaseCost ?? "0"));
+  const newAvg = newStock > 0
+    ? (prevStock * prevAvg + inQty * costToUse) / newStock
+    : costToUse;
 
   await db.transaction(async (tx) => {
     await tx.update(ingredientsTable)
-      .set({ currentStock: String(newStock), updatedAt: new Date() })
+      .set({
+        currentStock: String(newStock),
+        averageCost: String(newAvg.toFixed(4)),
+        lastPurchaseCost: String(costToUse),
+        ...(unitCost ? { purchaseCost: String(unitCost) } : {}),
+        updatedAt: new Date(),
+      })
       .where(eq(ingredientsTable.id, id));
+
     await tx.insert(stockMovementsTable).values({
       ingredientId: id,
       movementType: "purchase",
-      quantity: String(quantity),
+      quantity: String(inQty),
       unitCost: String(costToUse),
       reason,
       employeeId: user?.id ?? null,
     });
-    // Update purchaseCost if a new one was provided
-    if (unitCost && unitCost !== prevCost) {
-      await tx.update(ingredientsTable)
-        .set({ purchaseCost: String(unitCost), updatedAt: new Date() })
-        .where(eq(ingredientsTable.id, id));
-      // Log cost history
+
+    // Log cost history if price changed
+    if (unitCost && String(costToUse) !== String(prevCost)) {
       await tx.insert(ingredientCostHistoryTable).values({
         ingredientId: id,
         previousCost: prevCost,
-        newCost: String(unitCost),
+        newCost: String(costToUse),
         supplierName: ingredient.supplierName ?? null,
         reason: `Stock-in: ${reason}`,
         employeeId: user?.id ?? null,
@@ -287,7 +322,6 @@ router.post("/admin/stock/movements", requireAuth, requireRole("admin"), async (
 });
 
 // ── POST /admin/stock/inventory-count ─────────────────────────────────────────
-// Guided physical count: accepts actual quantities, generates 'inventory' movements.
 router.post("/admin/stock/inventory-count", requireAuth, requireRole("admin"), async (req, res): Promise<void> => {
   const { lines } = req.body as {
     lines: { ingredientId: string; actualQty: string; note?: string }[];
@@ -307,7 +341,7 @@ router.post("/admin/stock/inventory-count", requireAuth, requireRole("admin"), a
       const after = parseFloat(String(line.actualQty));
       if (isNaN(after)) continue;
       const diff = after - before;
-      if (Math.abs(diff) < 0.001) continue; // no meaningful change
+      if (Math.abs(diff) < 0.001) continue;
 
       await tx.update(ingredientsTable)
         .set({ currentStock: String(after), updatedAt: new Date() })
@@ -317,7 +351,7 @@ router.post("/admin/stock/inventory-count", requireAuth, requireRole("admin"), a
         ingredientId: line.ingredientId,
         movementType: "inventory",
         quantity: String(diff),
-        unitCost: String(ing.purchaseCost),
+        unitCost: String(ing.averageCost ?? ing.purchaseCost),
         reason: line.note ?? "Inventario físico",
         employeeId: user?.id ?? null,
       });
@@ -330,9 +364,7 @@ router.post("/admin/stock/inventory-count", requireAuth, requireRole("admin"), a
 });
 
 // ── GET /admin/stock/product-availability ─────────────────────────────────────
-// Returns each product's stock availability (all recipe ingredients > 0).
 router.get("/admin/stock/product-availability", requireAuth, async (req, res): Promise<void> => {
-  // Fetch all recipe ingredient requirements joined with current stock (ingredient lines only)
   const recipeRows = await db
     .select({
       productId: recipeItemsTable.productId,
@@ -344,7 +376,6 @@ router.get("/admin/stock/product-availability", requireAuth, async (req, res): P
     .from(recipeItemsTable)
     .innerJoin(ingredientsTable, eq(recipeItemsTable.ingredientId, ingredientsTable.id));
 
-  // Group by product
   const map = new Map<string, { hasLowStock: boolean; zeroIngredients: string[] }>();
   for (const row of recipeRows) {
     const cur = parseFloat(String(row.currentStock));
@@ -365,21 +396,18 @@ router.get("/admin/stock/product-availability", requireAuth, async (req, res): P
 });
 
 // ── GET /admin/stock/reports ──────────────────────────────────────────────────
-// Returns stock value, daily consumption, and waste totals for the given period.
 router.get("/admin/stock/reports", requireAuth, requireRole("admin"), async (req, res): Promise<void> => {
   const { from, to } = req.query as { from?: string; to?: string };
   const toDate = to ? new Date(to) : new Date();
   const fromDate = from ? new Date(from) : new Date(Date.now() - 30 * 86400_000);
   const periodDays = Math.max(1, Math.round((toDate.getTime() - fromDate.getTime()) / 86400_000));
 
-  // All active ingredients
   const ingredients = await db
     .select()
     .from(ingredientsTable)
     .where(eq(ingredientsTable.active, true))
     .orderBy(asc(ingredientsTable.name));
 
-  // Aggregate sale and waste movements in the period per ingredient
   const movRows = await db
     .select({
       ingredientId: stockMovementsTable.ingredientId,
@@ -387,29 +415,24 @@ router.get("/admin/stock/reports", requireAuth, requireRole("admin"), async (req
       totalQty: sum(stockMovementsTable.quantity).mapWith(Number),
     })
     .from(stockMovementsTable)
-    .where(
-      and(
-        gte(stockMovementsTable.createdAt, fromDate),
-        lte(stockMovementsTable.createdAt, toDate),
-      ),
-    )
+    .where(and(
+      gte(stockMovementsTable.createdAt, fromDate),
+      lte(stockMovementsTable.createdAt, toDate),
+    ))
     .groupBy(stockMovementsTable.ingredientId, stockMovementsTable.movementType);
 
-  // Build maps
   const saleMap = new Map<string, number>();
   const wasteMap = new Map<string, number>();
   for (const row of movRows) {
-    if (row.movementType === "sale") {
-      saleMap.set(row.ingredientId, Math.abs(row.totalQty ?? 0));
-    } else if (row.movementType === "waste") {
-      wasteMap.set(row.ingredientId, Math.abs(row.totalQty ?? 0));
-    }
+    if (row.movementType === "sale") saleMap.set(row.ingredientId, Math.abs(row.totalQty ?? 0));
+    else if (row.movementType === "waste") wasteMap.set(row.ingredientId, Math.abs(row.totalQty ?? 0));
   }
 
   let warehouseValue = 0;
   const ingredientReports = ingredients.map((ing) => {
     const cur = parseFloat(String(ing.currentStock));
-    const cost = parseFloat(String(ing.purchaseCost));
+    // Use average_cost for warehouse valuation
+    const cost = parseFloat(String(ing.averageCost ?? ing.purchaseCost));
     const stockValue = cur * cost;
     warehouseValue += stockValue;
     const saleTotal = saleMap.get(ing.id) ?? 0;
@@ -422,8 +445,10 @@ router.get("/admin/stock/reports", requireAuth, requireRole("admin"), async (req
       unit: ing.unit,
       currentStock: ing.currentStock,
       minStock: ing.minStock,
-      optimalStock: (ing as any).optimalStock ?? "0",
+      optimalStock: ing.optimalStock,
+      maxStock: ing.maxStock,
       purchaseCost: ing.purchaseCost,
+      averageCost: ing.averageCost,
       stockValue,
       dailyConsumption,
       wasteTotal,

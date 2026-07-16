@@ -6,3 +6,4 @@
 - [lib/db dist rebuild](lib-db-rebuild.md) — After schema changes, run `tsc --build lib/db` to update dist declarations; only then will api-server tsc pick up new columns.
 - [Comandas module schema](comandas-schema.md) — guestCount+notes on orders, formatId+formatName+isInvitation on order_items, productFormatsTable in categories schema, auditLogTable; all pushed to DB.
 - [Fichaje integration](fichaje-integration.md) — fichaje module integrated into TPV; key decisions: Clerk replaced by JWT/PIN, INTEGER IDs migrated to UUIDs, 8 new DB tables, zod must be added explicitly to api-server deps.
+- [Stock module additions](stock-module.md) — migration 0004, new tables (ingredient_categories, storage_locations, waste_records), ApiError export fix, fetch queryFn must throw on !r.ok to keep default [].

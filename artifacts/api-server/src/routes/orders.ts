@@ -262,72 +262,8 @@ router.post("/orders/:orderId/items", requireAuth, async (req, res): Promise<voi
     ? await db.select().from(orderItemModifiersTable).where(eq(orderItemModifiersTable.orderItemId, item.id))
     : [];
 
-  // ── Stock decrement: consume recipe ingredients ────────────────────────────
-  // Fire-and-forget — stock failure must NOT break the order insert.
-  // Uses atomic SQL GREATEST(0, current_stock - consumed) to avoid lost-update
-  // races under concurrent order inserts. Consumption is aggregated per
-  // ingredient before updating so duplicate recipe lines are summed correctly.
-  try {
-    const recipeLines = await db
-      .select({
-        ingredientId: recipeItemsTable.ingredientId,
-        quantity: recipeItemsTable.quantity,
-        wastePercent: recipeItemsTable.wastePercent,
-        purchaseCost: ingredientsTable.purchaseCost,
-      })
-      .from(recipeItemsTable)
-      .innerJoin(ingredientsTable, eq(recipeItemsTable.ingredientId, ingredientsTable.id))
-      .where(eq(recipeItemsTable.productId, productId));
-
-    if (recipeLines.length > 0) {
-      // Aggregate consumed quantity per ingredient (handles duplicate lines)
-      const consumptionMap = new Map<string, { consumed: number; purchaseCost: string }>();
-      for (const line of recipeLines) {
-        const consumed =
-          parseFloat(line.quantity) *
-          (1 + parseFloat(line.wastePercent) / 100) *
-          quantity;
-        const existing = consumptionMap.get(line.ingredientId);
-        if (existing) {
-          existing.consumed += consumed;
-        } else {
-          consumptionMap.set(line.ingredientId, { consumed, purchaseCost: line.purchaseCost });
-        }
-      }
-
-      await db.transaction(async (tx) => {
-        for (const [ingredientId, { consumed, purchaseCost }] of consumptionMap) {
-          // Atomic decrement — DB computes new value, no lost-update race
-          await tx
-            .update(ingredientsTable)
-            .set({
-              currentStock: sql`GREATEST(0, (${ingredientsTable.currentStock})::numeric - ${consumed}::numeric)`,
-              updatedAt: new Date(),
-            })
-            .where(eq(ingredientsTable.id, ingredientId));
-
-          await tx.insert(stockMovementsTable).values({
-            ingredientId,
-            movementType: "sale",
-            quantity: String(-consumed),
-            unitCost: purchaseCost,
-            reason: `Venta: ${product.name}${resolvedFormatName ? ` [${resolvedFormatName}]` : ""}`,
-            employeeId: req.user?.id ?? null,
-            orderItemId: item.id,
-          });
-        }
-      });
-    }
-  } catch (err) {
-    // Non-fatal — order already committed. Log for operational visibility.
-    logger.error({
-      msg: "Stock decrement failed after order-item insert",
-      orderId,
-      orderItemId: item.id,
-      productId,
-      err: err instanceof Error ? { message: err.message, stack: err.stack } : String(err),
-    });
-  }
+  // NOTE: Stock is decremented at send time (POST /orders/:orderId/send), not here.
+  // This keeps draft items from prematurely locking inventory.
 
   await writeAudit(orderId, req.user?.id, req.user?.name ?? "", "add_item",
     `Añadido: ${product.name}${resolvedFormatName ? ` [${resolvedFormatName}]` : ""}`);
@@ -513,6 +449,62 @@ router.delete("/order-items/:itemId", requireAuth, async (req, res): Promise<voi
       .set({ status: "cancelled", cancelledAt: now, updatedAt: now })
       .where(eq(kitchenTasksTable.orderItemId, itemId));
 
+    // ── Stock restore: reverse the consumption logged at send time ────────────
+    try {
+      const recipeLines = await db
+        .select({
+          ingredientId: recipeItemsTable.ingredientId,
+          quantity: recipeItemsTable.quantity,
+          wastePercent: recipeItemsTable.wastePercent,
+          averageCost: ingredientsTable.averageCost,
+          purchaseCost: ingredientsTable.purchaseCost,
+        })
+        .from(recipeItemsTable)
+        .innerJoin(ingredientsTable, eq(recipeItemsTable.ingredientId, ingredientsTable.id))
+        .where(and(
+          eq(recipeItemsTable.productId, item.order_items.productId),
+          item.order_items.formatId
+            ? eq(recipeItemsTable.formatId, item.order_items.formatId)
+            : sql`(${recipeItemsTable.formatId} IS NULL)`,
+        ));
+
+      if (recipeLines.length > 0) {
+        const restoreMap = new Map<string, { qty: number; avgCost: string }>();
+        for (const line of recipeLines) {
+          if (!line.ingredientId) continue;
+          const qty =
+            parseFloat(line.quantity) *
+            (1 + parseFloat(line.wastePercent) / 100) *
+            item.order_items.quantity;
+          const existing = restoreMap.get(line.ingredientId);
+          if (existing) existing.qty += qty;
+          else restoreMap.set(line.ingredientId, { qty, avgCost: String(line.averageCost ?? line.purchaseCost ?? "0") });
+        }
+
+        await db.transaction(async (tx) => {
+          for (const [ingredientId, { qty, avgCost }] of restoreMap) {
+            await tx
+              .update(ingredientsTable)
+              .set({
+                currentStock: sql`(${ingredientsTable.currentStock})::numeric + ${qty}::numeric`,
+                updatedAt: new Date(),
+              })
+              .where(eq(ingredientsTable.id, ingredientId));
+
+            await tx.insert(stockMovementsTable).values({
+              ingredientId,
+              movementType: "sale_reversal",
+              quantity: String(qty),
+              unitCost: avgCost,
+              reason: `Anulación: ${item.products.name}`,
+              employeeId: req.user?.id ?? null,
+              orderItemId: item.order_items.id,
+            });
+          }
+        });
+      }
+    } catch (_) { /* best-effort stock restore */ }
+
     await db.delete(orderItemsTable).where(eq(orderItemsTable.id, itemId));
 
     await writeAudit(item.order_items.orderId, req.user?.id, req.user?.name ?? "", "cancel_sent_item",
@@ -649,6 +641,106 @@ router.post("/orders/:orderId/send", requireAuth, async (req, res): Promise<void
       .set({ status: "sent", sentAt: new Date() })
       .where(eq(ordersTable.id, orderId));
   });
+
+  // ── Stock decrement at send time ───────────────────────────────────────────
+  // Items were in draft (no stock consumed). Now that they're sent to kitchen,
+  // consume the recipe ingredients. Fire-and-forget — stock failure does NOT
+  // block the send response.
+  try {
+    // Build consumption map across all draft items being sent
+    const consumptionMap = new Map<string, { consumed: number; avgCost: string; productName: string; formatName: string | null; itemId: string }>();
+    for (const row of draftItems) {
+      const item = row.order_items;
+      const product = row.products;
+
+      // Try format-specific recipe first, fall back to base recipe
+      let recipeLines = await db
+        .select({
+          ingredientId: recipeItemsTable.ingredientId,
+          quantity: recipeItemsTable.quantity,
+          wastePercent: recipeItemsTable.wastePercent,
+          averageCost: ingredientsTable.averageCost,
+          purchaseCost: ingredientsTable.purchaseCost,
+        })
+        .from(recipeItemsTable)
+        .innerJoin(ingredientsTable, eq(recipeItemsTable.ingredientId, ingredientsTable.id))
+        .where(and(
+          eq(recipeItemsTable.productId, item.productId),
+          item.formatId
+            ? eq(recipeItemsTable.formatId, item.formatId)
+            : sql`(${recipeItemsTable.formatId} IS NULL)`,
+        ));
+
+      // If format-specific returned nothing AND we have a formatId, try base recipe
+      if (recipeLines.length === 0 && item.formatId) {
+        recipeLines = await db
+          .select({
+            ingredientId: recipeItemsTable.ingredientId,
+            quantity: recipeItemsTable.quantity,
+            wastePercent: recipeItemsTable.wastePercent,
+            averageCost: ingredientsTable.averageCost,
+            purchaseCost: ingredientsTable.purchaseCost,
+          })
+          .from(recipeItemsTable)
+          .innerJoin(ingredientsTable, eq(recipeItemsTable.ingredientId, ingredientsTable.id))
+          .where(and(
+            eq(recipeItemsTable.productId, item.productId),
+            sql`(${recipeItemsTable.formatId} IS NULL)`,
+          ));
+      }
+
+      for (const line of recipeLines) {
+        if (!line.ingredientId) continue;
+        const consumed =
+          parseFloat(line.quantity) *
+          (1 + parseFloat(line.wastePercent) / 100) *
+          item.quantity;
+        const existing = consumptionMap.get(line.ingredientId);
+        const avgCost = String(line.averageCost ?? line.purchaseCost ?? "0");
+        if (existing) {
+          existing.consumed += consumed;
+        } else {
+          consumptionMap.set(line.ingredientId, {
+            consumed,
+            avgCost,
+            productName: product.name,
+            formatName: item.formatName,
+            itemId: item.id,
+          });
+        }
+      }
+    }
+
+    if (consumptionMap.size > 0) {
+      await db.transaction(async (tx) => {
+        for (const [ingredientId, { consumed, avgCost, productName, formatName, itemId }] of consumptionMap) {
+          await tx
+            .update(ingredientsTable)
+            .set({
+              currentStock: sql`GREATEST(0, (${ingredientsTable.currentStock})::numeric - ${consumed}::numeric)`,
+              updatedAt: new Date(),
+            })
+            .where(eq(ingredientsTable.id, ingredientId));
+
+          await tx.insert(stockMovementsTable).values({
+            ingredientId,
+            movementType: "sale",
+            quantity: String(-consumed),
+            unitCost: avgCost,
+            reason: `Venta: ${productName}${formatName ? ` [${formatName}]` : ""}`,
+            employeeId: req.user?.id ?? null,
+            orderItemId: itemId,
+          });
+        }
+      });
+    }
+  } catch (err) {
+    logger.error({
+      msg: "Stock decrement at send failed — non-fatal",
+      orderId,
+      err: err instanceof Error ? { message: err.message, stack: err.stack } : String(err),
+    });
+  }
 
   const [updated] = await db.select().from(ordersTable).where(eq(ordersTable.id, orderId));
 
