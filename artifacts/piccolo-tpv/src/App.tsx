@@ -53,6 +53,7 @@ import FichajeAusencias from './pages/fichaje/FichajeAusencias';
 import FichajeImportarAnviz from './pages/fichaje/FichajeImportarAnviz';
 import FichajeInformes from './pages/fichaje/FichajeInformes';
 import FichajeConfiguracion from './pages/fichaje/FichajeConfiguracion';
+import Verifactu from './pages/verifactu';
 import NotFound from './pages/not-found';
 
 const queryClient = new QueryClient({
@@ -119,6 +120,7 @@ function Router() {
       <Route path="/admin/fichaje/importar" component={FichajeImportarAnviz} />
       <Route path="/admin/fichaje/informes" component={FichajeInformes} />
       <Route path="/admin/fichaje/configuracion" component={FichajeConfiguracion} />
+      <Route path="/admin/verifactu" component={Verifactu} />
       <Route component={NotFound} />
     </Switch>
   );

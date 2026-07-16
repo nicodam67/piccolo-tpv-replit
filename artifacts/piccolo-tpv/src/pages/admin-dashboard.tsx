@@ -35,6 +35,7 @@ import {
   Fingerprint,
   Search,
   X as XIcon,
+  Shield,
 } from 'lucide-react';
 import { useGetDashboardSummary, getGetDashboardSummaryQueryKey, customFetch } from '@workspace/api-client-react';
 import { useQuery } from '@tanstack/react-query';
@@ -473,6 +474,20 @@ const MODULES: ModuleCard[] = [
     iconBg: 'rgba(99,102,241,0.15)',
     iconColor: '#818cf8',
     glow: 'rgba(99,102,241,0.12)',
+  },
+  // ─── VERI*FACTU ──────────────────────────────────────────────────────────
+  {
+    id: 'verifactu',
+    icon: <Shield size={28} />,
+    title: 'VERI*FACTU',
+    description: 'Registros fiscales · encadenamiento · QR',
+    href: '/admin/verifactu',
+    ready: true,
+    accent: 'rgba(96,130,220,0.07)',
+    border: 'rgba(96,130,220,0.28)',
+    iconBg: 'rgba(96,130,220,0.15)',
+    iconColor: '#6082dc',
+    glow: 'rgba(96,130,220,0.12)',
   },
   // ─── Personal · Fichaje ───────────────────────────────────────────────────
   {

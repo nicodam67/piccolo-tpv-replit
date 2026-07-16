@@ -1,0 +1,220 @@
+Siguiente tarea para Replit: módulo VERI*FACTU en entorno de pruebas
+Esta es una de las tareas más importantes. La integración debe seguir las especificaciones oficiales de la AEAT y mantenerse separada de la prefactura, que no es un documento fiscal. La normativa exige integridad, conservación, trazabilidad e inalterabilidad de los registros de facturación, y la Orden HAC/1177/2024 desarrolla sus requisitos técnicos. �
+Agencia Tributaria +2
+Copia este texto en Replit:
+Implementar la primera fase del módulo VERI*FACTU para Piccolo TPV, únicamente en entorno de pruebas y sin enviar todavía facturas reales a la AEAT.
+1. Objetivo
+Preparar el sistema de facturación para:
+Generar registros de facturación compatibles con las especificaciones oficiales.
+Encadenar los registros mediante huella digital.
+Generar el código QR fiscal.
+Enviar registros posteriormente a los servicios de pruebas de la AEAT.
+Gestionar errores, reintentos y trazabilidad.
+No activar todavía el envío real en producción.
+2. Separación de documentos
+Diferenciar estrictamente:
+Prefactura.
+Factura simplificada.
+Factura completa.
+Factura rectificativa.
+Registro de anulación.
+La prefactura:
+No genera registro VERI*FACTU.
+No consume numeración fiscal.
+No genera QR fiscal.
+No se envía a la AEAT.
+3. Numeración fiscal
+Crear series configurables e independientes para:
+Facturas simplificadas.
+Facturas completas.
+Facturas rectificativas.
+Cada serie debe mantener numeración:
+Correlativa.
+Sin duplicados.
+Sin reutilizar números.
+Separada por empresa o establecimiento cuando corresponda.
+Una factura emitida no debe poder borrarse ni renumerarse.
+4. Registro de facturación de alta
+Al emitir una factura definitiva, generar un registro que incluya como mínimo:
+NIF del emisor.
+Nombre o razón social.
+Número y serie.
+Fecha de expedición.
+Tipo de factura.
+Descripción general de la operación.
+Base imponible.
+Tipo de IVA.
+Cuota de IVA.
+Importe total.
+Identificación del destinatario cuando sea obligatoria.
+Fecha y hora de generación del registro.
+Identificación del sistema informático.
+Huella digital.
+Referencia al registro anterior.
+Adaptar los nombres y formatos finales a los esquemas oficiales vigentes de la AEAT.
+5. Encadenamiento y huella
+Implementar:
+Cálculo de huella digital según la especificación oficial.
+Enlace con la huella del registro anterior.
+Orden cronológico de los registros.
+Detección de ruptura de cadena.
+Verificación completa del encadenamiento.
+No permitir modificar un registro ya generado.
+Si una factura necesita corregirse, crear el registro rectificativo correspondiente.
+6. Registro de anulación
+Cuando proceda anular un registro:
+No eliminar el original.
+Crear un registro de anulación vinculado.
+Guardar motivo.
+Guardar usuario autorizador.
+Mantener la trazabilidad completa.
+Diferenciar entre:
+Cancelación de una comanda antes de facturar.
+Devolución comercial.
+Factura rectificativa.
+Anulación de un registro por error.
+7. Código QR fiscal
+Generar el QR obligatorio en las facturas definitivas con:
+Tamaño y formato compatibles.
+Datos exigidos por la AEAT.
+Texto correspondiente a VERI*FACTU cuando proceda.
+No colocar este QR en:
+Prefacturas.
+Comandas.
+Tickets de cocina.
+Informes internos.
+8. Generador de XML
+Crear un generador de mensajes XML independiente de la interfaz del TPV.
+Debe:
+Seguir los esquemas XSD oficiales vigentes.
+Escapar correctamente caracteres.
+Validar tipos, longitudes y campos obligatorios.
+Soportar varios registros en un mismo envío cuando esté permitido.
+Rechazar localmente documentos inválidos antes de intentar enviarlos.
+No diseñar un formato propio.
+9. Adaptador AEAT
+Crear una interfaz desacoplada con funciones equivalentes a:
+createInvoiceRecord()
+createCancellationRecord()
+calculateHash()
+validateRecord()
+generateXml()
+sendToTestEnvironment()
+checkSubmissionResult()
+retryPendingSubmission()
+Implementar inicialmente:
+Un simulador local.
+Un adaptador preparado para el entorno de pruebas de la AEAT.
+10. Estados del registro
+Incluir:
+Borrador interno.
+Validado.
+Pendiente de envío.
+Enviando.
+Aceptado.
+Aceptado con errores.
+Rechazado.
+Pendiente de reintento.
+Anulado.
+Rectificado.
+La factura debe considerarse emitida independientemente de que exista un fallo temporal de comunicación, pero su registro debe permanecer pendiente de envío y nunca perderse.
+11. Funcionamiento sin conexión
+Cuando no haya internet:
+Generar y guardar el registro localmente.
+Mantener su orden y encadenamiento.
+Marcarlo como pendiente de envío.
+Reintentar al recuperar la conexión.
+Evitar envíos duplicados.
+No bloquear el funcionamiento normal del restaurante por una caída temporal de internet.
+12. Gestión de respuestas
+Guardar:
+Fecha y hora del envío.
+Resultado recibido.
+Código de respuesta.
+Descripción del error.
+Identificador o referencia de la presentación.
+Número de intentos.
+XML enviado.
+Respuesta recibida.
+Mostrar al usuario mensajes comprensibles y reservar los detalles técnicos para administración.
+13. Certificados y secretos
+Preparar la configuración para:
+Certificado electrónico.
+Credenciales.
+Entorno de pruebas.
+Entorno de producción.
+Los certificados y contraseñas:
+No deben almacenarse en el repositorio.
+No deben aparecer en el frontend.
+Deben utilizar secretos o almacenamiento cifrado.
+14. Panel VERI*FACTU
+Crear en Administración → VERI*FACTU:
+Estado del servicio.
+Entorno activo: simulador, pruebas o producción.
+Último envío.
+Registros aceptados.
+Registros rechazados.
+Registros pendientes.
+Errores que requieren revisión.
+Verificación de la cadena.
+Botón de reintento autorizado.
+Añadir filtros por:
+Fecha.
+Serie.
+Número.
+Estado.
+Tipo de factura.
+15. Declaración responsable
+Preparar una sección para generar y conservar la declaración responsable del sistema, incluyendo:
+Nombre y versión del software.
+Productor o desarrollador.
+Identificación del sistema.
+Modalidad utilizada.
+Fecha de versión.
+Funcionalidades fiscales incluidas.
+No afirmar que el sistema está certificado o plenamente conforme hasta completar una revisión técnica y fiscal externa.
+16. Auditoría
+Registrar de forma inmutable:
+Creación del registro.
+Emisión de factura.
+Cálculo de huella.
+Envíos.
+Reintentos.
+Respuestas.
+Rechazos.
+Rectificaciones.
+Anulaciones.
+Cambios de configuración.
+Usuario, terminal, fecha y hora.
+17. Pruebas obligatorias
+Crear pruebas para:
+Factura simplificada.
+Factura completa.
+Factura rectificativa.
+Registro de anulación.
+IVA de hostelería al 10 %.
+Numeración consecutiva.
+Intento de número duplicado.
+Cálculo de huella.
+Encadenamiento de varios registros.
+Detección de cadena rota.
+Generación de QR.
+Generación y validación XML.
+Respuesta aceptada.
+Respuesta rechazada.
+Pérdida de conexión.
+Cola pendiente y reintento.
+Doble pulsación o doble envío.
+Prefactura sin registro VERI*FACTU.
+Conservación de registros después de restaurar una copia.
+18. Condiciones de implementación
+Usar exclusivamente documentación técnica y esquemas oficiales vigentes de la AEAT. No enviar datos reales ni activar producción. No borrar ni modificar facturas ya emitidas. No romper prefacturas, caja, pagos, inventario, KDS, empleados ni copias de seguridad.
+Antes de programar, mostrar:
+Los documentos oficiales utilizados.
+El esquema de datos propuesto.
+El sistema de numeración.
+El método de encadenamiento.
+Los archivos que se modificarán.
+Al terminar, mostrar una factura de prueba con QR, el registro generado, la validación de la cadena, el XML de prueba ocultando datos sensibles y el resultado de todas las pruebas.
+La AEAT mantiene documentación, preguntas frecuentes y especificaciones técnicas actualizadas para los desarrolladores, por lo que Replit debe consultar siempre la versión vigente y no programar basándose en ejemplos antiguos. �
+Agencia Tributaria +2

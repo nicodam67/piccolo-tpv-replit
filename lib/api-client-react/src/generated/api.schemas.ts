@@ -1992,3 +1992,166 @@ export interface PurchaseProposalItem {
   unitPrice: string | null;
   catalogueItemId: string | null;
 }
+
+// ─── VERI*FACTU ───────────────────────────────────────────────────────────────
+
+export interface VerifactuRecord {
+  id: string;
+  invoiceId: string | null;
+  registroTipo: string;
+  tipoFactura: string;
+  serie: string;
+  numero: number;
+  numSerieFactura: string;
+  fechaExpedicion: string;
+  fechaHoraGeneracion: string;
+  emisorNif: string;
+  emisorNombre: string;
+  destinatarioNif: string;
+  destinatarioNombre: string;
+  descripcion: string;
+  baseImponible: string;
+  tipoIva: string;
+  cuotaIva: string;
+  cuotaTotal: string;
+  importeTotal: string;
+  desgloseIva: unknown | null;
+  tipoRectificativa: string;
+  facturaRectificadaSerie: string;
+  facturaRectificadaNumero: number | null;
+  facturaRectificadaFecha: string;
+  motivoRectificacion: string;
+  registroAnuladoId: string | null;
+  motivoAnulacion: string;
+  autorizadorAnulacion: string;
+  huellaAnterior: string;
+  huella: string;
+  idSistemaInformatico: string;
+  nombreSistemaInformatico: string;
+  versionSistema: string;
+  numeroInstalacion: string;
+  esVerifactu: boolean;
+  qrContent: string;
+  xmlPayload: string | null;
+  estado: string;
+  aeatFechaEnvio: string | null;
+  aeatCodigo: string;
+  aeatDescripcion: string;
+  aeatCsv: string;
+  aeatResponse: unknown | null;
+  reintentos: number;
+  proximoReintento: string | null;
+  xmlEnviado: string | null;
+  xmlRespuesta: string | null;
+  entornoEnvio: string;
+  empleadoId: string | null;
+  empleadoNombre: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface VerifactuConfig {
+  id: string;
+  emisorNif: string;
+  emisorNombre: string;
+  idSistemaInformatico: string;
+  nombreSistemaInformatico: string;
+  versionSistema: string;
+  numeroInstalacion: string;
+  entorno: string;
+  endpointPruebas: string;
+  endpointProduccion: string;
+  certificadoPath: string;
+  certificadoPasswordEnc: string;
+  autoRetry: boolean;
+  maxReintentos: number;
+  retryIntervalMinutes: number;
+  activo: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface VerifactuStatus {
+  totalRegistros: number;
+  aceptados: number;
+  rechazados: number;
+  pendientes: number;
+  conErrores: number;
+  entorno: string;
+  activo: boolean;
+  ultimoEnvio: string | null;
+  ultimoEstado: string | null;
+  ultimoCodigo: string | null;
+}
+
+export interface VerifactuChainResult {
+  ok: boolean;
+  totalRegistros: number;
+  errorEnRegistro?: string;
+  huellasVerificadas: number;
+}
+
+export interface VerifactuDeclaracion {
+  nombreSoftware: string;
+  versionSoftware: string;
+  idSistemaInformatico: string;
+  numeroInstalacion: string;
+  modalidad: string;
+  funcionalidadesFiscales: string[];
+  aviso: string;
+  fechaDeclaracion: string;
+}
+
+export interface VerifactuAuditLog {
+  id: string;
+  recordId: string | null;
+  invoiceId: string | null;
+  accion: string;
+  empleadoId: string | null;
+  empleadoNombre: string;
+  terminal: string;
+  resultado: string;
+  detalles: string;
+  createdAt: string;
+}
+
+export interface CreateVerifactuRecordInput {
+  invoiceId: string;
+  tipoFactura?: string;
+  descripcion?: string;
+  desgloseIva?: Array<{ tipoImpositivo: string; baseImponible: string; cuotaRepercutida: string }>;
+}
+
+export interface UpdateVerifactuConfigInput {
+  emisorNif?: string;
+  emisorNombre?: string;
+  idSistemaInformatico?: string;
+  nombreSistemaInformatico?: string;
+  versionSistema?: string;
+  numeroInstalacion?: string;
+  entorno?: string;
+  endpointPruebas?: string;
+  endpointProduccion?: string;
+  certificadoPath?: string;
+  certificadoPassword?: string;
+  autoRetry?: boolean;
+  maxReintentos?: number;
+  retryIntervalMinutes?: number;
+  activo?: boolean;
+}
+
+export interface CancelVerifactuRecordInput {
+  motivo: string;
+  autorizador: string;
+}
+
+export interface GetVerifactuRecordsParams {
+  desde?: string;
+  hasta?: string;
+  serie?: string;
+  estado?: string;
+  tipo?: string;
+  q?: string;
+  limit?: number;
+  offset?: number;
+}

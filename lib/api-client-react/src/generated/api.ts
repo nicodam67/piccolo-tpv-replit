@@ -5250,3 +5250,83 @@ export function useGetAdminExpiringLots<TData = Awaited<ReturnType<typeof getAdm
   const query = useQuery({ queryKey, queryFn, ...options?.query }) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
   return withQueryKey(query, queryKey);
 }
+
+// ─── VERI*FACTU ───────────────────────────────────────────────────────────────
+
+export const getAdminVerifactuStatus = async (options?: RequestInit): Promise<import('./api.schemas').VerifactuStatus> =>
+  customFetch<import('./api.schemas').VerifactuStatus>('/api/admin/verifactu/status', { ...options, method: 'GET' });
+export const getGetAdminVerifactuStatusQueryKey = () => [`/api/admin/verifactu/status`] as const;
+export function useGetAdminVerifactuStatus<TData = Awaited<ReturnType<typeof getAdminVerifactuStatus>>, TError = ErrorType<ErrorResponse>>(options?: { query?: UseQueryOptions<Awaited<ReturnType<typeof getAdminVerifactuStatus>>, TError, TData> }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryKey = getGetAdminVerifactuStatusQueryKey();
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getAdminVerifactuStatus>>> = () => getAdminVerifactuStatus();
+  const query = useQuery({ queryKey, queryFn, ...options?.query }) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
+  return withQueryKey(query, queryKey);
+}
+
+export const getAdminVerifactuConfig = async (options?: RequestInit): Promise<import('./api.schemas').VerifactuConfig> =>
+  customFetch<import('./api.schemas').VerifactuConfig>('/api/admin/verifactu/config', { ...options, method: 'GET' });
+export const getGetAdminVerifactuConfigQueryKey = () => [`/api/admin/verifactu/config`] as const;
+export function useGetAdminVerifactuConfig<TData = Awaited<ReturnType<typeof getAdminVerifactuConfig>>, TError = ErrorType<ErrorResponse>>(options?: { query?: UseQueryOptions<Awaited<ReturnType<typeof getAdminVerifactuConfig>>, TError, TData> }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryKey = getGetAdminVerifactuConfigQueryKey();
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getAdminVerifactuConfig>>> = () => getAdminVerifactuConfig();
+  const query = useQuery({ queryKey, queryFn, ...options?.query }) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
+  return withQueryKey(query, queryKey);
+}
+
+export const updateAdminVerifactuConfig = async (data: BodyType<import('./api.schemas').UpdateVerifactuConfigInput>, options?: RequestInit): Promise<import('./api.schemas').VerifactuConfig> =>
+  customFetch<import('./api.schemas').VerifactuConfig>('/api/admin/verifactu/config', { ...options, method: 'PUT', body: JSON.stringify(data) });
+export function useUpdateAdminVerifactuConfig<TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof updateAdminVerifactuConfig>>, TError, { data: BodyType<import('./api.schemas').UpdateVerifactuConfigInput> }, TContext> }): UseMutationResult<Awaited<ReturnType<typeof updateAdminVerifactuConfig>>, TError, { data: BodyType<import('./api.schemas').UpdateVerifactuConfigInput> }, TContext> {
+  const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateAdminVerifactuConfig>>, { data: BodyType<import('./api.schemas').UpdateVerifactuConfigInput> }> = ({ data }) => updateAdminVerifactuConfig(data);
+  return useMutation({ mutationFn, ...options?.mutation });
+}
+
+export const getAdminVerifactuRecords = async (params?: import('./api.schemas').GetVerifactuRecordsParams, options?: RequestInit): Promise<import('./api.schemas').VerifactuRecord[]> => {
+  const url = new URL('/api/admin/verifactu/records', 'http://x');
+  if (params) Object.entries(params).forEach(([k, v]) => v !== undefined && url.searchParams.set(k, String(v)));
+  return customFetch<import('./api.schemas').VerifactuRecord[]>(url.pathname + url.search, { ...options, method: 'GET' });
+};
+export const getGetAdminVerifactuRecordsQueryKey = (params?: import('./api.schemas').GetVerifactuRecordsParams) => [`/api/admin/verifactu/records`, params] as const;
+export function useGetAdminVerifactuRecords<TData = Awaited<ReturnType<typeof getAdminVerifactuRecords>>, TError = ErrorType<ErrorResponse>>(params?: import('./api.schemas').GetVerifactuRecordsParams, options?: { query?: UseQueryOptions<Awaited<ReturnType<typeof getAdminVerifactuRecords>>, TError, TData> }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryKey = getGetAdminVerifactuRecordsQueryKey(params);
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getAdminVerifactuRecords>>> = () => getAdminVerifactuRecords(params);
+  const query = useQuery({ queryKey, queryFn, ...options?.query }) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
+  return withQueryKey(query, queryKey);
+}
+
+export const createAdminVerifactuRecord = async (data: BodyType<import('./api.schemas').CreateVerifactuRecordInput>, options?: RequestInit): Promise<import('./api.schemas').VerifactuRecord> =>
+  customFetch<import('./api.schemas').VerifactuRecord>('/api/admin/verifactu/records', { ...options, method: 'POST', body: JSON.stringify(data) });
+export function useCreateAdminVerifactuRecord<TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof createAdminVerifactuRecord>>, TError, { data: BodyType<import('./api.schemas').CreateVerifactuRecordInput> }, TContext> }): UseMutationResult<Awaited<ReturnType<typeof createAdminVerifactuRecord>>, TError, { data: BodyType<import('./api.schemas').CreateVerifactuRecordInput> }, TContext> {
+  const mutationFn: MutationFunction<Awaited<ReturnType<typeof createAdminVerifactuRecord>>, { data: BodyType<import('./api.schemas').CreateVerifactuRecordInput> }> = ({ data }) => createAdminVerifactuRecord(data);
+  return useMutation({ mutationFn, ...options?.mutation });
+}
+
+export const sendAdminVerifactuRecord = async (id: string, options?: RequestInit): Promise<import('./api.schemas').VerifactuRecord> =>
+  customFetch<import('./api.schemas').VerifactuRecord>(`/api/admin/verifactu/records/${id}/send`, { ...options, method: 'POST' });
+export function useSendAdminVerifactuRecord<TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof sendAdminVerifactuRecord>>, TError, { id: string }, TContext> }): UseMutationResult<Awaited<ReturnType<typeof sendAdminVerifactuRecord>>, TError, { id: string }, TContext> {
+  const mutationFn: MutationFunction<Awaited<ReturnType<typeof sendAdminVerifactuRecord>>, { id: string }> = ({ id }) => sendAdminVerifactuRecord(id);
+  return useMutation({ mutationFn, ...options?.mutation });
+}
+
+export const retryAdminVerifactuRecord = async (id: string, options?: RequestInit): Promise<import('./api.schemas').VerifactuRecord> =>
+  customFetch<import('./api.schemas').VerifactuRecord>(`/api/admin/verifactu/records/${id}/retry`, { ...options, method: 'POST' });
+export function useRetryAdminVerifactuRecord<TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof retryAdminVerifactuRecord>>, TError, { id: string }, TContext> }): UseMutationResult<Awaited<ReturnType<typeof retryAdminVerifactuRecord>>, TError, { id: string }, TContext> {
+  const mutationFn: MutationFunction<Awaited<ReturnType<typeof retryAdminVerifactuRecord>>, { id: string }> = ({ id }) => retryAdminVerifactuRecord(id);
+  return useMutation({ mutationFn, ...options?.mutation });
+}
+
+export const cancelAdminVerifactuRecord = async (id: string, data: BodyType<import('./api.schemas').CancelVerifactuRecordInput>, options?: RequestInit): Promise<import('./api.schemas').VerifactuRecord> =>
+  customFetch<import('./api.schemas').VerifactuRecord>(`/api/admin/verifactu/records/${id}/cancel`, { ...options, method: 'POST', body: JSON.stringify(data) });
+export function useCancelAdminVerifactuRecord<TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof cancelAdminVerifactuRecord>>, TError, { id: string; data: BodyType<import('./api.schemas').CancelVerifactuRecordInput> }, TContext> }): UseMutationResult<Awaited<ReturnType<typeof cancelAdminVerifactuRecord>>, TError, { id: string; data: BodyType<import('./api.schemas').CancelVerifactuRecordInput> }, TContext> {
+  const mutationFn: MutationFunction<Awaited<ReturnType<typeof cancelAdminVerifactuRecord>>, { id: string; data: BodyType<import('./api.schemas').CancelVerifactuRecordInput> }> = ({ id, data }) => cancelAdminVerifactuRecord(id, data);
+  return useMutation({ mutationFn, ...options?.mutation });
+}
+
+export const verifyAdminVerifactuChain = async (options?: RequestInit): Promise<import('./api.schemas').VerifactuChainResult> =>
+  customFetch<import('./api.schemas').VerifactuChainResult>('/api/admin/verifactu/chain/verify', { ...options, method: 'GET' });
+export const getVerifyAdminVerifactuChainQueryKey = () => [`/api/admin/verifactu/chain/verify`] as const;
+export function useVerifyAdminVerifactuChain<TData = Awaited<ReturnType<typeof verifyAdminVerifactuChain>>, TError = ErrorType<ErrorResponse>>(options?: { query?: UseQueryOptions<Awaited<ReturnType<typeof verifyAdminVerifactuChain>>, TError, TData> }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryKey = getVerifyAdminVerifactuChainQueryKey();
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof verifyAdminVerifactuChain>>> = () => verifyAdminVerifactuChain();
+  const query = useQuery({ queryKey, queryFn, ...options?.query }) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
+  return withQueryKey(query, queryKey);
+}

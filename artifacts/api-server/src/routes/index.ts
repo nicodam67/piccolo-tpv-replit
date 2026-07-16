@@ -35,6 +35,7 @@ import allergensRouter from "./allergens";
 import tableAllergiesRouter from "./table-allergies";
 import traceabilityRouter from "./traceability";
 import fichajeRouter from "./fichaje";
+import verifactuRouter from "./verifactu";
 
 const router: IRouter = Router();
 
@@ -74,5 +75,6 @@ router.use(allergensRouter);
 router.use(tableAllergiesRouter);
 router.use(traceabilityRouter);
 router.use(fichajeRouter);
+router.use(verifactuRouter);
 
 export default router;
