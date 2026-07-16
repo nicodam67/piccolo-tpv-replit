@@ -42,6 +42,9 @@ import {
   PrinterIcon,
   ListOrdered,
   LineChart,
+  HardDrive,
+  Activity,
+  Smartphone,
 } from 'lucide-react';
 import { useGetDashboardSummary, getGetDashboardSummaryQueryKey, customFetch } from '@workspace/api-client-react';
 import { useQuery } from '@tanstack/react-query';
@@ -574,6 +577,46 @@ const MODULES: ModuleCard[] = [
     iconBg: 'rgba(251,146,60,0.15)',
     iconColor: '#fb923c',
     glow: 'rgba(251,146,60,0.12)',
+  },
+  // ─── Sistema ─────────────────────────────────────────────────────────────
+  {
+    id: 'backup',
+    icon: <HardDrive size={28} />,
+    title: 'Copias de seguridad',
+    description: 'Backups · programación · restauración · exportación',
+    href: '/admin/backup',
+    ready: true,
+    accent: 'rgba(99,102,241,0.07)',
+    border: 'rgba(99,102,241,0.35)',
+    iconBg: 'rgba(99,102,241,0.15)',
+    iconColor: '#818cf8',
+    glow: 'rgba(99,102,241,0.15)',
+  },
+  {
+    id: 'diagnostics',
+    icon: <Activity size={28} />,
+    title: 'Diagnóstico técnico',
+    description: 'Estado del sistema · eventos · mantenimiento',
+    href: '/admin/diagnostics',
+    ready: true,
+    accent: 'rgba(16,185,129,0.07)',
+    border: 'rgba(16,185,129,0.28)',
+    iconBg: 'rgba(16,185,129,0.15)',
+    iconColor: '#10b981',
+    glow: 'rgba(16,185,129,0.12)',
+  },
+  {
+    id: 'devices',
+    icon: <Smartphone size={28} />,
+    title: 'Dispositivos offline',
+    description: 'TPVs · tablets · cola de sincronización',
+    href: '/admin/devices',
+    ready: true,
+    accent: 'rgba(6,182,212,0.07)',
+    border: 'rgba(6,182,212,0.28)',
+    iconBg: 'rgba(6,182,212,0.15)',
+    iconColor: '#06b6d4',
+    glow: 'rgba(6,182,212,0.12)',
   },
   // ─── Panel de Dirección ───────────────────────────────────────────────────
   {

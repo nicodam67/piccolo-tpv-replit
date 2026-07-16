@@ -9,6 +9,7 @@ import { seedReservationsDemo } from "./lib/seed-reservations-demo";
 import { seedDeliveryDemo } from "./lib/seed-delivery-demo";
 import { seedOnlineDemo } from "./lib/seed-online-demo";
 import { startPrintWorker } from "./lib/print-worker";
+import { startBackupWorker } from "./lib/backup-worker";
 
 const rawPort = process.env["PORT"];
 
@@ -41,6 +42,7 @@ server.listen(port, async () => {
     logger.error({ err }, "Seed documents failed — continuing");
   }
   startPrintWorker();
+  startBackupWorker();
 });
 
 server.on("error", (err) => {

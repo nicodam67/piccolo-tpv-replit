@@ -28,3 +28,5 @@ export * from "./online-orders";
 export * from "./printers";
 export * from "./hr";
 export * from "./director";
+export * from "./backups";
+export * from "./backup-offline";

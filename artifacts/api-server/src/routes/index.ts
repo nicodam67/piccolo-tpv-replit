@@ -51,6 +51,9 @@ import hrRouter from "./hr";
 import hrImportRouter from "./hr-import";
 import directorRouter from "./director";
 import directorManagementRouter from "./director-management";
+import backupRouter from "./backup";
+import diagnosticsRouter from "./diagnostics";
+import offlineRouter from "./offline";
 
 const router: IRouter = Router();
 
@@ -106,5 +109,8 @@ router.use(hrRouter);
 router.use(hrImportRouter);
 router.use(directorRouter);
 router.use(directorManagementRouter);
+router.use(backupRouter);
+router.use(diagnosticsRouter);
+router.use(offlineRouter);
 
 export default router;

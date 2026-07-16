@@ -47,6 +47,10 @@ import TrazabilidadLotes from './pages/trazabilidad-lotes';
 import RetiradasLote from './pages/retirada-lote';
 import HRPage from './pages/hr/HRPage';
 import DirectorPage from './pages/director/DirectorPage';
+import { OfflineBanner } from './components/OfflineBanner';
+import BackupPage from './pages/backup/BackupPage';
+import DiagnosticsPage from './pages/backup/DiagnosticsPage';
+import DevicesPage from './pages/backup/DevicesPage';
 import FichajeReloj from './pages/fichaje/FichajeReloj';
 import FichajePanelDiario from './pages/fichaje/FichajePanelDiario';
 import FichajeRegistros from './pages/fichaje/FichajeRegistros';
@@ -133,6 +137,10 @@ function Router() {
       <Route path="/admin/hr" component={HRPage} />
       {/* Director dashboard */}
       <Route path="/admin/director" component={DirectorPage} />
+      {/* Backup, diagnostics, offline */}
+      <Route path="/admin/backup" component={BackupPage} />
+      <Route path="/admin/diagnostics" component={DiagnosticsPage} />
+      <Route path="/admin/devices" component={DevicesPage} />
       {/* Fichaje module — public mobile clock */}
       <Route path="/fichaje" component={FichajeReloj} />
       {/* Fichaje module — admin/manager pages */}
@@ -178,6 +186,7 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
+        <OfflineBanner />
         <Router />
       </WouterRouter>
       <Toaster theme="dark" position="top-center" />

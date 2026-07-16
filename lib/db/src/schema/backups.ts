@@ -1,4 +1,5 @@
 import {
+  boolean,
   integer,
   jsonb,
   pgTable,
@@ -20,6 +21,8 @@ export const backupRecordsTable = pgTable("backup_records", {
   createdByName: text("created_by_name").notNull().default(""),
   // 'manual' | 'auto' | 'pre-update' | 'pre-migration' | 'pre-restore'
   type: text("type").notNull().default("manual"),
+  // 'full' | 'incremental' | 'config' | 'docs'
+  backupType: text("backup_type").notNull().default("full"),
   appVersion: text("app_version").notNull().default("1.0.0"),
   // 'pending' | 'valid' | 'incomplete' | 'corrupted'
   status: text("status").notNull().default("pending"),
@@ -31,9 +34,16 @@ export const backupRecordsTable = pgTable("backup_records", {
   tablesIncluded: jsonb("tables_included").$type<string[]>().default([]),
   integrityHash: text("integrity_hash"),
   verifiedAt: timestamp("verified_at", { withTimezone: true }),
+  verified: boolean("verified").notNull().default(false),
+  protected: boolean("protected").notNull().default(false),
   // base64-encoded AES-256-GCM encrypted JSON dump (iv+authTag+ciphertext)
   encryptedPayload: text("encrypted_payload"),
+  encryptionIv: text("encryption_iv"),
+  destinationId: uuid("destination_id"),
+  scheduleId: uuid("schedule_id"),
+  preAction: text("pre_action"),
   notes: text("notes"),
+  isDemo: boolean("is_demo").notNull().default(false),
 });
 
 // ─── Backup Audit Log (immutable — no delete allowed via API) ─────────────────
