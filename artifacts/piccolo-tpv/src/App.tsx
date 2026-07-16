@@ -46,6 +46,7 @@ import ConciliacionFactura from './pages/conciliacion-factura';
 import TrazabilidadLotes from './pages/trazabilidad-lotes';
 import RetiradasLote from './pages/retirada-lote';
 import HRPage from './pages/hr/HRPage';
+import DirectorPage from './pages/director/DirectorPage';
 import FichajeReloj from './pages/fichaje/FichajeReloj';
 import FichajePanelDiario from './pages/fichaje/FichajePanelDiario';
 import FichajeRegistros from './pages/fichaje/FichajeRegistros';
@@ -130,6 +131,8 @@ function Router() {
       <Route path="/admin/retirada-lote" component={RetiradasLote} />
       {/* HR module */}
       <Route path="/admin/hr" component={HRPage} />
+      {/* Director dashboard */}
+      <Route path="/admin/director" component={DirectorPage} />
       {/* Fichaje module — public mobile clock */}
       <Route path="/fichaje" component={FichajeReloj} />
       {/* Fichaje module — admin/manager pages */}

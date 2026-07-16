@@ -8,3 +8,4 @@
 - [Fichaje integration](fichaje-integration.md) — fichaje module integrated into TPV; key decisions: Clerk replaced by JWT/PIN, INTEGER IDs migrated to UUIDs, 8 new DB tables, zod must be added explicitly to api-server deps.
 - [Stock module additions](stock-module.md) — migration 0004, new tables (ingredient_categories, storage_locations, waste_records), ApiError export fix, fetch queryFn must throw on !r.ok to keep default [].
 - [CRM / Loyalty module](crm-loyalty-module.md) — 15 DB tables, migration 0008, route split crm.ts+loyalty-extended.ts, 7-tab frontend, demo data endpoint.
+- [Director dashboard module](director-module.md) — migration 0010, 5 new tables, 2 routers, 15-tab frontend; use React not Preact imports; fix camelCase SVG attrs.

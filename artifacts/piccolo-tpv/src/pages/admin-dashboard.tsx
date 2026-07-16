@@ -41,6 +41,7 @@ import {
   BarChart2,
   PrinterIcon,
   ListOrdered,
+  LineChart,
 } from 'lucide-react';
 import { useGetDashboardSummary, getGetDashboardSummaryQueryKey, customFetch } from '@workspace/api-client-react';
 import { useQuery } from '@tanstack/react-query';
@@ -573,6 +574,20 @@ const MODULES: ModuleCard[] = [
     iconBg: 'rgba(251,146,60,0.15)',
     iconColor: '#fb923c',
     glow: 'rgba(251,146,60,0.12)',
+  },
+  // ─── Panel de Dirección ───────────────────────────────────────────────────
+  {
+    id: 'director',
+    icon: <LineChart size={28} />,
+    title: 'Panel de Dirección',
+    description: 'KPIs · rentabilidad · previsiones · alertas · objetivos',
+    href: '/admin/director',
+    ready: true,
+    accent: 'rgba(99,102,241,0.07)',
+    border: 'rgba(99,102,241,0.35)',
+    iconBg: 'rgba(99,102,241,0.15)',
+    iconColor: '#818cf8',
+    glow: 'rgba(99,102,241,0.15)',
   },
   // ─── Personal · Fichaje ───────────────────────────────────────────────────
   {

@@ -49,6 +49,8 @@ import onlineOrdersV2Router from "./online-orders-v2";
 import loyaltyExtendedRouter from "./loyalty-extended";
 import hrRouter from "./hr";
 import hrImportRouter from "./hr-import";
+import directorRouter from "./director";
+import directorManagementRouter from "./director-management";
 
 const router: IRouter = Router();
 
@@ -102,5 +104,7 @@ router.use(onlineOrdersV2Router);
 router.use(loyaltyExtendedRouter);
 router.use(hrRouter);
 router.use(hrImportRouter);
+router.use(directorRouter);
+router.use(directorManagementRouter);
 
 export default router;
