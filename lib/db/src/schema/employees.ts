@@ -1,4 +1,4 @@
-import { pgTable, text, boolean, timestamp, uuid, numeric } from "drizzle-orm/pg-core";
+import { pgTable, text, boolean, timestamp, uuid, numeric, date, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -18,6 +18,25 @@ export const employeesTable = pgTable("employees", {
   dni: text("dni"),
   hourlyRate: numeric("hourly_rate"),
   legacyFichajeId: text("legacy_fichaje_id"), // ID entero del sistema de fichaje antiguo (para migración)
+
+  // HR module extensions (all nullable/default — safe for existing rows)
+  lastName: text("last_name"),
+  employeeNumber: text("employee_number"),
+  email: text("email"),
+  address: text("address"),
+  hireDate: date("hire_date"),
+  terminationDate: date("termination_date"),
+  empStatus: text("emp_status").notNull().default("active"), // 'active'|'inactive'|'suspended'
+  positionId: uuid("position_id"),             // FK to hr_positions (no constraint here to avoid circular)
+  departmentId: uuid("department_id"),         // FK to hr_departments
+  workCenterId: uuid("work_center_id"),        // FK to hr_work_centers
+  monthlySalary: numeric("monthly_salary", { precision: 10, scale: 2 }),
+  employerCostRate: numeric("employer_cost_rate", { precision: 5, scale: 4 }).notNull().default("1.35"),
+  externalCode: text("external_code"),
+  photoUrl: text("photo_url"),
+  emergencyContact: jsonb("emergency_contact"),  // { name, phone, relation }
+  empNotes: text("emp_notes"),
+  isDemo: boolean("is_demo").notNull().default(false),
 });
 
 export const employeePinsTable = pgTable("employee_pins", {

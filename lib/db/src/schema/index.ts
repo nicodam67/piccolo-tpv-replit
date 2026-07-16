@@ -26,3 +26,4 @@ export * from "./verifactu";
 export * from "./crm";
 export * from "./online-orders";
 export * from "./printers";
+export * from "./hr";

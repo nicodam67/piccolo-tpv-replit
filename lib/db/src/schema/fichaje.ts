@@ -19,12 +19,17 @@ export const timeRecordsTable = pgTable("time_records", {
     .references(() => employeesTable.id, { onDelete: "restrict" }),
   clockIn: timestamp("clock_in", { withTimezone: true }).notNull(),
   clockOut: timestamp("clock_out", { withTimezone: true }),
-  source: text("source").notNull().default("pin"), // 'pin' | 'nfc' | 'manual' | 'anviz'
+  source: text("source").notNull().default("pin"), // 'pin' | 'nfc' | 'manual' | 'anviz' | 'import'
   isManual: boolean("is_manual").notNull().default(false),
   notes: text("notes"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   createdBy: uuid("created_by").references(() => employeesTable.id),
+  // HR import traceability — all nullable, no FK in schema to avoid circular imports
+  importHistoryId: uuid("import_history_id"),
+  importRowId: uuid("import_row_id"),
+  externalRecordId: text("external_record_id"),
+  deviceId: text("device_id"),
 });
 
 // ─── Descansos vinculados a un registro ─────────────────────────────────────

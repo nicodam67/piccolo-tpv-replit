@@ -47,6 +47,8 @@ import waitingListRouter from "./waiting-list";
 import deliveryOrdersRouter from "./delivery-orders";
 import onlineOrdersV2Router from "./online-orders-v2";
 import loyaltyExtendedRouter from "./loyalty-extended";
+import hrRouter from "./hr";
+import hrImportRouter from "./hr-import";
 
 const router: IRouter = Router();
 
@@ -98,5 +100,7 @@ router.use(waitingListRouter);
 router.use(deliveryOrdersRouter);
 router.use(onlineOrdersV2Router);
 router.use(loyaltyExtendedRouter);
+router.use(hrRouter);
+router.use(hrImportRouter);
 
 export default router;
