@@ -42,6 +42,8 @@ import printersRouter from "./printers";
 import ingredientCategoriesRouter from "./ingredient-categories";
 import storageLocationsRouter from "./storage-locations";
 import wasteRecordsRouter from "./waste-records";
+import serviceShiftsRouter from "./service-shifts";
+import waitingListRouter from "./waiting-list";
 
 const router: IRouter = Router();
 
@@ -88,5 +90,7 @@ router.use(printersRouter);
 router.use(ingredientCategoriesRouter);
 router.use(storageLocationsRouter);
 router.use(wasteRecordsRouter);
+router.use(serviceShiftsRouter);
+router.use(waitingListRouter);
 
 export default router;

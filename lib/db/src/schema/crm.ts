@@ -31,6 +31,16 @@ export const crmClientsTable = pgTable("crm_clients", {
   totalVisitas: integer("total_visitas").notNull().default(0),
   ultimaVisita: timestamp("ultima_visita", { withTimezone: true }),
   puntosSaldo: integer("puntos_saldo").notNull().default(0),
+  // ── Reservation-linked extensions (added in 0005_reservations_v2) ──
+  idioma:             text("idioma").notNull().default("es"),
+  mesaFavoritaId:     uuid("mesa_favorita_id"),  // FK to restaurant_tables — not referenced here to avoid circular dep
+  zonaFavorita:       text("zona_favorita"),
+  rgpdMarketing:      boolean("rgpd_marketing").notNull().default(false),
+  notasInternas:      text("notas_internas").notNull().default(""),
+  flagNoPresentado:   boolean("flag_no_presentado").notNull().default(false),
+  bloqueoOnline:      boolean("bloqueo_online").notNull().default(false),
+  cancelaciones:      integer("cancelaciones").notNull().default(0),
+  noPresentados:      integer("no_presentados").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

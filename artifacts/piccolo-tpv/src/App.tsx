@@ -66,6 +66,7 @@ import AdminColaImpresion from './pages/admin-cola-impresion';
 import AdminMermas from './pages/admin-mermas';
 import AdminCategoriasIngredientes from './pages/admin-categorias-ingredientes';
 import AdminAlmacenes from './pages/admin-almacenes';
+import AdminTurnosReservas from './pages/admin-turnos-reservas';
 import NotFound from './pages/not-found';
 
 const queryClient = new QueryClient({
@@ -148,6 +149,8 @@ function Router() {
       <Route path="/admin/mermas" component={AdminMermas} />
       <Route path="/admin/categorias-ingredientes" component={AdminCategoriasIngredientes} />
       <Route path="/admin/almacenes" component={AdminAlmacenes} />
+      {/* Reservations extensions */}
+      <Route path="/admin/reservas/turnos" component={AdminTurnosReservas} />
       <Route component={NotFound} />
     </Switch>
   );
