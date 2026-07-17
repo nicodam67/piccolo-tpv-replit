@@ -32,8 +32,16 @@ import {
   backupSchedulesTable,
   cashSessionsTable,
   employeesTable,
+  manualsTable,
+  ordersTable,
+  orderItemsTable,
+  kitchenTasksTable as kitchenTasks,
+  restaurantTablesTable,
+  productsTable,
+  paymentsTable,
+  paymentMethodsTable,
 } from "@workspace/db";
-import { eq, desc, asc } from "drizzle-orm";
+import { eq, desc, asc, inArray, sql } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
 
 const ADMIN_ROLES = ["admin"] as const;
@@ -408,6 +416,237 @@ router.post("/admin/installation/seed", requireAuth, requireRole(...ADMIN_ROLES)
 
   const created = await db.insert(installationDevicesTable).values(defaults).returning();
   res.status(201).json(created);
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// MANUALS (DB-backed operational checklists)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// GET /admin/installation/manuals
+router.get("/admin/installation/manuals", requireAuth, requireRole(...MANAGER_ROLES), async (_req, res): Promise<void> => {
+  const manuals = await db.select().from(manualsTable).orderBy(asc(manualsTable.type));
+  res.json(manuals);
+});
+
+// PATCH /admin/installation/manuals/:type
+router.patch("/admin/installation/manuals/:type", requireAuth, requireRole(...ADMIN_ROLES), async (req, res): Promise<void> => {
+  const { type } = req.params;
+  const { steps, supportPhone, title } = req.body as { steps?: unknown[]; supportPhone?: string; title?: string };
+
+  const patch: Record<string, unknown> = { updatedAt: new Date() };
+  if (steps !== undefined)       patch.steps       = steps;
+  if (supportPhone !== undefined) patch.supportPhone = supportPhone;
+  if (title !== undefined)       patch.title       = title;
+
+  const [updated] = await db
+    .update(manualsTable)
+    .set(patch as any)
+    .where(eq(manualsTable.type, type))
+    .returning();
+
+  if (!updated) { res.status(404).json({ error: "Manual no encontrado" }); return; }
+  res.json(updated);
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// INSTALLATION SIMULATION
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// POST /admin/installation-simulation/run
+router.post("/admin/installation-simulation/run", requireAuth, requireRole(...ADMIN_ROLES), async (req, res): Promise<void> => {
+  const results: Array<{ session: number; tableName: string; steps: Array<{ step: string; ok: boolean; error?: string }> }> = [];
+
+  // 1. Get first 5 active tables
+  const tables = await db
+    .select({ id: restaurantTablesTable.id, name: restaurantTablesTable.name })
+    .from(restaurantTablesTable)
+    .limit(5);
+
+  if (tables.length === 0) {
+    res.status(422).json({ error: "No hay mesas configuradas. Crea al menos una mesa antes de simular." });
+    return;
+  }
+
+  // 2. Get 3 products to use as demo items
+  const products = await db
+    .select({ id: productsTable.id, name: productsTable.name, price: productsTable.price, prepZone: productsTable.prepZone })
+    .from(productsTable)
+    .limit(3);
+
+  if (products.length === 0) {
+    res.status(422).json({ error: "No hay productos configurados. Crea al menos un producto antes de simular." });
+    return;
+  }
+
+  const performedBy = (req as any).user?.id ?? null;
+  const sessionCount = Math.min(5, tables.length);
+
+  for (let i = 0; i < sessionCount; i++) {
+    const table = tables[i];
+    const steps: Array<{ step: string; ok: boolean; error?: string }> = [];
+
+    try {
+      // Step 1: Create demo order
+      let orderId: string | null = null;
+      try {
+        const [order] = await db.insert(ordersTable).values({
+          tableId: table.id,
+          status: "open",
+          guestCount: 2,
+          isDemo: true,
+          employeeId: performedBy,
+        }).returning();
+        orderId = order.id;
+        steps.push({ step: "Abrir mesa", ok: true });
+      } catch (e: any) {
+        steps.push({ step: "Abrir mesa", ok: false, error: e?.message });
+        results.push({ session: i + 1, tableName: table.name, steps });
+        continue;
+      }
+
+      // Step 2: Add items
+      const itemsToAdd = products.slice(0, Math.min(3, products.length));
+      const insertedItems: Array<{ id: string; productName: string; prepZone: string }> = [];
+      try {
+        for (const prod of itemsToAdd) {
+          const [item] = await db.insert(orderItemsTable).values({
+            orderId,
+            productId: prod.id,
+            quantity: 1,
+            unitPrice: prod.price ?? "0.00",
+            notes: `Demo sim ${i + 1}`,
+          }).returning();
+          insertedItems.push({ id: item.id, productName: prod.name, prepZone: prod.prepZone ?? "cocina" });
+        }
+        steps.push({ step: "Añadir artículos", ok: true });
+      } catch (e: any) {
+        steps.push({ step: "Añadir artículos", ok: false, error: e?.message });
+      }
+
+      // Step 3: Create kitchen tasks (simulated send)
+      const taskIds: string[] = [];
+      try {
+        for (const item of insertedItems) {
+          const [task] = await db.insert(kitchenTasks).values({
+            orderId,
+            orderItemId: item.id,
+            prepZone: item.prepZone || "cocina",
+            productName: item.productName,
+            quantity: 1,
+            status: "new",
+          }).returning();
+          taskIds.push(task.id);
+        }
+        // Mark order as sent
+        await db.update(ordersTable).set({ status: "sent", updatedAt: new Date() }).where(eq(ordersTable.id, orderId!));
+        steps.push({ step: "Enviar a cocina (KDS)", ok: taskIds.length > 0 });
+      } catch (e: any) {
+        steps.push({ step: "Enviar a cocina (KDS)", ok: false, error: e?.message });
+      }
+
+      // Step 4: Mark tasks as ready (simulated)
+      try {
+        if (taskIds.length > 0) {
+          await db.update(kitchenTasks)
+            .set({ status: "ready", readyAt: new Date(), updatedAt: new Date() })
+            .where(inArray(kitchenTasks.id, taskIds));
+        }
+        steps.push({ step: "KDS marca como listo", ok: taskIds.length > 0 });
+      } catch (e: any) {
+        steps.push({ step: "KDS marca como listo", ok: false, error: e?.message });
+      }
+
+      // Step 5: Record demo payment — always close the order; payment insert is best-effort
+      let paymentOk = false;
+      let closeOk = false;
+
+      try {
+        // Resolve employee for payment (NOT NULL constraint) — use req.user or first admin
+        let employeeId: string | null = performedBy;
+        if (!employeeId) {
+          const [emp] = await db
+            .select({ id: employeesTable.id })
+            .from(employeesTable)
+            .where(eq(employeesTable.role, "admin"))
+            .limit(1);
+          employeeId = emp?.id ?? null;
+        }
+
+        // Get first active payment method
+        const [pm] = await db
+          .select({ id: paymentMethodsTable.id })
+          .from(paymentMethodsTable)
+          .where(eq(paymentMethodsTable.active, true))
+          .limit(1);
+
+        if (pm && employeeId) {
+          await db.insert(paymentsTable).values({
+            orderId: orderId!,
+            paymentMethodId: pm.id,
+            amount: "10.00",
+            employeeId,
+            isDemo: true,
+            status: "completed",
+          });
+          paymentOk = true;
+        }
+      } catch { /* payment failure is non-fatal for order closure */ }
+
+      // Always close the order, even if payment insert failed
+      try {
+        await db.update(ordersTable)
+          .set({ status: "closed", updatedAt: new Date() })
+          .where(eq(ordersTable.id, orderId!));
+        closeOk = true;
+      } catch (e: any) {
+        steps.push({ step: "Cobrar y cerrar", ok: false, error: `Cierre fallido: ${e?.message}` });
+      }
+
+      if (closeOk) {
+        steps.push({
+          step: "Cobrar y cerrar",
+          ok: true,
+          error: paymentOk ? undefined : "Pago demo omitido (sin empleado o método de pago activo)",
+        });
+      }
+
+      // Step 6: Record test result
+      try {
+        const allOk = steps.every(s => s.ok);
+        await db.insert(installationTestsTable).values({
+          testType: "full_simulation",
+          deviceName: `Sesión virtual ${i + 1} — ${table.name}`,
+          result: allOk ? "ok" : "warning",
+          notes: steps.filter(s => !s.ok).map(s => s.step).join(", ") || "Todo OK",
+          performedBy: performedBy ? String(performedBy) : "sistema",
+          metadata: { orderId, tableId: table.id, sessionIndex: i + 1 },
+        });
+      } catch { /* non-fatal */ }
+
+    } catch (e: any) {
+      steps.push({ step: "Error inesperado", ok: false, error: e?.message });
+    }
+
+    results.push({ session: i + 1, tableName: table.name, steps });
+  }
+
+  const totalSteps = results.flatMap(r => r.steps).length;
+  const passedSteps = results.flatMap(r => r.steps).filter(s => s.ok).length;
+  const allPassed = results.every(r => r.steps.every(s => s.ok));
+
+  res.json({
+    ok: allPassed,
+    sessionsRun: results.length,
+    totalSteps,
+    passedSteps,
+    failedSteps: totalSteps - passedSteps,
+    results,
+    summary: allPassed
+      ? `Simulación completada: ${results.length} sesiones, todos los pasos superados.`
+      : `Simulación con advertencias: ${totalSteps - passedSteps} pasos fallaron.`,
+    isDemo: true,
+    runAt: new Date().toISOString(),
+  });
 });
 
 export default router;

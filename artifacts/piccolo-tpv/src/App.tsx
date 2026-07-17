@@ -82,6 +82,7 @@ import AdminRepartidores from './pages/admin-repartidores';
 import MenuPage from './pages/menu';
 import AdminSistema from './pages/admin-sistema';
 import AdminInstalacion from './pages/admin-instalacion';
+import AdminInstalacionQR from './pages/admin-instalacion-qr';
 import AdminPermisos from './pages/admin-permisos';
 import AdminDatosDemo from './pages/admin-datos-demo';
 import NotFound from './pages/not-found';
@@ -187,6 +188,7 @@ function Router() {
       <Route path="/setup/:sessionId/:step" component={SetupWizardPage} />
       {/* Instalación */}
       <Route path="/admin/instalacion" component={AdminInstalacion} />
+      <Route path="/admin/instalacion/qr" component={AdminInstalacionQR} />
       {/* Permisos por rol */}
       <Route path="/admin/permisos" component={AdminPermisos} />
       {/* Demo data manager */}

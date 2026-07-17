@@ -92,6 +92,23 @@ export const installationTestsTable = pgTable("installation_tests", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+// ─── Manuals ──────────────────────────────────────────────────────────────────
+// Operational checklists stored in the DB so admins can edit steps.
+
+import { employeesTable } from "./employees";
+
+export const manualsTable = pgTable("manuals", {
+  id:           uuid("id").primaryKey().defaultRandom(),
+  type:         text("type").notNull().unique(), // 'apertura' | 'cierre' | 'emergencia'
+  title:        text("title").notNull().default(""),
+  steps:        jsonb("steps").$type<Array<Record<string, unknown>>>().notNull().default([]),
+  supportPhone: text("support_phone").notNull().default(""),
+  updatedAt:    timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedBy:    uuid("updated_by").references(() => employeesTable.id, { onDelete: "set null" }),
+  createdAt:    timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export type InstallationDevice = typeof installationDevicesTable.$inferSelect;
 export type NetworkRegistryEntry = typeof networkRegistryTable.$inferSelect;
 export type InstallationTest = typeof installationTestsTable.$inferSelect;
+export type Manual = typeof manualsTable.$inferSelect;

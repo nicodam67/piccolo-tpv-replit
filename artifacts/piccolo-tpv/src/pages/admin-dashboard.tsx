@@ -49,6 +49,9 @@ import {
   Lock,
   Trash2,
   Zap,
+  QrCode,
+  Wrench,
+  ShieldCheck,
 } from 'lucide-react';
 import { useGetDashboardSummary, getGetDashboardSummaryQueryKey, customFetch } from '@workspace/api-client-react';
 import { useQuery } from '@tanstack/react-query';
@@ -982,6 +985,32 @@ export default function AdminDashboard() {
             />
           </div>
         )}
+
+        {/* ── Quick shortcuts ── */}
+        <div className="mb-8">
+          <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-3">Accesos directos</h2>
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
+            {[
+              { label: 'Abrir TPV',     href: '/tables',                icon: <UtensilsCrossed size={20} />, color: '#ed874c', bg: 'rgba(237,135,76,0.12)' },
+              { label: 'Administración',href: '/admin',                 icon: <Monitor size={20} />,          color: '#818cf8', bg: 'rgba(129,140,248,0.12)' },
+              { label: 'Abrir caja',    href: '/cash-session',          icon: <Trash2 size={20} style={{ display:'none' }} />, color: '#10b981', bg: 'rgba(16,185,129,0.12)', customIcon: '💵' },
+              { label: 'KDS Cocina',    href: '/kds',                   icon: <Monitor size={20} />,          color: '#f59e0b', bg: 'rgba(245,158,11,0.12)' },
+              { label: 'Diagnóstico',   href: '/admin/instalacion',     icon: <Zap size={20} />,              color: '#06b6d4', bg: 'rgba(6,182,212,0.12)' },
+              { label: 'Copia seguridad',href: '/admin/backup',         icon: <HardDrive size={20} />,        color: '#8b5cf6', bg: 'rgba(139,92,246,0.12)' },
+              { label: 'QR Mesas',      href: '/admin/instalacion/qr',  icon: <QrCode size={20} />,           color: '#ec4899', bg: 'rgba(236,72,153,0.12)' },
+            ].map(sc => (
+              <a key={sc.label} href={sc.href}
+                className="flex flex-col items-center gap-2 p-3 rounded-xl border border-border hover:border-primary/40 hover:bg-secondary/40 transition-all text-center group"
+                style={{ background: sc.bg }}
+              >
+                <span style={{ color: sc.color }} className="transition-transform group-hover:scale-110 duration-150">
+                  {sc.customIcon ? <span className="text-2xl">{sc.customIcon}</span> : sc.icon}
+                </span>
+                <span className="text-xs font-semibold leading-tight">{sc.label}</span>
+              </a>
+            ))}
+          </div>
+        </div>
 
         {/* ── Module search ── */}
         <div className="relative mb-2">

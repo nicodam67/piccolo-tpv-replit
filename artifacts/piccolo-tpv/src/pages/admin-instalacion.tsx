@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'wouter';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { customFetch } from '@workspace/api-client-react';
 import {
@@ -9,6 +10,8 @@ import {
   ClipboardList, Zap, PlayCircle,
   MapPin, User, Lock,
   PhoneCall, Wrench, BatteryCharging,
+  QrCode, FlaskConical, CheckSquare, Square, ShieldCheck, XOctagon,
+  ArrowRight, ExternalLink,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -73,6 +76,12 @@ interface DiagnosisData {
   summary: { totalDevices: number; readyDevices: number; pendingDevices: number; errorDevices: number };
 }
 
+interface ManualStep { id: number; text?: string; situation?: string; steps?: string[] }
+interface Manual { id: string; type: string; title: string; steps: ManualStep[]; supportPhone: string; updatedAt: string }
+interface SimStep { step: string; ok: boolean; error?: string }
+interface SimSession { session: number; tableName: string; steps: SimStep[] }
+interface SimResult { ok: boolean; sessionsRun: number; totalSteps: number; passedSteps: number; failedSteps: number; results: SimSession[]; summary: string; runAt: string }
+
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const TABS = [
@@ -81,6 +90,8 @@ const TABS = [
   { id: 'diagnostico', label: 'Diagnóstico', icon: Zap },
   { id: 'asistente',   label: 'Asistente',   icon: PlayCircle },
   { id: 'manuales',    label: 'Manuales',    icon: BookOpen },
+  { id: 'simulacion',  label: 'Simulación',  icon: FlaskConical },
+  { id: 'qr',          label: 'QR Mesas',    icon: QrCode },
   { id: 'arquitectura',label: 'Arquitectura',icon: Server },
 ] as const;
 
@@ -282,12 +293,14 @@ const WIZARD_STEPS = [
   { id: 12, label: 'Confirmar sincronización',  desc: 'Verifica en el panel de dispositivos que el estado es "Preparado" y la última sincronización es reciente.' },
 ];
 
-function WizardTab() {
+function WizardTab({ devices = [], onMarkReady }: { devices?: InstallationDevice[]; onMarkReady?: (id: string, data: Partial<InstallationDevice>) => void }) {
   const [currentStep, setCurrentStep] = useState(0);
   const [completed, setCompleted] = useState<number[]>([]);
   const [selectedTablet, setSelectedTablet] = useState('Tablet Sala 1');
+  const [linkedDeviceId, setLinkedDeviceId] = useState<string>('');
 
-  const TABLETS = ['Tablet Sala 1', 'Tablet Sala 2', 'Tablet Sala 3', 'Tablet Terraza 1', 'Tablet Encargado'];
+  const TABLETS = devices.filter(d => d.deviceCategory === 'tablet').map(d => d.name);
+  if (TABLETS.length === 0) TABLETS.push('Tablet Sala 1', 'Tablet Sala 2', 'Tablet Sala 3', 'Tablet Terraza 1', 'Tablet Encargado');
 
   const toggleStep = (step: number) => {
     setCompleted((prev) =>
@@ -361,10 +374,39 @@ function WizardTab() {
       </div>
 
       {completed.length === WIZARD_STEPS.length && (
-        <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-6 text-center">
-          <CheckCircle2 size={40} className="text-emerald-400 mx-auto mb-3" />
-          <p className="font-bold text-emerald-400 text-lg">{selectedTablet} lista</p>
-          <p className="text-sm text-muted-foreground mt-1">Todos los pasos completados. Recuerda cambiar su estado a "Preparado" en el inventario.</p>
+        <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-6 space-y-4">
+          <div className="text-center">
+            <CheckCircle2 size={40} className="text-emerald-400 mx-auto mb-3" />
+            <p className="font-bold text-emerald-400 text-lg">{selectedTablet} — instalación completada</p>
+            <p className="text-sm text-muted-foreground mt-1">Todos los pasos completados. Vincula este resultado con el dispositivo del inventario para marcarlo como Preparado.</p>
+          </div>
+          {devices.filter(d => d.deviceCategory === 'tablet').length > 0 && onMarkReady && (
+            <div className="flex flex-col sm:flex-row gap-3 items-center justify-center">
+              <select
+                value={linkedDeviceId}
+                onChange={e => setLinkedDeviceId(e.target.value)}
+                className="bg-background border border-border rounded-lg px-3 py-2 text-sm min-w-[200px]"
+              >
+                <option value="">— Selecciona dispositivo —</option>
+                {devices.filter(d => d.deviceCategory === 'tablet').map(d => (
+                  <option key={d.id} value={d.id}>{d.name}</option>
+                ))}
+              </select>
+              <button
+                disabled={!linkedDeviceId}
+                onClick={() => {
+                  if (linkedDeviceId) {
+                    onMarkReady(linkedDeviceId, { status: 'ready' });
+                    setLinkedDeviceId('');
+                    toast.success(`${devices.find(d => d.id === linkedDeviceId)?.name ?? 'Tablet'} marcada como Preparada`);
+                  }
+                }}
+                className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-500 disabled:opacity-50 transition-colors"
+              >
+                <ShieldCheck size={15} /> Marcar como Preparada
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -506,6 +548,420 @@ const PLAN_EMERGENCIA: { situation: string; steps: string[] }[] = [
     ],
   },
 ];
+
+// ─── Offline sync checklist ────────────────────────────────────────────────────
+const OFFLINE_SYNC_STEPS = [
+  { id: 1, text: 'Asegúrate de que todos los dispositivos están sincronizados (sin pendientes en la cola).', check: 'Sin indicadores de cola pendiente en ninguna tablet.' },
+  { id: 2, text: 'Desconecta el Wi-Fi del router o activa modo avión en la tablet de prueba.', check: 'Tablet muestra el banner "Sin conexión".' },
+  { id: 3, text: 'Añade 2 artículos a una mesa desde la tablet en modo offline.', check: 'Los artículos se guardan y se muestra "Guardado localmente".' },
+  { id: 4, text: 'Comprueba que el TPV continúa operando sin conexión.', check: 'No hay errores ni pantallas en blanco; la mesa se puede gestionar.' },
+  { id: 5, text: 'Cierra o anota el pedido (sin cobrar) desde la tablet offline.', check: 'El pedido queda registrado localmente con estado "pendiente de sincronizar".' },
+  { id: 6, text: 'Reconecta el Wi-Fi en la tablet.', check: 'El banner "Sin conexión" desaparece.' },
+  { id: 7, text: 'Espera a que la tablet sincronice automáticamente (máximo 30 segundos).', check: 'Aparece la notificación "Sincronizado" o el indicador vuelve a verde.' },
+  { id: 8, text: 'Verifica en el servidor que los artículos añadidos offline aparecen en el pedido de esa mesa.', check: 'Desde el ordenador principal: el pedido contiene los artículos añadidos offline.' },
+  { id: 9, text: 'Confirma que no hay duplicados en la cola offline ni en el pedido del servidor.', check: 'Solo hay una entrada por artículo añadido; la cola offline está vacía.' },
+];
+
+function OfflineSyncChecklist() {
+  const [checked, setChecked] = useState<boolean[]>(OFFLINE_SYNC_STEPS.map(() => false));
+  const [open, setOpen] = useState(true);
+
+  const toggle = (i: number) => setChecked(prev => { const n = [...prev]; n[i] = !n[i]; return n; });
+  const done = checked.filter(Boolean).length;
+  const allDone = done === OFFLINE_SYNC_STEPS.length;
+
+  return (
+    <div className="bg-card border border-border rounded-xl overflow-hidden">
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center gap-4 p-5 text-left hover:bg-secondary/30 transition-colors"
+      >
+        <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${allDone ? 'bg-emerald-500/15 text-emerald-400' : 'bg-blue-500/10 text-blue-400'}`}>
+          {allDone ? <ShieldCheck size={20} /> : <WifiOff size={20} />}
+        </div>
+        <div className="flex-1">
+          <p className="font-bold text-sm">Prueba de sincronización offline (9 pasos)</p>
+          <p className="text-xs text-muted-foreground mt-0.5">Verifica que las tablets operan sin conexión y se sincronizan correctamente al reconectar.</p>
+        </div>
+        <span className="text-xs font-bold text-muted-foreground tabular-nums">{done}/{OFFLINE_SYNC_STEPS.length}</span>
+        {open ? <ChevronDown size={16} className="text-muted-foreground shrink-0" /> : <ChevronRight size={16} className="text-muted-foreground shrink-0" />}
+      </button>
+
+      {open && (
+        <div className="px-5 pb-5 space-y-3">
+          <div className="w-full bg-secondary rounded-full h-1.5 mb-4">
+            <div className="bg-blue-400 h-1.5 rounded-full transition-all" style={{ width: `${(done / OFFLINE_SYNC_STEPS.length) * 100}%` }} />
+          </div>
+
+          {OFFLINE_SYNC_STEPS.map((step, i) => {
+            const ok = checked[i];
+            return (
+              <div key={step.id} className={`rounded-xl border p-4 transition-all ${ok ? 'border-emerald-500/30 bg-emerald-500/5' : 'border-border'}`}>
+                <div className="flex items-start gap-3">
+                  <button
+                    onClick={() => toggle(i)}
+                    className={`mt-0.5 w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${ok ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-border hover:border-blue-400'}`}
+                  >
+                    {ok ? <CheckCircle2 size={13} /> : <span className="text-[10px] font-bold">{step.id}</span>}
+                  </button>
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-sm leading-relaxed ${ok ? 'line-through text-muted-foreground' : ''}`}>{step.text}</p>
+                    <div className="mt-2 flex items-start gap-1.5">
+                      <CheckSquare size={11} className="text-muted-foreground shrink-0 mt-0.5" />
+                      <p className="text-xs text-muted-foreground italic">{step.check}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+
+          {allDone && (
+            <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-4 text-center">
+              <ShieldCheck size={24} className="text-emerald-400 mx-auto mb-2" />
+              <p className="font-bold text-emerald-400 text-sm">Prueba offline superada</p>
+              <p className="text-xs text-muted-foreground mt-1">El modo offline y la sincronización funcionan correctamente.</p>
+            </div>
+          )}
+
+          <button
+            onClick={() => setChecked(OFFLINE_SYNC_STEPS.map(() => false))}
+            className="mt-1 text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
+          >
+            <RefreshCw size={11} /> Reiniciar prueba
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Simulation tab ────────────────────────────────────────────────────────────
+function SimulacionTab() {
+  const [result, setResult] = useState<SimResult | null>(null);
+  const [running, setRunning] = useState(false);
+  const BASE = import.meta.env.BASE_URL.replace(/\/$/, '');
+
+  const runSimulation = async () => {
+    setRunning(true);
+    setResult(null);
+    try {
+      const r = await customFetch(`${BASE}/api/admin/installation-simulation/run`, { method: 'POST' });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error ?? 'Error al ejecutar simulación');
+      setResult(data as SimResult);
+      if ((data as SimResult).ok) toast.success('Simulación completada: todos los pasos superados');
+      else toast.warning('Simulación completada con advertencias');
+    } catch (e: any) {
+      toast.error(e.message);
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="bg-card border border-border rounded-xl p-6">
+        <h3 className="text-lg font-bold mb-1 flex items-center gap-2">
+          <FlaskConical size={20} className="text-violet-400" /> Simulación de instalación coordinada
+        </h3>
+        <p className="text-sm text-muted-foreground mb-4">
+          Ejecuta 5 sesiones virtuales de forma simultánea para verificar que el flujo completo funciona:
+          apertura de mesa → añadir artículos → envío a cocina (KDS) → marcar listo → cobrar.
+          Todos los registros creados son marcados como <strong>demo</strong> y pueden eliminarse en "Datos de demostración".
+        </p>
+        <div className="flex items-center gap-3 flex-wrap">
+          <button
+            onClick={runSimulation}
+            disabled={running}
+            className="flex items-center gap-2 px-5 py-2.5 bg-violet-600 text-white rounded-xl font-bold hover:bg-violet-500 disabled:opacity-50 transition-colors"
+          >
+            {running ? <RefreshCw size={16} className="animate-spin" /> : <FlaskConical size={16} />}
+            {running ? 'Ejecutando simulación…' : 'Ejecutar simulación completa'}
+          </button>
+          {result && (
+            <span className={`text-xs font-bold px-3 py-1.5 rounded-full ${result.ok ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30' : 'bg-amber-500/15 text-amber-400 border border-amber-500/30'}`}>
+              {result.ok ? '✓ Todo OK' : '⚠ Con advertencias'}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Results */}
+      {result && (
+        <div className="space-y-4">
+          {/* Summary banner */}
+          <div className={`rounded-xl p-5 border ${result.ok ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-amber-500/10 border-amber-500/30'}`}>
+            <p className={`font-bold ${result.ok ? 'text-emerald-400' : 'text-amber-400'}`}>{result.summary}</p>
+            <div className="mt-3 grid grid-cols-4 gap-3 text-center">
+              {[
+                { label: 'Sesiones', value: result.sessionsRun },
+                { label: 'Pasos totales', value: result.totalSteps },
+                { label: 'Superados', value: result.passedSteps, color: 'text-emerald-400' },
+                { label: 'Fallidos', value: result.failedSteps, color: result.failedSteps > 0 ? 'text-red-400' : 'text-muted-foreground' },
+              ].map(s => (
+                <div key={s.label}>
+                  <p className={`text-2xl font-black ${s.color ?? ''}`}>{s.value}</p>
+                  <p className="text-xs text-muted-foreground">{s.label}</p>
+                </div>
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground mt-3">
+              Ejecutado: {new Date(result.runAt).toLocaleString('es-ES')} · Todos los registros marcados como demo (is_demo: true)
+            </p>
+          </div>
+
+          {/* Per-session results */}
+          <div className="space-y-3">
+            {result.results.map((session) => {
+              const allOk = session.steps.every(s => s.ok);
+              return (
+                <div key={session.session} className={`rounded-xl border overflow-hidden ${allOk ? 'border-emerald-500/20' : 'border-amber-500/20'}`}>
+                  <div className={`px-4 py-3 flex items-center gap-3 ${allOk ? 'bg-emerald-500/5' : 'bg-amber-500/5'}`}>
+                    {allOk
+                      ? <CheckCircle2 size={15} className="text-emerald-400 shrink-0" />
+                      : <AlertCircle size={15} className="text-amber-400 shrink-0" />}
+                    <span className="font-bold text-sm flex-1">Sesión {session.session} — {session.tableName}</span>
+                    <span className="text-xs text-muted-foreground">{session.steps.filter(s => s.ok).length}/{session.steps.length} pasos OK</span>
+                  </div>
+                  <div className="px-4 py-3 space-y-1.5">
+                    {session.steps.map((step, i) => (
+                      <div key={i} className="flex items-center gap-2 text-xs">
+                        {step.ok
+                          ? <CheckCircle2 size={12} className="text-emerald-400 shrink-0" />
+                          : <XOctagon size={12} className="text-red-400 shrink-0" />}
+                        <span className={step.ok ? 'text-muted-foreground' : 'text-red-300 font-medium'}>{step.step}</span>
+                        {step.error && <span className="text-red-400 text-[10px] ml-auto font-mono truncate max-w-[200px]" title={step.error}>{step.error}</span>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {!result && !running && (
+        <div className="text-center py-12 text-muted-foreground">
+          <FlaskConical size={40} className="mx-auto mb-4 opacity-20" />
+          <p className="text-sm">Pulsa el botón para ejecutar la simulación.</p>
+          <p className="text-xs mt-1 opacity-60">Se crearán hasta 5 pedidos demo sobre las primeras mesas disponibles.</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── DB-backed manuals tab ─────────────────────────────────────────────────────
+function ManualesTabDB() {
+  const BASE = import.meta.env.BASE_URL.replace(/\/$/, '');
+  const qc = useQueryClient();
+
+  const manualesQ = useQuery<Manual[]>({
+    queryKey: ['installation-manuals'],
+    queryFn: async () => {
+      const r = await customFetch(`${BASE}/api/admin/installation/manuals`);
+      if (!r.ok) throw new Error('Error cargando manuales');
+      return r.json();
+    },
+  });
+
+  const updateManual = useMutation({
+    mutationFn: async ({ type, steps, supportPhone }: { type: string; steps: ManualStep[]; supportPhone?: string }) => {
+      const r = await customFetch(`${BASE}/api/admin/installation/manuals/${type}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ steps, supportPhone }),
+      });
+      if (!r.ok) throw new Error('Error guardando manual');
+      return r.json();
+    },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['installation-manuals'] }); toast.success('Manual guardado'); },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  if (manualesQ.isLoading) return <div className="flex items-center justify-center py-20 text-muted-foreground"><RefreshCw size={20} className="animate-spin mr-2" /> Cargando manuales…</div>;
+
+  const manuals = manualesQ.data ?? [];
+  const apertura  = manuals.find(m => m.type === 'apertura');
+  const cierre    = manuals.find(m => m.type === 'cierre');
+  const emergencia = manuals.find(m => m.type === 'emergencia');
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-card border border-border rounded-xl p-5">
+        <h2 className="font-bold text-lg mb-1">Manuales operativos</h2>
+        <p className="text-sm text-muted-foreground">Procedimientos de apertura, cierre y emergencias. Los pasos se pueden editar y se guardan en la base de datos.</p>
+      </div>
+
+      {/* Apertura */}
+      {apertura && (
+        <EditableChecklist
+          manual={apertura}
+          icon={BatteryCharging}
+          color="bg-emerald-500/10 text-emerald-400"
+          onSave={(steps) => updateManual.mutate({ type: 'apertura', steps })}
+          saving={updateManual.isPending}
+        />
+      )}
+
+      {/* Cierre */}
+      {cierre && (
+        <EditableChecklist
+          manual={cierre}
+          icon={Lock}
+          color="bg-blue-500/10 text-blue-400"
+          onSave={(steps) => updateManual.mutate({ type: 'cierre', steps })}
+          saving={updateManual.isPending}
+        />
+      )}
+
+      {/* Emergencia (non-editable checklist, just read) */}
+      {emergencia && (
+        <div className="bg-card border border-border rounded-xl overflow-hidden">
+          <div className="p-5 border-b border-border flex items-center gap-4">
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-red-500/10 text-red-400">
+              <AlertTriangle size={20} />
+            </div>
+            <div>
+              <p className="font-bold">{emergencia.title}</p>
+              <p className="text-xs text-muted-foreground">Protocolo para situaciones de fallo — actualizado {new Date(emergencia.updatedAt).toLocaleDateString('es-ES')}</p>
+            </div>
+          </div>
+          <div className="p-5 space-y-4">
+            {emergencia.steps.map((item: any) => (
+              <div key={item.id} className="border border-border rounded-xl overflow-hidden">
+                <div className="bg-secondary/30 px-4 py-2.5 flex items-center gap-2">
+                  <AlertCircle size={14} className="text-amber-400" />
+                  <span className="font-bold text-sm">{item.situation}</span>
+                </div>
+                <ul className="p-4 space-y-1.5">
+                  {(item.steps as string[]).map((step: string, i: number) => (
+                    <li key={i} className="text-sm text-muted-foreground flex items-start gap-2">
+                      <span className="text-primary font-bold shrink-0">{i + 1}.</span>
+                      <span>{step}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Contact box */}
+      <div className="bg-card border border-border rounded-xl p-5">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-violet-500/10 text-violet-400">
+            <PhoneCall size={20} />
+          </div>
+          <h3 className="font-bold">Contactos de soporte</h3>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+          {[
+            { label: 'Soporte técnico TPV', value: '' },
+            { label: 'Técnico impresoras', value: '' },
+            { label: 'Proveedor Internet', value: '' },
+            { label: 'Electricista de guardia', value: '' },
+          ].map((c) => (
+            <div key={c.label} className="flex items-center gap-3 bg-secondary/30 rounded-lg px-3 py-2.5">
+              <PhoneCall size={14} className="text-muted-foreground" />
+              <span className="text-muted-foreground flex-1">{c.label}</span>
+              <span className="font-mono text-xs text-muted-foreground italic">{c.value || 'Sin configurar'}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EditableChecklist({ manual, icon: Icon, color, onSave, saving }: {
+  manual: Manual; icon: typeof BatteryCharging; color: string;
+  onSave: (steps: ManualStep[]) => void; saving: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [editMode, setEditMode] = useState(false);
+  const [steps, setSteps] = useState<ManualStep[]>(manual.steps);
+  const [checked, setChecked] = useState<boolean[]>(manual.steps.map(() => false));
+
+  const editStep = (i: number, text: string) => setSteps(prev => {
+    const n = [...prev];
+    n[i] = { ...n[i], text };
+    return n;
+  });
+
+  const handleSave = () => { onSave(steps); setEditMode(false); };
+
+  return (
+    <div className="bg-card border border-border rounded-xl overflow-hidden">
+      <button
+        className="w-full flex items-center gap-4 p-5 text-left hover:bg-secondary/40 transition-colors"
+        onClick={() => setOpen(o => !o)}
+      >
+        <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${color}`}>
+          <Icon size={20} />
+        </div>
+        <span className="font-bold flex-1">{manual.title}</span>
+        <span className="text-xs text-muted-foreground mr-2">{checked.filter(Boolean).length}/{steps.length}</span>
+        {open ? <ChevronDown size={16} className="text-muted-foreground" /> : <ChevronRight size={16} className="text-muted-foreground" />}
+      </button>
+
+      {open && (
+        <div className="px-5 pb-5 space-y-2">
+          {!editMode ? (
+            <>
+              {steps.map((item, i) => (
+                <label key={i} className="flex items-start gap-3 cursor-pointer group">
+                  <button
+                    onClick={() => setChecked(prev => { const n = [...prev]; n[i] = !n[i]; return n; })}
+                    className={`mt-0.5 w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 transition-all ${checked[i] ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-border group-hover:border-primary'}`}
+                  >
+                    {checked[i] && <CheckCircle2 size={12} />}
+                  </button>
+                  <span className={`text-sm leading-relaxed ${checked[i] ? 'line-through text-muted-foreground' : ''}`}>{item.text}</span>
+                </label>
+              ))}
+              <div className="flex items-center gap-3 mt-3">
+                <button onClick={() => setChecked(steps.map(() => false))} className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1">
+                  <RefreshCw size={11} /> Reiniciar
+                </button>
+                <button onClick={() => { setSteps(manual.steps); setEditMode(true); }} className="ml-auto text-xs text-primary hover:underline flex items-center gap-1">
+                  <Pencil size={11} /> Editar pasos
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="text-xs text-muted-foreground mb-2">Edita el texto de cada paso:</p>
+              {steps.map((item, i) => (
+                <div key={i} className="flex items-start gap-2">
+                  <span className="text-xs font-bold text-muted-foreground pt-2 w-5 shrink-0">{i + 1}.</span>
+                  <textarea
+                    value={item.text ?? ''}
+                    onChange={e => editStep(i, e.target.value)}
+                    rows={2}
+                    className="flex-1 bg-background border border-border rounded-lg px-2 py-1.5 text-xs resize-none focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                </div>
+              ))}
+              <div className="flex gap-2 justify-end mt-3">
+                <button onClick={() => setEditMode(false)} className="flex items-center gap-1.5 px-3 py-1.5 border border-border rounded-lg text-xs hover:bg-secondary">
+                  <X size={12} /> Cancelar
+                </button>
+                <button onClick={handleSave} disabled={saving} className="flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-lg text-xs font-bold disabled:opacity-60">
+                  <Save size={12} /> Guardar cambios
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ─── Architecture diagram ─────────────────────────────────────────────────────
 function ArchitecturaTab() {
@@ -929,6 +1385,23 @@ export default function AdminInstalacion() {
         {/* ── DIAGNÓSTICO ── */}
         {activeTab === 'diagnostico' && (
           <div className="space-y-6">
+            {/* "Comprobar todo ahora" header bar */}
+            <div className="bg-card border border-border rounded-xl p-4 flex items-center gap-4">
+              <Zap size={18} className="text-primary shrink-0" />
+              <div className="flex-1">
+                <p className="font-bold text-sm">Panel de diagnóstico</p>
+                <p className="text-xs text-muted-foreground">Semáforo de instalación en tiempo real — actualización automática cada 30 s</p>
+              </div>
+              <button
+                onClick={() => diagnosisQ.refetch()}
+                disabled={diagnosisQ.isFetching}
+                className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-xl text-xs font-bold hover:opacity-90 disabled:opacity-50 transition-all"
+              >
+                <RefreshCw size={13} className={diagnosisQ.isFetching ? 'animate-spin' : ''} />
+                Comprobar todo ahora
+              </button>
+            </div>
+
             {diagnosisQ.isLoading ? (
               <div className="flex items-center justify-center py-20 text-muted-foreground"><RefreshCw size={24} className="animate-spin mr-3" /> Analizando instalación...</div>
             ) : diagnosisQ.data ? (
@@ -936,82 +1409,56 @@ export default function AdminInstalacion() {
             ) : (
               <p className="text-center text-muted-foreground py-10">No se pudo cargar el diagnóstico.</p>
             )}
+
+            {/* Offline sync test checklist */}
+            <OfflineSyncChecklist />
           </div>
         )}
 
         {/* ── ASISTENTE ── */}
-        {activeTab === 'asistente' && <WizardTab />}
+        {activeTab === 'asistente' && <WizardTab devices={devices} onMarkReady={(id, data) => saveDevice.mutate({ id, data })} />}
 
         {/* ── MANUALES ── */}
-        {activeTab === 'manuales' && (
-          <div className="space-y-4">
-            <div className="bg-card border border-border rounded-xl p-5">
-              <h2 className="font-bold text-lg mb-1">Manuales operativos</h2>
-              <p className="text-sm text-muted-foreground">Procedimientos de apertura, cierre y emergencias. Cada lista es interactiva para usarla durante el servicio.</p>
-            </div>
-            <ChecklistSection
-              title="Apertura diaria"
-              icon={BatteryCharging}
-              color="bg-emerald-500/10 text-emerald-400"
-              items={APERTURA_DIARIA}
-            />
-            <ChecklistSection
-              title="Cierre diario"
-              icon={Lock}
-              color="bg-blue-500/10 text-blue-400"
-              items={CIERRE_DIARIO}
-            />
-            <div className="bg-card border border-border rounded-xl overflow-hidden">
-              <div className="p-5 border-b border-border flex items-center gap-4">
-                <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-red-500/10 text-red-400">
-                  <AlertTriangle size={20} />
-                </div>
-                <div>
-                  <p className="font-bold">Plan de emergencia</p>
-                  <p className="text-xs text-muted-foreground">Protocolo para situaciones de fallo</p>
-                </div>
+        {activeTab === 'manuales' && <ManualesTabDB />}
+
+        {/* ── SIMULACIÓN ── */}
+        {activeTab === 'simulacion' && <SimulacionTab />}
+
+        {/* ── QR MESAS ── */}
+        {activeTab === 'qr' && (
+          <div className="space-y-6">
+            <div className="bg-card border border-border rounded-xl p-6 flex items-start gap-5">
+              <div className="w-12 h-12 rounded-xl bg-pink-500/10 flex items-center justify-center shrink-0">
+                <QrCode size={24} className="text-pink-400" />
               </div>
-              <div className="p-5 space-y-4">
-                {PLAN_EMERGENCIA.map((item) => (
-                  <div key={item.situation} className="border border-border rounded-xl overflow-hidden">
-                    <div className="bg-secondary/30 px-4 py-2.5 flex items-center gap-2">
-                      <AlertCircle size={14} className="text-amber-400" />
-                      <span className="font-bold text-sm">{item.situation}</span>
-                    </div>
-                    <ul className="p-4 space-y-1.5">
-                      {item.steps.map((step, i) => (
-                        <li key={i} className="text-sm text-muted-foreground flex items-start gap-2">
-                          <span className="text-primary font-bold shrink-0">{i + 1}.</span>
-                          <span>{step}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ))}
+              <div className="flex-1">
+                <h3 className="text-lg font-bold mb-1">Generador de QR para mesas</h3>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Genera códigos QR para cada mesa que apuntan a la carta digital pública. 
+                  Descarga PNG individuales, imprime todos en PDF, o descarga un ZIP.
+                </p>
+                <Link href="/admin/instalacion/qr">
+                  <button className="flex items-center gap-2 px-5 py-2.5 bg-pink-600 text-white rounded-xl font-bold hover:bg-pink-500 transition-colors">
+                    <QrCode size={16} /> Abrir generador de QR
+                    <ArrowRight size={14} />
+                  </button>
+                </Link>
               </div>
             </div>
-            {/* Contact box */}
-            <div className="bg-card border border-border rounded-xl p-5">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-violet-500/10 text-violet-400">
-                  <PhoneCall size={20} />
-                </div>
-                <h3 className="font-bold">Contactos de soporte</h3>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
-                {[
-                  { label: 'Soporte técnico TPV', value: '' },
-                  { label: 'Técnico impresoras', value: '' },
-                  { label: 'Proveedor Internet', value: '' },
-                  { label: 'Electricista de guardia', value: '' },
-                ].map((c) => (
-                  <div key={c.label} className="flex items-center gap-3 bg-secondary/30 rounded-lg px-3 py-2.5">
-                    <PhoneCall size={14} className="text-muted-foreground" />
-                    <span className="text-muted-foreground flex-1">{c.label}</span>
-                    <span className="font-mono text-xs text-muted-foreground italic">{c.value || 'Sin configurar'}</span>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              {[
+                { icon: <QrCode size={20} className="text-pink-400" />, title: 'QR por mesa', desc: 'Código único para cada mesa, apunta a la carta digital con identificador de mesa.' },
+                { icon: <ExternalLink size={20} className="text-blue-400" />, title: 'URL configurable', desc: 'Ajusta la URL base para usar tu dominio propio o el dominio de Replit.' },
+                { icon: <CheckSquare size={20} className="text-emerald-400" />, title: 'Selección múltiple', desc: 'Elige qué mesas incluir, descarga PNG individuales o imprime todos en PDF.' },
+              ].map(f => (
+                <div key={f.title} className="bg-card border border-border rounded-xl p-4 flex items-start gap-3">
+                  {f.icon}
+                  <div>
+                    <p className="font-bold text-sm">{f.title}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{f.desc}</p>
                   </div>
-                ))}
-              </div>
+                </div>
+              ))}
             </div>
           </div>
         )}
