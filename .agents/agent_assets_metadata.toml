@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "dmY_LexZYJxrpFbSiHeNo"
+uri = "file://piccolo-tpv.zip"
+type = "unspecified"
+title = "piccolo-tpv.zip"
