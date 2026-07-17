@@ -114,7 +114,7 @@ export default function EscanerFacturas() {
       try {
         const fd = new FormData();
         fd.append('file', file);
-        const doc = await customFetch('/api/admin/invoice-scanner/upload', { method: 'POST', body: fd });
+        const doc = await customFetch<{ id: string }>('/api/admin/invoice-scanner/upload', { method: 'POST', body: fd });
         qc.invalidateQueries({ queryKey: ['invoice-scanner'] });
         toast.success(`"${file.name}" subido`);
         // Auto-process

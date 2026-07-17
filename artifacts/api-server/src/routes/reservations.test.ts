@@ -161,7 +161,7 @@ describe("Test 6 — POST /reservations creates a new reservation", () => {
 
   it("returns 409 when same table has an active reservation within 90 min", async () => {
     // Conflict: there's already a confirmed reservation at 20:00 on same table
-    mockState.selectRows = [{ ...CONFIRMED_RES, hora: "20:30" }]; // 30min apart — conflict
+    mockState.selectRows = [{ ...CONFIRMED_RES, hora: "20:30", duracion: 90 }]; // conflict: 30min apart, 90min duration each
 
     const res = await request(app)
       .post("/api/reservations")

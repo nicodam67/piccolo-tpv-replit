@@ -16,26 +16,15 @@ export default function AdminDatosDemo() {
 
   const { data, isLoading, refetch } = useQuery<DemoCountsResponse>({
     queryKey: ['admin', 'demo-data', 'counts'],
-    queryFn: async () => {
-      const r = await customFetch('/admin/demo-data/counts');
-      if (!r.ok) throw new Error('Error cargando conteos');
-      return r.json();
-    },
+    queryFn: () => customFetch<DemoCountsResponse>('/admin/demo-data/counts'),
   });
 
   const purgeMutation = useMutation({
-    mutationFn: async () => {
-      const r = await customFetch('/admin/demo-data/purge', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ confirm: 'PURGE_DEMO' }),
-      });
-      if (!r.ok) {
-        const err = await r.json().catch(() => ({}));
-        throw new Error(err.error ?? 'Error al purgar datos');
-      }
-      return r.json();
-    },
+    mutationFn: () => customFetch<{ total: number }>('/admin/demo-data/purge', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ confirm: 'PURGE_DEMO' }),
+    }),
     onSuccess: (result) => {
       toast.success(`${result.total} registro(s) de demostración eliminados`);
       setShowConfirm(false);

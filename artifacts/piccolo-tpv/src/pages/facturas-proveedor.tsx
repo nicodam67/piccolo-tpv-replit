@@ -54,7 +54,7 @@ export default function FacturasProveedor() {
 
   const createInvoice = useMutation({
     mutationFn: (data: Record<string, unknown>) =>
-      customFetch('/api/admin/supplier-invoices', { method: 'POST', body: JSON.stringify(data) }),
+      customFetch<{ id: string }>('/api/admin/supplier-invoices', { method: 'POST', body: JSON.stringify(data) }),
     onSuccess: (inv) => {
       qc.invalidateQueries({ queryKey: ['supplier-invoices'] });
       toast.success('Factura registrada');

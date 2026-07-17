@@ -73,13 +73,10 @@ export default function AdminPermisos() {
     setLoading(true);
     setError(null);
     try {
-      const [catRes, ovRes] = await Promise.all([
-        customFetch(`${BASE}api/admin/permissions/catalog`),
-        customFetch(`${BASE}api/admin/permissions`),
+      const [catData, ovData] = await Promise.all([
+        customFetch<{ catalog: ModuleEntry[] }>(`${BASE}api/admin/permissions/catalog`),
+        customFetch<{ overrides: Override[] }>(`${BASE}api/admin/permissions`),
       ]);
-      if (!catRes.ok || !ovRes.ok) throw new Error("Error al cargar permisos");
-      const catData = await catRes.json();
-      const ovData = await ovRes.json();
       setCatalog(catData.catalog ?? []);
       setOverrides(ovData.overrides ?? []);
       setExpandedModules(new Set((catData.catalog ?? []).map((m: ModuleEntry) => m.module)));
@@ -98,13 +95,11 @@ export default function AdminPermisos() {
     const key = `${role}::${module}::${action}`;
     setSaving(key);
     try {
-      const res = await customFetch(`${BASE}api/admin/permissions`, {
+      const data = await customFetch<{ permission: Override }>(`${BASE}api/admin/permissions`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ role, module, action, allowed: newAllowed }),
       });
-      if (!res.ok) throw new Error("Error al guardar permiso");
-      const data = await res.json();
       setOverrides((prev) => {
         const filtered = prev.filter(
           (o) => !(o.role === role && o.module === module && o.action === action),
@@ -123,8 +118,7 @@ export default function AdminPermisos() {
     if (!ov) return;
     setSaving(`${role}::${module}::${action}`);
     try {
-      const res = await customFetch(`${BASE}api/admin/permissions/${ov.id}`, { method: "DELETE" });
-      if (!res.ok) throw new Error("Error al eliminar override");
+      await customFetch(`${BASE}api/admin/permissions/${ov.id}`, { method: "DELETE" });
       setOverrides((prev) => prev.filter((o) => o.id !== ov.id));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Error al restaurar");

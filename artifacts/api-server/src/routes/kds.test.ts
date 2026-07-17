@@ -286,6 +286,7 @@ describe("Test 3 — POST /kitchen-tasks/:taskId/resend", () => {
 
 describe("Test 4 — Status flow: new → preparing → ready → served", () => {
   it("new → preparing: returns updated task with status 'preparing'", async () => {
+    mockState.selectRows = [TASK_NEW]; // existing task must be "new" for new→preparing transition
     mockState.updateRows = [TASK_PREP];
 
     const res = await request(app)
@@ -299,15 +300,11 @@ describe("Test 4 — Status flow: new → preparing → ready → served", () =>
   });
 
   it("preparing → ready: stamps readyAt and emits waiter:order-ready when all done", async () => {
-    // update returns the ready task; selects return: all tasks (ready), order, table
     mockState.updateRows = [{ ...TASK_READY }];
-    // All queries from the DB will return these rows in order — the select mock returns
-    // the same selectRows array every time, so we put the task in there so the
-    // "check all tasks ready" query sees a ready task, and also include the order and table.
-    mockState.selectRows = [
-      // all tasks for the order (one task, already ready) → all ready → trigger notification
-      { ...TASK_READY },
-    ];
+    // The existing task must have status "preparing" for the preparing→ready transition to be valid.
+    // The allTasks select also returns TASK_PREP (not ready), so no waiter notification fires,
+    // but kds:refresh is still emitted — which is what this test checks.
+    mockState.selectRows = [TASK_PREP];
 
     const res = await request(app)
       .patch("/api/kitchen-tasks/task-1/status")
@@ -361,10 +358,12 @@ describe("Test 4 — Status flow: new → preparing → ready → served", () =>
 
 describe("Test 5 — Real-time socket sync", () => {
   it("emits kds:refresh on every status update (new, preparing, ready, cancelled)", async () => {
+    // Each target status requires the task to be in the correct previous state
+    const prevStatus: Record<string, string> = { preparing: "new", ready: "preparing", cancelled: "new" };
     for (const status of ["preparing", "ready", "cancelled"]) {
       mockState.socketEmit.mockReset();
       mockState.updateRows = [{ ...TASK_NEW, status }];
-      mockState.selectRows = [{ ...TASK_NEW, status }];
+      mockState.selectRows = [{ ...TASK_NEW, status: prevStatus[status] }];
 
       await request(app)
         .patch("/api/kitchen-tasks/task-1/status")

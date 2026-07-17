@@ -3,7 +3,7 @@ import { Search, Filter, Clock, LogIn, LogOut, Edit2, Plus } from "lucide-react"
 
 const BASE = import.meta.env.BASE_URL;
 
-interface Record {
+interface FichajeRecord {
   id: string;
   employeeId: string;
   employeeName: string;
@@ -77,7 +77,7 @@ function ManualModal({ onClose, onSaved, employees }: { onClose: () => void; onS
 }
 
 export default function FichajeRegistros() {
-  const [records, setRecords] = useState<Record[]>([]);
+  const [records, setRecords] = useState<FichajeRecord[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");

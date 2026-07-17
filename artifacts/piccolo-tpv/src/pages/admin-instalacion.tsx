@@ -856,11 +856,9 @@ function SimulacionTab() {
     setRunning(true);
     setResult(null);
     try {
-      const r = await customFetch(`${BASE}/api/admin/installation-simulation/run`, { method: 'POST' });
-      const data = await r.json();
-      if (!r.ok) throw new Error(data.error ?? 'Error al ejecutar simulación');
-      setResult(data as SimResult);
-      if ((data as SimResult).ok) toast.success('Simulación completada: todos los pasos superados');
+      const data = await customFetch<SimResult>(`${BASE}/api/admin/installation-simulation/run`, { method: 'POST' });
+      setResult(data);
+      if (data.ok) toast.success('Simulación completada: todos los pasos superados');
       else toast.warning('Simulación completada con advertencias');
     } catch (e: any) {
       toast.error(e.message);
@@ -1196,23 +1194,16 @@ function ManualesTabDB() {
 
   const manualesQ = useQuery<Manual[]>({
     queryKey: ['installation-manuals'],
-    queryFn: async () => {
-      const r = await customFetch(`${BASE}/api/admin/installation/manuals`);
-      if (!r.ok) throw new Error('Error cargando manuales');
-      return r.json();
-    },
+    queryFn: () => customFetch<Manual[]>(`${BASE}/api/admin/installation/manuals`),
   });
 
   const updateManual = useMutation({
-    mutationFn: async ({ type, steps, supportPhone }: { type: string; steps: ManualStep[]; supportPhone?: string }) => {
-      const r = await customFetch(`${BASE}/api/admin/installation/manuals/${type}`, {
+    mutationFn: ({ type, steps, supportPhone }: { type: string; steps: ManualStep[]; supportPhone?: string }) =>
+      customFetch<Manual>(`${BASE}/api/admin/installation/manuals/${type}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ steps, supportPhone }),
-      });
-      if (!r.ok) throw new Error('Error guardando manual');
-      return r.json();
-    },
+      }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['installation-manuals'] }); toast.success('Manual guardado'); },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -1505,52 +1496,31 @@ export default function AdminInstalacion() {
 
   const devicesQ = useQuery<InstallationDevice[]>({
     queryKey: ['installation-devices'],
-    queryFn: async () => {
-      const r = await customFetch(`${BASE}/api/admin/installation/devices`);
-      if (!r.ok) throw new Error('Error cargando inventario');
-      return r.json();
-    },
+    queryFn: () => customFetch<InstallationDevice[]>(`${BASE}/api/admin/installation/devices`),
   });
 
   const networkQ = useQuery<NetworkEntry[]>({
     queryKey: ['installation-network'],
-    queryFn: async () => {
-      const r = await customFetch(`${BASE}/api/admin/installation/network`);
-      if (!r.ok) throw new Error('Error cargando red');
-      return r.json();
-    },
+    queryFn: () => customFetch<NetworkEntry[]>(`${BASE}/api/admin/installation/network`),
   });
 
   const diagnosisQ = useQuery<DiagnosisData>({
     queryKey: ['installation-diagnosis'],
-    queryFn: async () => {
-      const r = await customFetch(`${BASE}/api/admin/installation/diagnosis`);
-      if (!r.ok) throw new Error('Error cargando diagnóstico');
-      return r.json();
-    },
+    queryFn: () => customFetch<DiagnosisData>(`${BASE}/api/admin/installation/diagnosis`),
     enabled: activeTab === 'diagnostico',
     refetchInterval: 30_000,
   });
 
   const seedMutation = useMutation({
-    mutationFn: async () => {
-      const r = await customFetch(`${BASE}/api/admin/installation/seed`, { method: 'POST' });
-      if (!r.ok) {
-        const err = await r.json().catch(() => ({}));
-        throw new Error((err as { error?: string }).error ?? 'Error al crear dispositivos');
-      }
-      return r.json();
-    },
+    mutationFn: () => customFetch(`${BASE}/api/admin/installation/seed`, { method: 'POST' }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['installation-devices'] }); toast.success('Dispositivos iniciales creados'); },
     onError: (e: Error) => toast.error(e.message),
   });
 
   const saveDevice = useMutation({
-    mutationFn: async ({ id, data }: { id: string | null; data: Partial<InstallationDevice> }) => {
+    mutationFn: ({ id, data }: { id: string | null; data: Partial<InstallationDevice> }) => {
       const url = id ? `${BASE}/api/admin/installation/devices/${id}` : `${BASE}/api/admin/installation/devices`;
-      const r = await customFetch(url, { method: id ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
-      if (!r.ok) throw new Error('Error guardando dispositivo');
-      return r.json();
+      return customFetch(url, { method: id ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['installation-devices'] }); setEditingId(null); setShowNewDevice(false); toast.success('Dispositivo guardado'); },
     onError: (e: Error) => toast.error(e.message),
@@ -1565,11 +1535,9 @@ export default function AdminInstalacion() {
   });
 
   const saveNetwork = useMutation({
-    mutationFn: async ({ id, data }: { id: string | null; data: Partial<NetworkEntry> }) => {
+    mutationFn: ({ id, data }: { id: string | null; data: Partial<NetworkEntry> }) => {
       const url = id ? `${BASE}/api/admin/installation/network/${id}` : `${BASE}/api/admin/installation/network`;
-      const r = await customFetch(url, { method: id ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
-      if (!r.ok) throw new Error('Error guardando entrada de red');
-      return r.json();
+      return customFetch(url, { method: id ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['installation-network'] }); setEditingNetworkId(null); setShowNewNetwork(false); toast.success('Entrada de red guardada'); },
     onError: (e: Error) => toast.error(e.message),

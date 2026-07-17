@@ -112,7 +112,7 @@ async function buildApp() {
 // ═══════════════════════════════════════════════════════════════════════════
 
 describe("GET /crm/loyalty/levels", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => vi.resetAllMocks());
 
   it("returns levels list", async () => {
     const mockLevel = { id: "level-1", nombre: "Bronce", orden: 1, activo: true };
@@ -133,7 +133,7 @@ describe("GET /crm/loyalty/levels", () => {
 });
 
 describe("POST /crm/loyalty/levels", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => vi.resetAllMocks());
 
   it("creates a new level", async () => {
     const mockLevel = { id: "level-1", nombre: "Plata", orden: 2 };
@@ -156,7 +156,7 @@ describe("POST /crm/loyalty/levels", () => {
 });
 
 describe("PATCH /crm/loyalty/levels/:id", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => vi.resetAllMocks());
 
   it("updates level fields", async () => {
     const mockLevel = { id: "level-1", nombre: "Oro", descuentoPct: "10" };
@@ -177,7 +177,7 @@ describe("PATCH /crm/loyalty/levels/:id", () => {
 });
 
 describe("DELETE /crm/loyalty/levels/:id", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => vi.resetAllMocks());
 
   it("deletes a level", async () => {
     mockDelete.mockResolvedValueOnce(undefined);
@@ -192,7 +192,7 @@ describe("DELETE /crm/loyalty/levels/:id", () => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 describe("GET /crm/clients/:id/wallet", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => vi.resetAllMocks());
 
   it("returns wallet and transactions for existing wallet", async () => {
     const mockWallet = { id: "w-1", clientId: "c-1", saldoReal: "0", saldoPromo: "10", saldoCompensacion: "0" };
@@ -220,7 +220,7 @@ describe("GET /crm/clients/:id/wallet", () => {
 });
 
 describe("POST /crm/clients/:id/wallet/add", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => vi.resetAllMocks());
 
   it("adds wallet balance successfully", async () => {
     const mockWallet = { id: "w-1", clientId: "c-1", saldoReal: "0", saldoPromo: "10", saldoCompensacion: "0" };
@@ -263,7 +263,7 @@ describe("POST /crm/clients/:id/wallet/add", () => {
 });
 
 describe("POST /crm/clients/:id/wallet/pay", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => vi.resetAllMocks());
 
   it("rejects payment when balance insufficient", async () => {
     const mockWallet = { id: "w-1", clientId: "c-1", saldoReal: "0", saldoPromo: "5", saldoCompensacion: "0" };
@@ -288,7 +288,7 @@ describe("POST /crm/clients/:id/wallet/pay", () => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 describe("POST /crm/clients/:id/consents", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => vi.resetAllMocks());
 
   it("saves a valid consent record", async () => {
     const mockConsent = { id: "con-1", clientId: "c-1", tipo: "marketing_email", valor: true };
@@ -331,7 +331,7 @@ describe("POST /crm/clients/:id/consents", () => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 describe("GET /crm/clients/:id/expiring-points", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => vi.resetAllMocks());
 
   it("returns expiring points within default 7 days", async () => {
     const mockRow = { id: "p-1", puntos: 150, expiraEn: new Date(Date.now() + 86400_000).toISOString() };
@@ -359,7 +359,7 @@ describe("GET /crm/clients/:id/expiring-points", () => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 describe("POST /crm/promotions/use", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => vi.resetAllMocks());
 
   it("records a coupon use when within limits", async () => {
     const mockPromo = { id: "p-1", usoMaximo: 0, usoActual: 0, usoMaximoPorCliente: 0 };
@@ -411,7 +411,7 @@ describe("POST /crm/promotions/use", () => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 describe("GET /crm/campaigns", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => vi.resetAllMocks());
 
   it("returns campaigns list", async () => {
     mockSelectResult.mockResolvedValueOnce([
@@ -427,7 +427,7 @@ describe("GET /crm/campaigns", () => {
 });
 
 describe("POST /crm/campaigns", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => vi.resetAllMocks());
 
   it("creates a campaign", async () => {
     const mockCampaign = { id: "camp-1", nombre: "Black Friday", tipo: "manual", canal: "email" };
@@ -451,7 +451,7 @@ describe("POST /crm/campaigns", () => {
 });
 
 describe("PATCH /crm/campaigns/:id", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => vi.resetAllMocks());
 
   it("updates campaign state", async () => {
     const mockCampaign = { id: "camp-1", estado: "programada", nombre: "Test" };
@@ -474,7 +474,7 @@ describe("PATCH /crm/campaigns/:id", () => {
 });
 
 describe("DELETE /crm/campaigns/:id", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => vi.resetAllMocks());
 
   it("deletes a campaign", async () => {
     mockDelete
@@ -491,7 +491,7 @@ describe("DELETE /crm/campaigns/:id", () => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 describe("POST /crm/segment/preview", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => vi.resetAllMocks());
 
   it("responds with 200 or 400 (the endpoint is registered)", async () => {
     // resolveSegment builds a Drizzle chain that the unit-test mock handles

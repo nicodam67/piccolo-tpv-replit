@@ -169,40 +169,24 @@ export default function AdminSalud() {
 
   const { data: sysStatus, isLoading: loadingStatus, refetch: refetchStatus, dataUpdatedAt } = useQuery<SystemStatus>({
     queryKey: ['diagnostics-status'],
-    queryFn: async () => {
-      const r = await customFetch(`${BASE}/api/diagnostics/status`);
-      if (!r.ok) throw new Error('Error obteniendo estado del sistema');
-      return r.json();
-    },
+    queryFn: () => customFetch<SystemStatus>(`${BASE}/api/diagnostics/status`),
     refetchInterval: 30_000,
   });
 
   const { data: conn } = useQuery<Connectivity>({
     queryKey: ['diagnostics-connectivity'],
-    queryFn: async () => {
-      const r = await customFetch(`${BASE}/api/diagnostics/connectivity`);
-      if (!r.ok) throw new Error('Error');
-      return r.json();
-    },
+    queryFn: () => customFetch<Connectivity>(`${BASE}/api/diagnostics/connectivity`),
     refetchInterval: 60_000,
   });
 
   const { data: version } = useQuery<VersionInfo>({
     queryKey: ['system-version'],
-    queryFn: async () => {
-      const r = await customFetch(`${BASE}/api/admin/system/version`);
-      if (!r.ok) throw new Error('Error');
-      return r.json();
-    },
+    queryFn: () => customFetch<VersionInfo>(`${BASE}/api/admin/system/version`),
   });
 
   const { data: events } = useQuery<TechEventsResponse>({
     queryKey: ['diagnostics-events', eventsPage],
-    queryFn: async () => {
-      const r = await customFetch(`${BASE}/api/diagnostics/events?limit=20&offset=${eventsPage * 20}`);
-      if (!r.ok) throw new Error('Error');
-      return r.json();
-    },
+    queryFn: () => customFetch<TechEventsResponse>(`${BASE}/api/diagnostics/events?limit=20&offset=${eventsPage * 20}`),
     refetchInterval: 60_000,
   });
 

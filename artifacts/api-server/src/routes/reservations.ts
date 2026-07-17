@@ -250,7 +250,7 @@ router.post("/reservations", requireAuth, async (req, res): Promise<void> => {
 
   if (mesaId) {
     const { conflict, conflictWith } = await hasConflict({ mesaId, fecha: b.fecha, hora: b.hora, duracionMinutos });
-    if (conflict) { res.status(409).json({ error: `Conflicto con reserva existente: ${conflictWith}` }); return; }
+    if (conflict) { res.status(409).json({ error: `Ya existe una reserva activa en esa mesa: ${conflictWith}` }); return; }
   }
 
   const [row] = await db.insert(reservationsTable).values({
@@ -338,7 +338,7 @@ router.patch("/reservations/:id", requireAuth, async (req, res): Promise<void> =
 
   if (newMesaId && ACTIVE_STATUSES.includes(effectiveStatus)) {
     const { conflict, conflictWith } = await hasConflict({ mesaId: newMesaId, fecha: newFecha, hora: newHora, duracionMinutos: newDuracion, excludeId: id });
-    if (conflict) { res.status(409).json({ error: `Conflicto con reserva existente: ${conflictWith}` }); return; }
+    if (conflict) { res.status(409).json({ error: `Ya existe una reserva activa en esa mesa: ${conflictWith}` }); return; }
   }
 
   const [row] = await db.update(reservationsTable).set(updates).where(eq(reservationsTable.id, id)).returning();

@@ -20,9 +20,8 @@ function useApi<T>(key: string[], path: string) {
     queryFn: async () => {
       const res = await fetch(`${BASE}${path}`, { headers: { Authorization: `Bearer ${localStorage.getItem("token") ?? ""}` } });
       if (!res.ok) throw new Error("Error");
-      return res.json();
+      return res.json() as Promise<T>;
     },
-    placeholderData: [] as unknown as T,
   });
 }
 
@@ -149,7 +148,7 @@ export default function HRCatalogos() {
                   <td colSpan={4} className="px-4 py-2">
                     <InlineForm
                       value={deptForm}
-                      onChange={setDeptForm}
+                      onChange={(v) => setDeptForm({ name: v.name, code: v.code, extra: v.extra ?? "" })}
                       onSave={() => mutateDept.mutate({ method: "POST", body: { name: deptForm.name, code: deptForm.code } })}
                       onCancel={() => setNewDept(false)}
                       pending={mutateDept.isPending}
@@ -163,7 +162,7 @@ export default function HRCatalogos() {
                     <td colSpan={4} className="px-4 py-2">
                       <InlineForm
                         value={deptForm}
-                        onChange={setDeptForm}
+                        onChange={(v) => setDeptForm({ name: v.name, code: v.code, extra: v.extra ?? "" })}
                         onSave={() => mutateDept.mutate({ method: "PATCH", id: dept.id, body: { name: deptForm.name, code: deptForm.code } })}
                         onCancel={() => setEditingDept(null)}
                         pending={mutateDept.isPending}
@@ -234,7 +233,7 @@ export default function HRCatalogos() {
                   <td colSpan={5} className="px-4 py-2">
                     <InlineForm
                       value={posForm}
-                      onChange={setPosForm}
+                      onChange={(v) => setPosForm({ name: v.name, code: v.code, extra: v.extra ?? "" })}
                       onSave={() => mutatePos.mutate({ method: "POST", body: { name: posForm.name, code: posForm.code, departmentId: posForm.extra || null } })}
                       onCancel={() => setNewPos(false)}
                       pending={mutatePos.isPending}
@@ -249,7 +248,7 @@ export default function HRCatalogos() {
                     <td colSpan={5} className="px-4 py-2">
                       <InlineForm
                         value={posForm}
-                        onChange={setPosForm}
+                        onChange={(v) => setPosForm({ name: v.name, code: v.code, extra: v.extra ?? "" })}
                         onSave={() => mutatePos.mutate({ method: "PATCH", id: pos.id, body: { name: posForm.name, code: posForm.code, departmentId: posForm.extra || null } })}
                         onCancel={() => setEditingPos(null)}
                         pending={mutatePos.isPending}

@@ -81,9 +81,6 @@ export default function ZReport() {
   const diffNum = parseFloat(session.difference ?? '0');
   const isOk = diffNum >= -0.01;
 
-  const cashRow = salesByMethod.find(m => m.methodCode === 'cash');
-  const cashSales = parseFloat(cashRow?.total ?? '0');
-
   return (
     <div className="min-h-[100dvh] flex flex-col bg-background">
       <style>{`
