@@ -33,3 +33,4 @@ export * from "./backup-offline";
 export * from "./setup-wizard";
 export * from "./audit-findings";
 export * from "./installation";
+export * from "./kds-stations";

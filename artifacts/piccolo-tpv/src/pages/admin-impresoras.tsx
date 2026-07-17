@@ -11,7 +11,7 @@ import { toast } from 'sonner';
 import {
   Printer, Plus, Trash2, Edit2, Check, X as XIcon,
   ChevronLeft, Wifi, WifiOff, AlertCircle, HelpCircle,
-  Settings, FileText, Zap
+  Settings, FileText, Zap, RefreshCw, ExternalLink,
 } from 'lucide-react';
 import { customFetch } from '@workspace/api-client-react';
 
@@ -80,7 +80,11 @@ export default function AdminImpresoras() {
     nombreComercial: '', datosFiscales: '', piePagina: '',
     mensajeAgradecimiento: '¡Gracias por su visita!', mostrarPrecios: false, headerExtra: '',
   });
-  const [activeTab, setActiveTab] = useState<'printers' | 'mode' | 'template'>('printers');
+  const [activeTab, setActiveTab] = useState<'printers' | 'mode' | 'template' | 'routing'>('printers');
+  const [categories, setCategories] = useState<Array<{ id: string; name: string }>>([]);
+  const [routing, setRouting] = useState<Record<string, string[]>>({});
+  const [routingLoading, setRoutingLoading] = useState(false);
+  const [seedingDefaults, setSeedingDefaults] = useState(false);
 
   const load = async () => {
     try {
@@ -93,6 +97,44 @@ export default function AdminImpresoras() {
       if (cfg.printTemplateConfig) setTemplate(t => ({ ...t, ...cfg.printTemplateConfig }));
     } catch { toast.error('Error al cargar impresoras'); }
     finally { setLoading(false); }
+  };
+
+  const loadRouting = async () => {
+    setRoutingLoading(true);
+    try {
+      const cats = await api('/api/admin/categories') as Array<{ id: string; name: string }>;
+      setCategories(cats);
+      // Fetch routing for each category
+      const entries = await Promise.all(
+        cats.map(async c => {
+          try {
+            const r = await api(`/api/admin/print-routing/category/${c.id}`) as { printerIds: string[] };
+            return [c.id, r?.printerIds ?? []] as const;
+          } catch { return [c.id, []] as const; }
+        })
+      );
+      setRouting(Object.fromEntries(entries));
+    } catch { toast.error('Error al cargar enrutamiento'); }
+    finally { setRoutingLoading(false); }
+  };
+
+  const toggleRoutingPrinter = async (categoryId: string, printerId: string, checked: boolean) => {
+    const current = routing[categoryId] ?? [];
+    const next = checked ? [...current, printerId] : current.filter(id => id !== printerId);
+    setRouting(r => ({ ...r, [categoryId]: next }));
+    try {
+      await api(`/api/admin/print-routing/category/${categoryId}`, 'PUT', { printerIds: next });
+    } catch { toast.error('Error al guardar enrutamiento'); loadRouting(); }
+  };
+
+  const seedDefaults = async () => {
+    setSeedingDefaults(true);
+    try {
+      const r = await api('/api/admin/print-routing/seed-defaults', 'POST') as { seeded: number; message?: string };
+      toast.success(r.message ?? `${r.seeded} reglas por defecto creadas`);
+      await loadRouting();
+    } catch { toast.error('Error al aplicar defaults'); }
+    finally { setSeedingDefaults(false); }
   };
 
   useEffect(() => { load(); }, []);
@@ -198,15 +240,16 @@ export default function AdminImpresoras() {
       </div>
 
       {/* Tabs */}
-      <div className="flex border-b border-border px-4 pt-2 gap-1">
+      <div className="flex border-b border-border px-4 pt-2 gap-1 overflow-x-auto">
         {[
           { id: 'printers', label: 'Impresoras', icon: <Printer size={14} /> },
           { id: 'mode',     label: 'Modo',       icon: <Settings size={14} /> },
           { id: 'template', label: 'Plantilla',  icon: <FileText size={14} /> },
+          { id: 'routing',  label: 'Enrutamiento', icon: <Zap size={14} /> },
         ].map(t => (
           <button key={t.id}
-            onClick={() => setActiveTab(t.id as any)}
-            className={`flex items-center gap-1.5 px-3 py-2 text-sm font-bold border-b-2 transition-colors ${
+            onClick={() => { setActiveTab(t.id as any); if (t.id === 'routing') void loadRouting(); }}
+            className={`flex items-center gap-1.5 px-3 py-2 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${
               activeTab === t.id ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'
             }`}>
             {t.icon}{t.label}
@@ -351,6 +394,99 @@ export default function AdminImpresoras() {
               className="w-full py-3 bg-primary text-primary-foreground rounded-xl font-black">
               Guardar plantilla
             </button>
+          </div>
+        )}
+
+        {/* ── Tab: Routing matrix ── */}
+        {activeTab === 'routing' && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="font-black text-base">Matriz de enrutamiento</h2>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Asigna qué impresora imprime cada categoría de producto.
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={seedDefaults} disabled={seedingDefaults}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-xl border border-border hover:bg-secondary disabled:opacity-50">
+                  <Zap size={11} />{seedingDefaults ? 'Aplicando…' : 'Defaults'}
+                </button>
+                <button onClick={loadRouting} disabled={routingLoading}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-xl border border-border hover:bg-secondary disabled:opacity-50">
+                  <RefreshCw size={11} className={routingLoading ? 'animate-spin' : ''} />
+                  Actualizar
+                </button>
+              </div>
+            </div>
+
+            {/* Print mode visible here too */}
+            <div className="bg-card border border-border rounded-xl p-4">
+              <div className="text-xs font-black uppercase tracking-widest text-muted-foreground mb-3">Modo de impresión activo</div>
+              <div className="flex gap-2 flex-wrap">
+                {PRINT_MODES.map(m => (
+                  <button key={m.value} onClick={async () => { setPrintMode(m.value); await api('/api/admin/print-config', 'PATCH', { printMode: m.value }); toast.success('Modo guardado'); }}
+                    className={`px-3 py-2 rounded-xl text-xs font-bold border transition-colors ${
+                      printMode === m.value ? 'bg-primary text-primary-foreground border-primary' : 'bg-secondary text-muted-foreground border-border hover:bg-secondary/80'
+                    }`}>
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Link to print test wizard */}
+            <Link href="/admin/prueba-impresion">
+              <div className="flex items-center justify-between p-3 bg-card border border-dashed border-primary/30 rounded-xl hover:border-primary/60 transition-colors cursor-pointer">
+                <span className="text-sm font-semibold text-muted-foreground">¿Todo bien? Lanza la prueba de impresión guiada →</span>
+                <ExternalLink size={14} className="text-muted-foreground" />
+              </div>
+            </Link>
+
+            {routingLoading ? (
+              <div className="flex justify-center py-8">
+                <RefreshCw size={20} className="animate-spin text-muted-foreground" />
+              </div>
+            ) : categories.length === 0 ? (
+              <div className="text-center py-10 text-muted-foreground text-sm">
+                <p>No hay categorías. Abre este panel después de crear productos.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm border-collapse">
+                  <thead>
+                    <tr className="border-b border-border">
+                      <th className="text-left py-2 pr-4 font-bold text-muted-foreground text-xs uppercase tracking-wider w-36">Categoría</th>
+                      {printers.filter(p => p.active).map(p => (
+                        <th key={p.id} className="py-2 px-2 font-bold text-muted-foreground text-xs text-center uppercase tracking-wider min-w-[90px]">
+                          <div className="flex flex-col items-center gap-0.5">
+                            <Printer size={12} />
+                            <span className="leading-none">{p.name}</span>
+                          </div>
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {categories.map((cat, i) => (
+                      <tr key={cat.id} className={`border-b border-border/40 ${i % 2 === 0 ? 'bg-card/50' : ''}`}>
+                        <td className="py-2.5 pr-4 font-semibold text-foreground/90 text-xs">{cat.name}</td>
+                        {printers.filter(p => p.active).map(p => {
+                          const checked = (routing[cat.id] ?? []).includes(p.id);
+                          return (
+                            <td key={p.id} className="py-2.5 px-2 text-center">
+                              <input type="checkbox" checked={checked}
+                                onChange={e => toggleRoutingPrinter(cat.id, p.id, e.target.checked)}
+                                className="w-4 h-4 rounded accent-primary cursor-pointer" />
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )}
       </div>

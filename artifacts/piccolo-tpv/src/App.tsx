@@ -71,6 +71,8 @@ import OrderStatus from './pages/order-status';
 import OnlineReports from './pages/online-reports';
 import AdminImpresoras from './pages/admin-impresoras';
 import AdminColaImpresion from './pages/admin-cola-impresion';
+import AdminKdsStations from './pages/admin-kds-stations';
+import AdminPrintTest from './pages/admin-print-test';
 import AdminMermas from './pages/admin-mermas';
 import AdminCategoriasIngredientes from './pages/admin-categorias-ingredientes';
 import AdminAlmacenes from './pages/admin-almacenes';
@@ -168,6 +170,9 @@ function Router() {
       {/* Printing module */}
       <Route path="/admin/impresoras" component={AdminImpresoras} />
       <Route path="/admin/cola-impresion" component={AdminColaImpresion} />
+      <Route path="/admin/prueba-impresion" component={AdminPrintTest} />
+      {/* KDS stations */}
+      <Route path="/admin/kds-stations" component={AdminKdsStations} />
       {/* Stock extensions */}
       <Route path="/admin/mermas" component={AdminMermas} />
       <Route path="/admin/categorias-ingredientes" component={AdminCategoriasIngredientes} />

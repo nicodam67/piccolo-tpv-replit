@@ -11,6 +11,8 @@ import {
   printRoutingTable,
   printAuditTable,
   businessConfigTable,
+  printTestResultsTable,
+  categoriesTable,
 } from "@workspace/db";
 import { eq, and, desc, inArray } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
@@ -340,6 +342,109 @@ router.get("/admin/print-audit", requireAuth, requireRole("manager", "admin"), a
     .orderBy(desc(printAuditTable.createdAt))
     .limit(parseInt(limit, 10));
   res.json(entries);
+});
+
+// ═══ PRINT TEST RESULTS ═══════════════════════════════════════════════════════
+
+// ── POST /admin/print-test-results ───────────────────────────────────────────
+router.post("/admin/print-test-results", requireAuth, requireRole("manager", "admin"), async (req, res): Promise<void> => {
+  const rows = req.body as Array<{
+    printerId: string;
+    stepKey: string;
+    stepLabel: string;
+    result: string;
+    notes?: string;
+    sessionId?: string;
+  }>;
+
+  if (!Array.isArray(rows) || rows.length === 0) {
+    res.status(400).json({ error: "Se requiere un array de resultados." });
+    return;
+  }
+
+  const inserted = await db.insert(printTestResultsTable).values(
+    rows.map(r => ({
+      printerId: r.printerId,
+      stepKey: r.stepKey,
+      stepLabel: r.stepLabel,
+      result: r.result ?? "pending",
+      notes: r.notes ?? null,
+      testedBy: req.user?.name ?? null,
+      sessionId: r.sessionId ?? null,
+    }))
+  ).returning();
+
+  res.status(201).json({ ok: true, count: inserted.length });
+});
+
+// ── GET /admin/print-test-results/latest ──────────────────────────────────────
+router.get("/admin/print-test-results/latest", requireAuth, requireRole("manager", "admin"), async (_req, res): Promise<void> => {
+  // Get the most recent session
+  const [latest] = await db
+    .select({ sessionId: printTestResultsTable.sessionId, createdAt: printTestResultsTable.createdAt })
+    .from(printTestResultsTable)
+    .orderBy(desc(printTestResultsTable.createdAt))
+    .limit(1);
+
+  if (!latest?.sessionId) { res.json([]); return; }
+
+  const results = await db
+    .select()
+    .from(printTestResultsTable)
+    .where(eq(printTestResultsTable.sessionId, latest.sessionId))
+    .orderBy(printTestResultsTable.createdAt);
+
+  res.json(results);
+});
+
+// ── POST /admin/print-routing/seed-defaults ───────────────────────────────────
+// Seeds default category→printer routing rules when the matrix is empty
+router.post("/admin/print-routing/seed-defaults", requireAuth, requireRole("manager", "admin"), async (_req, res): Promise<void> => {
+  // Get all categories and printers
+  const cats = await db.select({ id: categoriesTable.id, name: categoriesTable.name }).from(categoriesTable);
+  const printersAll = await db.select().from(printersTable).where(eq(printersTable.active, true));
+
+  if (printersAll.length === 0 || cats.length === 0) {
+    res.json({ ok: true, seeded: 0, message: "No hay impresoras o categorías." });
+    return;
+  }
+
+  const existing = await db.select().from(printRoutingTable).limit(1);
+  if (existing.length > 0) {
+    res.json({ ok: true, seeded: 0, message: "Ya existen reglas. No se sobrescriben." });
+    return;
+  }
+
+  // Map printer types to zone labels for fuzzy matching
+  const findPrinter = (type: string) => printersAll.find(p => p.type === type) ?? printersAll[0]!;
+
+  const ZONE_KEYWORDS: Array<{ keywords: string[]; printerType: string }> = [
+    { keywords: ['pizza', 'forno', 'horno'], printerType: 'pizza' },
+    { keywords: ['ensalada', 'frio', 'frío', 'fresco', 'vegetal'], printerType: 'ensalada' },
+    { keywords: ['barra', 'bebida', 'bebidas', 'drink', 'cocktail', 'café', 'cafe'], printerType: 'barra' },
+  ];
+
+  const rules: Array<{ entityType: string; entityId: string; printerIds: string[] }> = [];
+
+  for (const cat of cats) {
+    const nameLower = cat.name.toLowerCase();
+    let printerType = 'cocina'; // default
+    for (const { keywords, printerType: pt } of ZONE_KEYWORDS) {
+      if (keywords.some(k => nameLower.includes(k))) { printerType = pt; break; }
+    }
+    const printer = findPrinter(printerType);
+    rules.push({ entityType: 'category', entityId: cat.id, printerIds: [printer.id] });
+  }
+
+  if (rules.length > 0) {
+    await db.insert(printRoutingTable).values(rules.map(r => ({
+      entityType: r.entityType,
+      entityId: r.entityId,
+      printerIds: r.printerIds,
+    })));
+  }
+
+  res.json({ ok: true, seeded: rules.length });
 });
 
 export default router;

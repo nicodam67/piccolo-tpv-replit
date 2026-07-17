@@ -34,7 +34,14 @@ import {
 } from 'lucide-react';
 
 const TAX_RATES = [4, 10, 21] as const;
-const PREP_ZONES = ['cocina', 'barra', 'frío', 'postres', 'sala'];
+const PREP_ZONES = [
+  { value: 'cocina',      label: 'Cocina' },
+  { value: 'pizza',       label: 'Pizza / Horno' },
+  { value: 'ensalada',    label: 'Ensaladas / Frío' },
+  { value: 'barra',       label: 'Barra / Bebidas' },
+  { value: 'pase',        label: 'Expedición / Pase' },
+  { value: 'sin_partida', label: 'Sin partida (solo ticket)' },
+];
 
 const RATE_COLOR: Record<number, string> = {
   4: 'bg-green-500/15 text-green-400 border-green-500/30',
@@ -418,9 +425,9 @@ function ProductSheet({
                 <label className="text-xs text-muted-foreground font-semibold block mb-1">Zona de preparación</label>
                 <div className="flex gap-1.5 flex-wrap">
                   {PREP_ZONES.map((z) => (
-                    <button key={z} onClick={() => setPrepZone(z)}
-                      className={`px-3 py-1.5 rounded-lg border text-xs font-semibold capitalize transition-all ${prepZone === z ? 'bg-primary/15 text-primary border-primary/30' : 'bg-secondary/30 text-muted-foreground border-border hover:bg-secondary'}`}>
-                      {z}
+                    <button key={z.value} onClick={() => setPrepZone(z.value)}
+                      className={`px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all ${prepZone === z.value ? 'bg-primary/15 text-primary border-primary/30' : 'bg-secondary/30 text-muted-foreground border-border hover:bg-secondary'}`}>
+                      {z.label}
                     </button>
                   ))}
                 </div>
