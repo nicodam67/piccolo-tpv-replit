@@ -1,0 +1,298 @@
+TAREA: Centralizar API, autenticación, sesiones y permisos de Piccolo TPV
+
+Objetivo:
+Eliminar las llamadas API duplicadas, unificar la comunicación frontend-backend y asegurar que ningún usuario pueda acceder a funciones o datos sin autorización real del servidor.
+
+No añadir módulos nuevos durante esta tarea.
+
+1. Revisión inicial obligatoria
+
+Antes de modificar código:
+
+- Leer los documentos generados en la auditoría anterior.
+- Localizar el backend real.
+- Localizar el sistema actual de autenticación.
+- Localizar todas las funciones fetch, api, apiFetch, customFetch y equivalentes.
+- Localizar todos los usos de localStorage para token, employee, role, permissions o session.
+- Localizar todas las rutas protegidas.
+- Localizar los permisos comprobados únicamente en frontend.
+- Identificar qué endpoints requieren autenticación y qué roles pueden utilizarlos.
+
+Entregar primero un resumen breve con:
+
+- Sistema actual de autenticación.
+- Número de implementaciones diferentes de API.
+- Lugares donde se utiliza localStorage para decisiones de seguridad.
+- Riesgos encontrados.
+- Archivos que serán modificados.
+
+2. Crear un cliente API único
+
+Crear una implementación central, por ejemplo:
+
+src/lib/api-client.ts
+
+o utilizar correctamente el paquete existente:
+
+@workspace/api-client-react
+
+Solo si ese paquete está realmente disponible y documentado.
+
+El cliente API debe gestionar:
+
+- URL base.
+- Método HTTP.
+- Headers.
+- JSON.
+- FormData.
+- Credenciales.
+- Autenticación.
+- Tiempo máximo de espera.
+- Cancelación.
+- Errores HTTP.
+- Errores de red.
+- Respuestas vacías.
+- Reintentos seguros.
+- Identificador de petición.
+- Registro técnico sin datos sensibles.
+
+Crear métodos reutilizables:
+
+- api.get()
+- api.post()
+- api.put()
+- api.patch()
+- api.delete()
+- api.upload()
+
+No repetir lógica de fetch dentro de páginas.
+
+3. Tipos de errores
+
+Crear errores estructurados:
+
+- AUTH_REQUIRED
+- SESSION_EXPIRED
+- FORBIDDEN
+- VALIDATION_ERROR
+- NOT_FOUND
+- CONFLICT
+- RATE_LIMITED
+- SERVER_ERROR
+- NETWORK_ERROR
+- TIMEOUT
+- OFFLINE
+- UNKNOWN_ERROR
+
+Cada error debe incluir:
+
+- Código.
+- Mensaje comprensible.
+- Estado HTTP.
+- Detalle técnico opcional.
+- Identificador de petición.
+- Datos de validación, cuando existan.
+
+No mostrar trazas internas al usuario.
+
+4. Autenticación segura
+
+Revisar cómo se inicia sesión actualmente.
+
+No autorizar operaciones basándose únicamente en:
+
+localStorage.getItem("employee")
+localStorage.getItem("role")
+localStorage.getItem("permissions")
+
+Los datos guardados en el navegador pueden utilizarse para mejorar la interfaz, pero nunca como fuente de autoridad.
+
+El backend debe validar:
+
+- Identidad.
+- Sesión.
+- Rol.
+- Permiso.
+- Restaurante o centro.
+- Dispositivo, cuando corresponda.
+- Estado activo del usuario.
+
+5. Almacenamiento de sesión
+
+Preferir una solución segura basada en:
+
+- Cookie HttpOnly.
+- Secure en producción.
+- SameSite adecuado.
+- Expiración.
+- Rotación de sesión.
+- Revocación.
+
+Si la arquitectura actual requiere temporalmente token en navegador:
+
+- Documentar el motivo.
+- Reducir su exposición.
+- No guardar permisos como autoridad.
+- Implementar expiración.
+- Implementar cierre de sesión completo.
+- Preparar migración a cookie HttpOnly.
+
+No romper el inicio de sesión actual sin una migración segura.
+
+6. Endpoint de sesión actual
+
+Crear o consolidar un endpoint como:
+
+GET /api/auth/me
+
+Debe devolver únicamente datos autorizados:
+
+- id
+- nombre
+- rol
+- permisos efectivos
+- restaurante
+- dispositivo
+- estado de sesión
+- fecha de expiración
+
+El frontend debe obtener la sesión desde el servidor al iniciar la aplicación.
+
+No confiar en datos antiguos guardados localmente.
+
+7. Proveedor de autenticación frontend
+
+Crear un único AuthProvider o SessionProvider.
+
+Debe gestionar:
+
+- Estado inicial.
+- Usuario autenticado.
+- Carga de sesión.
+- Inicio de sesión.
+- Cierre de sesión.
+- Sesión caducada.
+- Permisos.
+- Cambio rápido de empleado, si corresponde.
+- Bloqueo por inactividad.
+- Error de conexión.
+- Modo offline permitido.
+
+Eliminar implementaciones duplicadas de sesión.
+
+8. Protección de rutas
+
+Crear una protección central para:
+
+- Rutas públicas.
+- Rutas autenticadas.
+- Rutas administrativas.
+- Rutas de caja.
+- Rutas de fiscalidad.
+- Rutas de empleados.
+- Rutas de cocina.
+- Rutas de repartidor.
+- Rutas de configuración.
+
+La navegación directa mediante URL no debe evitar los permisos.
+
+Ejemplo:
+
+- RequireAuth
+- RequirePermission
+- RequireRole
+- RequireDevice
+
+No proteger rutas únicamente ocultando botones.
+
+9. Sistema central de permisos
+
+Crear un catálogo único de permisos.
+
+Ejemplos:
+
+- tables.view
+- tables.manage
+- orders.create
+- orders.modify
+- orders.cancel
+- kds.view
+- kds.manage
+- payments.create
+- payments.refund
+- cash.open
+- cash.close
+- cash.view
+- invoices.create
+- invoices.correct
+- fiscal.configure
+- products.manage
+- stock.manage
+- employees.manage
+- timeclock.manage
+- reports.view
+- settings.manage
+- users.manage
+- devices.manage
+
+Evitar textos libres y nombres diferentes para el mismo permiso.
+
+10. Validación de permisos en backend
+
+Cada endpoint sensible debe declarar y validar el permiso necesario.
+
+Comprobar como mínimo:
+
+- Descuentos.
+- Anulaciones.
+- Reapertura de mesas.
+- Devoluciones.
+- Cambio de forma de pago.
+- Apertura y cierre de caja.
+- Movimientos manuales.
+- Facturación.
+- Rectificativas.
+- Configuración fiscal.
+- Modificación de productos.
+- Stock.
+- Empleados.
+- Fichajes.
+- Usuarios.
+- Dispositivos.
+- Copias.
+- Restauración.
+- Activación de producción.
+
+Responder con HTTP 403 cuando el usuario está autenticado pero no autorizado.
+
+11. Autorización con PIN de encargado
+
+Para operaciones sensibles, implementar autorización temporal del encargado.
+
+Debe registrar:
+
+- Usuario que realiza la operación.
+- Encargado que autoriza.
+- Motivo.
+- Operación.
+- Mesa, pedido o documento relacionado.
+- Fecha y hora.
+- Dispositivo.
+
+La autorización debe:
+
+- Tener duración corta.
+- Servir solo para la operación aprobada.
+- No convertir al camarero en administrador.
+- No quedar guardada indefinidamente.
+
+12. Cierre de sesión
+
+El cierre de sesión debe:
+
+- Invalidar la sesión en backend.
+- Borrar datos temporales.
+- Limpiar cachés sensibles.
+- Cerrar conexiones privadas.
+- Mantener únicamente datos offline permitidos.
+- Redirigir al

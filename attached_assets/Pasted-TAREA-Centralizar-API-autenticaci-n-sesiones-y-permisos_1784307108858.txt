@@ -1,0 +1,596 @@
+TAREA: Centralizar API, autenticación, sesiones y permisos de Piccolo TPV
+
+Objetivo:
+Eliminar las llamadas API duplicadas, unificar la comunicación frontend-backend y asegurar que ningún usuario pueda acceder a funciones o datos sin autorización real del servidor.
+
+No añadir módulos nuevos durante esta tarea.
+
+1. Revisión inicial obligatoria
+
+Antes de modificar código:
+
+- Leer los documentos generados en la auditoría anterior.
+- Localizar el backend real.
+- Localizar el sistema actual de autenticación.
+- Localizar todas las funciones fetch, api, apiFetch, customFetch y equivalentes.
+- Localizar todos los usos de localStorage para token, employee, role, permissions o session.
+- Localizar todas las rutas protegidas.
+- Localizar los permisos comprobados únicamente en frontend.
+- Identificar qué endpoints requieren autenticación y qué roles pueden utilizarlos.
+
+Entregar primero un resumen breve con:
+
+- Sistema actual de autenticación.
+- Número de implementaciones diferentes de API.
+- Lugares donde se utiliza localStorage para decisiones de seguridad.
+- Riesgos encontrados.
+- Archivos que serán modificados.
+
+2. Crear un cliente API único
+
+Crear una implementación central, por ejemplo:
+
+src/lib/api-client.ts
+
+o utilizar correctamente el paquete existente:
+
+@workspace/api-client-react
+
+Solo si ese paquete está realmente disponible y documentado.
+
+El cliente API debe gestionar:
+
+- URL base.
+- Método HTTP.
+- Headers.
+- JSON.
+- FormData.
+- Credenciales.
+- Autenticación.
+- Tiempo máximo de espera.
+- Cancelación.
+- Errores HTTP.
+- Errores de red.
+- Respuestas vacías.
+- Reintentos seguros.
+- Identificador de petición.
+- Registro técnico sin datos sensibles.
+
+Crear métodos reutilizables:
+
+- api.get()
+- api.post()
+- api.put()
+- api.patch()
+- api.delete()
+- api.upload()
+
+No repetir lógica de fetch dentro de páginas.
+
+3. Tipos de errores
+
+Crear errores estructurados:
+
+- AUTH_REQUIRED
+- SESSION_EXPIRED
+- FORBIDDEN
+- VALIDATION_ERROR
+- NOT_FOUND
+- CONFLICT
+- RATE_LIMITED
+- SERVER_ERROR
+- NETWORK_ERROR
+- TIMEOUT
+- OFFLINE
+- UNKNOWN_ERROR
+
+Cada error debe incluir:
+
+- Código.
+- Mensaje comprensible.
+- Estado HTTP.
+- Detalle técnico opcional.
+- Identificador de petición.
+- Datos de validación, cuando existan.
+
+No mostrar trazas internas al usuario.
+
+4. Autenticación segura
+
+Revisar cómo se inicia sesión actualmente.
+
+No autorizar operaciones basándose únicamente en:
+
+localStorage.getItem("employee")
+localStorage.getItem("role")
+localStorage.getItem("permissions")
+
+Los datos guardados en el navegador pueden utilizarse para mejorar la interfaz, pero nunca como fuente de autoridad.
+
+El backend debe validar:
+
+- Identidad.
+- Sesión.
+- Rol.
+- Permiso.
+- Restaurante o centro.
+- Dispositivo, cuando corresponda.
+- Estado activo del usuario.
+
+5. Almacenamiento de sesión
+
+Preferir una solución segura basada en:
+
+- Cookie HttpOnly.
+- Secure en producción.
+- SameSite adecuado.
+- Expiración.
+- Rotación de sesión.
+- Revocación.
+
+Si la arquitectura actual requiere temporalmente token en navegador:
+
+- Documentar el motivo.
+- Reducir su exposición.
+- No guardar permisos como autoridad.
+- Implementar expiración.
+- Implementar cierre de sesión completo.
+- Preparar migración a cookie HttpOnly.
+
+No romper el inicio de sesión actual sin una migración segura.
+
+6. Endpoint de sesión actual
+
+Crear o consolidar un endpoint como:
+
+GET /api/auth/me
+
+Debe devolver únicamente datos autorizados:
+
+- id
+- nombre
+- rol
+- permisos efectivos
+- restaurante
+- dispositivo
+- estado de sesión
+- fecha de expiración
+
+El frontend debe obtener la sesión desde el servidor al iniciar la aplicación.
+
+No confiar en datos antiguos guardados localmente.
+
+7. Proveedor de autenticación frontend
+
+Crear un único AuthProvider o SessionProvider.
+
+Debe gestionar:
+
+- Estado inicial.
+- Usuario autenticado.
+- Carga de sesión.
+- Inicio de sesión.
+- Cierre de sesión.
+- Sesión caducada.
+- Permisos.
+- Cambio rápido de empleado, si corresponde.
+- Bloqueo por inactividad.
+- Error de conexión.
+- Modo offline permitido.
+
+Eliminar implementaciones duplicadas de sesión.
+
+8. Protección de rutas
+
+Crear una protección central para:
+
+- Rutas públicas.
+- Rutas autenticadas.
+- Rutas administrativas.
+- Rutas de caja.
+- Rutas de fiscalidad.
+- Rutas de empleados.
+- Rutas de cocina.
+- Rutas de repartidor.
+- Rutas de configuración.
+
+La navegación directa mediante URL no debe evitar los permisos.
+
+Ejemplo:
+
+- RequireAuth
+- RequirePermission
+- RequireRole
+- RequireDevice
+
+No proteger rutas únicamente ocultando botones.
+
+9. Sistema central de permisos
+
+Crear un catálogo único de permisos.
+
+Ejemplos:
+
+- tables.view
+- tables.manage
+- orders.create
+- orders.modify
+- orders.cancel
+- kds.view
+- kds.manage
+- payments.create
+- payments.refund
+- cash.open
+- cash.close
+- cash.view
+- invoices.create
+- invoices.correct
+- fiscal.configure
+- products.manage
+- stock.manage
+- employees.manage
+- timeclock.manage
+- reports.view
+- settings.manage
+- users.manage
+- devices.manage
+
+Evitar textos libres y nombres diferentes para el mismo permiso.
+
+10. Validación de permisos en backend
+
+Cada endpoint sensible debe declarar y validar el permiso necesario.
+
+Comprobar como mínimo:
+
+- Descuentos.
+- Anulaciones.
+- Reapertura de mesas.
+- Devoluciones.
+- Cambio de forma de pago.
+- Apertura y cierre de caja.
+- Movimientos manuales.
+- Facturación.
+- Rectificativas.
+- Configuración fiscal.
+- Modificación de productos.
+- Stock.
+- Empleados.
+- Fichajes.
+- Usuarios.
+- Dispositivos.
+- Copias.
+- Restauración.
+- Activación de producción.
+
+Responder con HTTP 403 cuando el usuario está autenticado pero no autorizado.
+
+11. Autorización con PIN de encargado
+
+Para operaciones sensibles, implementar autorización temporal del encargado.
+
+Debe registrar:
+
+- Usuario que realiza la operación.
+- Encargado que autoriza.
+- Motivo.
+- Operación.
+- Mesa, pedido o documento relacionado.
+- Fecha y hora.
+- Dispositivo.
+
+La autorización debe:
+
+- Tener duración corta.
+- Servir solo para la operación aprobada.
+- No convertir al camarero en administrador.
+- No quedar guardada indefinidamente.
+
+12. Cierre de sesión
+
+El cierre de sesión debe:
+
+- Invalidar la sesión en backend.
+- Borrar datos temporales.
+- Limpiar cachés sensibles.
+- Cerrar conexiones privadas.
+- Mantener únicamente datos offline permitidos.
+- Redirigir al acceso.
+- Registrar auditoría.
+
+No limitarse a borrar localStorage.
+
+13. Caducidad y bloqueo por inactividad
+
+Configurar:
+
+- Tiempo de inactividad.
+- Aviso previo.
+- Bloqueo rápido por PIN.
+- Cierre completo cuando corresponda.
+- Excepciones para KDS.
+- Excepciones para pantallas públicas.
+- Sesiones largas solo en dispositivos autorizados.
+
+Una tablet compartida debe poder cambiar de camarero sin perder comandas abiertas.
+
+14. Modo offline
+
+Definir claramente qué operaciones pueden realizarse sin conexión.
+
+La información local offline debe:
+
+- Estar limitada.
+- Estar cifrada cuando sea viable.
+- No contener secretos.
+- No permitir elevar permisos.
+- No permitir operaciones administrativas críticas.
+- Validarse de nuevo al sincronizar.
+
+Las operaciones offline deben guardar:
+
+- Usuario.
+- Dispositivo.
+- Permisos efectivos en el momento.
+- Fecha.
+- Identificador idempotente.
+
+15. CSRF, XSS e inyección
+
+Revisar:
+
+- Cookies.
+- Formularios.
+- Contenido HTML.
+- Observaciones de comandas.
+- Nombres de clientes.
+- Importaciones.
+- Subida de archivos.
+- Parámetros de URL.
+- Consultas a base de datos.
+
+Implementar validación y saneamiento adecuados.
+
+No insertar HTML sin control.
+
+16. Rate limiting
+
+Añadir límites razonables en:
+
+- Inicio de sesión.
+- PIN.
+- Recuperación de sesión.
+- Importaciones.
+- Subida de archivos.
+- Generación de documentos.
+- Endpoints fiscales.
+- Operaciones de pago.
+
+No limitar de forma que impida trabajar durante un servicio normal.
+
+17. Migración de llamadas API
+
+Sustituir progresivamente todas las implementaciones duplicadas.
+
+Orden recomendado:
+
+1. Autenticación.
+2. Usuarios y permisos.
+3. Mesas.
+4. Pedidos.
+5. KDS.
+6. Caja.
+7. Pagos.
+8. Facturación.
+9. Productos.
+10. Stock.
+11. Resto de administración.
+
+No hacer una sustitución masiva sin pruebas.
+
+Después de cada grupo:
+
+- Compilar.
+- Ejecutar pruebas.
+- Verificar errores.
+- Confirmar que el comportamiento no cambió.
+
+18. Consultas y caché
+
+Si se utiliza React Query, TanStack Query u otra librería:
+
+- Configurar un cliente único.
+- Centralizar claves.
+- Definir invalidaciones.
+- Evitar consultas duplicadas.
+- Evitar datos obsoletos en mesas, pedidos y KDS.
+- No reintentar automáticamente operaciones de cobro o facturación.
+- No duplicar mutaciones.
+
+19. Idempotencia
+
+Añadir claves idempotentes para operaciones críticas:
+
+- Crear pedido.
+- Enviar comanda.
+- Cobrar.
+- Crear ticket.
+- Crear factura.
+- Crear devolución.
+- Cerrar caja.
+- Importar datos.
+- Sincronizar offline.
+
+Una doble pulsación no debe crear dos operaciones.
+
+20. Auditoría de seguridad
+
+Registrar:
+
+- Inicio de sesión.
+- Fallo de acceso.
+- Cierre de sesión.
+- Sesión caducada.
+- Cambio de usuario.
+- Operación denegada.
+- Autorización de encargado.
+- Cambio de rol.
+- Cambio de permisos.
+- Cambio de dispositivo.
+- Acceso administrativo.
+- Operación crítica.
+
+No guardar:
+
+- Contraseñas.
+- PIN completos.
+- Tokens.
+- Datos bancarios.
+- Secretos.
+
+21. Interfaz de usuario
+
+Crear mensajes claros:
+
+- Sesión caducada.
+- No tienes permiso.
+- Operación requiere autorización.
+- No hay conexión.
+- Acción guardada para sincronizar.
+- La operación ya fue procesada.
+- Error de validación.
+- Servicio temporalmente no disponible.
+
+No mostrar mensajes técnicos como única explicación.
+
+22. Pruebas automáticas
+
+Crear pruebas para:
+
+- Inicio de sesión correcto.
+- Inicio de sesión incorrecto.
+- Sesión caducada.
+- Cierre de sesión.
+- Usuario desactivado.
+- Rol incorrecto.
+- Permiso permitido.
+- Permiso denegado.
+- Acceso directo por URL.
+- Llamada directa a API sin permiso.
+- Autorización de encargado.
+- Doble pulsación.
+- Operación idempotente.
+- Modo offline.
+- Sincronización después de recuperar conexión.
+- Cambio rápido de usuario.
+- Revocación de dispositivo.
+
+23. Pruebas por roles
+
+Probar como mínimo:
+
+Administrador:
+- Acceso completo autorizado.
+
+Gerente:
+- Acceso operativo y de informes según configuración.
+
+Encargado:
+- Autorizaciones y operaciones sensibles permitidas.
+
+Camarero:
+- Mesas, comandas y consulta de cuenta.
+- Sin acceso fiscal o administrativo.
+
+Caja:
+- Cobro y caja.
+- Sin gestión de usuarios.
+
+Cocina:
+- Solo KDS y funciones autorizadas.
+
+Repartidor:
+- Solo pedidos asignados y liquidación permitida.
+
+Empleado:
+- Fichaje y portal personal.
+
+24. Compatibilidad
+
+Comprobar:
+
+- Ordenador.
+- Tablet.
+- Móvil.
+- PWA.
+- KDS.
+- Modo pantalla completa.
+- Reconexión.
+- Varias pestañas.
+- Varios dispositivos simultáneos.
+
+25. Documentación
+
+Crear o actualizar:
+
+docs/API-CLIENT.md
+docs/AUTHENTICATION.md
+docs/PERMISSIONS.md
+docs/SESSION-LIFECYCLE.md
+docs/OFFLINE-SECURITY.md
+
+Incluir:
+
+- Arquitectura.
+- Flujos.
+- Permisos.
+- Ejemplos.
+- Errores.
+- Cómo añadir un endpoint.
+- Cómo proteger una ruta.
+- Cómo añadir un nuevo permiso.
+- Cómo probarlo.
+
+26. Criterios de aceptación
+
+La tarea estará terminada cuando:
+
+1. Exista un único cliente API.
+2. Las páginas no implementen su propio sistema fetch.
+3. La sesión se valide con el backend.
+4. localStorage no determine roles ni permisos.
+5. Las rutas estén protegidas.
+6. Los endpoints sensibles validen permisos.
+7. Exista catálogo central de permisos.
+8. Las operaciones sensibles puedan requerir PIN de encargado.
+9. El cierre de sesión invalide la sesión real.
+10. Las sesiones tengan caducidad.
+11. El modo offline no permita elevar privilegios.
+12. Las operaciones críticas sean idempotentes.
+13. Existan pruebas por roles.
+14. Existan pruebas de acceso directo a API.
+15. No se rompan mesas, pedidos, KDS, caja ni facturación.
+16. La documentación esté creada.
+17. No existan secretos o tokens en logs.
+18. Replit entregue resultados concretos.
+
+27. Entrega final obligatoria
+
+Replit debe informar:
+
+- Archivos creados.
+- Archivos modificados.
+- Implementaciones API eliminadas.
+- Número de páginas migradas.
+- Endpoints protegidos.
+- Permisos creados.
+- Uso restante de localStorage.
+- Riesgos pendientes.
+- Pruebas ejecutadas.
+- Pruebas fallidas.
+- Resultado de compilación.
+- Próxima tarea recomendada.
+
+No responder simplemente “completado”.
+
+No añadir funcionalidades nuevas durante esta tarea. La prioridad es consolidar la seguridad y la arquitectura del sistema existente.
