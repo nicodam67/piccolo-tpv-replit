@@ -1,0 +1,832 @@
+TAREA: Instalación real del TPV Piccolo en el restaurante
+
+Preparar el sistema para su instalación y puesta en marcha real en Piccolo La Ràpita.
+
+El objetivo es dejar configurados y documentados:
+
+- Un ordenador principal.
+- Cinco tablets para camareros.
+- Pantallas KDS.
+- Impresoras por zonas.
+- Caja principal.
+- Red local.
+- Accesos de usuarios.
+- Funcionamiento offline.
+- Copias de seguridad.
+- Procedimiento de arranque y cierre diario.
+
+Esta tarea debe basarse en el sistema existente y no crear una instalación paralela.
+
+1. Inventario del hardware
+
+Crear una pantalla de inventario para registrar:
+
+Ordenador principal
+
+- Nombre del dispositivo.
+- Sistema operativo.
+- Procesador.
+- Memoria RAM.
+- Espacio disponible.
+- Dirección IP local.
+- Conexión por cable o Wi-Fi.
+- Navegador.
+- Versión de la aplicación.
+- Impresora principal asociada.
+- Caja asociada.
+- Estado.
+
+Cinco tablets TPV
+
+Registrar para cada tablet:
+
+- Nombre.
+- Número.
+- Marca y modelo.
+- Sistema operativo.
+- Navegador o PWA instalada.
+- Usuario habitual.
+- Zona habitual.
+- Dirección IP local.
+- Permiso para cobrar.
+- Impresora predeterminada.
+- Modo offline autorizado.
+- Última sincronización.
+- Estado.
+
+Crear nombres iniciales:
+
+- Tablet Sala 1.
+- Tablet Sala 2.
+- Tablet Sala 3.
+- Tablet Terraza 1.
+- Tablet Encargado.
+
+Los nombres deben poder modificarse.
+
+2. Arquitectura de instalación
+
+Definir una arquitectura clara:
+
+- Servidor o backend principal.
+- Base de datos.
+- Aplicación web.
+- PWA en tablets.
+- Servicio local de impresión.
+- KDS.
+- Sincronización.
+- Copias de seguridad.
+- Conexiones externas.
+
+Mostrar un diagrama sencillo dentro del panel de configuración.
+
+3. Red local
+
+Crear una guía y comprobación de red para:
+
+- Router.
+- Ordenador principal.
+- Tablets.
+- KDS.
+- Impresoras.
+- Caja de autocobro, si se activa.
+- Dispositivos de reparto.
+- Terminales auxiliares.
+
+Permitir comprobar:
+
+- Dirección IP.
+- Conectividad.
+- Latencia.
+- Pérdida de paquetes.
+- Acceso al servidor.
+- Acceso a impresoras.
+- Acceso a KDS.
+- Acceso a Internet.
+
+Recomendar conexión por cable para:
+
+- Ordenador principal.
+- Impresoras de red.
+- KDS fijos.
+- Equipos críticos.
+
+4. Direcciones IP y nombres de dispositivos
+
+Permitir definir direcciones IP fijas o reservas DHCP para:
+
+- Ordenador principal.
+- Impresoras.
+- KDS.
+- Servicio de impresión.
+- Caja de autocobro.
+- Otros dispositivos críticos.
+
+Guardar:
+
+- Nombre.
+- IP.
+- MAC opcional.
+- Tipo.
+- Zona.
+- Estado.
+- Última conexión.
+
+Mostrar alertas por IP duplicada o cambio inesperado.
+
+5. Ordenador principal
+
+Preparar un modo específico para el ordenador principal con:
+
+- Acceso al panel de administración.
+- Control de caja.
+- Facturación.
+- Informes.
+- Gestión de productos.
+- Gestión de usuarios.
+- Diagnóstico.
+- Copias.
+- Impresoras.
+- Control de dispositivos.
+
+Crear accesos directos:
+
+- Abrir TPV.
+- Abrir administración.
+- Abrir caja.
+- Abrir KDS.
+- Abrir diagnóstico.
+- Crear copia.
+- Cerrar jornada.
+
+6. Instalación de tablets
+
+Crear un asistente para instalar la PWA en cada tablet.
+
+Debe mostrar:
+
+1. Abrir enlace seguro.
+2. Iniciar sesión como administrador.
+3. Registrar dispositivo.
+4. Asignar nombre.
+5. Asignar zona.
+6. Asignar caja.
+7. Asignar impresora.
+8. Activar modo offline.
+9. Descargar datos básicos.
+10. Probar apertura de mesa.
+11. Probar envío de comanda.
+12. Confirmar sincronización.
+
+No considerar una tablet preparada sin prueba completa.
+
+7. Configuración de las cinco tablets
+
+Tablet Sala 1
+
+- Acceso a sala.
+- Apertura de mesas.
+- Toma de comandas.
+- Envío a cocina.
+- Consulta de cuenta.
+- Sin cobro por defecto.
+
+Tablet Sala 2
+
+- Misma configuración que Sala 1.
+
+Tablet Sala 3
+
+- Misma configuración que Sala 1.
+
+Tablet Terraza 1
+
+- Acceso a terraza.
+- Toma de comandas.
+- Envío a cocina.
+- Consulta de cuenta.
+- Impresora de terraza o principal.
+
+Tablet Encargado
+
+- Acceso completo operativo.
+- Cobros.
+- Descuentos autorizados.
+- Anulaciones autorizadas.
+- Cambio de mesa.
+- Reapertura con permisos.
+- Consulta de caja.
+- Gestión de incidencias.
+
+Los permisos deben poder ajustarse posteriormente.
+
+8. Inicio de sesión en tablets
+
+Configurar:
+
+- Acceso por PIN.
+- Cambio rápido de usuario.
+- Bloqueo por inactividad.
+- Cierre automático.
+- Registro del usuario activo.
+- Restricción por dispositivo.
+- Autorización de encargado.
+- Modo invitado prohibido.
+
+El cambio de camarero no debe cerrar la mesa ni perder la comanda.
+
+9. KDS por zonas
+
+Configurar como mínimo:
+
+- KDS Cocina.
+- KDS Pizza.
+- KDS Ensaladas.
+- KDS Barra.
+- KDS Expedición o recogida de platos.
+
+Cada KDS debe mostrar únicamente las partidas que le correspondan.
+
+10. KDS Cocina
+
+Mostrar:
+
+- Platos calientes.
+- Pastas.
+- Carnes.
+- Guarniciones.
+- Observaciones.
+- Alérgenos.
+- Mesa.
+- Hora.
+- Tiempo transcurrido.
+- Prioridad.
+
+Estados:
+
+- Pendiente.
+- En preparación.
+- Preparado.
+- Entregado a expedición.
+
+11. KDS Pizza
+
+Mostrar:
+
+- Pizzas.
+- Tamaños.
+- Ingredientes extra.
+- Ingredientes eliminados.
+- Tipo de cocción.
+- Para llevar o sala.
+- Hora prometida.
+- Prioridad.
+
+Estados:
+
+- Pendiente.
+- En preparación.
+- En horno.
+- Preparada.
+- En expedición.
+
+12. KDS Ensaladas
+
+Mostrar:
+
+- Ensaladas.
+- Entrantes fríos.
+- Postres fríos, si se asignan.
+- Modificadores.
+- Alérgenos.
+- Observaciones.
+
+Estados:
+
+- Pendiente.
+- En preparación.
+- Preparado.
+- En expedición.
+
+13. KDS Barra
+
+Mostrar:
+
+- Bebidas.
+- Cafés.
+- Cócteles.
+- Postres de barra.
+- Comandas de terraza.
+- Observaciones.
+
+Estados:
+
+- Pendiente.
+- Preparando.
+- Listo.
+- Entregado.
+
+14. KDS de expedición
+
+Debe mostrar conjuntamente:
+
+- Mesa.
+- Pedido.
+- Todos los platos.
+- Estado por partida.
+- Platos pendientes.
+- Platos preparados.
+- Tiempo total.
+- Prioridad.
+- Botón recoger.
+- Botón pedido completo.
+- Aviso cuando toda la mesa esté lista.
+
+Permitir distinguir:
+
+- Entrega parcial.
+- Entrega completa.
+- Platos retrasados.
+- Reposición.
+- Reclamación.
+
+15. Impresoras por zonas
+
+Configurar como mínimo:
+
+- Impresora principal de tickets.
+- Impresora de cocina.
+- Impresora de pizza.
+- Impresora de ensaladas.
+- Impresora de barra.
+- Impresora de reparto o recogida, si se utiliza.
+
+Cada impresora debe tener:
+
+- Nombre.
+- Tipo.
+- Zona.
+- Dirección IP o conexión.
+- Ancho de papel.
+- Corte.
+- Copias.
+- Cola.
+- Impresora alternativa.
+- Estado.
+
+16. Enrutamiento de impresión
+
+Crear reglas iniciales:
+
+- Pizzas → impresora de pizza.
+- Cocina caliente → impresora de cocina.
+- Ensaladas → impresora de ensaladas.
+- Bebidas → impresora de barra.
+- Pedidos a domicilio → impresora de reparto.
+- Ticket y factura → impresora principal.
+
+Permitir configurar:
+
+- Impresión además de KDS.
+- Solo KDS.
+- Solo impresora.
+- Copia de seguridad.
+- Doble copia.
+- Reimpresión autorizada.
+
+17. Servicio local de impresión
+
+Implementar o preparar un servicio local que:
+
+- Reciba trabajos del TPV.
+- Detecte impresoras.
+- Mantenga cola.
+- Reintente.
+- Informe errores.
+- Permita impresora alternativa.
+- Funcione dentro de la red local.
+- Siga operativo si Internet falla, cuando sea posible.
+
+No enviar trabajos directamente al navegador si el método no es fiable.
+
+18. Prueba de impresión por zona
+
+Crear una prueba guiada:
+
+1. Imprimir ticket principal.
+2. Imprimir comanda de cocina.
+3. Imprimir comanda de pizza.
+4. Imprimir comanda de ensaladas.
+5. Imprimir comanda de barra.
+6. Imprimir ticket de reparto.
+7. Probar caracteres especiales.
+8. Probar corte.
+9. Probar apertura de cajón.
+10. Probar impresora alternativa.
+
+Guardar el resultado de cada prueba.
+
+19. Caja principal
+
+Configurar:
+
+- Nombre de caja.
+- Ordenador asociado.
+- Cajón portamonedas.
+- Impresora principal.
+- Fondo inicial.
+- Formas de pago.
+- Arqueo.
+- Cierre diario.
+- Usuarios autorizados.
+- Apertura manual.
+- Reapertura.
+
+Crear una prueba de apertura, cobro y cierre.
+
+20. Pagos
+
+Configurar y probar:
+
+- Efectivo.
+- Tarjeta.
+- Bizum.
+- Pago mixto.
+- Transferencia.
+- Tarjeta regalo.
+- Pago online.
+- Otros medios habilitados.
+
+Comprobar:
+
+- Registro.
+- Caja.
+- Ticket.
+- Factura.
+- Devolución.
+- Conciliación.
+
+21. Caja de autocobro
+
+Si está activada:
+
+- Registrar equipo.
+- Configurar protocolo.
+- Asociar caja.
+- Enviar importe.
+- Recibir confirmación.
+- Gestionar cancelación.
+- Gestionar falta de cambio.
+- Gestionar error.
+- Registrar auditoría.
+
+No bloquear la instalación general si esta integración aún no está disponible.
+
+22. Modo offline en tablets
+
+Preparar las tablets para:
+
+- Consultar carta.
+- Ver plano.
+- Abrir mesas.
+- Añadir comandas.
+- Guardar operaciones pendientes.
+- Sincronizar al volver la conexión.
+
+No permitir en offline:
+
+- Cambios fiscales.
+- Gestión de usuarios.
+- Restauraciones.
+- Cambios de permisos.
+- Operaciones no seguras.
+
+23. Prueba de pérdida de Internet
+
+Realizar una prueba controlada:
+
+1. Abrir mesa.
+2. Cortar Internet.
+3. Añadir productos.
+4. Enviar comanda.
+5. Comprobar KDS local o cola.
+6. Recuperar Internet.
+7. Sincronizar.
+8. Confirmar que no hay duplicados.
+9. Comprobar caja y stock.
+
+Registrar el resultado.
+
+24. Prueba de pérdida de Wi-Fi
+
+Comprobar:
+
+- Tablet desconectada.
+- Cola local.
+- Recuperación.
+- Reintento.
+- Cambio entre redes.
+- Sesión.
+- Conflictos.
+- Datos duplicados.
+
+Mostrar un aviso claro al camarero.
+
+25. Sincronización entre tablets
+
+Probar:
+
+- Dos tablets en la misma mesa.
+- Cambio de camarero.
+- Añadir productos desde dos dispositivos.
+- Mover mesa.
+- Dividir cuenta.
+- Cerrar mesa.
+- Conflictos.
+- Actualización en tiempo real.
+
+No permitir que una tablet sobrescriba silenciosamente datos de otra.
+
+26. Usuarios reales
+
+Crear un asistente para dar de alta al personal real:
+
+- Administrador.
+- Gerente.
+- Encargado.
+- Camareros.
+- Cocina.
+- Barra.
+- Repartidores.
+- Caja.
+
+Para cada usuario:
+
+- Nombre.
+- Rol.
+- PIN.
+- Dispositivos permitidos.
+- Permisos.
+- Zona.
+- Estado.
+
+Obligar a cambiar PIN inicial cuando corresponda.
+
+27. Datos reales del restaurante
+
+Revisar:
+
+- Productos.
+- Categorías.
+- Precios.
+- IVA.
+- Modificadores.
+- Extras.
+- Mesas.
+- Zonas.
+- Impresoras.
+- KDS.
+- Usuarios.
+- Horarios.
+- Datos fiscales.
+- Formas de pago.
+
+No activar producción con productos de demostración mezclados.
+
+28. Carta QR real
+
+Configurar:
+
+- Dominio o enlace.
+- Logo.
+- Frase “Cocina con sabor italiano”.
+- Idiomas.
+- Imágenes.
+- Alérgenos.
+- Precios.
+- Categorías.
+- QR de mesas.
+- Recogida.
+- Reparto.
+- Horarios.
+
+Verificar que la carta utiliza los mismos productos del TPV.
+
+29. Códigos QR
+
+Generar:
+
+- QR por mesa.
+- QR de carta general.
+- QR de recogida.
+- QR de reparto.
+- QR de fidelización, si se utiliza.
+
+Permitir descargar PDF imprimible.
+
+30. Copias iniciales
+
+Antes de producción:
+
+- Crear copia completa.
+- Verificarla.
+- Crear exportación de emergencia.
+- Comprobar restauración de prueba.
+- Registrar destino.
+- Configurar copias automáticas.
+
+No activar producción sin copia verificada.
+
+31. Diagnóstico de instalación
+
+Crear una pantalla con semáforo para:
+
+- Ordenador principal.
+- Cinco tablets.
+- KDS Cocina.
+- KDS Pizza.
+- KDS Ensaladas.
+- KDS Barra.
+- KDS Expedición.
+- Impresoras.
+- Caja.
+- Red.
+- Internet.
+- Copias.
+- Facturación.
+- Usuarios.
+- Modo offline.
+
+Estados:
+
+- Preparado.
+- Preparado con advertencia.
+- Pendiente.
+- Error.
+
+32. Simulación con cinco tablets
+
+Ejecutar una simulación simultánea:
+
+- Tablet Sala 1 abre una mesa.
+- Tablet Sala 2 añade una segunda comanda.
+- Tablet Sala 3 mueve una mesa.
+- Tablet Terraza abre una mesa de terraza.
+- Tablet Encargado autoriza una anulación.
+- KDS recibe todas las partidas.
+- Expedición agrupa los platos.
+- Caja cobra.
+- Stock se actualiza.
+- Informes se actualizan.
+
+Comprobar que no existan pérdidas ni duplicados.
+
+33. Simulación de servicio completo
+
+Probar:
+
+- Apertura de caja.
+- Inicio de usuarios.
+- Fichajes.
+- Reservas.
+- Mesas.
+- Comandas.
+- KDS.
+- Impresoras.
+- Anulaciones.
+- Cuenta dividida.
+- Pago mixto.
+- Factura.
+- Reparto.
+- Recogida.
+- Cierre de mesa.
+- Arqueo.
+- Cierre de caja.
+- Copia.
+
+Todo debe quedar marcado como simulación.
+
+34. Manual de instalación
+
+Crear un manual sencillo con:
+
+- Conexión del ordenador.
+- Conexión de tablets.
+- Instalación de PWA.
+- Registro de dispositivo.
+- Configuración de KDS.
+- Configuración de impresoras.
+- Prueba de red.
+- Prueba offline.
+- Creación de usuarios.
+- Copias.
+- Activación de producción.
+
+35. Manual de apertura diaria
+
+Crear una lista:
+
+1. Encender router.
+2. Encender ordenador principal.
+3. Comprobar Internet.
+4. Comprobar impresoras.
+5. Comprobar KDS.
+6. Abrir caja.
+7. Iniciar tablets.
+8. Comprobar usuarios.
+9. Realizar pedido de prueba.
+10. Confirmar estado correcto.
+
+36. Manual de cierre diario
+
+Crear una lista:
+
+1. Comprobar mesas abiertas.
+2. Comprobar pedidos pendientes.
+3. Comprobar KDS.
+4. Cerrar reparto.
+5. Realizar arqueo.
+6. Cerrar caja.
+7. Revisar incidencias.
+8. Generar informe.
+9. Crear o verificar copia.
+10. Cerrar sesiones.
+
+37. Plan de emergencia
+
+Crear instrucciones para:
+
+- Fallo de Internet.
+- Fallo de Wi-Fi.
+- Fallo de impresora.
+- Fallo de KDS.
+- Fallo del ordenador principal.
+- Tablet averiada.
+- Caja bloqueada.
+- Corte eléctrico.
+- Copia fallida.
+- Error de facturación.
+
+Mostrar teléfonos o contactos configurables de soporte.
+
+38. Permisos
+
+Crear permisos para:
+
+- Registrar dispositivos.
+- Configurar tablets.
+- Configurar KDS.
+- Configurar impresoras.
+- Ejecutar pruebas.
+- Cambiar IP.
+- Activar offline.
+- Resolver conflictos.
+- Activar producción.
+- Consultar diagnóstico.
+- Descargar manuales.
+- Modificar arquitectura.
+
+39. Auditoría
+
+Registrar:
+
+- Dispositivos registrados.
+- Cambios de IP.
+- Cambios de impresora.
+- Cambios de KDS.
+- Pruebas realizadas.
+- Errores detectados.
+- Activación de offline.
+- Activación de producción.
+- Bloqueo de dispositivos.
+- Cambios de usuarios.
+- Simulaciones realizadas.
+
+40. Criterios de aceptación
+
+La tarea estará terminada cuando:
+
+1. El ordenador principal esté registrado y probado.
+2. Las cinco tablets estén registradas.
+3. Cada tablet tenga zona, permisos e impresora.
+4. Los KDS estén configurados por partida.
+5. El KDS de expedición agrupe correctamente los platos.
+6. Las impresoras impriman en la zona correcta.
+7. Exista impresora alternativa.
+8. La caja principal funcione.
+9. Las formas de pago estén probadas.
+10. El modo offline esté probado.
+11. La sincronización no genere duplicados.
+12. Las cinco tablets puedan trabajar simultáneamente.
+13. La carta QR use los datos reales del TPV.
+14. Exista una copia verificada.
+15. El diagnóstico muestre el estado de toda la instalación.
+16. Exista manual de instalación.
+17. Existan manuales de apertura, cierre y emergencia.
+18. Se complete una simulación realista de servicio.
+19. Los datos de simulación puedan eliminarse.
+20. Replit entregue un resumen de dispositivos, red, impresoras, KDS, pruebas, incidencias y estado final.
+
+Antes de hacer cambios, revisar la infraestructura actual del proyecto y explicar qué componentes existentes se reutilizarán.
+
+No declarar la instalación preparada únicamente porque los dispositivos abran la aplicación. Debe comprobarse el flujo completo de trabajo, impresión, cocina, cobro, sincronización y recuperación.

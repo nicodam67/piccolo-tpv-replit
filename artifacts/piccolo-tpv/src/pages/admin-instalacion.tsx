@@ -279,62 +279,241 @@ function DeviceCard({ device, onEdit, onDelete }: { device: InstallationDevice; 
 
 // ─── Wizard steps ─────────────────────────────────────────────────────────────
 const WIZARD_STEPS = [
-  { id: 1, label: 'Abrir enlace seguro',        desc: 'Conecta la tablet a la red Wi-Fi del restaurante y abre el enlace de la aplicación en el navegador.' },
-  { id: 2, label: 'Iniciar sesión como admin',  desc: 'Entra con las credenciales de administrador para registrar el dispositivo.' },
-  { id: 3, label: 'Registrar dispositivo',      desc: 'Ve a Administración → Dispositivos offline → Registrar y confirma la huella del dispositivo.' },
-  { id: 4, label: 'Asignar nombre',             desc: 'Pon el nombre exacto: "Tablet Sala 1", "Tablet Terraza 1", etc. Puedes modificarlo después.' },
-  { id: 5, label: 'Asignar zona',               desc: 'Selecciona la zona habitual: sala, terraza, barra. El camarero podrá cambiarla si es necesario.' },
-  { id: 6, label: 'Asignar caja',               desc: 'Vincula la tablet a la caja o terminal. Si solo hay una caja, se asigna automáticamente.' },
-  { id: 7, label: 'Asignar impresora',          desc: 'Selecciona la impresora predeterminada para tickets y comandas desde este dispositivo.' },
-  { id: 8, label: 'Activar modo offline',       desc: 'Habilita el modo offline en Administración → Dispositivos → Permisos → Modo offline autorizado.' },
-  { id: 9, label: 'Descargar datos básicos',    desc: 'La aplicación descargará carta, mesas, empleados y configuración. Espera a que finalice la sincronización.' },
-  { id: 10, label: 'Probar apertura de mesa',   desc: 'Abre una mesa de prueba desde la tablet para comprobar que el plano y las zonas se cargan correctamente.' },
-  { id: 11, label: 'Probar envío de comanda',   desc: 'Añade un artículo y envíalo a cocina. Comprueba que el KDS o la impresora de cocina lo reciben.' },
-  { id: 12, label: 'Confirmar sincronización',  desc: 'Verifica en el panel de dispositivos que el estado es "Preparado" y la última sincronización es reciente.' },
+  { id: 1,  label: 'Abrir enlace seguro',        short: 'Red',       desc: 'Conecta la tablet a la red Wi-Fi del restaurante y abre el enlace de la aplicación en el navegador.' },
+  { id: 2,  label: 'Iniciar sesión como admin',  short: 'Login',     desc: 'Entra con las credenciales de administrador para registrar el dispositivo.' },
+  { id: 3,  label: 'Registrar dispositivo',      short: 'Reg.',      desc: 'Ve a Administración → Dispositivos offline → Registrar y confirma la huella del dispositivo.' },
+  { id: 4,  label: 'Asignar nombre',             short: 'Nombre',    desc: 'Pon el nombre exacto: "Tablet Sala 1", "Tablet Terraza 1", etc. Puedes modificarlo después.' },
+  { id: 5,  label: 'Asignar zona',               short: 'Zona',      desc: 'Selecciona la zona habitual: sala, terraza, barra. El camarero podrá cambiarla si es necesario.' },
+  { id: 6,  label: 'Asignar caja',               short: 'Caja',      desc: 'Vincula la tablet a la caja o terminal. Si solo hay una caja, se asigna automáticamente.' },
+  { id: 7,  label: 'Asignar impresora',          short: 'Impr.',     desc: 'Selecciona la impresora predeterminada para tickets y comandas desde este dispositivo.' },
+  { id: 8,  label: 'Activar modo offline',       short: 'Offln.',    desc: 'Habilita el modo offline en Administración → Dispositivos → Permisos → Modo offline autorizado.' },
+  { id: 9,  label: 'Descargar datos básicos',    short: 'Sync',      desc: 'La aplicación descargará carta, mesas, empleados y configuración. Espera a que finalice la sincronización.' },
+  { id: 10, label: 'Probar apertura de mesa',    short: 'Mesa',      desc: 'Abre una mesa de prueba desde la tablet para comprobar que el plano y las zonas se cargan correctamente.' },
+  { id: 11, label: 'Probar envío de comanda',    short: 'KDS',       desc: 'Añade un artículo y envíalo a cocina. Comprueba que el KDS o la impresora de cocina lo reciben.' },
+  { id: 12, label: 'Confirmar sincronización',   short: 'Final',     desc: 'Verifica en el panel de dispositivos que el estado es "Preparado" y la última sincronización es reciente.' },
 ];
 
-function WizardTab({ devices = [], onMarkReady }: { devices?: InstallationDevice[]; onMarkReady?: (id: string, data: Partial<InstallationDevice>) => void }) {
-  const [currentStep, setCurrentStep] = useState(0);
-  const [completed, setCompleted] = useState<number[]>([]);
-  const [selectedTablet, setSelectedTablet] = useState('Tablet Sala 1');
-  const [linkedDeviceId, setLinkedDeviceId] = useState<string>('');
+// ─── Wizard progress hook (localStorage-backed, per device) ───────────────────
+function useWizardProgress(deviceId: string | null) {
+  const key = deviceId ? `piccolo_wizard_${deviceId}` : null;
 
-  const TABLETS = devices.filter(d => d.deviceCategory === 'tablet').map(d => d.name);
-  if (TABLETS.length === 0) TABLETS.push('Tablet Sala 1', 'Tablet Sala 2', 'Tablet Sala 3', 'Tablet Terraza 1', 'Tablet Encargado');
+  const read = (): number[] => {
+    if (!key) return [];
+    try { return JSON.parse(localStorage.getItem(key) ?? '[]'); } catch { return []; }
+  };
 
-  const toggleStep = (step: number) => {
-    setCompleted((prev) =>
-      prev.includes(step) ? prev.filter((s) => s !== step) : [...prev, step]
+  const [completed, setCompletedState] = useState<number[]>(read);
+
+  // Re-read when deviceId changes
+  const [lastId, setLastId] = useState(deviceId);
+  if (lastId !== deviceId) {
+    setLastId(deviceId);
+    setCompletedState(read());
+  }
+
+  const setCompleted = (fn: (prev: number[]) => number[]) => {
+    setCompletedState(prev => {
+      const next = fn(prev);
+      if (key) localStorage.setItem(key, JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const toggle = (stepId: number) => {
+    setCompleted(prev =>
+      prev.includes(stepId) ? prev.filter(s => s !== stepId) : [...prev, stepId]
     );
   };
 
+  const reset = () => {
+    setCompleted(() => []);
+  };
+
+  return { completed, toggle, reset };
+}
+
+// ─── Matrix view ──────────────────────────────────────────────────────────────
+function MatrixView({
+  tablets,
+  onSelectDevice,
+  onMarkReady,
+}: {
+  tablets: InstallationDevice[];
+  onSelectDevice: (id: string) => void;
+  onMarkReady?: (id: string, data: Partial<InstallationDevice>) => void;
+}) {
+  // Read all progress from localStorage at render time
+  const allProgress: Record<string, number[]> = {};
+  for (const t of tablets) {
+    try {
+      allProgress[t.id] = JSON.parse(localStorage.getItem(`piccolo_wizard_${t.id}`) ?? '[]');
+    } catch {
+      allProgress[t.id] = [];
+    }
+  }
+
+  const totalSteps = WIZARD_STEPS.length;
+  const readyCount = tablets.filter(t => t.status === 'ready').length;
+  const doneCount  = tablets.filter(t => (allProgress[t.id]?.length ?? 0) === totalSteps).length;
+
   return (
-    <div className="space-y-6">
-      <div className="bg-card border border-border rounded-xl p-6">
-        <h3 className="text-lg font-bold mb-1">Asistente de instalación de tablet</h3>
-        <p className="text-sm text-muted-foreground mb-4">Sigue cada paso para dar por preparada una tablet. No se considera instalada sin prueba completa (pasos 10-12).</p>
-        <div className="mb-6">
-          <label className="block text-xs font-bold text-muted-foreground mb-2 uppercase tracking-wider">Tablet que estás instalando ahora</label>
-          <div className="flex flex-wrap gap-2">
-            {TABLETS.map((t) => (
-              <button
-                key={t}
-                onClick={() => { setSelectedTablet(t); setCompleted([]); setCurrentStep(0); }}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-all ${selectedTablet === t ? 'bg-primary text-primary-foreground border-primary' : 'border-border hover:border-primary/50'}`}
-              >
-                {t}
-              </button>
-            ))}
+    <div className="space-y-5">
+      {/* Summary bar */}
+      <div className="grid grid-cols-3 gap-3">
+        {[
+          { label: 'Tablets en total', value: tablets.length, color: 'text-foreground' },
+          { label: 'Instalación completa', value: doneCount, color: 'text-amber-400' },
+          { label: 'Estado: Preparada', value: readyCount, color: 'text-emerald-400' },
+        ].map(c => (
+          <div key={c.label} className="bg-card border border-border rounded-xl p-4 text-center">
+            <p className={`text-2xl font-black ${c.color}`}>{c.value}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">{c.label}</p>
+          </div>
+        ))}
+      </div>
+
+      {tablets.length === 0 ? (
+        <div className="bg-card border border-border rounded-xl p-10 text-center">
+          <Tablet size={32} className="text-muted-foreground mx-auto mb-3 opacity-50" />
+          <p className="font-bold text-muted-foreground">No hay tablets registradas</p>
+          <p className="text-sm text-muted-foreground mt-1">Crea los dispositivos en la pestaña Inventario primero.</p>
+        </div>
+      ) : (
+        /* Scrollable matrix grid */
+        <div className="bg-card border border-border rounded-xl overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs border-collapse min-w-[760px]">
+              <thead>
+                <tr className="border-b border-border bg-secondary/30">
+                  <th className="text-left px-4 py-3 font-bold text-muted-foreground w-40 sticky left-0 bg-secondary/30 z-10">Tablet</th>
+                  {WIZARD_STEPS.map(s => (
+                    <th key={s.id} title={s.label} className="px-1.5 py-3 font-bold text-muted-foreground text-center w-10 whitespace-nowrap">
+                      <span className="block">{s.id}</span>
+                      <span className="block text-[9px] font-normal opacity-60">{s.short}</span>
+                    </th>
+                  ))}
+                  <th className="px-4 py-3 font-bold text-muted-foreground text-right w-32">Progreso</th>
+                  <th className="px-4 py-3 w-24" />
+                </tr>
+              </thead>
+              <tbody>
+                {tablets.map((tablet, ri) => {
+                  const prog = allProgress[tablet.id] ?? [];
+                  const pct  = Math.round((prog.length / totalSteps) * 100);
+                  const isReady = tablet.status === 'ready';
+                  const isFullDone = prog.length === totalSteps;
+
+                  return (
+                    <tr
+                      key={tablet.id}
+                      className={`border-b border-border last:border-0 transition-colors ${ri % 2 === 1 ? 'bg-secondary/10' : ''} hover:bg-secondary/20`}
+                    >
+                      {/* Name + status */}
+                      <td className="px-4 py-3 sticky left-0 bg-inherit z-10">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <Tablet size={13} className={isReady ? 'text-emerald-400' : 'text-muted-foreground'} />
+                          <span className="font-semibold truncate max-w-[110px]" title={tablet.name}>{tablet.name}</span>
+                        </div>
+                        {tablet.usualZone && (
+                          <span className="text-[10px] text-muted-foreground pl-5">{tablet.usualZone}</span>
+                        )}
+                      </td>
+
+                      {/* Step cells */}
+                      {WIZARD_STEPS.map(step => {
+                        const done = prog.includes(step.id);
+                        return (
+                          <td key={step.id} className="px-1.5 py-3 text-center">
+                            {done
+                              ? <CheckCircle2 size={16} className="text-emerald-400 mx-auto" />
+                              : <span className="block w-4 h-4 rounded-full border-2 border-border mx-auto" />
+                            }
+                          </td>
+                        );
+                      })}
+
+                      {/* Progress bar */}
+                      <td className="px-4 py-3 text-right">
+                        <div className="flex items-center gap-2 justify-end">
+                          <div className="w-16 bg-secondary rounded-full h-1.5">
+                            <div
+                              className={`h-1.5 rounded-full transition-all ${isFullDone ? 'bg-emerald-500' : 'bg-primary'}`}
+                              style={{ width: `${pct}%` }}
+                            />
+                          </div>
+                          <span className={`tabular-nums font-bold ${isFullDone ? 'text-emerald-400' : 'text-muted-foreground'}`}>
+                            {prog.length}/{totalSteps}
+                          </span>
+                        </div>
+                      </td>
+
+                      {/* Action */}
+                      <td className="px-4 py-3 text-right">
+                        {isReady ? (
+                          <span className="inline-flex items-center gap-1 text-emerald-400 font-bold text-xs">
+                            <ShieldCheck size={12} /> Lista
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => onSelectDevice(tablet.id)}
+                            className="flex items-center gap-1 px-2.5 py-1.5 bg-primary/10 text-primary rounded-lg font-bold hover:bg-primary hover:text-primary-foreground transition-colors ml-auto"
+                          >
+                            {isFullDone ? 'Revisar' : 'Instalar'} <ArrowRight size={12} />
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         </div>
-        <div className="mb-4 flex items-center gap-3">
-          <div className="flex-1 bg-secondary rounded-full h-2">
-            <div className="bg-primary h-2 rounded-full transition-all" style={{ width: `${(completed.length / WIZARD_STEPS.length) * 100}%` }} />
-          </div>
-          <span className="text-sm font-bold tabular-nums">{completed.length}/{WIZARD_STEPS.length}</span>
+      )}
+    </div>
+  );
+}
+
+// ─── Single-device wizard ─────────────────────────────────────────────────────
+function WizardTab({ device, onBack, onMarkReady }: {
+  device: InstallationDevice;
+  onBack: () => void;
+  onMarkReady?: (id: string, data: Partial<InstallationDevice>) => void;
+}) {
+  const [currentStep, setCurrentStep] = useState(-1);
+  const { completed, toggle } = useWizardProgress(device.id);
+
+  const allDone = completed.length === WIZARD_STEPS.length;
+
+  return (
+    <div className="space-y-4">
+      {/* Header with back button */}
+      <div className="bg-card border border-border rounded-xl p-5 flex items-center gap-4">
+        <button
+          onClick={onBack}
+          className="flex items-center gap-2 px-3 py-1.5 border border-border rounded-lg text-sm hover:bg-secondary transition-colors shrink-0"
+        >
+          <ChevronDown size={14} className="rotate-90" /> Resumen
+        </button>
+        <div className="flex-1 min-w-0">
+          <p className="font-bold text-base truncate">{device.name}</p>
+          <p className="text-xs text-muted-foreground">{device.usualZone || 'Zona sin asignar'}</p>
+        </div>
+        <div className="text-right shrink-0">
+          <p className="text-sm font-bold tabular-nums">{completed.length}/{WIZARD_STEPS.length}</p>
+          <p className="text-xs text-muted-foreground">pasos</p>
         </div>
       </div>
 
+      {/* Progress bar */}
+      <div className="flex items-center gap-3 px-1">
+        <div className="flex-1 bg-secondary rounded-full h-2">
+          <div className="bg-primary h-2 rounded-full transition-all" style={{ width: `${(completed.length / WIZARD_STEPS.length) * 100}%` }} />
+        </div>
+        <span className="text-xs text-muted-foreground tabular-nums">{Math.round((completed.length / WIZARD_STEPS.length) * 100)}%</span>
+      </div>
+
+      {/* Steps */}
       <div className="space-y-2">
         {WIZARD_STEPS.map((step) => {
           const done = completed.includes(step.id);
@@ -349,7 +528,7 @@ function WizardTab({ devices = [], onMarkReady }: { devices?: InstallationDevice
                 onClick={() => setCurrentStep(active ? -1 : step.id - 1)}
               >
                 <button
-                  onClick={(e) => { e.stopPropagation(); toggleStep(step.id); }}
+                  onClick={(e) => { e.stopPropagation(); toggle(step.id); }}
                   className={`w-7 h-7 rounded-full border-2 flex items-center justify-center transition-all shrink-0 ${done ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-border hover:border-primary'}`}
                 >
                   {done ? <CheckCircle2 size={16} /> : <span className="text-xs font-bold">{step.id}</span>}
@@ -361,7 +540,7 @@ function WizardTab({ devices = [], onMarkReady }: { devices?: InstallationDevice
                 <div className="px-4 pb-4 pl-16">
                   <p className="text-sm text-muted-foreground leading-relaxed">{step.desc}</p>
                   <button
-                    onClick={() => { toggleStep(step.id); setCurrentStep(step.id < 12 ? step.id : -1); }}
+                    onClick={() => { toggle(step.id); setCurrentStep(step.id < 12 ? step.id : -1); }}
                     className="mt-3 px-4 py-1.5 bg-primary text-primary-foreground rounded-lg text-xs font-bold hover:opacity-90 transition-opacity"
                   >
                     {done ? 'Desmarcar' : 'Marcar como completado →'}
@@ -373,41 +552,72 @@ function WizardTab({ devices = [], onMarkReady }: { devices?: InstallationDevice
         })}
       </div>
 
-      {completed.length === WIZARD_STEPS.length && (
+      {/* Completion card */}
+      {allDone && (
         <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-6 space-y-4">
           <div className="text-center">
             <CheckCircle2 size={40} className="text-emerald-400 mx-auto mb-3" />
-            <p className="font-bold text-emerald-400 text-lg">{selectedTablet} — instalación completada</p>
-            <p className="text-sm text-muted-foreground mt-1">Todos los pasos completados. Vincula este resultado con el dispositivo del inventario para marcarlo como Preparado.</p>
+            <p className="font-bold text-emerald-400 text-lg">{device.name} — instalación completada</p>
+            <p className="text-sm text-muted-foreground mt-1">Todos los pasos completados. Márcala como Preparada para actualizar el inventario.</p>
           </div>
-          {devices.filter(d => d.deviceCategory === 'tablet').length > 0 && onMarkReady && (
-            <div className="flex flex-col sm:flex-row gap-3 items-center justify-center">
-              <select
-                value={linkedDeviceId}
-                onChange={e => setLinkedDeviceId(e.target.value)}
-                className="bg-background border border-border rounded-lg px-3 py-2 text-sm min-w-[200px]"
-              >
-                <option value="">— Selecciona dispositivo —</option>
-                {devices.filter(d => d.deviceCategory === 'tablet').map(d => (
-                  <option key={d.id} value={d.id}>{d.name}</option>
-                ))}
-              </select>
+          {onMarkReady && device.status !== 'ready' && (
+            <div className="flex justify-center">
               <button
-                disabled={!linkedDeviceId}
                 onClick={() => {
-                  if (linkedDeviceId) {
-                    onMarkReady(linkedDeviceId, { status: 'ready' });
-                    setLinkedDeviceId('');
-                    toast.success(`${devices.find(d => d.id === linkedDeviceId)?.name ?? 'Tablet'} marcada como Preparada`);
-                  }
+                  onMarkReady(device.id, { status: 'ready' });
+                  toast.success(`${device.name} marcada como Preparada`);
+                  onBack();
                 }}
-                className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-500 disabled:opacity-50 transition-colors"
+                className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-500 transition-colors"
               >
                 <ShieldCheck size={15} /> Marcar como Preparada
               </button>
             </div>
           )}
         </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Asistente tab (matrix + wizard) ─────────────────────────────────────────
+function AsistenteTab({ devices, onMarkReady }: {
+  devices: InstallationDevice[];
+  onMarkReady?: (id: string, data: Partial<InstallationDevice>) => void;
+}) {
+  const tablets = devices.filter(d => d.deviceCategory === 'tablet')
+    .sort((a, b) => (a.tabletNumber ?? 99) - (b.tabletNumber ?? 99));
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Force re-render of matrix when returning so progress cells refresh from localStorage
+  const [matrixKey, setMatrixKey] = useState(0);
+
+  const selectedDevice = tablets.find(t => t.id === selectedId) ?? null;
+
+  const handleBack = () => {
+    setSelectedId(null);
+    setMatrixKey(k => k + 1);
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-card border border-border rounded-xl p-5">
+        <h3 className="text-lg font-bold mb-1">Asistente de instalación</h3>
+        <p className="text-sm text-muted-foreground">
+          {selectedDevice
+            ? `Instalando: ${selectedDevice.name} — sigue cada paso y márcalos al completarlos.`
+            : 'Vista general de todas las tablets. Haz clic en "Instalar" para guiar la instalación de cada una.'}
+        </p>
+      </div>
+
+      {selectedDevice ? (
+        <WizardTab device={selectedDevice} onBack={handleBack} onMarkReady={onMarkReady} />
+      ) : (
+        <MatrixView
+          key={matrixKey}
+          tablets={tablets}
+          onSelectDevice={setSelectedId}
+          onMarkReady={onMarkReady}
+        />
       )}
     </div>
   );
@@ -1617,7 +1827,7 @@ export default function AdminInstalacion() {
         )}
 
         {/* ── ASISTENTE ── */}
-        {activeTab === 'asistente' && <WizardTab devices={devices} onMarkReady={(id, data) => saveDevice.mutate({ id, data })} />}
+        {activeTab === 'asistente' && <AsistenteTab devices={devices} onMarkReady={(id, data) => saveDevice.mutate({ id, data })} />}
 
         {/* ── MANUALES ── */}
         {activeTab === 'manuales' && <ManualesTabDB />}
