@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { api } from '../../lib/api-client';
 
 interface ReservationData {
   period: { from: string; to: string };
@@ -29,8 +30,8 @@ export default function DirectorReservas() {
 
   useEffect(() => {
     setLoading(true);
-    fetch(`/api/director/reservations?${periodParams(period)}`, { credentials: "include" })
-      .then(r => r.ok ? r.json() : null).then(setData).catch(() => {}).finally(() => setLoading(false));
+    api.get<ReservationData>(`/api/director/reservations?${periodParams(period)}`)
+      .then(setData).catch(() => {}).finally(() => setLoading(false));
   }, [period]);
 
   const s = data?.summary;

@@ -2,11 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { BarChart2, TrendingUp, TrendingDown, Download, RefreshCw } from "lucide-react";
 
-const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
-
-function authHeaders() {
-  return { Authorization: `Bearer ${localStorage.getItem("token") ?? ""}` };
-}
+import { api } from "../../lib/api-client";
 
 type HoursReport = {
   period: string;
@@ -66,31 +62,19 @@ export default function HRInformes() {
 
   const hoursQuery = useQuery<HoursReport>({
     queryKey: ["hr-report-hours", period],
-    queryFn: async () => {
-      const res = await fetch(`${BASE}/api/hr/reports/hours?period=${period}`, { headers: authHeaders() });
-      if (!res.ok) throw new Error("Error");
-      return res.json();
-    },
+    queryFn: () => api.get<HoursReport>(`/api/hr/reports/hours?period=${period}`),
     enabled: activeTab === "hours",
   });
 
   const costsQuery = useQuery<CostReport>({
     queryKey: ["hr-report-costs", period],
-    queryFn: async () => {
-      const res = await fetch(`${BASE}/api/hr/reports/costs?period=${period}`, { headers: authHeaders() });
-      if (!res.ok) throw new Error("Error");
-      return res.json();
-    },
+    queryFn: () => api.get<CostReport>(`/api/hr/reports/costs?period=${period}`),
     enabled: activeTab === "costs",
   });
 
   const vsSalesQuery = useQuery<VsSalesReport>({
     queryKey: ["hr-report-vs-sales", fromDate, toDate],
-    queryFn: async () => {
-      const res = await fetch(`${BASE}/api/hr/reports/vs-sales?from=${fromDate}&to=${toDate}`, { headers: authHeaders() });
-      if (!res.ok) throw new Error("Error");
-      return res.json();
-    },
+    queryFn: () => api.get<VsSalesReport>(`/api/hr/reports/vs-sales?from=${fromDate}&to=${toDate}`),
     enabled: activeTab === "vs-sales",
   });
 

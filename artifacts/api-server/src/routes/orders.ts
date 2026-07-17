@@ -17,6 +17,7 @@ import {
 } from "@workspace/db";
 import { eq, and, inArray, desc, asc, sql } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
+import { idempotency } from "../middlewares/idempotency";
 import { recipeItemsTable, ingredientsTable, stockMovementsTable } from "@workspace/db";
 import { getIO } from "../lib/socket";
 import { logger } from "../lib/logger";
@@ -546,7 +547,7 @@ router.delete("/order-items/:itemId", requireAuth, async (req, res): Promise<voi
 
 // ── POST /orders/:orderId/send — send drafts to KDS ───────────────────────────
 
-router.post("/orders/:orderId/send", requireAuth, async (req, res): Promise<void> => {
+router.post("/orders/:orderId/send", requireAuth, idempotency, async (req, res): Promise<void> => {
   const orderId = req.params.orderId as string;
 
   // Guard: cannot send when bill is already requested

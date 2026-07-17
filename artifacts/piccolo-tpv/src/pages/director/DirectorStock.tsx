@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { api } from '../../lib/api-client';
 
 interface StockData {
   period: { from: string; to: string };
@@ -24,8 +25,8 @@ export default function DirectorStock() {
   useEffect(() => {
     const today = new Date().toISOString().slice(0, 10);
     setLoading(true);
-    fetch(`/api/director/stock?from=${today}&to=${today}`, { credentials: "include" })
-      .then(r => r.ok ? r.json() : null).then(setData).catch(() => {}).finally(() => setLoading(false));
+    api.get<StockData>(`/api/director/stock?from=${today}&to=${today}`)
+      .then(setData).catch(() => {}).finally(() => setLoading(false));
   }, []);
 
   return (

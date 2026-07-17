@@ -15,6 +15,7 @@ import {
 import { eq, and, or, desc, sum, sql, inArray, isNull } from "drizzle-orm";
 import type { TaxBreakdownItem } from "../lib/tax";
 import { requireAuth, requireRole } from "../middlewares/auth";
+import { idempotency } from "../middlewares/idempotency";
 import { logDocumentAction } from "../lib/document-audit";
 
 // Roles allowed to manage cash sessions
@@ -190,6 +191,7 @@ router.post(
   "/cash-sessions/:id/close",
   requireAuth,
   requireRole(...CASH_MANAGER_ROLES),
+  idempotency,
   async (req, res): Promise<void> => {
     const id = req.params.id as string;
     const employeeId = (req as any).user?.id as string;

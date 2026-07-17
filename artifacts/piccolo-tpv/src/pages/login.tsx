@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useLocation } from "wouter";
-import { useGetEmployeeLoginList, useAuthWithPin } from "@workspace/api-client-react";
+import { useGetEmployeeLoginList } from "@workspace/api-client-react";
 import { Loader2, Delete, Search, X } from "lucide-react";
 import { toast } from "sonner";
+import { useAuth } from "../providers/AuthProvider";
 
 // ── PinKey — reliable touch feedback via pointer events ───────────────────────
 function PinKey({
@@ -41,41 +42,38 @@ function PinKey({
 export default function Login() {
   const [, setLocation] = useLocation();
   const { data: employees, isLoading: loadingEmployees } = useGetEmployeeLoginList();
-  const auth = useAuthWithPin();
+  const { login } = useAuth();
 
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(() => {
-    // Pre-select the last employee who logged in so returning staff don't need to tap twice
     try { return localStorage.getItem('lastEmployeeId') ?? null; } catch { return null; }
   });
   const [pin, setPin] = useState("");
-
-  const authMutateRef = useRef(auth.mutate);
-  authMutateRef.current = auth.mutate;
+  const [isPending, setIsPending] = useState(false);
 
   useEffect(() => {
+    // Clear any stale session on the login page
     localStorage.removeItem("token");
     localStorage.removeItem("employee");
   }, []);
 
   useEffect(() => {
-    if (pin.length === 4 && selectedEmployeeId) {
-      authMutateRef.current(
-        { data: { employeeId: selectedEmployeeId, pin } },
-        {
-          onSuccess: (res) => {
-            localStorage.setItem("token", res.token);
-            localStorage.setItem("employee", JSON.stringify(res.employee));
-            if (selectedEmployeeId) localStorage.setItem("lastEmployeeId", selectedEmployeeId);
-            setLocation(res.employee?.role === "admin" ? "/admin" : "/tables");
-          },
-          onError: () => {
-            setPin("");
-            toast.error("Incorrect PIN");
-          },
-        }
-      );
+    if (pin.length === 4 && selectedEmployeeId && !isPending) {
+      setIsPending(true);
+      // login() stores token+employee in localStorage AND calls fetchMe()
+      // so AuthProvider state is fully updated before we navigate.
+      login(selectedEmployeeId, pin)
+        .then(() => {
+          const emp = JSON.parse(localStorage.getItem('employee') ?? '{}');
+          if (selectedEmployeeId) localStorage.setItem('lastEmployeeId', selectedEmployeeId);
+          setLocation(emp.role === 'admin' ? '/admin' : '/tables');
+        })
+        .catch(() => {
+          setPin("");
+          toast.error("PIN incorrecto");
+        })
+        .finally(() => setIsPending(false));
     }
-  }, [pin, selectedEmployeeId, setLocation]);
+  }, [pin, selectedEmployeeId, isPending, login, setLocation]);
 
   const handlePinPress = (num: number) => {
     if (pin.length < 4) {
@@ -214,7 +212,7 @@ export default function Login() {
             </PinKey>
           </div>
           
-          {auth.isPending && (
+          {isPending && (
              <div className="absolute inset-0 bg-background/50 backdrop-blur-sm flex items-center justify-center rounded-l-3xl">
                <Loader2 className="w-10 h-10 animate-spin text-primary" />
              </div>

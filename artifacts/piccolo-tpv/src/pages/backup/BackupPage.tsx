@@ -11,15 +11,9 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 
-const BASE = import.meta.env.BASE_URL?.replace(/\/$/, '') ?? '';
+import { api } from '../../lib/api-client';
 
-function apiFetch(path: string, opts?: RequestInit) {
-  const token = localStorage.getItem('token') ?? '';
-  return fetch(`${BASE}/api${path}`, {
-    ...opts,
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, ...(opts?.headers ?? {}) },
-  });
-}
+const BASE = import.meta.env.BASE_URL?.replace(/\/$/, '') ?? '';
 
 function fmtSize(bytes: number | null) {
   if (!bytes) return '—';
@@ -81,14 +75,13 @@ export default function BackupPage() {
   const loadBackups = useCallback(async () => {
     setLoading(true);
     try {
-      const r = await apiFetch('/backup/list');
-      if (r.ok) { const d = await r.json(); setBackups(d.data ?? []); }
+      const d = await api.get<{ data: BackupRecord[] }>('/api/backup/list');
+      setBackups(d.data ?? []);
     } finally { setLoading(false); }
   }, []);
 
   const loadSchedules = useCallback(async () => {
-    const r = await apiFetch('/backup/schedules');
-    if (r.ok) setSchedules(await r.json());
+    setSchedules(await api.get<Schedule[]>('/api/backup/schedules'));
   }, []);
 
   useEffect(() => { void loadBackups(); void loadSchedules(); }, [loadBackups, loadSchedules]);
@@ -103,15 +96,13 @@ export default function BackupPage() {
   async function createBackup() {
     setCreating(true);
     try {
-      const r = await apiFetch('/backup/create', { method: 'POST', body: JSON.stringify({ backupType: createType, notes: createNotes }) });
-      if (r.ok) { toast.success('Copia iniciada'); await loadBackups(); setCreateNotes(''); }
-      else toast.error('Error al crear copia');
+      await api.post('/api/backup/create', { backupType: createType, notes: createNotes });
+      toast.success('Copia iniciada'); await loadBackups(); setCreateNotes('');
     } finally { setCreating(false); }
   }
 
   async function verifyBackup(id: string) {
-    const r = await apiFetch(`/backup/${id}/verify`, { method: 'POST' });
-    const d = await r.json();
+    const d = await api.post<{ ok: boolean }>(`/api/backup/${id}/verify`);
     if (d.ok) toast.success('Integridad verificada ✓');
     else toast.error('Hash no coincide — copia corrupta');
     await loadBackups();
@@ -132,32 +123,29 @@ export default function BackupPage() {
   }
 
   async function toggleProtect(id: string, isProtected: boolean) {
-    await apiFetch(`/backup/${id}/protect`, { method: 'PATCH', body: JSON.stringify({ protect: !isProtected }) });
+    await api.patch(`/api/backup/${id}/protect`, { protect: !isProtected });
     await loadBackups();
   }
 
   async function deleteBackup(id: string) {
     if (!confirm('¿Eliminar esta copia? Esta acción no se puede deshacer.')) return;
-    const r = await apiFetch(`/backup/${id}`, { method: 'DELETE' });
-    const d = await r.json();
+    const d = await api.delete<{ ok: boolean; error?: string }>(`/api/backup/${id}`);
     if (d.ok) { toast.success('Copia eliminada'); await loadBackups(); }
     else toast.error(d.error ?? 'Error');
   }
 
   async function dryRun(id: string) {
     setDryRunResult(null);
-    const r = await apiFetch(`/backup/${id}/dry-run`, { method: 'POST' });
-    const d = await r.json();
-    if (d.ok) { setDryRunResult(d.summary); toast.success('Dry-run completado — ningún dato modificado'); }
+    const d = await api.post<{ ok: boolean; summary?: Record<string, unknown>; error?: string }>(`/api/backup/${id}/dry-run`);
+    if (d.ok) { setDryRunResult(d.summary ?? null); toast.success('Dry-run completado — ningún dato modificado'); }
     else toast.error(d.error ?? 'Error');
   }
 
   async function restoreBackup() {
     if (!restoreId) { toast.error('Selecciona una copia'); return; }
     if (!restoreConfirm) { toast.error('Confirma la restauración'); return; }
-    const r = await apiFetch(`/backup/${restoreId}/restore`, { method: 'POST', body: JSON.stringify({ confirm: true }) });
-    const d = await r.json();
-    if (d.ok) toast.success(d.message);
+    const d = await api.post<{ ok: boolean; message?: string; error?: string }>(`/api/backup/${restoreId}/restore`, { confirm: true });
+    if (d.ok) toast.success(d.message ?? 'Restaurado');
     else toast.error(d.error ?? 'Error');
   }
 
@@ -179,7 +167,7 @@ export default function BackupPage() {
   }
 
   async function deleteSchedule(id: string) {
-    await apiFetch(`/backup/schedules/${id}`, { method: 'DELETE' });
+    await api.delete(`/api/backup/schedules/${id}`);
     await loadSchedules();
     toast.success('Programación eliminada');
   }
@@ -202,7 +190,7 @@ export default function BackupPage() {
         <HardDrive size={18} className="text-indigo-400" />
         <h1 className="font-black text-base">Copias de Seguridad</h1>
         <div className="flex-1" />
-        <button onClick={() => { void apiFetch('/backup/demo-data', { method: 'POST' }).then(() => { void loadBackups(); toast.success('Demo cargada'); }); }}
+        <button onClick={() => { void api.post('/api/backup/demo-data').then(() => { void loadBackups(); toast.success('Demo cargada'); }); }}
           className="text-xs text-muted-foreground hover:text-foreground px-2 py-1 rounded-lg hover:bg-secondary transition-colors">
           + Demo
         </button>

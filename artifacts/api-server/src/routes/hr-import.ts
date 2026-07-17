@@ -29,8 +29,20 @@ import {
 } from "@workspace/db";
 import { eq, and, inArray } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
+import rateLimit from "express-rate-limit";
 
 const router = Router();
+
+// Rate limiter: 5 import operations per minute per IP.
+// File parsing is CPU/memory-intensive; limiting prevents accidental or
+// deliberate resource exhaustion from repeated large file uploads.
+const importLimiter = rateLimit({
+  windowMs: 60 * 1_000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Demasiadas importaciones. Espere un minuto e inténtelo de nuevo." },
+});
 
 // ─── Multer setup (memory, 10 MB) ─────────────────────────────────────────────
 const upload = multer({
@@ -217,7 +229,7 @@ async function resolveEmployee(
 
 // ─── UPLOAD + PREVIEW ─────────────────────────────────────────────────────────
 
-router.post("/hr/import/upload", requireAuth, requireRole("admin", "manager", "encargado"), upload.single("file"), async (req, res) => {
+router.post("/hr/import/upload", requireAuth, requireRole("admin", "manager", "encargado"), importLimiter, upload.single("file"), async (req, res) => {
   try {
     if (!req.file) { res.status(400).json({ error: "No se recibió ningún archivo" }); return; }
 
@@ -276,7 +288,7 @@ router.post("/hr/import/upload", requireAuth, requireRole("admin", "manager", "e
 // ─── CONFIRM IMPORT ───────────────────────────────────────────────────────────
 // Client sends: historyId, mapping, pendingAssignments? (rows come from server-side storage)
 
-router.post("/hr/import/confirm", requireAuth, requireRole("admin", "manager", "encargado"), async (req, res) => {
+router.post("/hr/import/confirm", requireAuth, requireRole("admin", "manager", "encargado"), importLimiter, async (req, res) => {
   try {
     const {
       historyId,

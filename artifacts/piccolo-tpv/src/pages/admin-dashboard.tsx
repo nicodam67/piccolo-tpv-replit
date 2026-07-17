@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
+import { useAuth } from '../providers/AuthProvider';
 import { useLocation } from 'wouter';
 import {
   UtensilsCrossed,
@@ -864,6 +865,7 @@ function useNow() {
 // ─── Main component ───────────────────────────────────────────────────────────
 export default function AdminDashboard() {
   const [, setLocation] = useLocation();
+  const { user, logout } = useAuth();
   const [employeeName, setEmployeeName] = useState('Admin');
   const [moduleSearch, setModuleSearch] = useState('');
   const now = useNow();
@@ -878,16 +880,10 @@ export default function AdminDashboard() {
   });
   const reservasBadge = todayReservations.filter((r: { status: string }) => r.status !== 'cancelled' && r.status !== 'noshow').length;
 
+  // Sync employee name from AuthContext (auth guard is handled by the router)
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    const empStr = localStorage.getItem('employee');
-    if (!token) { setLocation('/'); return; }
-    try {
-      const emp = JSON.parse(empStr ?? '{}');
-      if (emp.role !== 'admin') { setLocation('/tables'); return; }
-      setEmployeeName(emp.name ?? 'Admin');
-    } catch { setLocation('/'); }
-  }, [setLocation]);
+    if (user?.name) setEmployeeName(user.name);
+  }, [user]);
 
   // Refresh KPI tiles when returning to foreground
   useEffect(() => {
@@ -901,9 +897,7 @@ export default function AdminDashboard() {
   }, [refetchSummary]);
 
   const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('employee');
-    setLocation('/');
+    void logout();
   };
 
   const hour = now.getHours();

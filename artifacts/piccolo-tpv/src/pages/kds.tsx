@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
+import { api } from '../lib/api-client';
 import { useParams, Link } from 'wouter';
 import { useQueryClient } from '@tanstack/react-query';
 import { io } from 'socket.io-client';
@@ -397,7 +398,6 @@ function ZoneTasksView({
   );
 }
 
-const BASE_URL = import.meta.env.BASE_URL.replace(/\/$/, '');
 
 function TaskCard({
   task, onUpdateStatus, onResend, isFlashing = false,
@@ -423,13 +423,7 @@ function TaskCard({
   const handleAllergyConfirm = async () => {
     setConfirming(true);
     try {
-      const token = localStorage.getItem('token');
-      const res = await fetch(`${BASE_URL}/api/kitchen-tasks/${task.id}/allergy-confirm`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ notes: confirmNote, hasCrossContaminationRisk: crossRisk }),
-      });
-      if (!res.ok) throw new Error();
+      await api.post(`/api/kitchen-tasks/${task.id}/allergy-confirm`, { notes: confirmNote, hasCrossContaminationRisk: crossRisk });
       setAllergyConfirmed(true);
       setShowAllergyConfirm(false);
       toast.success('Preparación especial confirmada');

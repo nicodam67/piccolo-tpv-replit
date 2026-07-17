@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
+import { api } from '../lib/api-client';
 import { useLocation } from 'wouter';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
@@ -882,20 +883,15 @@ function RecipeLineRow({
 }
 
 // ── Allergen recalculate button ───────────────────────────────────────────────
-const BASE_URL_PROD = import.meta.env.BASE_URL.replace(/\/$/, '');
 function AllergenRecalcButton({ productId, onResult }: { productId: string; onResult: (computed: string) => void }) {
   const [loading, setLoading] = useState(false);
   const handle = async () => {
     setLoading(true);
     try {
-      const token = localStorage.getItem('token');
-      const headers = { Authorization: `Bearer ${token}` };
       // Trigger recalculation
-      await fetch(`${BASE_URL_PROD}/api/admin/products/${productId}/allergens/recalculate`, { method: 'POST', headers });
+      await api.post(`/api/admin/products/${productId}/allergens/recalculate`, {});
       // Fetch updated cache
-      const res = await fetch(`${BASE_URL_PROD}/api/admin/products/${productId}/allergens`, { headers });
-      if (!res.ok) throw new Error();
-      const data: { allergenCode: string; type: string }[] = await res.json();
+      const data = await api.get<{ allergenCode: string; type: string }[]>(`/api/admin/products/${productId}/allergens`);
       if (data.length === 0) {
         toast.info('No se detectaron alérgenos en los ingredientes de esta receta');
       } else {
@@ -1035,12 +1031,7 @@ export default function ProductosPage() {
             <ProductCard key={p.id} product={p} onEdit={() => setEditingProduct(p)}
               onToggleSoldout={async (id, outOfStock) => {
                 try {
-                  const BASE = import.meta.env.BASE_URL.replace(/\/$/, '');
-                  await fetch(`${BASE}/api/admin/products/${id}/soldout`, {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('token') ?? ''}` },
-                    body: JSON.stringify({ outOfStock }),
-                  });
+                  await api.patch(`/api/admin/products/${id}/soldout`, { outOfStock });
                   qc.invalidateQueries({ queryKey: getGetAdminProductsQueryKey() });
                 } catch { /* ignore */ }
               }}

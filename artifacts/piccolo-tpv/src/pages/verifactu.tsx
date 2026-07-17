@@ -44,21 +44,6 @@ import type {
   CancelVerifactuRecordInput,
 } from '@workspace/api-client-react';
 
-// ─── Auth guard helper ────────────────────────────────────────────────────────
-
-function useAdminGuard() {
-  const [, setLocation] = useLocation();
-  useEffect(() => {
-    const token = localStorage.getItem('token');
-    const empStr = localStorage.getItem('employee');
-    if (!token) { setLocation('/'); return; }
-    try {
-      const emp = JSON.parse(empStr ?? '{}');
-      if (emp.role !== 'admin') setLocation('/tables');
-    } catch { setLocation('/'); }
-  }, [setLocation]);
-}
-
 // ─── Status badge ─────────────────────────────────────────────────────────────
 
 const ESTADO_COLORS: Record<string, { bg: string; text: string; label: string }> = {
@@ -87,7 +72,7 @@ function EstadoBadge({ estado }: { estado: string }) {
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function Verifactu() {
-  useAdminGuard();
+  // Auth is enforced by the router (RequireRole) — no localStorage guard needed.
   const [, setLocation] = useLocation();
   const [tab, setTab] = useState<'panel' | 'registros' | 'config' | 'declaracion'>('panel');
 

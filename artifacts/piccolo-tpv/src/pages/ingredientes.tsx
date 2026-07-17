@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useLocation } from 'wouter';
+import { api } from '../lib/api-client';
 import { toast } from 'sonner';
 import {
   ArrowLeft,
@@ -319,15 +320,10 @@ function IngredientSheet({
   const set = (k: string, v: unknown) => setForm(f => ({ ...f, [k]: v }));
 
   // Load structured allergens for edit mode
-  const BASE_URL = import.meta.env.BASE_URL.replace(/\/$/, '');
   useEffect(() => {
     if (!initial?.id) return;
-    const token = localStorage.getItem('token');
-    fetch(`${BASE_URL}/api/admin/ingredients/${initial.id}/allergens`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then(r => r.ok ? r.json() : [])
-      .then((rows: { allergenCode: string; type: string }[]) => {
+    api.get<{ allergenCode: string; type: string }[]>(`/api/admin/ingredients/${initial.id}/allergens`)
+      .then((rows) => {
         if (rows.length > 0) {
           const types: Record<string, string> = {};
           const tags: string[] = [];
@@ -355,16 +351,10 @@ function IngredientSheet({
     // Save structured allergens for edit mode (always send, even if empty — clears all allergens)
     if (initial?.id) {
       try {
-        const token = localStorage.getItem('token');
-        const res = await fetch(`${BASE_URL}/api/admin/ingredients/${initial.id}/allergens`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({
-            allergens: Object.entries(form.allergenTypes).map(([allergenCode, type]) => ({ allergenCode, type })),
-            reviewNote: 'Actualizado desde TPV',
-          }),
+        await api.put(`/api/admin/ingredients/${initial.id}/allergens`, {
+          allergens: Object.entries(form.allergenTypes).map(([allergenCode, type]) => ({ allergenCode, type })),
+          reviewNote: 'Actualizado desde TPV',
         });
-        if (!res.ok) throw new Error(`Allergen save failed: ${res.status}`);
       } catch (err) {
         console.error('[ingredientes] allergen PUT failed', err);
         toast.error('Alérgenos no guardados en el servidor');

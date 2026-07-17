@@ -1,7 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { Plus, Trash2, Edit2, Calendar, Search, X } from "lucide-react";
-
-const BASE = import.meta.env.BASE_URL;
+import { api } from "../../lib/api-client";
 
 interface Shift {
   id: string;
@@ -27,16 +26,15 @@ function ShiftModal({ shift, employees, onClose, onSaved }: { shift?: Shift; emp
     splitEndTime: shift.splitEndTime ?? "", notes: shift.notes ?? "",
   } : emptyForm);
   const [saving, setSaving] = useState(false);
-  const token = localStorage.getItem("token");
 
   async function save() {
     setSaving(true);
-    const url = shift ? `${BASE}api/fichaje/shifts/${shift.id}` : `${BASE}api/fichaje/shifts`;
-    await fetch(url, {
-      method: shift ? "PUT" : "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ ...form, splitStartTime: form.isSplit ? form.splitStartTime : null, splitEndTime: form.isSplit ? form.splitEndTime : null }),
-    });
+    const body = { ...form, splitStartTime: form.isSplit ? form.splitStartTime : null, splitEndTime: form.isSplit ? form.splitEndTime : null };
+    if (shift) {
+      await api.put(`/api/fichaje/shifts/${shift.id}`, body);
+    } else {
+      await api.post("/api/fichaje/shifts", body);
+    }
     setSaving(false);
     onSaved();
   }
@@ -90,7 +88,6 @@ export default function FichajeTurnos() {
   const [modal, setModal] = useState<{ open: boolean; shift?: Shift }>({ open: false });
   const [week, setWeek] = useState(() => new Date().toISOString().slice(0, 10));
   const [empSearch, setEmpSearch] = useState("");
-  const token = localStorage.getItem("token");
 
   function getWeekRange(dateStr: string) {
     const d = new Date(dateStr);
@@ -105,14 +102,14 @@ export default function FichajeTurnos() {
   function load() {
     setLoading(true);
     const { from, to } = getWeekRange(week);
-    fetch(`${BASE}api/fichaje/shifts?from=${from}&to=${to}`, { headers: { Authorization: `Bearer ${token}` } })
-      .then(r => r.json()).then(d => setShifts(Array.isArray(d) ? d : []))
+    api.get<Shift[]>(`/api/fichaje/shifts?from=${from}&to=${to}`)
+      .then(d => setShifts(Array.isArray(d) ? d : []))
       .finally(() => setLoading(false));
   }
 
   useEffect(() => {
-    fetch(`${BASE}api/employees`, { headers: { Authorization: `Bearer ${token}` } })
-      .then(r => r.json()).then(d => setEmployees(Array.isArray(d) ? d : []));
+    api.get<Employee[]>("/api/employees")
+      .then(d => setEmployees(Array.isArray(d) ? d : []));
   }, []);
 
   useEffect(() => {
@@ -125,7 +122,7 @@ export default function FichajeTurnos() {
 
   async function deleteShift(id: string) {
     if (!confirm("¿Eliminar este turno?")) return;
-    await fetch(`${BASE}api/fichaje/shifts/${id}`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
+    await api.delete(`/api/fichaje/shifts/${id}`);
     load();
   }
 

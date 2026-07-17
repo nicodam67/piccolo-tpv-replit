@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { api } from '../../lib/api-client';
 
 interface SalesData {
   period: { from: string; to: string };
@@ -35,8 +36,8 @@ export default function DirectorVentas() {
 
   useEffect(() => {
     setLoading(true);
-    fetch(`/api/director/sales?${periodParams(period)}`, { credentials: "include" })
-      .then(r => r.ok ? r.json() : null).then(setData).catch(() => {}).finally(() => setLoading(false));
+    api.get<SalesData>(`/api/director/sales?${periodParams(period)}`)
+      .then(setData).catch(() => {}).finally(() => setLoading(false));
   }, [period]);
 
   const maxGross = (arr: { gross: string }[]) => Math.max(1, ...arr.map(r => parseFloat(r.gross)));

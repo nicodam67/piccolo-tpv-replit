@@ -3,27 +3,12 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus, Pencil, Trash2, Check, X, Briefcase, Building2 } from "lucide-react";
 import { toast } from "sonner";
 
-const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+import { api } from "../../lib/api-client";
 
 type Position = { id: string; name: string; code: string; departmentId?: string | null; active: boolean; department?: { id: string; name: string } | null };
 type Department = { id: string; name: string; code: string; active: boolean };
 
 const INPUT = "w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm focus:outline-none focus:border-blue-500";
-
-function authHeaders() {
-  return { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("token") ?? ""}` };
-}
-
-function useApi<T>(key: string[], path: string) {
-  return useQuery<T>({
-    queryKey: key,
-    queryFn: async () => {
-      const res = await fetch(`${BASE}${path}`, { headers: { Authorization: `Bearer ${localStorage.getItem("token") ?? ""}` } });
-      if (!res.ok) throw new Error("Error");
-      return res.json() as Promise<T>;
-    },
-  });
-}
 
 interface InlineFormProps {
   value: { name: string; code: string; extra?: string };
@@ -66,23 +51,21 @@ export default function HRCatalogos() {
   const qc = useQueryClient();
 
   // Positions
-  const { data: positions = [] } = useApi<Position[]>(["hr-positions"], "/api/hr/positions");
+  const { data: positions = [] } = useQuery<Position[]>({ queryKey: ["hr-positions"], queryFn: () => api.get<Position[]>("/api/hr/positions") });
   const [editingPos, setEditingPos] = useState<string | null>(null);
   const [newPos, setNewPos] = useState(false);
   const [posForm, setPosForm] = useState({ name: "", code: "", extra: "" }); // extra = departmentId
 
   // Departments
-  const { data: departments = [] } = useApi<Department[]>(["hr-departments"], "/api/hr/departments");
+  const { data: departments = [] } = useQuery<Department[]>({ queryKey: ["hr-departments"], queryFn: () => api.get<Department[]>("/api/hr/departments") });
   const [editingDept, setEditingDept] = useState<string | null>(null);
   const [newDept, setNewDept] = useState(false);
   const [deptForm, setDeptForm] = useState({ name: "", code: "", extra: "" });
 
   const mutateDept = useMutation({
     mutationFn: async ({ method, id, body }: { method: string; id?: string; body: Record<string, unknown> }) => {
-      const url = id ? `${BASE}/api/hr/departments/${id}` : `${BASE}/api/hr/departments`;
-      const res = await fetch(url, { method, headers: authHeaders(), body: JSON.stringify(body) });
-      if (!res.ok) throw new Error((await res.json()).error);
-      return res.json();
+      const path = id ? `/api/hr/departments/${id}` : `/api/hr/departments`;
+      return method === "DELETE" ? api.delete(path) : method === "POST" ? api.post(path, body) : api.put(path, body);
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["hr-departments"] }); setEditingDept(null); setNewDept(false); setDeptForm({ name: "", code: "", extra: "" }); },
     onError: (e: Error) => toast.error(e.message),
@@ -90,10 +73,8 @@ export default function HRCatalogos() {
 
   const mutatePos = useMutation({
     mutationFn: async ({ method, id, body }: { method: string; id?: string; body: Record<string, unknown> }) => {
-      const url = id ? `${BASE}/api/hr/positions/${id}` : `${BASE}/api/hr/positions`;
-      const res = await fetch(url, { method, headers: authHeaders(), body: JSON.stringify(body) });
-      if (!res.ok) throw new Error((await res.json()).error);
-      return res.json();
+      const path = id ? `/api/hr/positions/${id}` : `/api/hr/positions`;
+      return method === "DELETE" ? api.delete(path) : method === "POST" ? api.post(path, body) : api.put(path, body);
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["hr-positions"] }); setEditingPos(null); setNewPos(false); setPosForm({ name: "", code: "", extra: "" }); },
     onError: (e: Error) => toast.error(e.message),

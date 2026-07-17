@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { Search, Filter, Clock, LogIn, LogOut, Edit2, Plus } from "lucide-react";
-
-const BASE = import.meta.env.BASE_URL;
+import { api } from '../../lib/api-client';
 
 interface FichajeRecord {
   id: string;
@@ -27,16 +26,10 @@ function fmtDuration(a: string, b: string | null) {
 function ManualModal({ onClose, onSaved, employees }: { onClose: () => void; onSaved: () => void; employees: Employee[] }) {
   const [form, setForm] = useState({ employeeId: "", clockIn: "", clockOut: "", notes: "" });
   const [saving, setSaving] = useState(false);
-  const token = localStorage.getItem("token");
-
   async function save() {
     if (!form.employeeId || !form.clockIn) return;
     setSaving(true);
-    await fetch(`${BASE}api/fichaje/records/manual`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ employeeId: form.employeeId, clockIn: form.clockIn, clockOut: form.clockOut || undefined, notes: form.notes || undefined }),
-    });
+    await api.post('/api/fichaje/records/manual', { employeeId: form.employeeId, clockIn: form.clockIn, clockOut: form.clockOut || undefined, notes: form.notes || undefined });
     setSaving(false);
     onSaved();
   }
@@ -85,20 +78,20 @@ export default function FichajeRegistros() {
   const [from, setFrom] = useState(() => new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10));
   const [to, setTo] = useState(() => new Date().toISOString().slice(0, 10));
   const [showManual, setShowManual] = useState(false);
-  const token = localStorage.getItem("token");
 
   function load() {
     setLoading(true);
     const params = new URLSearchParams({ from, to });
     if (filterEmp) params.set("employeeId", filterEmp);
-    fetch(`${BASE}api/fichaje/records?${params}`, { headers: { Authorization: `Bearer ${token}` } })
-      .then(r => r.json()).then(d => setRecords(Array.isArray(d) ? d : []))
+    api.get<FichajeRecord[]>(`/api/fichaje/records?${params}`)
+      .then(d => setRecords(d))
+      .catch(() => setRecords([]))
       .finally(() => setLoading(false));
   }
 
   useEffect(() => {
-    fetch(`${BASE}api/employees`, { headers: { Authorization: `Bearer ${token}` } })
-      .then(r => r.json()).then(d => setEmployees(Array.isArray(d) ? d : [])).catch(() => {});
+    api.get<Employee[]>('/api/employees')
+      .then(d => setEmployees(d)).catch(() => {});
   }, []);
 
   useEffect(() => { load(); }, [from, to, filterEmp]);

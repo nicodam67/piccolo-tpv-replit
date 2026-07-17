@@ -6,18 +6,7 @@ import React, { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { ChevronLeft, Plus, Edit2, Trash2, X, Check, Loader2, Clock, Users } from "lucide-react";
 import { toast } from "sonner";
-
-const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
-async function apiFetch(path: string, opts?: RequestInit) {
-  const token = localStorage.getItem("token") ?? "";
-  const res = await fetch(`${BASE}${path}`, {
-    ...opts,
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}`, ...opts?.headers },
-  });
-  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error((e as any).error ?? `HTTP ${res.status}`); }
-  if (res.status === 204) return null;
-  return res.json();
-}
+import { api } from '../lib/api-client';
 
 interface Shift {
   id: string; nombre: string; tipo: string; horaInicio: string; horaFin: string;
@@ -54,10 +43,10 @@ function ShiftModal({ initial, onClose, onSaved }: {
     setBusy(true);
     try {
       if (isEdit) {
-        await apiFetch(`/api/service-shifts/${initial!.id}`, { method:"PATCH", body: JSON.stringify(form) });
+        await api.patch(`/api/service-shifts/${initial!.id}`, form);
         toast.success("Turno actualizado");
       } else {
-        await apiFetch("/api/service-shifts", { method:"POST", body: JSON.stringify(form) });
+        await api.post("/api/service-shifts", form);
         toast.success("Turno creado");
       }
       onSaved(); onClose();
@@ -172,7 +161,7 @@ export default function AdminTurnosReservas() {
 
   const load = async () => {
     setLoading(true);
-    try { setShifts(await apiFetch("/api/service-shifts") ?? []); }
+    try { setShifts(await api.get("/api/service-shifts") ?? []); }
     catch { toast.error("No se pudieron cargar los turnos"); }
     finally { setLoading(false); }
   };
@@ -183,7 +172,7 @@ export default function AdminTurnosReservas() {
     if (!confirm(`¿Eliminar turno "${s.nombre}"?`)) return;
     setBusyId(s.id);
     try {
-      await apiFetch(`/api/service-shifts/${s.id}`, { method: "DELETE" });
+      await api.delete(`/api/service-shifts/${s.id}`);
       toast.success("Turno eliminado");
       load();
     } catch (e: any) { toast.error(e.message); } finally { setBusyId(null); }

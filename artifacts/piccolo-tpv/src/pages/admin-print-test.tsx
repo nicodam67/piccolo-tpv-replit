@@ -10,14 +10,7 @@ import {
   ChevronRight, ChevronLeft, Save, RotateCcw, Zap,
 } from 'lucide-react';
 
-const BASE = import.meta.env.BASE_URL?.replace(/\/$/, '') ?? '';
-function apiFetch(path: string, opts?: RequestInit) {
-  const token = localStorage.getItem('token') ?? '';
-  return fetch(`${BASE}/api${path}`, {
-    ...opts,
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, ...(opts?.headers ?? {}) },
-  });
-}
+import { api } from '../lib/api-client';
 
 interface PrinterOption {
   id: string;
@@ -57,7 +50,7 @@ export default function AdminPrintTest() {
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    apiFetch('/admin/printers').then(r => r.ok ? r.json() : []).then(ps => setPrinters(ps));
+    api.get<PrinterOption[]>('/api/admin/printers').then(ps => setPrinters(ps)).catch(() => {});
   }, []);
 
   const currentStep = TEST_STEPS[step];
@@ -69,9 +62,8 @@ export default function AdminPrintTest() {
     if (!assignedPrinter) { toast.error('No hay impresora de este tipo configurada'); return; }
     setPrinting(true);
     try {
-      const r = await apiFetch(`/admin/printers/${assignedPrinter.id}/test`, { method: 'POST' });
-      if (r.ok) toast.success(`Trabajo enviado a ${assignedPrinter.name}`);
-      else toast.error('Error al enviar prueba');
+      await api.post(`/api/admin/printers/${assignedPrinter.id}/test`);
+      toast.success(`Trabajo enviado a ${assignedPrinter.name}`);
     } finally { setPrinting(false); }
   }
 
@@ -94,10 +86,7 @@ export default function AdminPrintTest() {
         printerId: assignedPrinter?.id ?? (printers[0]?.id ?? null),
       })).filter(r => r.printerId);
 
-      await apiFetch('/admin/print-test-results', {
-        method: 'POST',
-        body: JSON.stringify(rows),
-      });
+      await api.post('/api/admin/print-test-results', rows);
       setSaved(true);
       toast.success('Resultados guardados');
     } catch { toast.error('Error al guardar'); }

@@ -1,21 +1,20 @@
-export const BASE = import.meta.env.BASE_URL.replace(/\/$/, '');
+import { customFetch } from '@workspace/api-client-react';
 
+/**
+ * Thin wrapper around customFetch used by setup wizard steps.
+ * setBaseUrl(BASE) is already called globally by api-client.ts so
+ * customFetch prepends the Vite base path automatically.
+ * All paths must be root-relative (/api/...).
+ */
 export async function setupFetch<T = unknown>(path: string, init?: RequestInit): Promise<T> {
-  const token = localStorage.getItem('token');
-  const res = await fetch(`${BASE}${path}`, {
-    ...init,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(init?.headers ?? {}),
-    },
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => res.statusText);
-    throw new Error(text || `HTTP ${res.status}`);
-  }
-  return res.json() as Promise<T>;
+  return customFetch<T>(path, init);
 }
+
+/**
+ * Vite base URL — used by setup steps for navigation links (href), not fetch.
+ * For fetch calls, use setupFetch() instead.
+ */
+export const BASE = import.meta.env.BASE_URL.replace(/\/$/, '');
 
 export const WIZARD_STEPS = [
   { id: 'identidad',   label: 'Identidad',        icon: '🏪', required: true  },

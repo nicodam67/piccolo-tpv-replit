@@ -10,18 +10,7 @@ import {
   ArrowLeft,
 } from "lucide-react";
 import { toast } from "sonner";
-
-const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
-async function apiFetch(path: string, opts?: RequestInit) {
-  const token = localStorage.getItem("token") ?? "";
-  const res = await fetch(`${BASE}${path}`, {
-    ...opts,
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}`, ...opts?.headers },
-  });
-  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error((e as any).error ?? `HTTP ${res.status}`); }
-  if (res.status === 204) return null;
-  return res.json();
-}
+import { api } from '../lib/api-client';
 
 interface Courier {
   id: string; name: string; phone: string; status: string; active: boolean;
@@ -142,8 +131,8 @@ export default function AdminRepartidores() {
   const load = useCallback(async () => {
     try {
       const [cd, sd] = await Promise.all([
-        apiFetch("/api/admin/couriers").catch(() => []),
-        apiFetch("/api/admin/courier-settlements").catch(() => []),
+        api.get("/api/admin/couriers").catch(() => []),
+        api.get("/api/admin/courier-settlements").catch(() => []),
       ]);
       setCouriers(Array.isArray(cd) ? cd : []);
       setSettlements(Array.isArray(sd) ? sd : []);
@@ -156,7 +145,7 @@ export default function AdminRepartidores() {
   const handleCreate = async (form: typeof EMPTY_FORM) => {
     setBusyId("new");
     try {
-      await apiFetch("/api/admin/couriers", { method: "POST", body: JSON.stringify(form) });
+      await api.post("/api/admin/couriers", form);
       toast.success("Repartidor añadido");
       setShowForm(false); load();
     } catch (e: any) { toast.error(e.message); }
@@ -166,7 +155,7 @@ export default function AdminRepartidores() {
   const handleEdit = async (id: string, form: typeof EMPTY_FORM) => {
     setBusyId(id);
     try {
-      await apiFetch(`/api/admin/couriers/${id}`, { method: "PATCH", body: JSON.stringify(form) });
+      await api.patch(`/api/admin/couriers/${id}`, form);
       toast.success("Repartidor actualizado");
       setEditingId(null); load();
     } catch (e: any) { toast.error(e.message); }
@@ -177,7 +166,7 @@ export default function AdminRepartidores() {
     if (!confirm(`¿Eliminar a ${name}? Esta acción es permanente.`)) return;
     setBusyId(id);
     try {
-      await apiFetch(`/api/admin/couriers/${id}`, { method: "DELETE" });
+      await api.delete(`/api/admin/couriers/${id}`);
       toast.success("Repartidor eliminado");
       load();
     } catch (e: any) { toast.error(e.message); }
@@ -187,7 +176,7 @@ export default function AdminRepartidores() {
   const handleStatusChange = async (id: string, status: string) => {
     setBusyId(id);
     try {
-      await apiFetch(`/api/admin/couriers/${id}`, { method: "PATCH", body: JSON.stringify({ status }) });
+      await api.patch(`/api/admin/couriers/${id}`, { status });
       load();
     } catch (e: any) { toast.error(e.message); }
     finally { setBusyId(null); }

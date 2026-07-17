@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { BarChart3, Clock, Calendar, TrendingUp } from "lucide-react";
-
-const BASE = import.meta.env.BASE_URL;
+import { api } from "../../lib/api-client";
 
 interface SummaryRow {
   employeeId: string;
@@ -45,11 +44,10 @@ export default function FichajeInformes() {
   const [from, setFrom] = useState(() => getPreset("month").from);
   const [to, setTo] = useState(() => getPreset("month").to);
   const [filterEmp, setFilterEmp] = useState("");
-  const token = localStorage.getItem("token");
 
   useEffect(() => {
-    fetch(`${BASE}api/employees`, { headers: { Authorization: `Bearer ${token}` } })
-      .then(r => r.json()).then(d => setEmployees(Array.isArray(d) ? d : []));
+    api.get<Employee[]>("/api/employees")
+      .then(d => setEmployees(Array.isArray(d) ? d : []));
   }, []);
 
   function applyPreset(p: string) {
@@ -63,8 +61,8 @@ export default function FichajeInformes() {
     setLoading(true);
     const params = new URLSearchParams({ from, to });
     if (filterEmp) params.set("employeeId", filterEmp);
-    fetch(`${BASE}api/fichaje/reports/summary?${params}`, { headers: { Authorization: `Bearer ${token}` } })
-      .then(r => r.json()).then(d => setSummary(Array.isArray(d) ? d : []))
+    api.get<SummaryRow[]>(`/api/fichaje/reports/summary?${params}`)
+      .then(d => setSummary(Array.isArray(d) ? d : []))
       .finally(() => setLoading(false));
   }
 

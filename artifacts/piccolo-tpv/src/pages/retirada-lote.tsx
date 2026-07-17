@@ -9,7 +9,7 @@ import {
   Package, Calendar, Search,
 } from 'lucide-react';
 
-const BASE = import.meta.env.BASE_URL.replace(/\/$/, '');
+import { api } from '../lib/api-client';
 
 interface Block {
   id: string;
@@ -29,13 +29,6 @@ interface Block {
   resolveNote?: string;
 }
 
-async function authFetch(path: string, opts?: RequestInit) {
-  const token = localStorage.getItem('token');
-  return fetch(`${BASE}${path}`, {
-    ...opts,
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, ...(opts?.headers ?? {}) },
-  });
-}
 
 export default function RetiradasLote() {
   const [, setLocation] = useLocation();
@@ -49,9 +42,7 @@ export default function RetiradasLote() {
 
   async function fetchBlocks() {
     try {
-      const res = await authFetch('/api/admin/traceability/blocks');
-      if (!res.ok) throw new Error();
-      setBlocks(await res.json());
+      setBlocks(await api.get('/api/admin/traceability/blocks'));
     } catch {
       toast.error('Error cargando retiradas');
     } finally {
@@ -71,10 +62,7 @@ export default function RetiradasLote() {
     if (!selectedBlock) return;
     setResolving(true);
     try {
-      const res = await authFetch(`/api/admin/traceability/blocks/${selectedBlock.id}/resolve`, {
-        method: 'PATCH', body: JSON.stringify({ resolveNote }),
-      });
-      if (!res.ok) { const e = await res.json(); throw new Error(e.error ?? 'Error'); }
+      await api.patch(`/api/admin/traceability/blocks/${selectedBlock.id}/resolve`, { resolveNote });
       toast.success('Retirada resuelta');
       setShowResolveModal(false);
       setResolveNote('');

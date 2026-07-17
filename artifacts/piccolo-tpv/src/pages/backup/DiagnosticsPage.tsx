@@ -10,14 +10,9 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 
+import { api } from '../../lib/api-client';
+
 const BASE = import.meta.env.BASE_URL?.replace(/\/$/, '') ?? '';
-function apiFetch(path: string, opts?: RequestInit) {
-  const token = localStorage.getItem('token') ?? '';
-  return fetch(`${BASE}/api${path}`, {
-    ...opts,
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, ...(opts?.headers ?? {}) },
-  });
-}
 
 function fmtDate(d: string | null | undefined) {
   if (!d) return '—';
@@ -82,17 +77,14 @@ export default function DiagnosticsPage() {
   const loadStatus = useCallback(async () => {
     setLoading(true);
     try {
-      const [sr, cr] = await Promise.all([
-        apiFetch('/diagnostics/status'),
-        apiFetch('/diagnostics/connectivity'),
+      const [sd, cd] = await Promise.all([
+        api.get<{ ok: boolean; status: Record<string, StatusSection>; checkedAt: string }>('/api/diagnostics/status'),
+        api.get<Record<string, unknown>>('/api/diagnostics/connectivity'),
       ]);
-      if (sr.ok) {
-        const d = await sr.json();
-        setStatus(d.status ?? {});
-        setStatusOk(d.ok);
-        setCheckedAt(d.checkedAt);
-      }
-      if (cr.ok) setConnectivity(await cr.json());
+      setStatus(sd.status ?? {});
+      setStatusOk(sd.ok);
+      setCheckedAt(sd.checkedAt);
+      setConnectivity(cd);
     } finally { setLoading(false); }
   }, []);
 
@@ -101,12 +93,9 @@ export default function DiagnosticsPage() {
     if (levelFilter) params.set('level', levelFilter);
     if (moduleFilter) params.set('module', moduleFilter);
     params.set('limit', '100');
-    const r = await apiFetch(`/diagnostics/events?${params}`);
-    if (r.ok) {
-      const d = await r.json();
-      setEvents(d.data ?? []);
-      setEventsTotal(d.total ?? 0);
-    }
+    const d = await api.get<{ data: TechEvent[]; total: number }>(`/api/diagnostics/events?${params}`);
+    setEvents(d.data ?? []);
+    setEventsTotal(d.total ?? 0);
   }, [levelFilter, moduleFilter]);
 
   useEffect(() => { void loadStatus(); }, [loadStatus]);
@@ -124,14 +113,13 @@ export default function DiagnosticsPage() {
 
   async function runMaintenance(action: MaintenanceAction) {
     if (!confirm(`¿Ejecutar mantenimiento: ${action}?`)) return;
-    const r = await apiFetch('/diagnostics/maintenance', { method: 'POST', body: JSON.stringify({ action }) });
-    const d = await r.json();
-    if (d.ok) { setMaintenanceResult(d.results); toast.success('Mantenimiento completado'); await loadStatus(); }
+    const d = await api.post<{ ok: boolean; results?: Record<string, string> }>('/api/diagnostics/maintenance', { action });
+    if (d.ok) { setMaintenanceResult(d.results ?? null); toast.success('Mantenimiento completado'); await loadStatus(); }
     else toast.error('Error en mantenimiento');
   }
 
   async function resolveEvent(id: string) {
-    await apiFetch(`/diagnostics/events/${id}/resolve`, { method: 'PATCH' });
+    await api.patch(`/api/diagnostics/events/${id}/resolve`);
     await loadEvents();
   }
 

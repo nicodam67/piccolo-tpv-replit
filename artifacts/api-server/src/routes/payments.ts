@@ -1,4 +1,5 @@
 import { Router, type IRouter } from "express";
+import rateLimit from "express-rate-limit";
 import { db } from "@workspace/db";
 import {
   ordersTable,
@@ -15,6 +16,7 @@ import {
 } from "@workspace/db";
 import { eq, and, sum, inArray, gte } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
+import { idempotency } from "../middlewares/idempotency";
 import { getIO } from "../lib/socket";
 import { logDocumentAction } from "../lib/document-audit";
 import { calcMultiRateBreakdown } from "../lib/tax";
@@ -24,6 +26,17 @@ import { issuePoints } from "./crm.js";
 const PAYMENT_ROLES = ["waiter", "cashier", "manager", "admin"];
 
 const router: IRouter = Router();
+
+// Rate limiter: 30 payment requests per minute per IP.
+// High enough for normal operation (busy service), low enough to block
+// automated duplicate-payment attacks.
+const paymentLimiter = rateLimit({
+  windowMs: 60 * 1_000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Demasiadas solicitudes de cobro. Espere un momento e inténtelo de nuevo." },
+});
 
 // GET /orders/:id/payment-summary
 router.get("/orders/:id/payment-summary", requireAuth, async (req, res): Promise<void> => {
@@ -130,7 +143,7 @@ router.get("/orders/:id/payment-summary", requireAuth, async (req, res): Promise
 });
 
 // POST /orders/:id/payments
-router.post("/orders/:id/payments", requireAuth, requireRole(...PAYMENT_ROLES), async (req, res): Promise<void> => {
+router.post("/orders/:id/payments", requireAuth, requireRole(...PAYMENT_ROLES), paymentLimiter, idempotency, async (req, res): Promise<void> => {
   const orderId = req.params.id as string;
   const employeeId = (req as any).user?.id as string;
   const { methodCode, amount, reference, terminal: bodyTerminal } = req.body as {

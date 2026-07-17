@@ -8,7 +8,7 @@ import { useLocation } from "wouter";
 import { Shield, ChevronLeft, Check, X, RefreshCw, Info } from "lucide-react";
 import { customFetch } from "@workspace/api-client-react";
 
-const BASE = import.meta.env.BASE_URL;
+
 
 const ROLES = [
   { key: "admin",     label: "Admin",     color: "#ef4444" },
@@ -74,8 +74,8 @@ export default function AdminPermisos() {
     setError(null);
     try {
       const [catData, ovData] = await Promise.all([
-        customFetch<{ catalog: ModuleEntry[] }>(`${BASE}api/admin/permissions/catalog`),
-        customFetch<{ overrides: Override[] }>(`${BASE}api/admin/permissions`),
+        customFetch<{ catalog: ModuleEntry[] }>(`/api/admin/permissions/catalog`),
+        customFetch<{ overrides: Override[] }>(`/api/admin/permissions`),
       ]);
       setCatalog(catData.catalog ?? []);
       setOverrides(ovData.overrides ?? []);
@@ -95,7 +95,7 @@ export default function AdminPermisos() {
     const key = `${role}::${module}::${action}`;
     setSaving(key);
     try {
-      const data = await customFetch<{ permission: Override }>(`${BASE}api/admin/permissions`, {
+      const data = await customFetch<{ permission: Override }>(`/api/admin/permissions`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ role, module, action, allowed: newAllowed }),
@@ -118,7 +118,7 @@ export default function AdminPermisos() {
     if (!ov) return;
     setSaving(`${role}::${module}::${action}`);
     try {
-      await customFetch(`${BASE}api/admin/permissions/${ov.id}`, { method: "DELETE" });
+      await customFetch(`/api/admin/permissions/${ov.id}`, { method: "DELETE" });
       setOverrides((prev) => prev.filter((o) => o.id !== ov.id));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Error al restaurar");

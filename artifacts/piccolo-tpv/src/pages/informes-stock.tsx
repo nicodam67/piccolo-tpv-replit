@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { api } from '../lib/api-client';
 import { useLocation } from 'wouter';
 import {
   ArrowLeft,
@@ -78,18 +79,13 @@ export default function InformesStock() {
   async function loadReports() {
     setLoading(true);
     try {
-      const token = localStorage.getItem('token') ?? '';
       const to = new Date();
       const from = new Date(Date.now() - days * 86400_000);
       const params = new URLSearchParams({
         from: from.toISOString(),
         to: to.toISOString(),
       });
-      const resp = await fetch(`/api/admin/stock/reports?${params}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!resp.ok) throw new Error(await resp.text());
-      setData(await resp.json());
+      setData(await api.get<ReportsData>(`/api/admin/stock/reports?${params}`));
     } catch (e: any) {
       console.error(e);
     } finally {

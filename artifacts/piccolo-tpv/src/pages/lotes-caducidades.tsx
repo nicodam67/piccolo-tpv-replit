@@ -1,8 +1,8 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useLocation } from 'wouter';
 import { useQuery } from '@tanstack/react-query';
-import { customFetch } from '@workspace/api-client-react';
 import type { IngredientLot } from '@workspace/api-client-react';
+import { api } from '../lib/api-client';
 import { ArrowLeft, Package, AlertTriangle, Calendar, Clock, Search, X } from 'lucide-react';
 
 interface ExpiringLotsResponse {
@@ -17,7 +17,7 @@ export default function LotesCaducidades() {
 
   const { data, isLoading, refetch } = useQuery<ExpiringLotsResponse>({
     queryKey: ['expiring-lots', days],
-    queryFn: () => customFetch(`/api/admin/purchase-reports/expiring-lots?days=${days}`),
+    queryFn: () => api.get<ExpiringLotsResponse>(`/api/admin/purchase-reports/expiring-lots?days=${days}`),
   });
 
   useEffect(() => {

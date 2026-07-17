@@ -1,7 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { Upload, FileText, CheckCircle, AlertTriangle, Clock } from "lucide-react";
-
-const BASE = import.meta.env.BASE_URL;
+import { api } from "../../lib/api-client";
 
 interface ImportResult {
   success: boolean;
@@ -52,12 +51,10 @@ export default function FichajeImportarAnviz() {
   const [importing, setImporting] = useState(false);
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
-  const token = localStorage.getItem("token");
-
   useEffect(() => {
     function loadHistory() {
-      fetch(`${BASE}api/fichaje/import/history`, { headers: { Authorization: `Bearer ${token}` } })
-        .then(r => r.json()).then(d => setHistory(Array.isArray(d) ? d : [])).catch(() => {});
+      api.get<HistoryItem[]>("/api/fichaje/import/history")
+        .then(d => setHistory(Array.isArray(d) ? d : [])).catch(() => {});
     }
     loadHistory();
     const onVisibility = () => { if (!document.hidden) loadHistory(); };
@@ -82,12 +79,8 @@ export default function FichajeImportarAnviz() {
     setImporting(true);
     const text = await file.text();
     const rows = parseAnvizCSV(text);
-    const res = await fetch(`${BASE}api/fichaje/import/anviz`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ rows, filename: file.name }),
-    });
-    setResult(await res.json());
+    const res = await api.post<ImportResult>("/api/fichaje/import/anviz", { rows, filename: file.name });
+    setResult(res);
     setImporting(false);
     setFile(null);
     setPreview([]);

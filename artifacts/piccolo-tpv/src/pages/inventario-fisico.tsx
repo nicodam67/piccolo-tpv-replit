@@ -26,7 +26,7 @@ import {
 import type { Ingredient } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 
-const BASE_URL = import.meta.env.BASE_URL.replace(/\/$/, '');
+import { api } from '../lib/api-client';
 
 interface CountLine {
   ingredientId: string;
@@ -173,21 +173,15 @@ export default function InventarioFisico() {
     }
     setSaving(true);
     try {
-      const token = localStorage.getItem('token') ?? '';
-      const resp = await fetch(`${BASE_URL}/api/admin/stock/inventory-count`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          lines: changedLines.map((l) => ({
-            ingredientId: l.ingredientId,
-            actualQty: l.actualQty,
-            note: l.note.trim()
-              ? l.note.trim()
-              : `Inventario físico — sistema: ${l.systemStock.toFixed(2)} ${l.unit}`,
-          })),
-        }),
+      await api.post('/api/admin/stock/inventory-count', {
+        lines: changedLines.map((l) => ({
+          ingredientId: l.ingredientId,
+          actualQty: l.actualQty,
+          note: l.note.trim()
+            ? l.note.trim()
+            : `Inventario físico — sistema: ${l.systemStock.toFixed(2)} ${l.unit}`,
+        })),
       });
-      if (!resp.ok) throw new Error(await resp.text());
       await qc.invalidateQueries({ queryKey: getGetAdminIngredientsQueryKey() });
       await qc.invalidateQueries({ queryKey: getGetStockAlertsQueryKey() });
       toast.success(`Inventario confirmado. ${changedLines.length} ajustes registrados.`);

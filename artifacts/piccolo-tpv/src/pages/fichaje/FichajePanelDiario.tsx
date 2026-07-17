@@ -1,7 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { Users, LogIn, LogOut, Coffee, Clock, AlertCircle, Search, X } from "lucide-react";
-
-const BASE = import.meta.env.BASE_URL;
+import { api } from '../../lib/api-client';
 
 interface TodayRecord {
   id: string;
@@ -31,7 +30,6 @@ export default function FichajePanelDiario() {
   const [records, setRecords] = useState<TodayRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(new Date());
-  const token = localStorage.getItem("token");
 
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 30000);
@@ -40,9 +38,8 @@ export default function FichajePanelDiario() {
 
   useEffect(() => {
     function loadToday() {
-      fetch(`${BASE}api/fichaje/records/today`, { headers: { Authorization: `Bearer ${token}` } })
-        .then(r => r.json())
-        .then(d => setRecords(Array.isArray(d) ? d : []))
+      api.get<TodayRecord[]>('/api/fichaje/records/today')
+        .then(d => setRecords(d))
         .catch(() => {})
         .finally(() => setLoading(false));
     }

@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { Settings, Save, CheckCircle } from "lucide-react";
-
-const BASE = import.meta.env.BASE_URL;
+import { api } from "../../lib/api-client";
 
 interface FichajeSettings {
   companyName: string;
@@ -21,12 +20,10 @@ export default function FichajeConfiguracion() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
-  const token = localStorage.getItem("token");
 
   useEffect(() => {
     function loadSettings() {
-      fetch(`${BASE}api/fichaje/settings`, { headers: { Authorization: `Bearer ${token}` } })
-        .then(r => r.json())
+      api.get<FichajeSettings>("/api/fichaje/settings")
         .then(d => setSettings(s => ({ ...s, ...d, reportEmail: d.reportEmail ?? "" })))
         .finally(() => setLoading(false));
     }
@@ -38,11 +35,7 @@ export default function FichajeConfiguracion() {
 
   async function save() {
     setSaving(true);
-    await fetch(`${BASE}api/fichaje/settings`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ ...settings, reportEmail: settings.reportEmail || null }),
-    });
+    await api.put("/api/fichaje/settings", { ...settings, reportEmail: settings.reportEmail || null });
     setSaving(false);
     setSaved(true);
     setTimeout(() => setSaved(false), 3000);

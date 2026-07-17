@@ -18,6 +18,7 @@
  */
 
 import { Router } from "express";
+import rateLimit from "express-rate-limit";
 import { db } from "@workspace/db";
 import {
   backupRecordsTable,
@@ -36,6 +37,17 @@ import ExcelJS from "exceljs";
 const router = Router();
 const guard = [requireAuth, requireRole("admin", "manager")];
 const adminOnly = [requireAuth, requireRole("admin")];
+
+// Rate limiter: 5 backup/restore operations per hour per IP.
+// Backup creation and restore are expensive I/O operations; limiting them
+// prevents accidental or malicious saturation of disk/CPU.
+const backupLimiter = rateLimit({
+  windowMs: 60 * 60 * 1_000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Demasiadas operaciones de copia de seguridad en esta hora. Inténtelo más tarde." },
+});
 
 const BACKUP_DIR = "/tmp/piccolo-backups";
 const APP_VERSION = "1.0.0";
@@ -123,7 +135,7 @@ async function logTechEvent(level: string, module: string, message: string, data
 }
 
 // ─── POST /backup/create ──────────────────────────────────────────────────────
-router.post("/backup/create", ...guard, async (req, res) => {
+router.post("/backup/create", ...guard, backupLimiter, async (req, res) => {
   const { backupType = "full", notes = "", scheduleId } = req.body as Record<string, string>;
 
   const [record] = await db.insert(backupRecordsTable).values({
@@ -277,7 +289,7 @@ router.post("/backup/:id/dry-run", ...guard, async (req, res) => {
 });
 
 // ─── POST /backup/:id/restore ─────────────────────────────────────────────────
-router.post("/backup/:id/restore", ...adminOnly, async (req, res) => {
+router.post("/backup/:id/restore", ...adminOnly, backupLimiter, async (req, res) => {
   const id = req.params.id as string;
   const { confirm } = req.body as { confirm?: boolean };
   if (!confirm) return res.status(422).json({ error: "Se requiere confirm:true para restaurar" });
@@ -534,7 +546,7 @@ router.delete("/backup/destinations/:id", ...adminOnly, async (req, res) => {
 });
 
 // ─── POST /backup/emergency-export ────────────────────────────────────────────
-router.post("/backup/emergency-export", ...guard, async (req, res) => {
+router.post("/backup/emergency-export", ...guard, backupLimiter, async (req, res) => {
   const { modules = ["all"], format = "json" } = req.body as { modules?: string[]; format?: string };
 
   const tables: Record<string, unknown[]> = {};

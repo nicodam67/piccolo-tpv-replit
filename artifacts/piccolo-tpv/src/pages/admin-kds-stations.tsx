@@ -12,14 +12,7 @@ import {
   Server, Zap,
 } from 'lucide-react';
 
-const BASE = import.meta.env.BASE_URL?.replace(/\/$/, '') ?? '';
-function apiFetch(path: string, opts?: RequestInit) {
-  const token = localStorage.getItem('token') ?? '';
-  return fetch(`${BASE}/api${path}`, {
-    ...opts,
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, ...(opts?.headers ?? {}) },
-  });
-}
+import { api } from '../lib/api-client';
 
 const ZONE_LABELS: Record<string, string> = {
   cocina:      'Cocina',
@@ -75,8 +68,7 @@ export default function AdminKdsStations() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const r = await apiFetch('/admin/kds-stations');
-      if (r.ok) setStations(await r.json());
+      setStations(await api.get<KdsStation[]>('/api/admin/kds-stations'));
     } finally { setLoading(false); }
   }, []);
 
@@ -94,39 +86,34 @@ export default function AdminKdsStations() {
     setSaving(true);
     try {
       const body = { ...form, displayUrl: form.displayUrl || null, notes: form.notes || null };
-      const r = await apiFetch(
-        editing ? `/admin/kds-stations/${editing.id}` : '/admin/kds-stations',
-        { method: editing ? 'PATCH' : 'POST', body: JSON.stringify(body) },
-      );
-      if (r.ok) {
-        toast.success(editing ? 'Estación actualizada' : 'Estación creada');
-        setShowModal(false);
-        await load();
+      if (editing) {
+        await api.patch(`/api/admin/kds-stations/${editing.id}`, body);
       } else {
-        const e = await r.json().catch(() => ({}));
-        toast.error(e.error ?? 'Error al guardar');
+        await api.post('/api/admin/kds-stations', body);
       }
+      toast.success(editing ? 'Estación actualizada' : 'Estación creada');
+      setShowModal(false);
+      await load();
     } finally { setSaving(false); }
   }
 
   async function handleDelete(id: string, name: string) {
     if (!confirm(`¿Desactivar la estación "${name}"?`)) return;
-    const r = await apiFetch(`/admin/kds-stations/${id}`, { method: 'DELETE' });
-    if (r.ok) { toast.success('Estación desactivada'); await load(); }
-    else toast.error('Error al desactivar');
+    try {
+      await api.delete(`/api/admin/kds-stations/${id}`);
+      toast.success('Estación desactivada');
+      await load();
+    } catch { toast.error('Error al desactivar'); }
   }
 
   async function handlePing(id: string) {
     setPinging(id);
     try {
-      const r = await apiFetch(`/admin/kds-stations/${id}/ping`, { method: 'POST' });
-      if (r.ok) {
-        const d = await r.json();
-        toast[d.reachable ? 'success' : 'error'](
-          d.reachable ? `Alcanzable · ${d.latencyMs}ms` : 'Sin respuesta',
-        );
-        await load();
-      } else toast.error('Error al probar');
+      const d = await api.post<{ reachable: boolean; latencyMs: number }>(`/api/admin/kds-stations/${id}/ping`);
+      toast[d.reachable ? 'success' : 'error'](
+        d.reachable ? `Alcanzable · ${d.latencyMs}ms` : 'Sin respuesta',
+      );
+      await load();
     } finally { setPinging(null); }
   }
 

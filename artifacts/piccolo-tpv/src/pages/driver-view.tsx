@@ -14,10 +14,10 @@ import { Phone, MapPin, Package, CheckCircle, Truck, RefreshCw, AlertTriangle, X
 import { toast } from 'sonner';
 import { customFetch, ApiError } from '@workspace/api-client-react';
 
-const BASE = import.meta.env.BASE_URL.replace(/\/$/, '');
-const api = (path: string) => customFetch(`${BASE}${path}`);
+// Use root-relative paths — setBaseUrl(BASE) is called globally by api-client.ts
+const api = (path: string) => customFetch(path);
 const apiJSON = (path: string, method: string, body?: object) =>
-  customFetch(`${BASE}${path}`, { method, headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
+  customFetch(path, { method, headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
 
 interface Address {
   street: string; number: string; floor?: string; city: string; postalCode: string; notes?: string;

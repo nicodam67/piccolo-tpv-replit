@@ -3,6 +3,7 @@ import cors from "cors";
 import pinoHttp from "pino-http";
 import router from "./routes";
 import { logger } from "./lib/logger";
+import { sanitizeInputs } from "./middlewares/sanitize";
 
 const app: Express = express();
 
@@ -61,12 +62,27 @@ app.use(
 // The verify callback runs before JSON parsing; we store the raw Buffer on the
 // request object so the webhook route can pass it verbatim to
 // stripe.webhooks.constructEvent().
+// ── Security headers ─────────────────────────────────────────────────────────
+// Applied before routing so every response — including errors — gets them.
+app.use((_req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("X-XSS-Protection", "0");            // disabled per OWASP recommendation
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  res.setHeader("Permissions-Policy", "camera=(), microphone=()");
+  next();
+});
+
 app.use(express.json({
   verify: (req: any, _res, buf) => {
     req.rawBody = buf;
   },
 }));
 app.use(express.urlencoded({ extended: true }));
+
+// Strip HTML tags from all text body fields (defense-in-depth; Zod schemas are
+// still the primary validation layer).
+app.use(sanitizeInputs);
 
 app.use("/api", router);
 

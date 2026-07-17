@@ -11,6 +11,25 @@ import { seedOnlineDemo } from "./lib/seed-online-demo";
 import { startPrintWorker } from "./lib/print-worker";
 import { startBackupWorker } from "./lib/backup-worker";
 import { startVerifactuWorker } from "./lib/verifactu-worker";
+import { pool } from "@workspace/db";
+import { ensureIdempotencyTable } from "./middlewares/idempotency";
+
+// Ensure the revoked_tokens table exists at startup — hard requirement.
+// If this fails the process exits: without the table, token revocation is
+// impossible and requireAuth would fail-closed (503) on every authenticated
+// request, making the server unusable. Crashing here is the correct behavior.
+async function ensureAuthTables(): Promise<void> {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS revoked_tokens (
+      jti         TEXT        PRIMARY KEY,
+      revoked_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+      expires_at  TIMESTAMPTZ NOT NULL
+    )
+  `);
+  // Verify the table is actually accessible (catches permission issues that
+  // CREATE TABLE IF NOT EXISTS may silently succeed on).
+  await pool.query("SELECT 1 FROM revoked_tokens LIMIT 0");
+}
 
 const rawPort = process.env["PORT"];
 
@@ -29,6 +48,10 @@ initSocket(server);
 
 server.listen(port, async () => {
   logger.info({ port }, "Server listening");
+  // Guarantee auth tables exist before handling any requests
+  await ensureAuthTables();
+  // Guarantee idempotency table exists
+  await ensureIdempotencyTable();
   try {
     await seedDocuments();
     await seedCash();

@@ -13,21 +13,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
-
-async function apiFetch(path: string, opts?: RequestInit) {
-  const token = localStorage.getItem("token") ?? "";
-  const res = await fetch(`${BASE}${path}`, {
-    ...opts,
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}`, ...opts?.headers },
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error((err as any).error ?? `HTTP ${res.status}`);
-  }
-  if (res.status === 204) return null;
-  return res.json();
-}
+import { api } from '../lib/api-client';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Reservation {
@@ -268,7 +254,7 @@ function ClientSearch({ onSelect }: { onSelect: (c: CrmClient | null) => void })
     const t = setTimeout(async () => {
       setLoading(true);
       try {
-        const data = await apiFetch(`/api/clients?q=${encodeURIComponent(q)}&limit=8`);
+        const data = await api.get<CrmClient[]>(`/api/clients?q=${encodeURIComponent(q)}&limit=8`);
         setResults(data ?? []);
       } catch { /* ignore */ } finally { setLoading(false); }
     }, 300);
@@ -349,7 +335,7 @@ function ReservationModal({ initial, zones, tables, onClose, onSaved }: {
     if (!form.fecha || !form.hora) { toast.error("Introduce fecha y hora primero"); return; }
     setSuggesting(true);
     try {
-      const data = await apiFetch(`/api/reservations/suggest-table?fecha=${form.fecha}&hora=${form.hora}&duracion=${form.duracionMinutos}&personas=${form.personas}&zona=${form.zonaPreferida ?? ""}`);
+      const data = await api.get<{ suggestions?: TableRow[] }>(`/api/reservations/suggest-table?fecha=${form.fecha}&hora=${form.hora}&duracion=${form.duracionMinutos}&personas=${form.personas}&zona=${form.zonaPreferida ?? ""}`);
       setSuggestions(data.suggestions ?? []);
       if (!data.suggestions?.length) toast.info("No hay mesas disponibles para ese horario");
     } catch { toast.error("No se pudo obtener sugerencias"); }
@@ -369,10 +355,10 @@ function ReservationModal({ initial, zones, tables, onClose, onSaved }: {
         clientId: form.clientId || null,
       };
       if (isEdit) {
-        await apiFetch(`/api/reservations/${initial!.id}`, { method: "PATCH", body: JSON.stringify(payload) });
+        await api.patch(`/api/reservations/${initial!.id}`, payload);
         toast.success("Reserva actualizada");
       } else {
-        await apiFetch("/api/reservations", { method: "POST", body: JSON.stringify(payload) });
+        await api.post("/api/reservations", payload);
         toast.success("Reserva creada");
       }
       onSaved(); onClose();
@@ -600,7 +586,7 @@ function WaitingModal({ zones, onClose, onSaved }: { zones: Zone[]; onClose: () 
     if (!form.nombre.trim()) { toast.error("Nombre requerido"); return; }
     setBusy(true);
     try {
-      await apiFetch("/api/waiting-list", { method: "POST", body: JSON.stringify({ ...form, personas: Number(form.personas) }) });
+      await api.post("/api/waiting-list", { ...form, personas: Number(form.personas) });
       toast.success("Añadido a la lista de espera");
       onSaved(); onClose();
     } catch (e: any) { toast.error(e.message); } finally { setBusy(false); }
@@ -665,7 +651,7 @@ function WeekView({ weekStart, onDayClick }: { weekStart: string; onDayClick: (d
   useEffect(() => {
     setLoading(true);
     const weekEnd = addDays(weekStart, 6);
-    apiFetch(`/api/reservations?from=${weekStart}&to=${weekEnd}`)
+    api.get(`/api/reservations?from=${weekStart}&to=${weekEnd}`)
       .then((data: Reservation[]) => {
         const map: Record<string, { total: number; active: number; pax: number }> = {};
         for (const r of data ?? []) {
@@ -741,7 +727,7 @@ export default function Reservations() {
   const loadReservations = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await apiFetch(`/api/reservations?date=${date}`);
+      const data = await api.get(`/api/reservations?date=${date}`);
       setReservations(Array.isArray(data) ? data : []);
     } catch { toast.error("No se pudo cargar las reservas"); }
     finally { setLoading(false); }
@@ -749,7 +735,7 @@ export default function Reservations() {
 
   const loadWaiting = useCallback(async () => {
     try {
-      const data = await apiFetch("/api/waiting-list?active=true");
+      const data = await api.get("/api/waiting-list?active=true");
       setWaiting(Array.isArray(data) ? data : []);
     } catch { /* silent */ }
   }, []);
@@ -757,8 +743,8 @@ export default function Reservations() {
   const loadMeta = useCallback(async () => {
     try {
       const [z, t] = await Promise.all([
-        apiFetch("/api/zones").catch(() => []),
-        apiFetch("/api/tables").catch(() => []),
+        api.get<Zone[]>("/api/zones").catch(() => [] as Zone[]),
+        api.get<TableRow[]>("/api/tables").catch(() => [] as TableRow[]),
       ]);
       setZones(z ?? []);
       setTables(t ?? []);
@@ -782,7 +768,7 @@ export default function Reservations() {
   const handleArrive = async (r: Reservation) => {
     setBusyId(r.id);
     try {
-      const result = await apiFetch(`/api/reservations/${r.id}/arrive`, { method: "POST", body: JSON.stringify({ openTable: !!r.mesaId }) });
+      const result = await api.post<{ tableOpened?: boolean }>(`/api/reservations/${r.id}/arrive`, { openTable: !!r.mesaId });
       toast.success(`${r.nombre} marcado como llegado`);
       if (result?.tableOpened) toast.success("Mesa abierta automáticamente");
       loadReservations();
@@ -793,7 +779,7 @@ export default function Reservations() {
   const handleStatusChange = async (r: Reservation, status: string) => {
     setBusyId(r.id);
     try {
-      await apiFetch(`/api/reservations/${r.id}`, { method: "PATCH", body: JSON.stringify({ status }) });
+      await api.patch(`/api/reservations/${r.id}`, { status });
       loadReservations();
     } catch (e: any) { toast.error(e.message); }
     finally { setBusyId(null); }
@@ -803,7 +789,7 @@ export default function Reservations() {
     if (!confirm(`¿Eliminar reserva de ${r.nombre}?`)) return;
     setBusyId(r.id);
     try {
-      await apiFetch(`/api/reservations/${r.id}`, { method: "DELETE" });
+      await api.delete(`/api/reservations/${r.id}`);
       toast.success("Reserva eliminada");
       loadReservations();
     } catch (e: any) { toast.error(e.message); }
@@ -813,7 +799,7 @@ export default function Reservations() {
   const handleWaitingStatus = async (id: string, status: string) => {
     setBusyId(id);
     try {
-      await apiFetch(`/api/waiting-list/${id}`, { method: "PATCH", body: JSON.stringify({ status }) });
+      await api.patch(`/api/waiting-list/${id}`, { status });
       loadWaiting();
     } catch (e: any) { toast.error(e.message); }
     finally { setBusyId(null); }
@@ -822,7 +808,7 @@ export default function Reservations() {
   const handleWaitingDelete = async (id: string) => {
     setBusyId(id);
     try {
-      await apiFetch(`/api/waiting-list/${id}`, { method: "DELETE" });
+      await api.delete(`/api/waiting-list/${id}`);
       loadWaiting();
     } catch (e: any) { toast.error(e.message); }
     finally { setBusyId(null); }

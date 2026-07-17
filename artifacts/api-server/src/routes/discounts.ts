@@ -4,11 +4,9 @@ import {
   discountsTable,
   ordersTable,
   orderItemsTable,
-  productsTable,
-  employeesTable,
 } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
-import { requireAuth, requireRole } from "../middlewares/auth";
+import { requireAuth, requirePermission, verifyManagerToken } from "../middlewares/auth";
 import { logDocumentAction } from "../lib/document-audit";
 
 const router: IRouter = Router();
@@ -34,24 +32,26 @@ router.get("/orders/:id/discounts", requireAuth, async (req, res): Promise<void>
 });
 
 // POST /orders/:id/discounts
-// Body: { type, value, reason, orderItemId?, pin? }
+// Body: { type, value, reason, orderItemId?, managerToken? }
 // type: 'percentage' | 'fixed' | 'invitation'
-// Requires manager/admin. If discount > 20% (configurable threshold), requires admin.
+// Gate: requires 'discounts.apply' permission.
+// Large discounts (> 20%) or invitations additionally require either:
+//   - admin role, OR
+//   - a valid short-lived manager-auth token (from POST /api/auth/manager-authorize)
 router.post(
   "/orders/:id/discounts",
   requireAuth,
-  requireRole("waiter", "manager", "admin"),
+  requirePermission("discounts.apply"),   // ← permission-based guard (replaces loose requireRole)
   async (req, res): Promise<void> => {
     const orderId = req.params.id as string;
-    const employeeId = (req as any).user?.id as string;
-    const role = (req as any).user?.role as string;
+    const employeeId = req.user!.id;
+    const role = req.user!.role;
 
-    const { type, value, reason, orderItemId, pin } = req.body as {
+    const { type, value, reason, orderItemId } = req.body as {
       type: "percentage" | "fixed" | "invitation";
       value: string;
       reason?: string;
       orderItemId?: string;
-      pin?: string;
     };
 
     if (!["percentage", "fixed", "invitation"].includes(type)) {
@@ -69,25 +69,23 @@ router.post(
       return;
     }
 
-    // Waiters cannot apply any discount
-    if (role === "waiter") {
-      res.status(403).json({ error: "Los camareros no pueden aplicar descuentos" });
-      return;
+    // ── Elevated authorization check ──────────────────────────────────────────
+    // Invitations or discounts > 20% require admin role OR a valid manager token.
+    const needsElevation = type === "invitation" || (type === "percentage" && valueNum > 20);
+    if (needsElevation && role !== "admin") {
+      const managerAuth = verifyManagerToken(req, "discount.apply");
+      if (!managerAuth) {
+        res.status(403).json({
+          error: type === "invitation"
+            ? "Las invitaciones requieren autorización de encargado"
+            : "Descuentos superiores al 20% requieren autorización de encargado",
+        });
+        return;
+      }
+      // managerAuth is valid — log it
     }
 
-    // Invitations require admin
-    if (type === "invitation" && role !== "admin") {
-      res.status(403).json({ error: "Solo los administradores pueden aplicar invitaciones" });
-      return;
-    }
-
-    // Percentage > 20% requires admin
-    if (type === "percentage" && valueNum > 20 && role !== "admin") {
-      res.status(403).json({ error: "Descuentos superiores al 20% requieren autorización de administrador" });
-      return;
-    }
-
-    // Verify order exists
+    // Verify order exists and is not paid
     const [order] = await db.select().from(ordersTable).where(eq(ordersTable.id, orderId));
     if (!order) {
       res.status(404).json({ error: "Pedido no encontrado" });
@@ -104,7 +102,6 @@ router.post(
       discountAmount = valueNum;
     } else if (type === "percentage") {
       if (orderItemId) {
-        // Line-level: get item price
         const [item] = await db
           .select({ unitPrice: orderItemsTable.unitPrice, quantity: orderItemsTable.quantity })
           .from(orderItemsTable)
@@ -116,7 +113,6 @@ router.post(
         const lineTotal = parseFloat(item.unitPrice) * item.quantity;
         discountAmount = (lineTotal * valueNum) / 100;
       } else {
-        // Order-level: sum all items
         const items = await db
           .select({ unitPrice: orderItemsTable.unitPrice, quantity: orderItemsTable.quantity })
           .from(orderItemsTable)
@@ -139,13 +135,12 @@ router.post(
       })
       .returning();
 
-    // Audit
     await logDocumentAction({
       action: "apply_discount",
       documentType: "ticket",
       documentId: orderId,
       employeeId,
-      employeeName: (req as any).user?.name ?? "",
+      employeeName: req.user?.name ?? "",
       terminal: (req.headers["x-terminal"] as string) ?? "",
       amount: discountAmount.toFixed(2),
       details: `Descuento ${type} ${value}${type === "percentage" ? "%" : "€"}: ${reason}`,
@@ -155,14 +150,24 @@ router.post(
   }
 );
 
-// DELETE /orders/:id/discounts/:discountId — admin only, only if order not paid
+// DELETE /orders/:id/discounts/:discountId
 router.delete(
   "/orders/:id/discounts/:discountId",
   requireAuth,
-  requireRole("admin"),
+  requirePermission("discounts.apply"),
   async (req, res): Promise<void> => {
     const discountId = req.params.discountId as string;
     const orderId = req.params.id as string;
+    const role = req.user!.role;
+
+    // Deletion of any discount requires admin OR manager auth
+    if (role !== "admin") {
+      const managerAuth = verifyManagerToken(req, "discount.delete");
+      if (!managerAuth) {
+        res.status(403).json({ error: "Eliminar descuentos requiere autorización de administrador o encargado" });
+        return;
+      }
+    }
 
     const [order] = await db.select().from(ordersTable).where(eq(ordersTable.id, orderId));
     if (order?.status === "paid") {

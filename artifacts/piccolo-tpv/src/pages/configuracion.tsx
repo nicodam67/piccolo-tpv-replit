@@ -427,15 +427,7 @@ export default function Configuracion() {
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
 
-  // Admin guard
-  useEffect(() => {
-    const empStr = localStorage.getItem('employee');
-    if (!empStr) { setLocation('/'); return; }
-    try {
-      const emp = JSON.parse(empStr);
-      if (emp.role !== 'admin') setLocation('/tables');
-    } catch { setLocation('/'); }
-  }, [setLocation]);
+  // Auth is enforced by the router (RequireRole) — no localStorage guard needed.
 
   // Admin sees all zones including inactive
   const { data: serverZones, isLoading } = useGetZones(

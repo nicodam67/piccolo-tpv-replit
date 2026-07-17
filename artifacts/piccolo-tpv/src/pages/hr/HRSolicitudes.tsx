@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { FileText, Check, X, Plus, Clock, CheckCircle, XCircle } from "lucide-react";
 import { toast } from "sonner";
 
-const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+import { api } from "../../lib/api-client";
 
 type EmployeeRequest = {
   id: string; employeeId: string; requestType: string;
@@ -30,10 +30,6 @@ const STATUS_CONFIG = {
 
 const INPUT = "w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm focus:outline-none focus:border-blue-500";
 
-function authHeaders() {
-  return { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("token") ?? ""}` };
-}
-
 export default function HRSolicitudes() {
   const qc = useQueryClient();
   const [statusFilter, setStatusFilter] = useState("pending");
@@ -47,36 +43,21 @@ export default function HRSolicitudes() {
 
   const { data: requests = [], isLoading } = useQuery<EmployeeRequest[]>({
     queryKey: ["hr-requests", statusFilter, typeFilter],
-    queryFn: async () => {
+    queryFn: () => {
       const params = new URLSearchParams();
       if (statusFilter) params.set("status", statusFilter);
       if (typeFilter) params.set("type", typeFilter);
-      const res = await fetch(`${BASE}/api/hr/employee-requests?${params}`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem("token") ?? ""}` },
-      });
-      if (!res.ok) throw new Error("Error");
-      return res.json();
+      return api.get<EmployeeRequest[]>(`/api/hr/employee-requests?${params}`);
     },
   });
 
   const { data: employees = [] } = useQuery<Employee[]>({
     queryKey: ["hr-employees-basic"],
-    queryFn: async () => {
-      const res = await fetch(`${BASE}/api/hr/employees`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem("token") ?? ""}` },
-      });
-      return res.json();
-    },
+    queryFn: () => api.get<Employee[]>("/api/hr/employees"),
   });
 
   const createMutation = useMutation({
-    mutationFn: async (body: typeof newForm) => {
-      const res = await fetch(`${BASE}/api/hr/employee-requests`, {
-        method: "POST", headers: authHeaders(), body: JSON.stringify(body),
-      });
-      if (!res.ok) throw new Error((await res.json()).error);
-      return res.json();
-    },
+    mutationFn: (body: typeof newForm) => api.post("/api/hr/employee-requests", body),
     onSuccess: () => {
       toast.success("Solicitud creada");
       qc.invalidateQueries({ queryKey: ["hr-requests"] });
@@ -87,13 +68,8 @@ export default function HRSolicitudes() {
   });
 
   const reviewMutation = useMutation({
-    mutationFn: async ({ id, status, reviewNotes }: { id: string; status: string; reviewNotes: string }) => {
-      const res = await fetch(`${BASE}/api/hr/employee-requests/${id}`, {
-        method: "PATCH", headers: authHeaders(), body: JSON.stringify({ status, reviewNotes }),
-      });
-      if (!res.ok) throw new Error((await res.json()).error);
-      return res.json();
-    },
+    mutationFn: ({ id, status, reviewNotes }: { id: string; status: string; reviewNotes: string }) =>
+      api.patch(`/api/hr/employee-requests/${id}`, { status, reviewNotes }),
     onSuccess: () => {
       toast.success("Solicitud actualizada");
       qc.invalidateQueries({ queryKey: ["hr-requests"] });

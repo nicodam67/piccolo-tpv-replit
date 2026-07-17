@@ -12,6 +12,7 @@
  */
 
 import { Router } from "express";
+import rateLimit from "express-rate-limit";
 import { createHash, createCipheriv, createDecipheriv, randomBytes } from "crypto";
 import { requireAuth, requireRole } from "../middlewares/auth.js";
 import { db } from "@workspace/db";
@@ -24,6 +25,17 @@ import {
 import { eq, desc, and, gte, lte, sql, or, like } from "drizzle-orm";
 
 const router = Router();
+
+// Rate limiter: 10 fiscal record mutations per minute per IP.
+// Creating, sending, retrying, or cancelling AEAT records are rare operations
+// with irreversible fiscal consequences — limit aggressively to prevent abuse.
+const fiscalLimiter = rateLimit({
+  windowMs: 60 * 1_000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Demasiadas operaciones fiscales. Espere un momento e inténtelo de nuevo." },
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Crypto helpers
@@ -655,7 +667,7 @@ router.get("/admin/verifactu/records/:id/xml", requireAuth, requireRole("admin")
 // Generate a VERI*FACTU record from an invoice
 // ─────────────────────────────────────────────────────────────────────────────
 
-router.post("/admin/verifactu/records", requireAuth, requireRole("admin"), async (req, res) => {
+router.post("/admin/verifactu/records", requireAuth, requireRole("admin"), fiscalLimiter, async (req, res) => {
   try {
     const body = req.body as {
       invoiceId: string;
@@ -816,7 +828,7 @@ router.post("/admin/verifactu/records", requireAuth, requireRole("admin"), async
 // Send record to AEAT (or simulator)
 // ─────────────────────────────────────────────────────────────────────────────
 
-router.post("/admin/verifactu/records/:id/send", requireAuth, requireRole("admin"), async (req, res) => {
+router.post("/admin/verifactu/records/:id/send", requireAuth, requireRole("admin"), fiscalLimiter, async (req, res) => {
   try {
     const id = req.params.id as string;
     const [record] = await db.select().from(verifactuRecordsTable).where(eq(verifactuRecordsTable.id, id));
@@ -889,7 +901,7 @@ router.post("/admin/verifactu/records/:id/send", requireAuth, requireRole("admin
 // Retry a failed submission
 // ─────────────────────────────────────────────────────────────────────────────
 
-router.post("/admin/verifactu/records/:id/retry", requireAuth, requireRole("admin"), async (req, res) => {
+router.post("/admin/verifactu/records/:id/retry", requireAuth, requireRole("admin"), fiscalLimiter, async (req, res) => {
   try {
     const id = req.params.id as string;
     const [record] = await db.select().from(verifactuRecordsTable).where(eq(verifactuRecordsTable.id, id));
@@ -948,7 +960,7 @@ router.post("/admin/verifactu/records/:id/retry", requireAuth, requireRole("admi
 // Create an anulación record linked to an alta record
 // ─────────────────────────────────────────────────────────────────────────────
 
-router.post("/admin/verifactu/records/:id/cancel", requireAuth, requireRole("admin"), async (req, res) => {
+router.post("/admin/verifactu/records/:id/cancel", requireAuth, requireRole("admin"), fiscalLimiter, async (req, res) => {
   try {
     const id = req.params.id as string;
     const body = req.body as { motivo: string; autorizador: string };

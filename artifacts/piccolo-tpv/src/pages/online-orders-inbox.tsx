@@ -11,8 +11,9 @@ import {
 import { toast } from 'sonner';
 import { customFetch } from '@workspace/api-client-react';
 
-const BASE = import.meta.env.BASE_URL.replace(/\/$/, '');
-const api = (path: string, opts?: RequestInit) => customFetch(`${BASE}${path}`, opts);
+// Use root-relative paths — setBaseUrl(BASE) is called globally by api-client.ts
+// so customFetch prepends the Vite base path automatically.
+const api = (path: string, opts?: RequestInit) => customFetch(path, opts);
 const apiJSON = (path: string, method: string, body?: object) =>
   api(path, { method, headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
 

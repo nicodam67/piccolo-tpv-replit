@@ -9,7 +9,7 @@ import {
   X, Calendar, ChevronRight, Loader2,
 } from 'lucide-react';
 
-const BASE = import.meta.env.BASE_URL.replace(/\/$/, '');
+import { api } from '../lib/api-client';
 
 interface Lot {
   id: string;
@@ -35,13 +35,6 @@ interface TraceReport {
   movementCount: number;
 }
 
-async function authFetch(path: string, opts?: RequestInit) {
-  const token = localStorage.getItem('token');
-  return fetch(`${BASE}${path}`, {
-    ...opts,
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, ...(opts?.headers ?? {}) },
-  });
-}
 
 export default function TrazabilidadLotes() {
   const [, setLocation] = useLocation();
@@ -57,9 +50,7 @@ export default function TrazabilidadLotes() {
   async function fetchLots(query = '') {
     setLoading(true);
     try {
-      const res = await authFetch(`/api/admin/traceability/lots?q=${encodeURIComponent(query)}&limit=100`);
-      if (!res.ok) throw new Error();
-      setLots(await res.json());
+      setLots(await api.get(`/api/admin/traceability/lots?q=${encodeURIComponent(query)}&limit=100`));
     } catch {
       toast.error('Error cargando lotes');
     } finally {
@@ -79,9 +70,7 @@ export default function TrazabilidadLotes() {
     setTraceLoading(true);
     setSelectedLot(null);
     try {
-      const res = await authFetch(`/api/admin/traceability/lots/${lot.id}`);
-      if (!res.ok) throw new Error();
-      setSelectedLot(await res.json());
+      setSelectedLot(await api.get(`/api/admin/traceability/lots/${lot.id}`));
     } catch {
       toast.error('Error cargando traza');
     } finally {
@@ -93,10 +82,7 @@ export default function TrazabilidadLotes() {
     if (!selectedLot || !blockReason.trim()) { toast.error('El motivo es obligatorio'); return; }
     setBlocking(true);
     try {
-      const res = await authFetch(`/api/admin/traceability/lots/${selectedLot.lot.id}/block`, {
-        method: 'POST', body: JSON.stringify({ reason: blockReason }),
-      });
-      if (!res.ok) { const e = await res.json(); throw new Error(e.error ?? 'Error'); }
+      await api.post(`/api/admin/traceability/lots/${selectedLot.lot.id}/block`, { reason: blockReason });
       toast.success('Lote bloqueado correctamente');
       setShowBlockModal(false);
       setBlockReason('');

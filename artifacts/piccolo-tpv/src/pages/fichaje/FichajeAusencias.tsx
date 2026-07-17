@@ -1,7 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { Plus, CheckCircle, XCircle, Clock, Search, X } from "lucide-react";
-
-const BASE = import.meta.env.BASE_URL;
+import { api } from '../../lib/api-client';
 
 interface Absence {
   id: string;
@@ -27,15 +26,10 @@ const STATUS_STYLE: Record<string, string> = {
 function AbsenceModal({ employees, onClose, onSaved }: { employees: Employee[]; onClose: () => void; onSaved: () => void }) {
   const [form, setForm] = useState({ employeeId: "", absenceDate: "", absenceType: "vacation", reason: "" });
   const [saving, setSaving] = useState(false);
-  const token = localStorage.getItem("token");
 
   async function save() {
     setSaving(true);
-    await fetch(`${BASE}api/fichaje/absences`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ ...form, reason: form.reason || undefined }),
-    });
+    await api.post('/api/fichaje/absences', { ...form, reason: form.reason || undefined });
     setSaving(false);
     onSaved();
   }
@@ -74,20 +68,20 @@ export default function FichajeAusencias() {
   const [showModal, setShowModal] = useState(false);
   const [statusFilter, setStatusFilter] = useState("");
   const [empSearch, setEmpSearch] = useState("");
-  const token = localStorage.getItem("token");
 
   function load() {
     setLoading(true);
     const params = new URLSearchParams();
     if (statusFilter) params.set("status", statusFilter);
-    fetch(`${BASE}api/fichaje/absences?${params}`, { headers: { Authorization: `Bearer ${token}` } })
-      .then(r => r.json()).then(d => setAbsences(Array.isArray(d) ? d : []))
+    api.get<Absence[]>(`/api/fichaje/absences?${params}`)
+      .then(d => setAbsences(d))
+      .catch(() => setAbsences([]))
       .finally(() => setLoading(false));
   }
 
   useEffect(() => {
-    fetch(`${BASE}api/employees`, { headers: { Authorization: `Bearer ${token}` } })
-      .then(r => r.json()).then(d => setEmployees(Array.isArray(d) ? d : []));
+    api.get<Employee[]>('/api/employees')
+      .then(d => setEmployees(d)).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -99,10 +93,7 @@ export default function FichajeAusencias() {
   }, [statusFilter]);
 
   async function approve(id: string, status: "approved" | "rejected") {
-    await fetch(`${BASE}api/fichaje/absences/${id}/approve`, {
-      method: "PUT", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ status }),
-    });
+    await api.put(`/api/fichaje/absences/${id}/approve`, { status });
     load();
   }
 

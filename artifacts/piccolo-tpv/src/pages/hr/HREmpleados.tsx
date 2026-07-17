@@ -6,7 +6,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+import { api } from "../../lib/api-client";
 
 type Employee = {
   id: string; name: string; lastName?: string; role: string; active: boolean;
@@ -38,9 +38,6 @@ const EMP_STATUSES = [
 
 const INPUT = "w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm focus:outline-none focus:border-blue-500";
 
-function authHeaders() {
-  return { Authorization: `Bearer ${localStorage.getItem("token") ?? ""}` };
-}
 
 function StatusBadge({ status }: { status: string }) {
   const s = EMP_STATUSES.find((x) => x.value === status) ?? EMP_STATUSES[1]!;
@@ -121,56 +118,36 @@ export default function HREmpleados() {
 
   const { data: employees = [], isLoading } = useQuery<Employee[]>({
     queryKey: ["hr-employees", search, statusFilter],
-    queryFn: async () => {
+    queryFn: () => {
       const params = new URLSearchParams();
       if (search) params.set("search", search);
       if (statusFilter) params.set("status", statusFilter);
-      const res = await fetch(`${BASE}/api/hr/employees?${params}`, { headers: authHeaders() });
-      if (!res.ok) throw new Error("Error cargando empleados");
-      return res.json();
+      return api.get<Employee[]>(`/api/hr/employees?${params}`);
     },
     placeholderData: [],
   });
 
   const { data: selectedDetail } = useQuery<Employee>({
     queryKey: ["hr-employee", selected?.id],
-    queryFn: async () => {
-      const res = await fetch(`${BASE}/api/hr/employees/${selected!.id}`, { headers: authHeaders() });
-      if (!res.ok) throw new Error("Error cargando empleado");
-      return res.json();
-    },
+    queryFn: () => api.get<Employee>(`/api/hr/employees/${selected!.id}`),
     enabled: !!selected?.id,
   });
 
   const { data: positions = [] } = useQuery<Position[]>({
     queryKey: ["hr-positions"],
-    queryFn: async () => {
-      const res = await fetch(`${BASE}/api/hr/positions`, { headers: authHeaders() });
-      return res.json();
-    },
+    queryFn: () => api.get<Position[]>("/api/hr/positions"),
   });
 
   const { data: departments = [] } = useQuery<Department[]>({
     queryKey: ["hr-departments"],
-    queryFn: async () => {
-      const res = await fetch(`${BASE}/api/hr/departments`, { headers: authHeaders() });
-      return res.json();
-    },
+    queryFn: () => api.get<Department[]>("/api/hr/departments"),
   });
 
   const saveMutation = useMutation({
-    mutationFn: async (data: Partial<Employee> & { pin?: string }) => {
-      const method = editMode && selected ? "PATCH" : "POST";
-      const url = editMode && selected
-        ? `${BASE}/api/hr/employees/${selected.id}`
-        : `${BASE}/api/hr/employees`;
-      const res = await fetch(url, {
-        method,
-        headers: { "Content-Type": "application/json", ...authHeaders() },
-        body: JSON.stringify(data),
-      });
-      if (!res.ok) throw new Error((await res.json()).error ?? "Error guardando");
-      return res.json();
+    mutationFn: (data: Partial<Employee> & { pin?: string }) => {
+      return editMode && selected
+        ? api.patch(`/api/hr/employees/${selected.id}`, data)
+        : api.post("/api/hr/employees", data);
     },
     onSuccess: () => {
       toast.success(editMode ? "Empleado actualizado" : "Empleado creado");
@@ -183,15 +160,8 @@ export default function HREmpleados() {
   });
 
   const statusMutation = useMutation({
-    mutationFn: async ({ id, status }: { id: string; status: string }) => {
-      const res = await fetch(`${BASE}/api/hr/employees/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json", ...authHeaders() },
-        body: JSON.stringify({ empStatus: status, active: status === "active" }),
-      });
-      if (!res.ok) throw new Error("Error actualizando estado");
-      return res.json();
-    },
+    mutationFn: ({ id, status }: { id: string; status: string }) =>
+      api.patch(`/api/hr/employees/${id}`, { empStatus: status, active: status === "active" }),
     onSuccess: () => {
       toast.success("Estado actualizado");
       qc.invalidateQueries({ queryKey: ["hr-employees"] });

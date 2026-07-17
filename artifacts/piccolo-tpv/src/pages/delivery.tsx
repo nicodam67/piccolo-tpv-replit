@@ -16,18 +16,7 @@ import {
   LayoutGrid, UserCheck, ShoppingBag, Bike, Car, Hash,
 } from "lucide-react";
 import { toast } from "sonner";
-
-const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
-async function apiFetch(path: string, opts?: RequestInit) {
-  const token = localStorage.getItem("token") ?? "";
-  const res = await fetch(`${BASE}${path}`, {
-    ...opts,
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}`, ...opts?.headers },
-  });
-  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error((e as any).error ?? `HTTP ${res.status}`); }
-  if (res.status === 204) return null;
-  return res.json();
-}
+import { api } from '../lib/api-client';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface DeliveryOrder {
@@ -102,7 +91,7 @@ function OrderCard({ order, couriers, onRefresh, busy, onBusy }: {
   const changeStatus = async (status: string) => {
     onBusy(order.id);
     try {
-      await apiFetch(`/api/delivery-orders/${order.id}`, { method: "PATCH", body: JSON.stringify({ status }) });
+      await api.patch(`/api/delivery-orders/${order.id}`, { status });
       toast.success("Estado actualizado");
       onRefresh();
     } catch (e: any) { toast.error(e.message); }
@@ -112,7 +101,7 @@ function OrderCard({ order, couriers, onRefresh, busy, onBusy }: {
   const confirm = async () => {
     onBusy(order.id);
     try {
-      await apiFetch(`/api/online-orders/${order.id}/confirm`, { method: "POST", body: JSON.stringify({}) });
+      await api.post(`/api/online-orders/${order.id}/confirm`, {});
       toast.success("Pedido confirmado");
       onRefresh();
     } catch (e: any) { toast.error(e.message); }
@@ -122,7 +111,7 @@ function OrderCard({ order, couriers, onRefresh, busy, onBusy }: {
   const assignCourier = async (courierId: string) => {
     onBusy(order.id);
     try {
-      await apiFetch(`/api/online-orders/${order.id}/assign-courier`, { method: "POST", body: JSON.stringify({ courierId }) });
+      await api.post(`/api/online-orders/${order.id}/assign-courier`, { courierId });
       toast.success("Repartidor asignado");
       setShowAssign(false); onRefresh();
     } catch (e: any) { toast.error(e.message); }
@@ -244,7 +233,7 @@ function CourierPanel({ couriers, activeOrders, onRefresh }: {
   const updateStatus = async (id: string, status: string) => {
     setBusyId(id);
     try {
-      await apiFetch(`/api/admin/couriers/${id}`, { method: "PATCH", body: JSON.stringify({ status }) });
+      await api.patch(`/api/admin/couriers/${id}`, { status });
       toast.success("Estado actualizado");
       onRefresh();
     } catch (e: any) { toast.error(e.message); }
@@ -254,12 +243,12 @@ function CourierPanel({ couriers, activeOrders, onRefresh }: {
   const doSettle = async (id: string) => {
     setBusyId(id);
     try {
-      await apiFetch(`/api/admin/couriers/${id}/settle`, { method: "POST", body: JSON.stringify({
+      await api.post(`/api/admin/couriers/${id}/settle`, {
         tips: parseFloat(settlementForm.tips) || 0,
         expenses: parseFloat(settlementForm.expenses) || 0,
         differences: parseFloat(settlementForm.differences) || 0,
         notes: settlementForm.notes,
-      })});
+      });
       toast.success("Liquidación cerrada");
       setSettlementId(null);
       onRefresh();
@@ -394,7 +383,7 @@ function NewOrderForm({ couriers, zones, onCreated }: {
     if (productSearch.length < 2) { setProductResults([]); return; }
     const t = setTimeout(async () => {
       try {
-        const data = await apiFetch(`/api/products?q=${encodeURIComponent(productSearch)}&limit=8`);
+        const data = await api.get(`/api/products?q=${encodeURIComponent(productSearch)}&limit=8`);
         setProductResults(Array.isArray(data) ? data.filter((p: Product) => p.active && !p.outOfStock) : []);
       } catch { /* ignore */ }
     }, 300);
@@ -406,7 +395,7 @@ function NewOrderForm({ couriers, zones, onCreated }: {
     if (form.deliveryType !== "delivery" || !form.postalCode) { setZoneInfo(null); return; }
     const t = setTimeout(async () => {
       try {
-        const data = await apiFetch("/api/public/check-zone", { method: "POST", body: JSON.stringify({ postalCode: form.postalCode, city: form.city }) });
+        const data = await api.post<{ covered: boolean; zone?: { deliveryFee: string; name: string } }>("/api/public/check-zone", { postalCode: form.postalCode, city: form.city });
         setZoneInfo({ covered: data.covered, fee: data.zone?.deliveryFee ?? "0", zone: data.zone?.name });
       } catch { setZoneInfo(null); }
     }, 400);
@@ -448,7 +437,7 @@ function NewOrderForm({ couriers, zones, onCreated }: {
       if (form.courierId) body.courierId = form.courierId;
       if (form.scheduledAt) body.scheduledAt = new Date(form.scheduledAt).toISOString();
 
-      const result = await apiFetch("/api/delivery-orders", { method: "POST", body: JSON.stringify(body) });
+      const result = await api.post<{ orderNumber: string }>("/api/delivery-orders", body);
       toast.success(`Pedido ${result.orderNumber} creado`);
       setForm({ deliveryType: "takeaway", channel: "phone", clientName: "", clientPhone: "", street: "", number: "", floor: "", postalCode: "", city: "", addrNotes: "", notes: "", paymentMethod: "on_arrival", courierId: "", scheduledAt: "", overrideDeliveryFee: "" });
       setItems([]); setZoneInfo(null); onCreated();
@@ -619,8 +608,8 @@ export default function DeliveryPage() {
   const load = useCallback(async () => {
     try {
       const [ordData, courierData] = await Promise.all([
-        apiFetch(`/api/delivery-orders?${filterStatus === "active" ? "" : `status=${filterStatus}`}`).catch(() => []),
-        apiFetch("/api/admin/couriers").catch(() => []),
+        api.get(`/api/delivery-orders?${filterStatus === "active" ? "" : `status=${filterStatus}`}`).catch(() => []),
+        api.get("/api/admin/couriers").catch(() => []),
       ]);
       setOrders(Array.isArray(ordData) ? ordData : []);
       setCouriers(Array.isArray(courierData) ? courierData : []);

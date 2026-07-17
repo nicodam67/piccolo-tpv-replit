@@ -14,7 +14,7 @@ import {
   Target, Hash, QrCode, SendHorizontal, Zap, Play,
   Filter, Download, ChevronDown, ChevronUp,
 } from 'lucide-react';
-import { customFetch } from '@workspace/api-client-react';
+import { api } from '../lib/api-client';
 import { toast } from 'sonner';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -94,15 +94,6 @@ interface CrmReports {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-const API = (path: string) => `/api${path}`;
-const token = () => localStorage.getItem('token') ?? '';
-const authHeaders = () => ({ Authorization: `Bearer ${token()}`, 'Content-Type': 'application/json' });
-
-async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await customFetch<T>(path, init);
-  return res;
-}
-
 function fmtDate(s: string | null | undefined) {
   if (!s) return '—';
   return new Date(s).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' });
@@ -133,12 +124,7 @@ export default function Crm() {
   const [, setLocation] = useLocation();
   const [tab, setTab] = useState('clientes');
 
-  useEffect(() => {
-    const t = localStorage.getItem('token');
-    const emp = JSON.parse(localStorage.getItem('employee') ?? '{}');
-    if (!t) { setLocation('/'); return; }
-    if (emp.role !== 'admin' && emp.role !== 'manager') { setLocation('/tables'); return; }
-  }, [setLocation]);
+  // Auth is enforced by the router (RequireRole) — no localStorage guard needed.
 
   return (
     <div className="min-h-screen flex flex-col bg-background text-foreground">
@@ -208,7 +194,7 @@ function ClientesTab() {
 
   const load = useCallback(async () => {
     try {
-      const data = await apiFetch<CrmClient[]>(API(`/crm/clients${q ? `?q=${encodeURIComponent(q)}` : ''}`));
+      const data = await api.get<CrmClient[]>(`/api/crm/clients${q ? `?q=${encodeURIComponent(q)}` : ''}`);
       setClients(data);
     } catch { toast.error('Error al cargar clientes'); }
   }, [q]);
@@ -217,7 +203,7 @@ function ClientesTab() {
 
   const loadHistory = async (id: string) => {
     try {
-      const data = await apiFetch<any>(API(`/crm/clients/${id}/history`));
+      const data = await api.get<any>(`/api/crm/clients/${id}/history`);
       setHistory(data);
     } catch { toast.error('Error al cargar historial'); }
   };
@@ -330,17 +316,11 @@ function ClientForm({ onSave, onCancel, initial }: { onSave: (saved?: CrmClient)
       let saved: CrmClient;
       if (isEditing) {
         // Update existing client via PATCH
-        saved = await customFetch<CrmClient>(API(`/crm/clients/${initial!.id}`), {
-          method: 'PATCH',
-          body: JSON.stringify({ nombre, apellidos, telefono, email, direccion, observaciones, rgpdConsentimiento: rgpd }),
-        });
+        saved = await api.patch<CrmClient>(`/api/crm/clients/${initial!.id}`, { nombre, apellidos, telefono, email, direccion, observaciones, rgpdConsentimiento: rgpd });
         toast.success('Cliente actualizado');
       } else {
         // Create new client via POST
-        saved = await customFetch<CrmClient>(API('/crm/clients'), {
-          method: 'POST',
-          body: JSON.stringify({ nombre, apellidos, telefono, email, direccion, observaciones, rgpdConsentimiento: rgpd }),
-        });
+        saved = await api.post<CrmClient>('/api/crm/clients', { nombre, apellidos, telefono, email, direccion, observaciones, rgpdConsentimiento: rgpd });
         toast.success('Cliente creado');
       }
       onSave(saved);
@@ -514,7 +494,7 @@ function FidelizacionTab() {
 
   const load = useCallback(async () => {
     try {
-      const data = await apiFetch<LoyaltyConfig>(API('/crm/loyalty/config'));
+      const data = await api.get<LoyaltyConfig>('/api/crm/loyalty/config');
       setConfig(data);
       setForm(data);
     } catch { /* manager/admin only */ }
@@ -525,10 +505,7 @@ function FidelizacionTab() {
   const save = async () => {
     setSaving(true);
     try {
-      const data = await customFetch<LoyaltyConfig>(API('/crm/loyalty/config'), {
-        method: 'PUT',
-        body: JSON.stringify(form),
-      });
+      const data = await api.put<LoyaltyConfig>('/api/crm/loyalty/config', form);
       setConfig(data as any);
       setEditing(false);
       toast.success('Configuración guardada');
@@ -640,7 +617,7 @@ function QuickPointsPanel() {
   useEffect(() => {
     if (!clientQ.trim()) { setClients([]); return; }
     const t = setTimeout(async () => {
-      const data = await apiFetch<CrmClient[]>(API(`/crm/clients?q=${encodeURIComponent(clientQ)}`));
+      const data = await api.get<CrmClient[]>(`/api/crm/clients?q=${encodeURIComponent(clientQ)}`);
       setClients(data.slice(0, 5));
     }, 250);
     return () => clearTimeout(t);
@@ -650,10 +627,10 @@ function QuickPointsPanel() {
     if (!selectedClient || !puntos) return;
     setWorking(true);
     try {
-      const path = accion === 'issue'
-        ? API(`/crm/clients/${selectedClient.id}/points/issue`)
-        : API(`/crm/clients/${selectedClient.id}/points/redeem`);
-      await customFetch(path, { method: 'POST', body: JSON.stringify({ puntos: parseInt(puntos) }) });
+      const pointsPath = accion === 'issue'
+        ? `/api/crm/clients/${selectedClient.id}/points/issue`
+        : `/api/crm/clients/${selectedClient.id}/points/redeem`;
+      await api.post(pointsPath, { puntos: parseInt(puntos) });
       toast.success(accion === 'issue' ? `+${puntos} pts emitidos` : `${puntos} pts canjeados`);
       setPuntos('');
       setSelectedClient(null);
@@ -715,7 +692,7 @@ function TarjetasTab() {
 
   const load = useCallback(async () => {
     try {
-      const data = await apiFetch<GiftCard[]>(API(`/crm/gift-cards${q ? `?q=${encodeURIComponent(q)}` : ''}`));
+      const data = await api.get<GiftCard[]>(`/api/crm/gift-cards${q ? `?q=${encodeURIComponent(q)}` : ''}`);
       setCards(data);
     } catch { toast.error('Error al cargar tarjetas'); }
   }, [q]);
@@ -724,7 +701,7 @@ function TarjetasTab() {
 
   const loadDetail = async (id: string) => {
     try {
-      const data = await apiFetch<any>(API(`/crm/gift-cards/${id}`));
+      const data = await api.get<any>(`/api/crm/gift-cards/${id}`);
       setDetail(data);
     } catch { }
   };
@@ -737,7 +714,7 @@ function TarjetasTab() {
 
   const toggleBlock = async (card: GiftCard) => {
     try {
-      await customFetch(API(`/crm/gift-cards/${card.id}/block`), { method: 'POST' });
+      await api.post(`/api/crm/gift-cards/${card.id}/block`);
       toast.success(card.estado === 'bloqueada' ? 'Tarjeta desbloqueada' : 'Tarjeta bloqueada');
       await load();
       await loadDetail(card.id);
@@ -807,10 +784,7 @@ function GiftCardCreateForm({ onSave, onCancel }: { onSave: () => void; onCancel
     if (isNaN(n) || n <= 0) { toast.error('Saldo inválido'); return; }
     setSaving(true);
     try {
-      await customFetch(API('/crm/gift-cards'), {
-        method: 'POST',
-        body: JSON.stringify({ saldo, notas }),
-      });
+      await api.post('/api/crm/gift-cards', { saldo, notas });
       toast.success('Tarjeta creada');
       onSave();
     } catch { toast.error('Error al crear'); }
@@ -848,7 +822,7 @@ function GiftCardDetail({ card, transactions, onBlock, onRecharge }: { card: Gif
     if (isNaN(n) || n <= 0) { toast.error('Importe inválido'); return; }
     setRecharging(true);
     try {
-      await customFetch(API(`/crm/gift-cards/${card.id}/recharge`), { method: 'POST', body: JSON.stringify({ importe: rechargeAmount }) });
+      await api.post(`/api/crm/gift-cards/${card.id}/recharge`, { importe: rechargeAmount });
       toast.success('Tarjeta recargada');
       setRechargeAmount('');
       onRecharge();
@@ -928,7 +902,7 @@ function PromocionesTab() {
 
   const load = async () => {
     try {
-      const data = await apiFetch<Promotion[]>(API('/crm/promotions'));
+      const data = await api.get<Promotion[]>('/api/crm/promotions');
       setPromos(data);
     } catch { }
   };
@@ -938,7 +912,7 @@ function PromocionesTab() {
   const deletePromo = async (id: string) => {
     if (!confirm('¿Eliminar esta promoción?')) return;
     try {
-      await customFetch(API(`/crm/promotions/${id}`), { method: 'DELETE' });
+      await api.delete(`/api/crm/promotions/${id}`);
       toast.success('Promoción eliminada');
       await load();
     } catch { toast.error('Error al eliminar'); }
@@ -947,10 +921,7 @@ function PromocionesTab() {
   const validate = async () => {
     if (!validator.amount || !validator.promoId) return;
     try {
-      const data = await customFetch(API('/crm/promotions/validate'), {
-        method: 'POST',
-        body: JSON.stringify({ promoId: validator.promoId, orderAmount: parseFloat(validator.amount) }),
-      });
+      const data = await api.post('/api/crm/promotions/validate', { promoId: validator.promoId, orderAmount: parseFloat(validator.amount) });
       setValidator(v => ({ ...v, result: data }));
     } catch { toast.error('Error al validar'); }
   };
@@ -1036,10 +1007,7 @@ function PromoForm({ onSave, onCancel }: { onSave: () => void; onCancel: () => v
     if (!form.nombre || !form.tipo) { toast.error('Nombre y tipo son obligatorios'); return; }
     setSaving(true);
     try {
-      await customFetch(API('/crm/promotions'), {
-        method: 'POST',
-        body: JSON.stringify({ ...form, usoMaximo: parseInt(form.usoMaximo) || 0, fechaFin: form.fechaFin || null }),
-      });
+      await api.post('/api/crm/promotions', { ...form, usoMaximo: parseInt(form.usoMaximo) || 0, fechaFin: form.fechaFin || null });
       toast.success('Promoción creada');
       onSave();
     } catch { toast.error('Error al crear'); }
@@ -1107,7 +1075,7 @@ function InformesTab() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await apiFetch<CrmReports>(API('/admin/crm/reports'));
+      const data = await api.get<CrmReports>('/api/admin/crm/reports');
       setReports(data);
     } catch { toast.error('Error al cargar informes (requiere rol admin)'); }
     finally { setLoading(false); }
@@ -1205,7 +1173,7 @@ function NivelesTab() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await apiFetch<LoyaltyLevel[]>(API('/crm/loyalty/levels'));
+      const data = await api.get<LoyaltyLevel[]>('/api/crm/loyalty/levels');
       setLevels(data);
     } catch { toast.error('Error al cargar niveles'); }
     finally { setLoading(false); }
@@ -1216,7 +1184,7 @@ function NivelesTab() {
   const del = async (id: string) => {
     if (!confirm('¿Eliminar este nivel?')) return;
     try {
-      await customFetch(API(`/crm/loyalty/levels/${id}`), { method: 'DELETE' });
+      await api.delete(`/api/crm/loyalty/levels/${id}`);
       toast.success('Nivel eliminado');
       void load();
     } catch { toast.error('Error al eliminar'); }
@@ -1225,7 +1193,7 @@ function NivelesTab() {
   const runDemoData = async () => {
     setDemoLoading(true);
     try {
-      const res = await customFetch<{ created: number }>(API('/crm/demo-data'), { method: 'POST' });
+      const res = await api.post<{ created: number }>('/api/crm/demo-data');
       toast.success(`Datos de demo creados (${(res as any).created} registros)`);
       void load();
     } catch { toast.error('Error al crear datos demo'); }
@@ -1234,7 +1202,7 @@ function NivelesTab() {
 
   const reviewLevels = async () => {
     try {
-      const res = await customFetch<{ updated: number }>(API('/crm/auto/review-levels'), { method: 'POST' });
+      const res = await api.post<{ updated: number }>('/api/crm/auto/review-levels');
       toast.success(`Niveles recalculados: ${(res as any).updated} clientes actualizados`);
     } catch { toast.error('Error al recalcular'); }
   };
@@ -1360,10 +1328,10 @@ function NivelForm({ initial, onSave, onCancel }: { initial?: LoyaltyLevel; onSa
     setSaving(true);
     try {
       if (isNew) {
-        await customFetch(API('/crm/loyalty/levels'), { method: 'POST', body: JSON.stringify(form) });
+        await api.post('/api/crm/loyalty/levels', form);
         toast.success('Nivel creado');
       } else {
-        await customFetch(API(`/crm/loyalty/levels/${initial!.id}`), { method: 'PATCH', body: JSON.stringify(form) });
+        await api.patch(`/api/crm/loyalty/levels/${initial!.id}`, form);
         toast.success('Nivel actualizado');
       }
       onSave();
@@ -1455,7 +1423,7 @@ function CampañasTab() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await apiFetch<CrmCampaign[]>(API('/crm/campaigns'));
+      const data = await api.get<CrmCampaign[]>('/api/crm/campaigns');
       setCampaigns(data);
     } catch { toast.error('Error al cargar campañas'); }
     finally { setLoading(false); }
@@ -1467,9 +1435,7 @@ function CampañasTab() {
     if (!confirm('¿Enviar esta campaña ahora?')) return;
     setSending(id);
     try {
-      const res = await customFetch<{ destinatarios: number; enviados: number }>(
-        API(`/crm/campaigns/${id}/send`), { method: 'POST' }
-      );
+      const res = await api.post<{ destinatarios: number; enviados: number }>(`/api/crm/campaigns/${id}/send`);
       toast.success(`Campaña enviada a ${(res as any).destinatarios} clientes`);
       void load();
     } catch { toast.error('Error al enviar'); }
@@ -1479,7 +1445,7 @@ function CampañasTab() {
   const del = async (id: string) => {
     if (!confirm('¿Eliminar esta campaña?')) return;
     try {
-      await customFetch(API(`/crm/campaigns/${id}`), { method: 'DELETE' });
+      await api.delete(`/api/crm/campaigns/${id}`);
       toast.success('Campaña eliminada');
       setSelected(null);
       void load();
@@ -1572,9 +1538,7 @@ function CampaignForm({ onSave, onCancel }: { onSave: () => void; onCancel: () =
   const previewSegment = async () => {
     setPreviewLoading(true);
     try {
-      const res = await customFetch<{ total: number }>(API('/crm/segment/preview'), {
-        method: 'POST', body: JSON.stringify(seg),
-      });
+      const res = await api.post<{ total: number }>('/api/crm/segment/preview', seg);
       setPreview((res as any).total ?? 0);
     } catch { toast.error('Error al previsualizar'); }
     finally { setPreviewLoading(false); }
@@ -1584,9 +1548,7 @@ function CampaignForm({ onSave, onCancel }: { onSave: () => void; onCancel: () =
     if (!nombre.trim()) { toast.error('El nombre es obligatorio'); return; }
     setSaving(true);
     try {
-      await customFetch(API('/crm/campaigns'), {
-        method: 'POST', body: JSON.stringify({ nombre, tipo, canal, asunto, contenido, segmento: seg }),
-      });
+      await api.post('/api/crm/campaigns', { nombre, tipo, canal, asunto, contenido, segmento: seg });
       toast.success('Campaña creada');
       onSave();
     } catch { toast.error('Error al crear'); }

@@ -1,5 +1,9 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { api } from '../lib/api-client';
+import { ApiClientError } from '../lib/api-errors';
 import { useScrollGuard } from '../hooks/use-scroll-guard';
+import { ManagerPinModal } from '../components/auth/ManagerPinModal';
+import { useManagerAuth } from '../hooks/use-manager-auth';
 import { useParams, useLocation, Link } from 'wouter';
 import { useQueryClient } from '@tanstack/react-query';
 import { io } from 'socket.io-client';
@@ -17,7 +21,6 @@ import {
   useCreateClient,
   useGetCurrentCashSession,
   useGetPaymentMethods,
-  useAddDiscount,
   useAddTip,
   useCreateOrderSplits,
   useMarkSplitGroupPaid,
@@ -128,7 +131,7 @@ interface DiscountPanelProps {
 }
 
 function DiscountPanel({ orderId, orderTotal, userRole, onClose, onApplied }: DiscountPanelProps) {
-  const addDiscount = useAddDiscount();
+  const { authRequest, requestAuth, closeAuth } = useManagerAuth();
   const [type, setType] = useState<'percentage' | 'fixed' | 'invitation'>('percentage');
   const [value, setValue] = useState('');
   const [reason, setReason] = useState('');
@@ -142,116 +145,138 @@ function DiscountPanel({ orderId, orderTotal, userRole, onClose, onApplied }: Di
   const discountAmount = type === 'percentage'
     ? (orderTotal * valueNum / 100)
     : valueNum;
-  const needsAdmin = (type === 'percentage' && valueNum > 20) || type === 'invitation';
-  const cantApply = (userRole === 'waiter') || (needsAdmin && userRole !== 'admin');
+  // Large discounts / invitations need manager PIN (unless user is already admin)
+  const needsManagerAuth = ((type === 'percentage' && valueNum > 20) || type === 'invitation') && userRole !== 'admin';
+  const cantApplyAtAll = userRole === 'waiter';
 
-  const handleApply = async () => {
-    if (!value || valueNum <= 0) { toast.error('Introduce un valor'); return; }
-    if (!reason.trim() || reason.trim().length < 3) { toast.error('El motivo es obligatorio'); return; }
-    if (cantApply) { toast.error('No tienes permisos para este descuento'); return; }
+  // Called once manager token is obtained (or directly if no elevation needed)
+  const doApply = async (managerToken?: string) => {
     setApplying(true);
     try {
-      await addDiscount.mutateAsync({ orderId, data: { type, value, reason: reason.trim() } });
+      await api.post(`/api/orders/${orderId}/discounts`, {
+        type, value, reason: reason.trim(),
+        ...(managerToken ? { managerToken } : {}),
+      });
       toast.success('Descuento aplicado');
       onApplied();
     } catch (e: any) {
-      toast.error(e?.error ?? 'Error al aplicar descuento');
+      toast.error(e?.message ?? e?.error ?? 'Error al aplicar descuento');
     } finally {
       setApplying(false);
     }
   };
 
+  const handleApply = () => {
+    if (cantApplyAtAll) { toast.error('Los camareros no pueden aplicar descuentos'); return; }
+    if (!value || valueNum <= 0) { toast.error('Introduce un valor'); return; }
+    if (!reason.trim() || reason.trim().length < 3) { toast.error('El motivo es obligatorio'); return; }
+
+    if (needsManagerAuth) {
+      const label = type === 'invitation'
+        ? 'Invitación — requiere autorización de encargado'
+        : `Descuento ${valueNum}% — requiere autorización de encargado`;
+      requestAuth('discount.apply', label, (token) => doApply(token));
+      return;
+    }
+    void doApply();
+  };
+
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 backdrop-blur-sm">
-      <div className="bg-card border border-border rounded-t-2xl shadow-2xl w-full max-w-lg max-h-[85vh] flex flex-col">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
-          <div className="flex items-center gap-3">
-            <Percent size={18} className="text-primary" />
-            <h3 className="font-black text-lg">Aplicar descuento</h3>
-          </div>
-          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-secondary text-muted-foreground transition-colors">
-            <X size={16} />
-          </button>
-        </div>
+    <>
+      {/* Manager PIN modal — rendered above the discount panel (z-[200] > z-50) */}
+      {authRequest && <ManagerPinModal request={authRequest} onClose={closeAuth} />}
 
-        <div className="flex-1 overflow-y-auto p-6 space-y-5">
-          {/* Type selector */}
-          <div className="flex gap-2 p-1 bg-secondary rounded-xl">
-            <button onClick={() => setType('percentage')}
-              className={`flex-1 py-2.5 rounded-lg font-bold text-sm transition-all ${type === 'percentage' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground'}`}>
-              Porcentaje (%)
-            </button>
-            <button onClick={() => setType('fixed')}
-              className={`flex-1 py-2.5 rounded-lg font-bold text-sm transition-all ${type === 'fixed' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground'}`}>
-              Importe fijo (€)
+      <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 backdrop-blur-sm">
+        <div className="bg-card border border-border rounded-t-2xl shadow-2xl w-full max-w-lg max-h-[85vh] flex flex-col">
+          <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
+            <div className="flex items-center gap-3">
+              <Percent size={18} className="text-primary" />
+              <h3 className="font-black text-lg">Aplicar descuento</h3>
+            </div>
+            <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-secondary text-muted-foreground transition-colors">
+              <X size={16} />
             </button>
           </div>
 
-          {/* Preset buttons */}
-          <div className="grid grid-cols-3 gap-2">
-            {presets.map(p => (
-              <button key={p} onClick={() => setValue(p)}
-                className={`py-2.5 rounded-xl border font-bold text-sm transition-all ${value === p ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:border-primary'}`}>
-                {p}{type === 'percentage' ? '%' : '€'}
+          <div className="flex-1 overflow-y-auto p-6 space-y-5">
+            {/* Type selector */}
+            <div className="flex gap-2 p-1 bg-secondary rounded-xl">
+              <button onClick={() => setType('percentage')}
+                className={`flex-1 py-2.5 rounded-lg font-bold text-sm transition-all ${type === 'percentage' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground'}`}>
+                Porcentaje (%)
               </button>
-            ))}
-          </div>
-
-          {/* Value input */}
-          <div>
-            <label className="block text-xs font-black text-muted-foreground uppercase tracking-widest mb-2">
-              Valor {type === 'percentage' ? '(%)' : '(€)'}
-            </label>
-            <input type="number" step="0.01" min="0" max={type === 'percentage' ? '100' : undefined}
-              value={value} onChange={e => setValue(e.target.value)} placeholder="0"
-              onKeyDown={e => { if (e.key === 'Escape') onClose(); }}
-              className="w-full bg-background border-2 border-border rounded-xl px-4 py-3 text-2xl font-black font-mono text-center focus:outline-none focus:border-primary transition-colors"
-            />
-          </div>
-
-          {/* Preview */}
-          {valueNum > 0 && (
-            <div className={`rounded-xl p-3 text-sm ${needsAdmin ? 'bg-destructive/10 border border-destructive/30' : 'bg-primary/5 border border-primary/20'}`}>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Descuento calculado</span>
-                <span className="font-black text-primary">{fmt(discountAmount)}€</span>
-              </div>
-              {needsAdmin && (
-                <p className="text-xs text-destructive mt-1 font-semibold">⚠ Requiere autorización de administrador</p>
-              )}
+              <button onClick={() => setType('fixed')}
+                className={`flex-1 py-2.5 rounded-lg font-bold text-sm transition-all ${type === 'fixed' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground'}`}>
+                Importe fijo (€)
+              </button>
             </div>
-          )}
 
-          {/* Reason */}
-          <div>
-            <label className="block text-xs font-black text-muted-foreground uppercase tracking-widest mb-2">Motivo *</label>
-            <div className="relative">
-              <textarea rows={2} value={reason} onChange={e => setReason(e.target.value)}
-                placeholder="Ej. Descuento empleado, Promoción..."
-                className="w-full bg-background border border-border rounded-xl px-4 py-3 pr-8 text-sm focus:outline-none focus:border-primary resize-none transition-colors"
-              />
-              {reason && (
-                <button type="button" onClick={() => setReason('')} className="absolute right-3 top-3 text-muted-foreground hover:text-foreground">
-                  <X size={13} />
+            {/* Preset buttons */}
+            <div className="grid grid-cols-3 gap-2">
+              {presets.map(p => (
+                <button key={p} onClick={() => setValue(p)}
+                  className={`py-2.5 rounded-xl border font-bold text-sm transition-all ${value === p ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:border-primary'}`}>
+                  {p}{type === 'percentage' ? '%' : '€'}
                 </button>
-              )}
+              ))}
+            </div>
+
+            {/* Value input */}
+            <div>
+              <label className="block text-xs font-black text-muted-foreground uppercase tracking-widest mb-2">
+                Valor {type === 'percentage' ? '(%)' : '(€)'}
+              </label>
+              <input type="number" step="0.01" min="0" max={type === 'percentage' ? '100' : undefined}
+                value={value} onChange={e => setValue(e.target.value)} placeholder="0"
+                onKeyDown={e => { if (e.key === 'Escape') onClose(); }}
+                className="w-full bg-background border-2 border-border rounded-xl px-4 py-3 text-2xl font-black font-mono text-center focus:outline-none focus:border-primary transition-colors"
+              />
+            </div>
+
+            {/* Preview */}
+            {valueNum > 0 && (
+              <div className={`rounded-xl p-3 text-sm ${needsManagerAuth ? 'bg-amber-500/10 border border-amber-500/30' : 'bg-primary/5 border border-primary/20'}`}>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Descuento calculado</span>
+                  <span className="font-black text-primary">{fmt(discountAmount)}€</span>
+                </div>
+                {needsManagerAuth && (
+                  <p className="text-xs text-amber-400 mt-1 font-semibold">⚠ Requiere autorización de encargado</p>
+                )}
+              </div>
+            )}
+
+            {/* Reason */}
+            <div>
+              <label className="block text-xs font-black text-muted-foreground uppercase tracking-widest mb-2">Motivo *</label>
+              <div className="relative">
+                <textarea rows={2} value={reason} onChange={e => setReason(e.target.value)}
+                  placeholder="Ej. Descuento empleado, Promoción..."
+                  className="w-full bg-background border border-border rounded-xl px-4 py-3 pr-8 text-sm focus:outline-none focus:border-primary resize-none transition-colors"
+                />
+                {reason && (
+                  <button type="button" onClick={() => setReason('')} className="absolute right-3 top-3 text-muted-foreground hover:text-foreground">
+                    <X size={13} />
+                  </button>
+                )}
+              </div>
             </div>
           </div>
-        </div>
 
-        <div className="flex gap-3 px-6 py-4 border-t border-border shrink-0">
-          <button onClick={onClose}
-            className="flex-1 py-3 bg-secondary text-foreground font-bold rounded-xl text-sm">
-            Cancelar
-          </button>
-          <button onClick={handleApply} disabled={applying || !value || !reason.trim() || cantApply}
-            className="flex-1 py-3 bg-primary text-primary-foreground font-black rounded-xl text-sm flex items-center justify-center gap-2 disabled:opacity-50">
-            {applying ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check size={16} />}
-            Aplicar
-          </button>
+          <div className="flex gap-3 px-6 py-4 border-t border-border shrink-0">
+            <button onClick={onClose}
+              className="flex-1 py-3 bg-secondary text-foreground font-bold rounded-xl text-sm">
+              Cancelar
+            </button>
+            <button onClick={handleApply} disabled={applying || !value || !reason.trim() || cantApplyAtAll}
+              className="flex-1 py-3 bg-primary text-primary-foreground font-black rounded-xl text-sm flex items-center justify-center gap-2 disabled:opacity-50">
+              {applying ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check size={16} />}
+              {needsManagerAuth ? 'Autorizar y Aplicar' : 'Aplicar'}
+            </button>
+          </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }
 
@@ -982,23 +1007,12 @@ function CashMachinePaymentModal({ orderId, amount, terminal, onSuccess, onCance
     if (intervalRef.current) clearInterval(intervalRef.current);
     intervalRef.current = setInterval(async () => {
       try {
-        const token = localStorage.getItem('token') ?? '';
-        const resp = await fetch(`/api/cash-machine/payments/${id}`, {
-          headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-        });
-        const data = await resp.json();
+        const data = await api.get<{ transaction?: CashMachineTransaction; needsReconciliation?: boolean }>(`/api/cash-machine/payments/${id}`);
         const tx = data?.transaction as CashMachineTransaction | undefined;
         if (!tx) return;
         setTxStatus(tx.status);
         setReceived(parseFloat(tx.amountReceived ?? '0'));
         setChangeAmt(parseFloat(tx.changeDispensed ?? '0'));
-        // Handle reconciliation error: device completed but order settlement failed
-        if (!resp.ok && (data as any)?.needsReconciliation) {
-          if (intervalRef.current) clearInterval(intervalRef.current);
-          setErrMsg('El pago fue recibido por la máquina pero no se pudo liquidar el pedido. Avisa al encargado.');
-          return;
-        }
-        if (!resp.ok) return;
         if (tx.status === 'completada') {
           if (intervalRef.current) clearInterval(intervalRef.current);
           setTimeout(() => onSuccessRef.current(), 1200);
@@ -1006,7 +1020,20 @@ function CashMachinePaymentModal({ orderId, amount, terminal, onSuccess, onCance
           if (intervalRef.current) clearInterval(intervalRef.current);
           setErrMsg((tx as any).deviceError ?? 'La transacción no se completó.');
         }
-      } catch {}
+      } catch (err) {
+        // Handle reconciliation error: device completed but order settlement failed.
+        // The server returns a non-2xx with { needsReconciliation: true } in the body,
+        // which api.get() converts into an ApiClientError with detail containing that body.
+        if (err instanceof ApiClientError) {
+          const detail = err.detail as Record<string, unknown> | null | undefined;
+          if (detail?.needsReconciliation) {
+            if (intervalRef.current) clearInterval(intervalRef.current);
+            setErrMsg('El pago fue recibido por la máquina pero no se pudo liquidar el pedido. Avisa al encargado.');
+            return;
+          }
+        }
+        // Network blips during polling are expected — swallow silently.
+      }
     }, 2000);
   };
 

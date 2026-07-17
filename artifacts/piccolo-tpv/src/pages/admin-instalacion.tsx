@@ -856,7 +856,7 @@ function SimulacionTab() {
     setRunning(true);
     setResult(null);
     try {
-      const data = await customFetch<SimResult>(`${BASE}/api/admin/installation-simulation/run`, { method: 'POST' });
+      const data = await customFetch<SimResult>(`/api/admin/installation-simulation/run`, { method: 'POST' });
       setResult(data);
       if (data.ok) toast.success('Simulación completada: todos los pasos superados');
       else toast.warning('Simulación completada con advertencias');
@@ -1194,12 +1194,12 @@ function ManualesTabDB() {
 
   const manualesQ = useQuery<Manual[]>({
     queryKey: ['installation-manuals'],
-    queryFn: () => customFetch<Manual[]>(`${BASE}/api/admin/installation/manuals`),
+    queryFn: () => customFetch<Manual[]>(`/api/admin/installation/manuals`),
   });
 
   const updateManual = useMutation({
     mutationFn: ({ type, steps, supportPhone }: { type: string; steps: ManualStep[]; supportPhone?: string }) =>
-      customFetch<Manual>(`${BASE}/api/admin/installation/manuals/${type}`, {
+      customFetch<Manual>(`/api/admin/installation/manuals/${type}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ steps, supportPhone }),
@@ -1496,30 +1496,30 @@ export default function AdminInstalacion() {
 
   const devicesQ = useQuery<InstallationDevice[]>({
     queryKey: ['installation-devices'],
-    queryFn: () => customFetch<InstallationDevice[]>(`${BASE}/api/admin/installation/devices`),
+    queryFn: () => customFetch<InstallationDevice[]>(`/api/admin/installation/devices`),
   });
 
   const networkQ = useQuery<NetworkEntry[]>({
     queryKey: ['installation-network'],
-    queryFn: () => customFetch<NetworkEntry[]>(`${BASE}/api/admin/installation/network`),
+    queryFn: () => customFetch<NetworkEntry[]>(`/api/admin/installation/network`),
   });
 
   const diagnosisQ = useQuery<DiagnosisData>({
     queryKey: ['installation-diagnosis'],
-    queryFn: () => customFetch<DiagnosisData>(`${BASE}/api/admin/installation/diagnosis`),
+    queryFn: () => customFetch<DiagnosisData>(`/api/admin/installation/diagnosis`),
     enabled: activeTab === 'diagnostico',
     refetchInterval: 30_000,
   });
 
   const seedMutation = useMutation({
-    mutationFn: () => customFetch(`${BASE}/api/admin/installation/seed`, { method: 'POST' }),
+    mutationFn: () => customFetch(`/api/admin/installation/seed`, { method: 'POST' }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['installation-devices'] }); toast.success('Dispositivos iniciales creados'); },
     onError: (e: Error) => toast.error(e.message),
   });
 
   const saveDevice = useMutation({
     mutationFn: ({ id, data }: { id: string | null; data: Partial<InstallationDevice> }) => {
-      const url = id ? `${BASE}/api/admin/installation/devices/${id}` : `${BASE}/api/admin/installation/devices`;
+      const url = id ? `/api/admin/installation/devices/${id}` : `/api/admin/installation/devices`;
       return customFetch(url, { method: id ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['installation-devices'] }); setEditingId(null); setShowNewDevice(false); toast.success('Dispositivo guardado'); },
@@ -1528,7 +1528,7 @@ export default function AdminInstalacion() {
 
   const deleteDevice = useMutation({
     mutationFn: async (id: string) => {
-      await customFetch(`${BASE}/api/admin/installation/devices/${id}`, { method: 'DELETE' });
+      await customFetch(`/api/admin/installation/devices/${id}`, { method: 'DELETE' });
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['installation-devices'] }); toast.success('Dispositivo eliminado'); },
     onError: () => toast.error('Error eliminando dispositivo'),
@@ -1536,7 +1536,7 @@ export default function AdminInstalacion() {
 
   const saveNetwork = useMutation({
     mutationFn: ({ id, data }: { id: string | null; data: Partial<NetworkEntry> }) => {
-      const url = id ? `${BASE}/api/admin/installation/network/${id}` : `${BASE}/api/admin/installation/network`;
+      const url = id ? `/api/admin/installation/network/${id}` : `/api/admin/installation/network`;
       return customFetch(url, { method: id ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['installation-network'] }); setEditingNetworkId(null); setShowNewNetwork(false); toast.success('Entrada de red guardada'); },
@@ -1545,7 +1545,7 @@ export default function AdminInstalacion() {
 
   const deleteNetwork = useMutation({
     mutationFn: async (id: string) => {
-      await customFetch(`${BASE}/api/admin/installation/network/${id}`, { method: 'DELETE' });
+      await customFetch(`/api/admin/installation/network/${id}`, { method: 'DELETE' });
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['installation-network'] }); toast.success('Entrada eliminada'); },
   });

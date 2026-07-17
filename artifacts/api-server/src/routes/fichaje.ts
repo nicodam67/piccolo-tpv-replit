@@ -13,6 +13,7 @@ import {
 } from "@workspace/db";
 import { eq, and, gte, lte, desc, asc, isNull, isNotNull } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
+import { idempotency } from "../middlewares/idempotency";
 import { z } from "zod";
 
 const router: IRouter = Router();
@@ -107,7 +108,7 @@ const PublicClockBody = z.object({
   source: z.enum(["pin", "nfc", "manual"]).default("pin"),
 });
 
-router.post("/fichaje/public/clock", async (req, res): Promise<void> => {
+router.post("/fichaje/public/clock", idempotency, async (req, res): Promise<void> => {
   const settings = await db.select().from(fichajeSettingsTable).limit(1);
   if (!settings[0]?.mobileClockEnabled) {
     res.status(403).json({ error: "El fichaje móvil no está habilitado" });

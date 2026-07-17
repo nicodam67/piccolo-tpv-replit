@@ -13,14 +13,9 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 
+import { api } from '../../lib/api-client';
+
 const BASE = import.meta.env.BASE_URL?.replace(/\/$/, '') ?? '';
-function apiFetch(path: string, opts?: RequestInit) {
-  const token = localStorage.getItem('token') ?? '';
-  return fetch(`${BASE}/api${path}`, {
-    ...opts,
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, ...(opts?.headers ?? {}) },
-  });
-}
 
 function fmtDate(d: string | null | undefined) {
   if (!d) return 'Nunca';
@@ -164,28 +159,20 @@ function EditDrawer({ device, zones, printers, employees, onClose, onSaved }: Ed
   async function save() {
     setSaving(true);
     try {
-      const r = await apiFetch(`/offline/devices/${device.id}`, {
-        method: 'PATCH',
-        body: JSON.stringify({
-          ...form,
-          assignedZoneId: form.assignedZoneId || null,
-          defaultPrinterId: form.defaultPrinterId || null,
-          usuarioHabitual: form.usuarioHabitual || null,
-          ipAddress: form.ipAddress || null,
-          macAddress: form.macAddress || null,
-          os: form.os || null,
-          browserVersion: form.browserVersion || null,
-          notes: form.notes || null,
-        }),
+      await api.patch(`/api/offline/devices/${device.id}`, {
+        ...form,
+        assignedZoneId: form.assignedZoneId || null,
+        defaultPrinterId: form.defaultPrinterId || null,
+        usuarioHabitual: form.usuarioHabitual || null,
+        ipAddress: form.ipAddress || null,
+        macAddress: form.macAddress || null,
+        os: form.os || null,
+        browserVersion: form.browserVersion || null,
+        notes: form.notes || null,
       });
-      if (r.ok) {
-        toast.success('Dispositivo actualizado');
-        onSaved();
-        onClose();
-      } else {
-        const e = await r.json().catch(() => ({}));
-        toast.error(e.error ?? 'Error al guardar');
-      }
+      toast.success('Dispositivo actualizado');
+      onSaved();
+      onClose();
     } finally { setSaving(false); }
   }
 
@@ -377,25 +364,24 @@ export default function DevicesPage() {
   const loadDevices = useCallback(async () => {
     setLoading(true);
     try {
-      const r = await apiFetch('/offline/devices');
-      if (r.ok) setDevices(await r.json());
+      setDevices(await api.get<Device[]>('/api/offline/devices'));
     } finally { setLoading(false); }
   }, []);
 
   const loadQueue = useCallback(async () => {
-    const r = await apiFetch('/offline/queue?limit=100');
-    if (r.ok) { const d = await r.json(); setQueue(d.data ?? []); }
+    const d = await api.get<{ data: QueueItem[] }>('/api/offline/queue?limit=100');
+    setQueue(d.data ?? []);
   }, []);
 
   const loadLookups = useCallback(async () => {
-    const [zr, pr, er] = await Promise.all([
-      apiFetch('/zones'),
-      apiFetch('/admin/printers'),
-      apiFetch('/hr/employees?limit=200'),
+    const [zones_, printers_, employees_] = await Promise.all([
+      api.get<Zone[]>('/api/zones').catch(() => [] as Zone[]),
+      api.get<any>('/api/admin/printers').catch(() => []),
+      api.get<any>('/api/hr/employees?limit=200').catch(() => []),
     ]);
-    if (zr.ok) setZones(await zr.json());
-    if (pr.ok) { const d = await pr.json(); setPrinters(d.data ?? d ?? []); }
-    if (er.ok) { const d = await er.json(); setEmployees(d.data ?? d ?? []); }
+    setZones(zones_);
+    setPrinters(printers_.data ?? printers_ ?? []);
+    setEmployees(employees_.data ?? employees_ ?? []);
   }, []);
 
   useEffect(() => {
@@ -407,30 +393,25 @@ export default function DevicesPage() {
   async function runAllDiagnostics() {
     setDiagLoading(true);
     try {
-      const r = await apiFetch('/offline/network-diagnostics');
-      if (r.ok) setDiagnostics(await r.json());
-      else toast.error('Error al ejecutar diagnóstico');
+      setDiagnostics(await api.get<DiagnosticsResult>('/api/offline/network-diagnostics'));
     } finally { setDiagLoading(false); }
   }
 
   async function pingDevice(id: string) {
     setPingLoading(id);
     try {
-      const r = await apiFetch(`/offline/devices/${id}/ping`, { method: 'POST' });
-      if (r.ok) {
-        const data = await r.json() as PingResult;
-        setPingResults(prev => ({ ...prev, [id]: data }));
-      } else toast.error('Error al probar dispositivo');
+      const data = await api.post<PingResult>(`/api/offline/devices/${id}/ping`);
+      setPingResults(prev => ({ ...prev, [id]: data }));
     } finally { setPingLoading(null); }
   }
 
   async function loadHistory(id: string) {
-    const r = await apiFetch(`/offline/devices/${id}/history`);
-    if (r.ok) { setHistory(await r.json()); setShowHistory(id); }
+    const h = await api.get<any[]>(`/api/offline/devices/${id}/history`);
+    setHistory(h); setShowHistory(id);
   }
 
   async function resolveQueueItem(id: string, resolution: string) {
-    await apiFetch(`/offline/queue/${id}/resolve`, { method: 'POST', body: JSON.stringify({ resolution }) });
+    await api.post(`/api/offline/queue/${id}/resolve`, { resolution });
     await loadQueue();
     toast.success('Operación resuelta');
   }

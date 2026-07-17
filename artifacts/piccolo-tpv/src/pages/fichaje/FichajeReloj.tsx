@@ -1,8 +1,7 @@
 import { useState, useEffect } from "react";
 import { LogIn, LogOut, Coffee, CoffeeIcon, Clock, ChevronLeft, UserCheck } from "lucide-react";
 import { useLocation } from "wouter";
-
-const BASE = import.meta.env.BASE_URL;
+import { api } from "../../lib/api-client";
 
 interface Employee {
   id: string;
@@ -34,10 +33,10 @@ export default function FichajeReloj() {
 
   useEffect(() => {
     function loadPublicData() {
-      fetch(`${BASE}api/fichaje/public/employees`)
-        .then(r => r.json()).then(setEmployees).catch(() => {});
-      fetch(`${BASE}api/fichaje/public/clock-status`)
-        .then(r => r.json()).then(d => setMobileEnabled(d.mobileClockEnabled)).catch(() => {});
+      api.get<Employee[]>("/api/fichaje/public/employees")
+        .then(setEmployees).catch(() => {});
+      api.get<{ mobileClockEnabled: boolean }>("/api/fichaje/public/clock-status")
+        .then(d => setMobileEnabled(d.mobileClockEnabled)).catch(() => {});
     }
     loadPublicData();
     const onVisibility = () => { if (!document.hidden) loadPublicData(); };
@@ -47,8 +46,7 @@ export default function FichajeReloj() {
 
   async function selectEmployee(emp: Employee) {
     setSelected(emp);
-    const r = await fetch(`${BASE}api/fichaje/public/my-status/${emp.id}`);
-    const d = await r.json();
+    const d = await api.get<ClockState>(`/api/fichaje/public/my-status/${emp.id}`);
     setClockState(d);
   }
 
@@ -56,19 +54,11 @@ export default function FichajeReloj() {
     if (!selected || !mobileEnabled) return;
     setLoading(true);
     try {
-      const r = await fetch(`${BASE}api/fichaje/public/clock`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ employeeId: selected.id, action, source: "pin" }),
-      });
-      if (!r.ok) {
-        const err = await r.json();
-        alert(err.error || "Error al fichar");
-        return;
-      }
-      // Refresh state
-      const s = await fetch(`${BASE}api/fichaje/public/my-status/${selected.id}`);
-      setClockState(await s.json());
+      await api.post("/api/fichaje/public/clock", { employeeId: selected.id, action, source: "pin" });
+      const s = await api.get<ClockState>(`/api/fichaje/public/my-status/${selected.id}`);
+      setClockState(s);
+    } catch (e: any) {
+      alert(e.message || "Error al fichar");
     } finally {
       setLoading(false);
     }

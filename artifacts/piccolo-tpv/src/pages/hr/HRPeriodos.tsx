@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Calendar, Lock, Unlock, Plus, X, AlertTriangle, CheckCircle } from "lucide-react";
 import { toast } from "sonner";
 
-const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+import { api } from "../../lib/api-client";
 
 type PayPeriod = {
   id: string; year: number; month: number; status: string;
@@ -18,10 +18,6 @@ const MONTH_NAMES = [
 ];
 
 const INPUT = "w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm focus:outline-none focus:border-blue-500";
-
-function authHeaders() {
-  return { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("token") ?? ""}` };
-}
 
 function fmt(n?: string | null) {
   if (!n) return "—";
@@ -38,36 +34,17 @@ export default function HRPeriodos() {
 
   const { data: periods = [], isLoading } = useQuery<PayPeriod[]>({
     queryKey: ["hr-periods"],
-    queryFn: async () => {
-      const res = await fetch(`${BASE}/api/hr/pay-periods`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem("token") ?? ""}` },
-      });
-      if (!res.ok) throw new Error("Error");
-      return res.json();
-    },
+    queryFn: () => api.get<PayPeriod[]>("/api/hr/pay-periods"),
   });
 
   const createMutation = useMutation({
-    mutationFn: async () => {
-      const res = await fetch(`${BASE}/api/hr/pay-periods`, {
-        method: "POST", headers: authHeaders(),
-        body: JSON.stringify({ year: newYear, month: newMonth }),
-      });
-      if (!res.ok) throw new Error((await res.json()).error);
-      return res.json();
-    },
+    mutationFn: () => api.post("/api/hr/pay-periods", { year: newYear, month: newMonth }),
     onSuccess: () => { toast.success("Periodo creado"); qc.invalidateQueries({ queryKey: ["hr-periods"] }); setShowCreate(false); },
     onError: (e: Error) => toast.error(e.message),
   });
 
   const closeMutation = useMutation({
-    mutationFn: async (id: string) => {
-      const res = await fetch(`${BASE}/api/hr/pay-periods/${id}/close`, {
-        method: "POST", headers: authHeaders(), body: JSON.stringify({ notes: closeNotes }),
-      });
-      if (!res.ok) throw new Error((await res.json()).error);
-      return res.json();
-    },
+    mutationFn: (id: string) => api.post(`/api/hr/pay-periods/${id}/close`, { notes: closeNotes }),
     onSuccess: () => {
       toast.success("Periodo cerrado");
       qc.invalidateQueries({ queryKey: ["hr-periods"] });
@@ -78,13 +55,7 @@ export default function HRPeriodos() {
   });
 
   const reopenMutation = useMutation({
-    mutationFn: async (id: string) => {
-      const res = await fetch(`${BASE}/api/hr/pay-periods/${id}/reopen`, {
-        method: "POST", headers: authHeaders(), body: "{}",
-      });
-      if (!res.ok) throw new Error((await res.json()).error);
-      return res.json();
-    },
+    mutationFn: (id: string) => api.post(`/api/hr/pay-periods/${id}/reopen`, {}),
     onSuccess: () => { toast.success("Periodo reabierto"); qc.invalidateQueries({ queryKey: ["hr-periods"] }); },
     onError: (e: Error) => toast.error(e.message),
   });

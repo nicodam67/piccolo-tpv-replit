@@ -13,13 +13,10 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 
-const BASE = import.meta.env.BASE_URL?.replace(/\/$/, '') ?? '';
+import { api } from '../lib/api-client';
 
-function api(path: string) {
-  const token = localStorage.getItem('token') ?? '';
-  return fetch(`${BASE}/api${path}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  }).then(r => { if (!r.ok) throw new Error('Error ' + r.status); return r.json(); });
+function apiFetch<T = unknown>(path: string): Promise<T> {
+  return api.get<T>(`/api${path}`);
 }
 
 interface TableItem {
@@ -178,19 +175,19 @@ export default function AdminInstalacionQR() {
 
   useEffect(() => {
     Promise.all([
-      api('/zones').catch(() => []),
-      api('/admin/installation/devices').catch(() => []),
+      apiFetch('/zones').catch(() => []),
+      apiFetch('/admin/installation/devices').catch(() => []),
     ]).then(([zs, _devs]) => {
-      setZones(zs);
+      setZones(zs as Zone[]);
     }).catch(() => {});
 
-    api('/zones')
-      .then(async (zs: Zone[]) => {
+    apiFetch<Zone[]>('/zones')
+      .then(async (zs) => {
         setZones(zs);
         const allTables: TableItem[] = [];
         await Promise.all(
           zs.map(async (z: Zone) => {
-            const ts = await api(`/zones/${z.id}/tables`).catch(() => []) as any[];
+            const ts = await apiFetch<any[]>(`/zones/${z.id}/tables`).catch(() => []);
             ts.forEach((t: any) => allTables.push({ ...t, zoneName: z.name }));
           })
         );

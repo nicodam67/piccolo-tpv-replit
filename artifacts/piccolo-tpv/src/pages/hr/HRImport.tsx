@@ -6,13 +6,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
-
-function authHeaders(json = false) {
-  const h: Record<string, string> = { Authorization: `Bearer ${localStorage.getItem("token") ?? ""}` };
-  if (json) h["Content-Type"] = "application/json";
-  return h;
-}
+import { api } from "../../lib/api-client";
 
 type RawRow = Record<string, string>;
 type ColumnMapping = {
@@ -118,48 +112,30 @@ export default function HRImport() {
 
   const { data: templates = [] } = useQuery<ImportTemplate[]>({
     queryKey: ["hr-import-templates"],
-    queryFn: async () => {
-      const res = await fetch(`${BASE}/api/hr/import/templates`, { headers: authHeaders() });
-      return res.json();
-    },
+    queryFn: () => api.get<ImportTemplate[]>("/api/hr/import/templates"),
   });
 
   const { data: history = [], isLoading: histLoading } = useQuery<ImportHistory[]>({
     queryKey: ["hr-import-history"],
-    queryFn: async () => {
-      const res = await fetch(`${BASE}/api/hr/import/history`, { headers: authHeaders() });
-      return res.json();
-    },
+    queryFn: () => api.get<ImportHistory[]>("/api/hr/import/history"),
   });
 
   const { data: histRows = [] } = useQuery<ImportRow[]>({
     queryKey: ["hr-import-rows", selectedHistory],
-    queryFn: async () => {
-      const res = await fetch(`${BASE}/api/hr/import/history/${selectedHistory}/rows`, { headers: authHeaders() });
-      return res.json();
-    },
+    queryFn: () => api.get<ImportRow[]>(`/api/hr/import/history/${selectedHistory}/rows`),
     enabled: !!selectedHistory,
   });
 
   const { data: employees = [] } = useQuery<Employee[]>({
     queryKey: ["hr-employees-basic"],
-    queryFn: async () => {
-      const res = await fetch(`${BASE}/api/hr/employees`, { headers: authHeaders() });
-      return res.json();
-    },
+    queryFn: () => api.get<Employee[]>("/api/hr/employees"),
   });
 
   const uploadMutation = useMutation({
-    mutationFn: async (file: File) => {
+    mutationFn: (file: File) => {
       const fd = new FormData();
       fd.append("file", file);
-      const res = await fetch(`${BASE}/api/hr/import/upload`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${localStorage.getItem("token") ?? ""}` },
-        body: fd,
-      });
-      if (!res.ok) throw new Error((await res.json()).error ?? "Error subiendo archivo");
-      return res.json() as Promise<UploadPreview>;
+      return api.upload<UploadPreview>("/api/hr/import/upload", fd);
     },
     onSuccess: (data) => {
       setPreview(data);
@@ -174,22 +150,16 @@ export default function HRImport() {
   });
 
   const confirmMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: () => {
       if (!preview) throw new Error("Sin datos de previsualización");
-      const res = await fetch(`${BASE}/api/hr/import/confirm`, {
-        method: "POST",
-        headers: authHeaders(true),
-        body: JSON.stringify({
-          historyId: preview.historyId,
-          rows: rawRows,
-          mapping,
-          pendingAssignments,
-          saveAsTemplate,
-          templateName: saveAsTemplate ? templateName : undefined,
-        }),
+      return api.post<ConfirmResult>("/api/hr/import/confirm", {
+        historyId: preview.historyId,
+        rows: rawRows,
+        mapping,
+        pendingAssignments,
+        saveAsTemplate,
+        templateName: saveAsTemplate ? templateName : undefined,
       });
-      if (!res.ok) throw new Error((await res.json()).error ?? "Error confirmando");
-      return res.json() as Promise<ConfirmResult>;
     },
     onSuccess: (result) => {
       setConfirmResult(result);
@@ -201,15 +171,7 @@ export default function HRImport() {
   });
 
   const revertMutation = useMutation({
-    mutationFn: async (id: string) => {
-      const res = await fetch(`${BASE}/api/hr/import/${id}/revert`, {
-        method: "DELETE",
-        headers: authHeaders(true),
-        body: JSON.stringify({ reason: revertReason }),
-      });
-      if (!res.ok) throw new Error((await res.json()).error ?? "Error revirtiendo");
-      return res.json();
-    },
+    mutationFn: (id: string) => api.delete(`/api/hr/import/${id}/revert`),
     onSuccess: () => {
       toast.success("Importación revertida");
       qc.invalidateQueries({ queryKey: ["hr-import-history"] });
