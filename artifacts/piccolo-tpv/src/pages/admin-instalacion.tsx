@@ -755,6 +755,231 @@ function SimulacionTab() {
 }
 
 // ─── DB-backed manuals tab ─────────────────────────────────────────────────────
+// ─── Emergency scenarios editor ───────────────────────────────────────────────
+interface EmergenciaScenario { id: number; situation: string; steps: string[] }
+
+function EditableEmergencia({ manual, onSave, saving }: {
+  manual: Manual;
+  onSave: (steps: ManualStep[]) => void;
+  saving: boolean;
+}) {
+  const [scenarios, setScenarios] = useState<EmergenciaScenario[]>(
+    () => (manual.steps as any[]).map(s => ({
+      id: s.id ?? Math.random(),
+      situation: s.situation ?? '',
+      steps: Array.isArray(s.steps) ? s.steps : [],
+    }))
+  );
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [hasUnsaved, setHasUnsaved] = useState(false);
+
+  // Reset local state if manual is refetched
+  const prevUpdatedAt = manual.updatedAt;
+  const [lastSeen, setLastSeen] = useState(prevUpdatedAt);
+  if (lastSeen !== prevUpdatedAt && editingId === null) {
+    setLastSeen(prevUpdatedAt);
+    setScenarios((manual.steps as any[]).map(s => ({
+      id: s.id ?? Math.random(),
+      situation: s.situation ?? '',
+      steps: Array.isArray(s.steps) ? s.steps : [],
+    })));
+    setHasUnsaved(false);
+  }
+
+  const markDirty = () => setHasUnsaved(true);
+
+  const updateScenario = (id: number, patch: Partial<EmergenciaScenario>) => {
+    setScenarios(prev => prev.map(s => s.id === id ? { ...s, ...patch } : s));
+    markDirty();
+  };
+
+  const addScenario = () => {
+    const newId = Date.now();
+    setScenarios(prev => [...prev, { id: newId, situation: 'Nueva situación', steps: ['Primer paso'] }]);
+    setEditingId(newId);
+    setExpandedId(newId);
+    markDirty();
+  };
+
+  const deleteScenario = (id: number) => {
+    setScenarios(prev => prev.filter(s => s.id !== id));
+    if (editingId === id) setEditingId(null);
+    if (expandedId === id) setExpandedId(null);
+    markDirty();
+  };
+
+  const addStep = (id: number) => {
+    updateScenario(id, {
+      steps: [...(scenarios.find(s => s.id === id)?.steps ?? []), ''],
+    });
+  };
+
+  const updateStep = (scenarioId: number, stepIdx: number, text: string) => {
+    const sc = scenarios.find(s => s.id === scenarioId);
+    if (!sc) return;
+    const newSteps = [...sc.steps];
+    newSteps[stepIdx] = text;
+    updateScenario(scenarioId, { steps: newSteps });
+  };
+
+  const deleteStep = (scenarioId: number, stepIdx: number) => {
+    const sc = scenarios.find(s => s.id === scenarioId);
+    if (!sc || sc.steps.length <= 1) return;
+    updateScenario(scenarioId, { steps: sc.steps.filter((_, i) => i !== stepIdx) });
+  };
+
+  const handleSave = () => {
+    onSave(scenarios.map((s, i) => ({ id: i + 1, situation: s.situation, steps: s.steps } as any)));
+    setEditingId(null);
+    setHasUnsaved(false);
+  };
+
+  return (
+    <div className="bg-card border border-border rounded-xl overflow-hidden">
+      {/* Header */}
+      <div className="p-5 border-b border-border flex items-center gap-4">
+        <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-red-500/10 text-red-400 shrink-0">
+          <AlertTriangle size={20} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="font-bold">{manual.title}</p>
+          <p className="text-xs text-muted-foreground">
+            Protocolo para situaciones de fallo — actualizado {new Date(manual.updatedAt).toLocaleDateString('es-ES')}
+          </p>
+        </div>
+        {hasUnsaved && (
+          <span className="text-xs text-amber-400 font-semibold shrink-0">Cambios sin guardar</span>
+        )}
+      </div>
+
+      {/* Scenarios list */}
+      <div className="p-5 space-y-3">
+        {scenarios.map((sc) => {
+          const isEditing = editingId === sc.id;
+          const isExpanded = expandedId === sc.id || isEditing;
+
+          return (
+            <div key={sc.id} className={`border rounded-xl overflow-hidden transition-all ${isEditing ? 'border-primary/50' : 'border-border'}`}>
+              {/* Scenario header row */}
+              <div
+                className={`flex items-center gap-2 px-4 py-2.5 cursor-pointer select-none ${isEditing ? 'bg-primary/5' : 'bg-secondary/30 hover:bg-secondary/50'} transition-colors`}
+                onClick={() => !isEditing && setExpandedId(isExpanded ? null : sc.id)}
+              >
+                <AlertCircle size={14} className="text-amber-400 shrink-0" />
+                {isEditing ? (
+                  <input
+                    value={sc.situation}
+                    onChange={e => updateScenario(sc.id, { situation: e.target.value })}
+                    onClick={e => e.stopPropagation()}
+                    className="flex-1 bg-background border border-border rounded-lg px-2 py-1 text-sm font-bold focus:outline-none focus:ring-1 focus:ring-primary"
+                    placeholder="Nombre de la situación"
+                  />
+                ) : (
+                  <span className="font-bold text-sm flex-1 truncate">{sc.situation}</span>
+                )}
+                <div className="flex items-center gap-1 shrink-0">
+                  {!isEditing && (
+                    <button
+                      onClick={e => { e.stopPropagation(); setEditingId(sc.id); setExpandedId(sc.id); }}
+                      className="p-1.5 rounded-lg hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
+                      title="Editar escenario"
+                    >
+                      <Pencil size={13} />
+                    </button>
+                  )}
+                  <button
+                    onClick={e => { e.stopPropagation(); deleteScenario(sc.id); }}
+                    className="p-1.5 rounded-lg hover:bg-red-500/10 text-muted-foreground hover:text-red-400 transition-colors"
+                    title="Eliminar escenario"
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                  {!isEditing && (
+                    isExpanded
+                      ? <ChevronDown size={14} className="text-muted-foreground" />
+                      : <ChevronRight size={14} className="text-muted-foreground" />
+                  )}
+                </div>
+              </div>
+
+              {/* Steps */}
+              {isExpanded && (
+                <div className="px-4 pb-4 pt-3 space-y-2">
+                  {isEditing ? (
+                    <>
+                      {sc.steps.map((step, si) => (
+                        <div key={si} className="flex items-start gap-2">
+                          <span className="text-xs font-bold text-muted-foreground pt-2 w-5 shrink-0">{si + 1}.</span>
+                          <textarea
+                            value={step}
+                            onChange={e => updateStep(sc.id, si, e.target.value)}
+                            rows={2}
+                            className="flex-1 bg-background border border-border rounded-lg px-2 py-1.5 text-xs resize-none focus:outline-none focus:ring-1 focus:ring-primary"
+                            placeholder={`Paso ${si + 1}`}
+                          />
+                          <button
+                            onClick={() => deleteStep(sc.id, si)}
+                            disabled={sc.steps.length <= 1}
+                            className="mt-1 p-1.5 rounded-lg hover:bg-red-500/10 text-muted-foreground hover:text-red-400 disabled:opacity-30 transition-colors"
+                            title="Eliminar paso"
+                          >
+                            <X size={12} />
+                          </button>
+                        </div>
+                      ))}
+                      <button
+                        onClick={() => addStep(sc.id)}
+                        className="flex items-center gap-1.5 text-xs text-primary hover:underline mt-1"
+                      >
+                        <Plus size={12} /> Añadir paso
+                      </button>
+                      <div className="flex gap-2 justify-end mt-2 pt-2 border-t border-border">
+                        <button
+                          onClick={() => setEditingId(null)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 border border-border rounded-lg text-xs hover:bg-secondary"
+                        >
+                          <X size={12} /> Cerrar edición
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <ul className="space-y-1.5">
+                      {sc.steps.map((step, si) => (
+                        <li key={si} className="text-sm text-muted-foreground flex items-start gap-2">
+                          <span className="text-primary font-bold shrink-0">{si + 1}.</span>
+                          <span>{step}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+
+        {/* Add scenario + Save row */}
+        <div className="flex items-center gap-3 pt-2">
+          <button
+            onClick={addScenario}
+            className="flex items-center gap-2 px-3 py-2 border border-dashed border-border rounded-xl text-sm text-muted-foreground hover:border-primary hover:text-primary transition-colors"
+          >
+            <Plus size={14} /> Añadir escenario
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving || !hasUnsaved}
+            className="ml-auto flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-xl text-sm font-bold hover:opacity-90 disabled:opacity-50 transition-opacity"
+          >
+            <Save size={14} /> {saving ? 'Guardando…' : 'Guardar cambios'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ManualesTabDB() {
   const BASE = import.meta.env.BASE_URL.replace(/\/$/, '');
   const qc = useQueryClient();
@@ -818,37 +1043,13 @@ function ManualesTabDB() {
         />
       )}
 
-      {/* Emergencia (non-editable checklist, just read) */}
+      {/* Emergencia — fully editable scenarios */}
       {emergencia && (
-        <div className="bg-card border border-border rounded-xl overflow-hidden">
-          <div className="p-5 border-b border-border flex items-center gap-4">
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-red-500/10 text-red-400">
-              <AlertTriangle size={20} />
-            </div>
-            <div>
-              <p className="font-bold">{emergencia.title}</p>
-              <p className="text-xs text-muted-foreground">Protocolo para situaciones de fallo — actualizado {new Date(emergencia.updatedAt).toLocaleDateString('es-ES')}</p>
-            </div>
-          </div>
-          <div className="p-5 space-y-4">
-            {emergencia.steps.map((item: any) => (
-              <div key={item.id} className="border border-border rounded-xl overflow-hidden">
-                <div className="bg-secondary/30 px-4 py-2.5 flex items-center gap-2">
-                  <AlertCircle size={14} className="text-amber-400" />
-                  <span className="font-bold text-sm">{item.situation}</span>
-                </div>
-                <ul className="p-4 space-y-1.5">
-                  {(item.steps as string[]).map((step: string, i: number) => (
-                    <li key={i} className="text-sm text-muted-foreground flex items-start gap-2">
-                      <span className="text-primary font-bold shrink-0">{i + 1}.</span>
-                      <span>{step}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))}
-          </div>
-        </div>
+        <EditableEmergencia
+          manual={emergencia}
+          onSave={(steps) => updateManual.mutate({ type: 'emergencia', steps })}
+          saving={updateManual.isPending}
+        />
       )}
 
       {/* Contact box */}
