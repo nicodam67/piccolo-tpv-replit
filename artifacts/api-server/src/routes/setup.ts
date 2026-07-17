@@ -381,8 +381,15 @@ router.delete("/setup/simulation/cleanup", ...adminGuard, async (req, res) => {
 
   const results: Record<string, number> = {};
 
-  // Clean is_demo rows from tables that have that column
-  const demoTables = ["backup_records", "offline_devices", "offline_queue", "tech_events"];
+  // Clean is_demo rows from all tables — operational first (FK order), then legacy
+  const demoTables = [
+    // operational tables added in migration 0015 (FK-safe order: children first)
+    "stock_movements", "tickets", "payments", "orders", "cash_sessions", "reservations",
+    // legacy tables with is_demo from earlier migrations
+    "backup_records", "offline_devices", "offline_queue", "tech_events",
+    "hr_employee_requests", "hr_pay_periods", "hr_import_history",
+    "setup_wizard_sessions", "director_metrics", "director_targets",
+  ];
   for (const tableName of demoTables) {
     try {
       const r = await db.execute(sql.raw(`DELETE FROM "${tableName}" WHERE is_demo = true`)) as { rowCount?: number };

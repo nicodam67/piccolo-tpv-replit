@@ -57,6 +57,7 @@ import offlineRouter from "./offline";
 import setupRouter from "./setup";
 import auditRouter from "./audit";
 import installationRouter from "./installation";
+import demoDataRouter from "./demo-data";
 
 const router: IRouter = Router();
 
@@ -118,5 +119,6 @@ router.use(offlineRouter);
 router.use(setupRouter);
 router.use(auditRouter);
 router.use(installationRouter);
+router.use(demoDataRouter);
 
 export default router;

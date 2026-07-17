@@ -81,6 +81,7 @@ import MenuPage from './pages/menu';
 import AdminSistema from './pages/admin-sistema';
 import AdminInstalacion from './pages/admin-instalacion';
 import AdminPermisos from './pages/admin-permisos';
+import AdminDatosDemo from './pages/admin-datos-demo';
 import NotFound from './pages/not-found';
 
 const queryClient = new QueryClient({
@@ -183,6 +184,8 @@ function Router() {
       <Route path="/admin/instalacion" component={AdminInstalacion} />
       {/* Permisos por rol */}
       <Route path="/admin/permisos" component={AdminPermisos} />
+      {/* Demo data manager */}
+      <Route path="/admin/datos-demo" component={AdminDatosDemo} />
       {/* Sistema — audit & diagnostics */}
       <Route path="/admin/sistema" component={AdminSistema} />
       {/* Public menu with QR table session support */}

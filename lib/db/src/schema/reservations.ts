@@ -66,6 +66,8 @@ export const reservationsTable = pgTable("reservations", {
   createdBy:    uuid("created_by").references(() => employeesTable.id, { onDelete: "set null" }),
   createdAt:    timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt:    timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  /** True for simulation/demo data; safe to purge without touching real records */
+  isDemo:       boolean("is_demo").notNull().default(false),
 });
 export type Reservation = typeof reservationsTable.$inferSelect;
 

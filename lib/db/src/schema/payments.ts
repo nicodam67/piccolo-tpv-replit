@@ -31,6 +31,8 @@ export const cashSessionsTable = pgTable("cash_sessions", {
   closingNotes: text("closing_notes"),
   /** Bill/coin denomination breakdown used during the arqueo: { "50": 2, "20": 3, ... } */
   denominationBreakdown: jsonb("denomination_breakdown"),
+  /** True for simulation/demo data; safe to purge without touching real records */
+  isDemo: boolean("is_demo").notNull().default(false),
 });
 
 export const paymentsTable = pgTable(
@@ -54,6 +56,8 @@ export const paymentsTable = pgTable(
       .notNull()
       .references(() => employeesTable.id),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    /** True for simulation/demo data; safe to purge without touching real records */
+    isDemo: boolean("is_demo").notNull().default(false),
   },
   (table) => ({
     /** Partial unique index: guarantees exactly-once payment recording for
@@ -92,6 +96,8 @@ export const ticketsTable = pgTable("tickets", {
   employeeId: uuid("employee_id")
     .notNull()
     .references(() => employeesTable.id),
+  /** True for simulation/demo data; safe to purge without touching real records */
+  isDemo: boolean("is_demo").notNull().default(false),
 });
 
 export const cashMovementsTable = pgTable("cash_movements", {

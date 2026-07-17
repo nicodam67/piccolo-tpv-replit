@@ -1,10 +1,16 @@
 /**
- * Online Orders API — Fase 1 del módulo de pedidos online.
+ * Online Orders API — LEGACY v1 (active routes kept; public ordering endpoint retired)
+ *
+ * ⚠️  DEPRECATION NOTICE
+ *     POST /public/orders/online  →  returns 410 Gone (superseded by v2)
+ *     New clients must use POST /public/orders/online-v2 (online-orders-v2.ts).
+ *     The non-public routes below (inbox, config, delivery zones, couriers) are still active.
+ *     Remove this file entirely only after all public ordering clients have migrated to v2.
  *
  * Rutas públicas (sin auth):
  *   GET  /public/online-config          — Configuración del servicio
  *   POST /public/check-zone             — Valida si una dirección está en zona de reparto
- *   POST /public/orders/online          — Crea un pedido desde el carrito
+ *   POST /public/orders/online          — [RETIRED] 410 Gone — usar /public/orders/online-v2
  *   GET  /public/order-status/:orderNumber — Estado del pedido para el cliente
  *
  * Rutas de personal (requireAuth):

@@ -155,6 +155,8 @@ export const stockMovementsTable = pgTable("stock_movements", {
   employeeId: uuid("employee_id").references(() => employeesTable.id),
   orderItemId: uuid("order_item_id").references(() => orderItemsTable.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  /** True for simulation/demo data; safe to purge without touching real records */
+  isDemo: boolean("is_demo").notNull().default(false),
 });
 
 // ─── Types ────────────────────────────────────────────────────────────────────

@@ -47,6 +47,7 @@ import {
   Smartphone,
   Wand2,
   Lock,
+  Trash2,
 } from 'lucide-react';
 import { useGetDashboardSummary, getGetDashboardSummaryQueryKey, customFetch } from '@workspace/api-client-react';
 import { useQuery } from '@tanstack/react-query';
@@ -607,6 +608,19 @@ const MODULES: ModuleCard[] = [
     iconBg: 'rgba(139,92,246,0.18)',
     iconColor: '#8b5cf6',
     glow: 'rgba(139,92,246,0.15)',
+  },
+  {
+    id: 'datos-demo',
+    icon: <Trash2 size={28} />,
+    title: 'Datos de demostración',
+    description: 'Ver y purgar registros de simulación · is_demo · limpieza antes del go-live',
+    href: '/admin/datos-demo',
+    ready: true,
+    accent: 'rgba(239,68,68,0.07)',
+    border: 'rgba(239,68,68,0.40)',
+    iconBg: 'rgba(239,68,68,0.18)',
+    iconColor: '#ef4444',
+    glow: 'rgba(239,68,68,0.15)',
   },
   {
     id: 'sistema',

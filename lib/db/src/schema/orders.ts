@@ -45,6 +45,8 @@ export const ordersTable = pgTable("orders", {
   packagingCheckedAt: timestamp("packaging_checked_at", { withTimezone: true }),
   /** Delivery fee charged for this order */
   deliveryFee: numeric("delivery_fee", { precision: 10, scale: 2 }).notNull().default("0"),
+  /** True for simulation/demo data; safe to purge without touching real records */
+  isDemo: boolean("is_demo").notNull().default(false),
 });
 
 export const insertOrderSchema = createInsertSchema(ordersTable).omit({ id: true, createdAt: true });
