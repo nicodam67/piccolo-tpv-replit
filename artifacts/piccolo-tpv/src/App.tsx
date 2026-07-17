@@ -79,6 +79,7 @@ import DeliveryPage from './pages/delivery';
 import AdminRepartidores from './pages/admin-repartidores';
 import MenuPage from './pages/menu';
 import AdminSistema from './pages/admin-sistema';
+import AdminInstalacion from './pages/admin-instalacion';
 import NotFound from './pages/not-found';
 
 const queryClient = new QueryClient({
@@ -177,6 +178,8 @@ function Router() {
       {/* Setup Wizard */}
       <Route path="/setup" component={SetupWelcome} />
       <Route path="/setup/:sessionId/:step" component={SetupWizardPage} />
+      {/* Instalación */}
+      <Route path="/admin/instalacion" component={AdminInstalacion} />
       {/* Sistema — audit & diagnostics */}
       <Route path="/admin/sistema" component={AdminSistema} />
       {/* Public menu with QR table session support */}
