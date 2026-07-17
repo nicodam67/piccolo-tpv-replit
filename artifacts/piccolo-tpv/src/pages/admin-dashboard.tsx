@@ -595,6 +595,19 @@ const MODULES: ModuleCard[] = [
   },
   // ─── Sistema ─────────────────────────────────────────────────────────────
   {
+    id: 'sistema',
+    icon: <Activity size={28} />,
+    title: 'Estado del sistema',
+    description: 'Diagnóstico · clasificación de módulos · hallazgos · informe de preparación go-live',
+    href: '/admin/sistema',
+    ready: true,
+    accent: 'rgba(99,102,241,0.07)',
+    border: 'rgba(99,102,241,0.40)',
+    iconBg: 'rgba(99,102,241,0.18)',
+    iconColor: '#818cf8',
+    glow: 'rgba(99,102,241,0.15)',
+  },
+  {
     id: 'backup',
     icon: <HardDrive size={28} />,
     title: 'Copias de seguridad',

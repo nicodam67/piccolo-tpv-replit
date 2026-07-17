@@ -31,3 +31,4 @@ export * from "./director";
 export * from "./backups";
 export * from "./backup-offline";
 export * from "./setup-wizard";
+export * from "./audit-findings";

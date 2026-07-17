@@ -78,6 +78,7 @@ import AdminTurnosReservas from './pages/admin-turnos-reservas';
 import DeliveryPage from './pages/delivery';
 import AdminRepartidores from './pages/admin-repartidores';
 import MenuPage from './pages/menu';
+import AdminSistema from './pages/admin-sistema';
 import NotFound from './pages/not-found';
 
 const queryClient = new QueryClient({
@@ -176,6 +177,8 @@ function Router() {
       {/* Setup Wizard */}
       <Route path="/setup" component={SetupWelcome} />
       <Route path="/setup/:sessionId/:step" component={SetupWizardPage} />
+      {/* Sistema — audit & diagnostics */}
+      <Route path="/admin/sistema" component={AdminSistema} />
       {/* Public menu with QR table session support */}
       <Route path="/menu" component={MenuPage} />
       <Route component={NotFound} />

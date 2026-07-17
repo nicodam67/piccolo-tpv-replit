@@ -55,6 +55,7 @@ import backupRouter from "./backup";
 import diagnosticsRouter from "./diagnostics";
 import offlineRouter from "./offline";
 import setupRouter from "./setup";
+import auditRouter from "./audit";
 
 const router: IRouter = Router();
 
@@ -114,5 +115,6 @@ router.use(backupRouter);
 router.use(diagnosticsRouter);
 router.use(offlineRouter);
 router.use(setupRouter);
+router.use(auditRouter);
 
 export default router;
