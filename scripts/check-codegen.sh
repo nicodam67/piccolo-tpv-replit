@@ -48,3 +48,10 @@ if [ "$CURRENT_HASH" != "$STORED_HASH" ]; then
 fi
 
 echo "OK: Generated API types are in sync with the spec (hash matches stamp)."
+
+# ─── Route security audit ─────────────────────────────────────────────────────
+# Verify that no Express route is missing requireAuth.
+echo ""
+echo "Running route security audit…"
+node --no-warnings --experimental-strip-types \
+  artifacts/api-server/scripts/audit-routes.ts

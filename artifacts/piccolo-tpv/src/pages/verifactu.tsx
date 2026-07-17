@@ -91,6 +91,19 @@ export default function Verifactu() {
   const [, setLocation] = useLocation();
   const [tab, setTab] = useState<'panel' | 'registros' | 'config' | 'declaracion'>('panel');
 
+  const { data: status } = useQuery<VerifactuStatus>({
+    queryKey: ['verifactu-status'],
+    queryFn: () => customFetch('/api/admin/verifactu/status'),
+    refetchInterval: 60000,
+  });
+
+  const entorno = status?.entorno ?? 'simulador';
+  const entornoBadge = entorno === 'produccion'
+    ? { color: '#3caa78', bg: 'rgba(60,170,120,0.15)', border: 'rgba(60,170,120,0.3)', label: 'AEAT — Producción' }
+    : entorno === 'pruebas'
+    ? { color: '#d2a032', bg: 'rgba(210,160,50,0.15)', border: 'rgba(210,160,50,0.3)', label: 'AEAT — Pruebas' }
+    : { color: '#8282a0', bg: 'rgba(130,130,160,0.15)', border: 'rgba(130,130,160,0.3)', label: 'Simulador local' };
+
   return (
     <div className="min-h-screen flex flex-col bg-background">
       {/* Header */}
@@ -105,10 +118,23 @@ export default function Verifactu() {
         </div>
         <span className="font-black text-base">VERI*FACTU</span>
         <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest"
-          style={{ background: 'rgba(210,160,50,0.15)', color: '#d2a032', border: '1px solid rgba(210,160,50,0.3)' }}>
-          Fase 1 — Pruebas
+          style={{ background: entornoBadge.bg, color: entornoBadge.color, border: `1px solid ${entornoBadge.border}` }}>
+          {entornoBadge.label}
         </span>
       </header>
+
+      {/* Non-production warning banner */}
+      {entorno !== 'produccion' && (
+        <div className="flex items-center gap-3 px-5 lg:px-8 py-2.5 bg-amber-500/10 border-b border-amber-500/20">
+          <AlertTriangle size={14} className="text-amber-400 shrink-0" />
+          <p className="text-xs text-amber-300/90">
+            {entorno === 'simulador'
+              ? 'Modo simulador — ningún registro se envía a la AEAT. Los documentos generados no tienen validez fiscal.'
+              : 'Entorno de pruebas AEAT — los registros se envían al entorno de pruebas, no al sistema oficial de producción.'}
+            {' '}Para activar producción, ve a <strong>Configuración</strong> y selecciona el entorno de producción.
+          </p>
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="flex gap-1 px-5 lg:px-8 pt-4 border-b border-border">
@@ -534,6 +560,8 @@ function ConfigTab() {
 
   const [form, setForm] = useState<UpdateVerifactuConfigInput>({});
   const [dirty, setDirty] = useState(false);
+  const [showProdDialog, setShowProdDialog] = useState(false);
+  const [prodConfirmText, setProdConfirmText] = useState('');
 
   useEffect(() => {
     if (config) {
@@ -574,8 +602,22 @@ function ConfigTab() {
   });
 
   const set = (k: keyof UpdateVerifactuConfigInput, v: unknown) => {
+    if (k === 'entorno' && v === 'produccion') {
+      // Show confirmation dialog — don't set immediately
+      setShowProdDialog(true);
+      return;
+    }
     setForm(f => ({ ...f, [k]: v }));
     setDirty(true);
+  };
+
+  const confirmProduccion = () => {
+    if (prodConfirmText.trim().toLowerCase() !== 'produccion') return;
+    setForm(f => ({ ...f, entorno: 'produccion' }));
+    setDirty(true);
+    setShowProdDialog(false);
+    setProdConfirmText('');
+    toast.warning('Entorno cambiado a PRODUCCIÓN. Guarda la configuración para aplicar el cambio.');
   };
 
   if (!config) return <div className="flex items-center gap-2 text-muted-foreground"><Loader2 size={16} className="animate-spin" />Cargando…</div>;
@@ -623,9 +665,71 @@ function ConfigTab() {
             className="w-full px-3 py-2 rounded-lg bg-secondary border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/40">
             <option value="simulador">Simulador local (sin envíos reales)</option>
             <option value="pruebas">AEAT — Entorno de pruebas (requiere certificado)</option>
-            <option value="produccion" disabled>AEAT — Producción (desactivado en Fase 1)</option>
+            <option value="produccion">AEAT — Producción (requiere confirmación)</option>
           </select>
+          {form.entorno === 'produccion' && (
+            <div className="mt-2 flex items-center gap-2 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/30">
+              <AlertTriangle size={13} className="text-red-400 shrink-0" />
+              <p className="text-[11px] text-red-300/90">
+                Entorno de <strong>PRODUCCIÓN</strong> activo. Los registros enviados tendrán validez fiscal real ante la AEAT.
+              </p>
+            </div>
+          )}
         </FormField>
+
+        {/* Confirmation for producción mode */}
+        {showProdDialog && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+            <div className="bg-card border border-red-500/40 rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-red-500/15">
+                  <AlertTriangle size={20} className="text-red-400" />
+                </div>
+                <div>
+                  <h3 className="font-black text-base text-red-300">Cambiar a Producción</h3>
+                  <p className="text-xs text-muted-foreground">Esta acción tiene efectos fiscales reales</p>
+                </div>
+              </div>
+
+              <div className="space-y-2 text-sm text-muted-foreground">
+                <p>Al activar el entorno de <strong className="text-foreground">producción</strong>:</p>
+                <ul className="space-y-1 pl-4 text-xs">
+                  <li>• Los registros se enviarán al sistema oficial de la AEAT con validez legal.</li>
+                  <li>• Los registros en modo simulador / pruebas <strong className="text-foreground">no pueden reenviarse</strong> como producción.</li>
+                  <li>• Necesitas un certificado digital válido configurado en la ruta indicada.</li>
+                  <li>• Este cambio queda registrado en el log de auditoría.</li>
+                </ul>
+              </div>
+
+              <div>
+                <p className="text-xs text-muted-foreground mb-1.5">Escribe <code className="font-mono bg-secondary px-1 rounded text-foreground">produccion</code> para confirmar:</p>
+                <input
+                  value={prodConfirmText}
+                  onChange={e => setProdConfirmText(e.target.value)}
+                  placeholder="produccion"
+                  className="w-full px-3 py-2 rounded-lg bg-secondary border border-border text-sm font-mono focus:outline-none focus:ring-2 focus:ring-red-500/40"
+                  autoFocus
+                />
+              </div>
+
+              <div className="flex gap-3 justify-end pt-1">
+                <button
+                  onClick={() => { setShowProdDialog(false); setProdConfirmText(''); }}
+                  className="px-4 py-2 rounded-lg border border-border text-sm font-medium hover:bg-secondary transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={confirmProduccion}
+                  disabled={prodConfirmText.trim().toLowerCase() !== 'produccion'}
+                  className="px-4 py-2 rounded-lg bg-red-600 text-white text-sm font-bold hover:bg-red-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Activar Producción
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
         {form.entorno === 'pruebas' && (
           <>
             <FormField label="Endpoint pruebas AEAT">

@@ -326,6 +326,7 @@ router.get("/online-orders", requireAuth, async (req, res): Promise<void> => {
       productName: productsTable.name,
       quantity: orderItemsTable.quantity,
       unitPrice: orderItemsTable.unitPrice,
+      taxRate: orderItemsTable.taxRate,
     }).from(orderItemsTable)
       .innerJoin(productsTable, eq(orderItemsTable.productId, productsTable.id))
       .where(eq(orderItemsTable.orderId, order.id));
@@ -346,7 +347,7 @@ router.get("/online-orders", requireAuth, async (req, res): Promise<void> => {
 
     const lineTotals = items.map((it) => ({
       lineTotal: parseFloat(it.unitPrice) * it.quantity,
-      taxRate: 10,
+      taxRate: it.taxRate ?? 10,
     }));
     const { total } = calcMultiRateBreakdown(lineTotals, 0);
     const deliveryFee = parseFloat((order as any).deliveryFee ?? "0");
@@ -489,9 +490,10 @@ router.patch("/online-orders/:id/status", requireAuth, async (req, res): Promise
       const items = await db.select({
         unitPrice: orderItemsTable.unitPrice,
         quantity: orderItemsTable.quantity,
+        taxRate: orderItemsTable.taxRate,
       }).from(orderItemsTable).where(eq(orderItemsTable.orderId, id));
 
-      const lineTotals = items.map((it) => ({ lineTotal: parseFloat(it.unitPrice) * it.quantity, taxRate: 10 }));
+      const lineTotals = items.map((it) => ({ lineTotal: parseFloat(it.unitPrice) * it.quantity, taxRate: it.taxRate ?? 10 }));
       const { total } = calcMultiRateBreakdown(lineTotals, 0);
 
       await issuePoints({
@@ -736,11 +738,12 @@ router.get("/courier/:courierId/deliveries", async (req, res): Promise<void> => 
       productName: productsTable.name,
       quantity: orderItemsTable.quantity,
       unitPrice: orderItemsTable.unitPrice,
+      taxRate: orderItemsTable.taxRate,
     }).from(orderItemsTable)
       .innerJoin(productsTable, eq(orderItemsTable.productId, productsTable.id))
       .where(eq(orderItemsTable.orderId, o.id));
 
-    const lineTotals = items.map((it) => ({ lineTotal: parseFloat(it.unitPrice) * it.quantity, taxRate: 10 }));
+    const lineTotals = items.map((it) => ({ lineTotal: parseFloat(it.unitPrice) * it.quantity, taxRate: it.taxRate ?? 10 }));
     const { total } = calcMultiRateBreakdown(lineTotals, 0);
     const grandTotal = (parseFloat(total) + parseFloat((o as any).deliveryFee ?? "0")).toFixed(2);
 

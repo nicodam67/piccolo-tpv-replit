@@ -256,7 +256,7 @@ function DeviceCard({ device, onEdit, onDelete }: { device: InstallationDevice; 
       </div>
       <div className="flex gap-3 text-xs">
         <span className={`flex items-center gap-1 ${device.paymentAllowed ? 'text-emerald-400' : 'text-muted-foreground'}`}>
-          {device.paymentAllowed ? <Unlock size={11} /> : <Lock size={11} />} Cobro
+          {device.paymentAllowed ? <Lock size={11} className="text-emerald-400" /> : <Lock size={11} />} Cobro
         </span>
         <span className={`flex items-center gap-1 ${device.offlineAuthorized ? 'text-blue-400' : 'text-muted-foreground'}`}>
           {device.offlineAuthorized ? <WifiOff size={11} /> : <Wifi size={11} />} Offline

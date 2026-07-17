@@ -80,6 +80,7 @@ import AdminRepartidores from './pages/admin-repartidores';
 import MenuPage from './pages/menu';
 import AdminSistema from './pages/admin-sistema';
 import AdminInstalacion from './pages/admin-instalacion';
+import AdminPermisos from './pages/admin-permisos';
 import NotFound from './pages/not-found';
 
 const queryClient = new QueryClient({
@@ -180,6 +181,8 @@ function Router() {
       <Route path="/setup/:sessionId/:step" component={SetupWizardPage} />
       {/* Instalación */}
       <Route path="/admin/instalacion" component={AdminInstalacion} />
+      {/* Permisos por rol */}
+      <Route path="/admin/permisos" component={AdminPermisos} />
       {/* Sistema — audit & diagnostics */}
       <Route path="/admin/sistema" component={AdminSistema} />
       {/* Public menu with QR table session support */}
