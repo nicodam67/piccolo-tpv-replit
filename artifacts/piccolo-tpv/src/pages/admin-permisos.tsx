@@ -4,7 +4,7 @@
  * Displays a matrix: rows = module+action, columns = roles, cells = checkboxes.
  */
 import { useState, useEffect } from "react";
-import { useNavigate } from "wouter";
+import { useLocation } from "wouter";
 import { Shield, ChevronLeft, Check, X, RefreshCw, Info } from "lucide-react";
 import { customFetch } from "@workspace/api-client-react";
 
@@ -53,7 +53,7 @@ function isOverridden(overrides: Override[], role: string, module: string, actio
 }
 
 export default function AdminPermisos() {
-  const navigate = useNavigate();
+  const [, navigate] = useLocation();
   const [catalog, setCatalog] = useState<ModuleEntry[]>([]);
   const [overrides, setOverrides] = useState<Override[]>([]);
   const [loading, setLoading] = useState(true);
