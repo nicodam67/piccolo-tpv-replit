@@ -31,7 +31,7 @@ import { requireAuth, requireRole } from "../middlewares/auth";
 import crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
 
 const router = Router();
 const guard = [requireAuth, requireRole("admin", "manager")];
@@ -558,12 +558,15 @@ router.post("/backup/emergency-export", ...guard, async (req, res) => {
   }
 
   if (format === "xlsx") {
-    const wb = XLSX.utils.book_new();
+    const wb = new ExcelJS.Workbook();
     for (const [name, rows] of Object.entries(tables)) {
-      const ws = XLSX.utils.json_to_sheet(rows as object[]);
-      XLSX.utils.book_append_sheet(wb, ws, name.slice(0, 31));
+      const ws = wb.addWorksheet(name.slice(0, 31));
+      if ((rows as object[]).length > 0) {
+        ws.columns = Object.keys((rows as object[])[0] as object).map((k) => ({ header: k, key: k, width: 18 }));
+        ws.addRows(rows as object[]);
+      }
     }
-    const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+    const buf = Buffer.from(await wb.xlsx.writeBuffer());
     res.setHeader("Content-Disposition", `attachment; filename="piccolo_export_${new Date().toISOString().slice(0, 10)}.xlsx"`);
     res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
     return res.send(buf);

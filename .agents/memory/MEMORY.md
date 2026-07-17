@@ -10,4 +10,6 @@
 - [CRM / Loyalty module](crm-loyalty-module.md) — 15 DB tables, migration 0008, route split crm.ts+loyalty-extended.ts, 7-tab frontend, demo data endpoint.
 - [Director dashboard module](director-module.md) — migration 0010, 5 new tables, 2 routers, 15-tab frontend; use React not Preact imports; fix camelCase SVG attrs.
 - [Audit module](audit-module.md) — migration 0013, audit_findings+audit_runs tables, /admin/audit/* routes, 56-module catalog, key findings for stabilisation tasks.
-- [Production infra](production-infra.md) — VERSION, CHANGELOG.md, /admin/salud health panel, system-info route, PRODUCTION_REPORT.md; 2 high risks (xlsx CVE, no down-migrations).
+- [Production infra](production-infra.md) — VERSION, CHANGELOG.md, /admin/salud health panel, system-info route, PRODUCTION_REPORT.md; risks R1–R6 now resolved.
+- [ExcelJS migration](exceljs-migration.md) — xlsx replaced in 4 files; async writeBuffer/load patterns, hr-import parseFile must be async, .xls dropped.
+- [Vitest JWT auth mock](vitest-auth-mock.md) — requireAuth calls jwt.verify synchronously; mock must return value (not callback) or all auth routes return 401.

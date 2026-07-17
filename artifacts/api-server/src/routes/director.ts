@@ -44,7 +44,7 @@ import {
 } from "@workspace/db";
 import { eq, and, gte, lte, sql, isNotNull, not, desc } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
-import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
 
 const router = Router();
 const guard = [requireAuth, requireRole("admin", "manager", "encargado")];
@@ -1128,10 +1128,13 @@ router.get("/director/export", ...guard, async (req, res) => {
     }
 
     if (format === "xlsx") {
-      const ws   = XLSX.utils.json_to_sheet(data);
-      const wb   = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, sheetName);
-      const buf  = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+      const wb = new ExcelJS.Workbook();
+      const ws = wb.addWorksheet(sheetName);
+      if (data.length > 0) {
+        ws.columns = Object.keys(data[0] as object).map((k) => ({ header: k, key: k, width: 20 }));
+        ws.addRows(data);
+      }
+      const buf = Buffer.from(await wb.xlsx.writeBuffer());
       res.setHeader("Content-Disposition", `attachment; filename="director_${type}_${isoDate(from)}.xlsx"`);
       res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
       res.send(buf);

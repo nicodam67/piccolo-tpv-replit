@@ -13,7 +13,7 @@ import { requireAuth, requireRole } from "../middlewares/auth";
 import { logDocumentAction } from "../lib/document-audit";
 import { isValidTaxRate } from "../lib/tax";
 import multer from "multer";
-import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
 
 const router: IRouter = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
@@ -429,10 +429,13 @@ router.get("/admin/products/export", requireAuth, requireRole("admin"), async (r
   }));
 
   if (format === "xlsx") {
-    const wb = XLSX.utils.book_new();
-    const ws = XLSX.utils.json_to_sheet(rows);
-    XLSX.utils.book_append_sheet(wb, ws, "Productos");
-    const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer;
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet("Productos");
+    if (rows.length > 0) {
+      ws.columns = Object.keys(rows[0]).map((k) => ({ header: k, key: k, width: 20 }));
+      ws.addRows(rows);
+    }
+    const buf = Buffer.from(await wb.xlsx.writeBuffer());
     res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
     res.setHeader("Content-Disposition", `attachment; filename="productos_${new Date().toISOString().slice(0, 10)}.xlsx"`);
     res.send(buf);
@@ -456,16 +459,27 @@ router.post("/admin/products/import", requireAuth, requireRole("admin"), upload.
   const file = req.file;
   if (!file) { res.status(400).json({ error: "No se recibió ningún archivo" }); return; }
 
-  // Parse CSV or XLSX using the xlsx library (handles both)
-  let wb: XLSX.WorkBook;
+  // Parse XLSX
+  const raw: Record<string, unknown>[] = [];
+  const xlsxWb = new ExcelJS.Workbook();
   try {
-    wb = XLSX.read(file.buffer, { type: "buffer" });
+    await xlsxWb.xlsx.load(file.buffer);
   } catch {
-    res.status(400).json({ error: "Archivo no válido. Use CSV o XLSX." }); return;
+    res.status(400).json({ error: "Archivo no válido. Use XLSX." }); return;
   }
-
-  const ws = wb.Sheets[wb.SheetNames[0]];
-  const raw = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: "" });
+  const xlsxWs = xlsxWb.worksheets[0];
+  if (!xlsxWs) { res.status(400).json({ error: "El archivo no contiene hojas." }); return; }
+  const xlsxHeaders: string[] = [];
+  xlsxWs.getRow(1).eachCell((cell, colNum) => { xlsxHeaders[colNum - 1] = String(cell.value ?? "").trim(); });
+  xlsxWs.eachRow((row, rowNum) => {
+    if (rowNum === 1) return;
+    const obj: Record<string, unknown> = {};
+    row.eachCell({ includeEmpty: true }, (cell, colNum) => {
+      const h = xlsxHeaders[colNum - 1];
+      if (h) obj[h] = cell.value ?? "";
+    });
+    raw.push(obj);
+  });
 
   if (!raw.length) { res.json({ imported: 0, skipped: 0, errors: ["El archivo está vacío"] }); return; }
 

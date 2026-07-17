@@ -17,7 +17,7 @@
 import { Router } from "express";
 import multer from "multer";
 import crypto from "node:crypto";
-import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
 import { db } from "@workspace/db";
 import {
   employeesTable,
@@ -40,12 +40,11 @@ const upload = multer({
     const allowed = [
       "text/csv", "text/plain", "text/tab-separated-values",
       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "application/vnd.ms-excel",
       "application/json",
       "application/octet-stream",
     ];
     const ext = file.originalname.split(".").pop()?.toLowerCase();
-    const allowedExt = ["csv", "txt", "tsv", "xlsx", "xls", "json"];
+    const allowedExt = ["csv", "txt", "tsv", "xlsx", "json"];
     if (allowed.includes(file.mimetype) || (ext && allowedExt.includes(ext))) {
       cb(null, true);
     } else {
@@ -79,22 +78,34 @@ function hashRow(row: RawRow): string {
 function detectFormat(filename: string, _mimetype: string): string {
   const ext = filename.split(".").pop()?.toLowerCase() ?? "csv";
   if (ext === "xlsx") return "xlsx";
-  if (ext === "xls") return "xls";
   if (ext === "json") return "json";
   if (ext === "tsv") return "tsv";
   return "csv";
 }
 
-function parseFile(buf: Buffer, format: string, separator?: string): RawRow[] {
+async function parseFile(buf: Buffer, format: string, separator?: string): Promise<RawRow[]> {
   if (format === "json") {
     const parsed = JSON.parse(buf.toString("utf-8"));
     return Array.isArray(parsed) ? parsed : [parsed];
   }
-  if (format === "xlsx" || format === "xls") {
-    const wb = XLSX.read(buf, { type: "buffer", cellDates: true });
-    const ws = wb.Sheets[wb.SheetNames[0]!];
+  if (format === "xlsx") {
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(buf);
+    const ws = wb.worksheets[0];
     if (!ws) return [];
-    return XLSX.utils.sheet_to_json<RawRow>(ws, { defval: "" });
+    const headers: string[] = [];
+    ws.getRow(1).eachCell((cell, colNum) => { headers[colNum - 1] = String(cell.value ?? "").trim(); });
+    const rows: RawRow[] = [];
+    ws.eachRow((row, rowNum) => {
+      if (rowNum === 1) return;
+      const obj: RawRow = {};
+      row.eachCell({ includeEmpty: true }, (cell, colNum) => {
+        const h = headers[colNum - 1];
+        if (h) obj[h] = String(cell.value instanceof Date ? cell.value.toISOString() : (cell.value ?? ""));
+      });
+      rows.push(obj);
+    });
+    return rows;
   }
   // CSV / TSV / TXT
   const text = buf.toString("utf-8");
@@ -213,7 +224,7 @@ router.post("/hr/import/upload", requireAuth, requireRole("admin", "manager", "e
     const buf = req.file.buffer;
     const fileHash = hashBuffer(buf);
     const format = detectFormat(req.file.originalname, req.file.mimetype);
-    const rows = parseFile(buf, format);
+    const rows = await parseFile(buf, format);
 
     if (rows.length === 0) { res.status(400).json({ error: "El archivo no contiene datos" }); return; }
 
