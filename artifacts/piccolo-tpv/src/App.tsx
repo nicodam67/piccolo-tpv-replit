@@ -81,6 +81,7 @@ import DeliveryPage from './pages/delivery';
 import AdminRepartidores from './pages/admin-repartidores';
 import MenuPage from './pages/menu';
 import AdminSistema from './pages/admin-sistema';
+import AdminSalud from './pages/admin-salud';
 import AdminInstalacion from './pages/admin-instalacion';
 import AdminInstalacionQR from './pages/admin-instalacion-qr';
 import AdminPermisos from './pages/admin-permisos';
@@ -195,6 +196,7 @@ function Router() {
       <Route path="/admin/datos-demo" component={AdminDatosDemo} />
       {/* Sistema — audit & diagnostics */}
       <Route path="/admin/sistema" component={AdminSistema} />
+      <Route path="/admin/salud" component={AdminSalud} />
       {/* Public menu with QR table session support */}
       <Route path="/menu" component={MenuPage} />
       <Route component={NotFound} />

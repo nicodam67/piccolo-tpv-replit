@@ -58,6 +58,7 @@ import setupRouter from "./setup";
 import auditRouter from "./audit";
 import installationRouter from "./installation";
 import demoDataRouter from "./demo-data";
+import systemInfoRouter from "./system-info";
 
 const router: IRouter = Router();
 
@@ -120,5 +121,6 @@ router.use(setupRouter);
 router.use(auditRouter);
 router.use(installationRouter);
 router.use(demoDataRouter);
+router.use(systemInfoRouter);
 
 export default router;
