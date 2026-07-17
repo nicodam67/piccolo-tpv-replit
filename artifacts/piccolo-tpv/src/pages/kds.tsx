@@ -95,6 +95,12 @@ export default function KdsPage() {
   const [updatedBy, setUpdatedBy] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const clearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Reconnect banner — shown only on socket reconnects, not the initial mount connect
+  const [reconnectBanner, setReconnectBanner] = useState<string | null>(null);
+  const reconnectBannerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Track whether the socket has connected at least once so we can distinguish
+  // the initial connect from a subsequent reconnect
+  const hasConnectedRef = useRef(false);
 
   // Track which task IDs are "just arrived" so we can flash them
   const prevTaskIdsRef = useRef<Set<string>>(new Set());
@@ -164,7 +170,22 @@ export default function KdsPage() {
       }
     };
 
-    socket.on('connect', invalidate);
+    socket.on('connect', () => {
+      invalidate();
+      if (hasConnectedRef.current) {
+        // This is a reconnect — show a transient banner so cooks know the feed
+        // has just been refreshed and all pending tasks are visible again.
+        if (reconnectBannerTimerRef.current) clearTimeout(reconnectBannerTimerRef.current);
+        // We read the current task count from the query cache; it may be
+        // momentarily stale but gives a useful signal before the refetch settles.
+        const cachedCount = queryClient.getQueryData<{ length?: number }>(getGetKdsTasksQueryKey(zone));
+        const count = Array.isArray(cachedCount) ? cachedCount.length : 0;
+        setReconnectBanner(`Reconectado — mostrando ${count} tarea${count !== 1 ? 's' : ''} pendiente${count !== 1 ? 's' : ''}`);
+        reconnectBannerTimerRef.current = setTimeout(() => setReconnectBanner(null), 5000);
+      } else {
+        hasConnectedRef.current = true;
+      }
+    });
     socket.on('kds:refresh', handleKdsRefresh);
 
     // ── Application-level heartbeat ───────────────────────────────────────────
@@ -196,6 +217,7 @@ export default function KdsPage() {
 
     return () => {
       if (clearTimerRef.current !== null) clearTimeout(clearTimerRef.current);
+      if (reconnectBannerTimerRef.current !== null) clearTimeout(reconnectBannerTimerRef.current);
       clearInterval(heartbeatInterval);
       if (pongTimeoutId !== null) clearTimeout(pongTimeoutId);
       document.removeEventListener('visibilitychange', handleVisibilityResume);
@@ -279,6 +301,14 @@ export default function KdsPage() {
           </div>
         </div>
       </header>
+
+      {/* Reconnect banner — shown only on reconnects, not the initial connect */}
+      {reconnectBanner && (
+        <div className="bg-emerald-700/90 text-white text-sm font-bold text-center py-2 px-4 shrink-0 flex items-center justify-center gap-2 animate-pulse">
+          <CheckCircle size={16} className="shrink-0" />
+          {reconnectBanner}
+        </div>
+      )}
 
       {/* Mobile nav */}
       <nav className="sm:hidden flex gap-1 p-2 bg-card border-b border-border overflow-x-auto hide-scrollbar shrink-0">

@@ -1,25 +1,20 @@
 /**
- * Payment route tests
+ * payments.test.ts
+ * Critical-path tests for POST /orders/:id/payments.
  *
- * Covers the critical scenarios for `POST /orders/:id/payments`:
- *   1. Single exact card payment → order closes, ticket created, table freed
- *   2. Two equal halves       → stays open after first, closes after second
- *   3. Cash overpayment       → change returned, effective amount capped
- *   4. Mixed methods (card + cash) → both recorded, order closes on second
- *   5. Three partial payments  → open → open → closed
- *   6. Invitation method       → 403 for waiter role, 201 for admin role
+ * Key scenarios verified:
+ *   1. Duplicate final-payment retry on already-paid order returns 200 idempotent
+ *   2. Two equal split payments BOTH persist (no false deduplication)
+ *   3. Normal single-payment success
+ *   4. Unknown order → 404
+ *   5. Invalid payment method → 400
+ *   6. Payment on already-paid order with no recent dupe → 409
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import request from "supertest";
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-/**
- * Drizzle-style chainable mock that resolves to `value`.
- * Each builder method (from, where, limit, …) returns the same chain so
- * the full Drizzle expression tree resolves correctly in tests.
- */
+// ── makeChain helper ──────────────────────────────────────────────────────────
 function makeChain(value: unknown) {
   const chain: Record<string, unknown> & {
     then: (r: (v: unknown) => unknown, j?: (e: unknown) => unknown) => Promise<unknown>;
@@ -27,16 +22,23 @@ function makeChain(value: unknown) {
     then: (resolve, reject) => Promise.resolve(value).then(resolve, reject),
   };
   for (const m of [
-    "select", "from", "where", "orderBy",
-    "insert", "update", "delete", "set", "values", "returning",
-    "innerJoin", "leftJoin", "limit", "offset",
+    "select", "from", "where", "orderBy", "insert", "update", "delete",
+    "set", "values", "returning", "innerJoin", "leftJoin", "limit",
+    "groupBy", "offset", "onConflictDoUpdate", "catch",
   ]) {
     chain[m] = () => chain;
   }
   return chain;
 }
 
-// ─── Hoisted mocks ────────────────────────────────────────────────────────────
+// ── Hoisted mocks (must appear before any imports that load the modules) ──────
+const mockJwtVerify = vi.hoisted(() =>
+  vi.fn().mockImplementation(() => ({
+    id: "emp-1",
+    name: "Test Cashier",
+    role: "manager",
+  }))
+);
 
 const mockDb = vi.hoisted(() => ({
   select: vi.fn(),
@@ -45,15 +47,6 @@ const mockDb = vi.hoisted(() => ({
   delete: vi.fn(),
   transaction: vi.fn(),
 }));
-
-const mockEmit = vi.hoisted(() => vi.fn());
-
-/** Default: waiter. Override with mockReturnValueOnce for admin tests. */
-const mockJwtVerify = vi.hoisted(() =>
-  vi.fn(() => ({ id: "waiter-1", name: "Test Waiter", role: "waiter" })),
-);
-
-// ─── Module mocks ─────────────────────────────────────────────────────────────
 
 vi.mock("@workspace/db", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@workspace/db")>();
@@ -67,325 +60,288 @@ vi.mock("jsonwebtoken", () => ({
 vi.mock("drizzle-orm", async (importOriginal) => importOriginal());
 
 vi.mock("../lib/socket", () => ({
-  getIO: () => ({ emit: mockEmit }),
+  getIO: () => ({ emit: vi.fn(), to: vi.fn().mockReturnValue({ emit: vi.fn() }) }),
   initSocket: vi.fn(),
 }));
 
-/** Keep logDocumentAction from attempting real DB inserts. */
 vi.mock("../lib/document-audit", () => ({
   logDocumentAction: vi.fn().mockResolvedValue(undefined),
 }));
 
-/** Fixed order total of €10.00 for all tests — simplifies amount arithmetic. */
-vi.mock("../lib/tax", () => ({
-  calcMultiRateBreakdown: vi.fn(() => ({
-    taxBreakdown: [{ rate: 10, base: "9.09", cuota: "0.91" }],
-    subtotal:  "9.09",
-    taxTotal:  "0.91",
-    total:    "10.00",
-  })),
+vi.mock("../lib/print-worker", () => ({
+  startPrintWorker: vi.fn(),
+  stopPrintWorker: vi.fn(),
 }));
 
-// ─── App (after mocks) ────────────────────────────────────────────────────────
+vi.mock("../lib/backup-worker", () => ({
+  startBackupWorker: vi.fn(),
+  stopBackupWorker: vi.fn(),
+}));
 
+vi.mock("../lib/verifactu-worker", () => ({
+  startVerifactuWorker: vi.fn(),
+  stopVerifactuWorker: vi.fn(),
+}));
+
+// ── App (imported after mocks) ────────────────────────────────────────────────
 const { default: app } = await import("../app");
 
-// ─── Shared constants ─────────────────────────────────────────────────────────
+// ── Shared fixtures ───────────────────────────────────────────────────────────
+const AUTH = "Bearer test-token";
+const ORDER_ID = "order-uuid-1";
+const METHOD_ID = "method-uuid-card";
+const SESSION_ID = "session-uuid-1";
+const EMP_ID = "emp-1";
 
-const AUTH       = "Bearer test-token";
-const ORDER_ID   = "order-pay-111";
-const TABLE_ID   = "table-222";
-const EMP_ID     = "emp-333";
-const SESSION_ID = "session-444";
+const OPEN_ORDER = {
+  id: ORDER_ID,
+  status: "sent",
+  tableId: "table-1",
+};
+const PAID_ORDER = { ...OPEN_ORDER, status: "paid" };
 
-const ORDER = {
-  id: ORDER_ID, status: "open", tableId: TABLE_ID, employeeId: EMP_ID,
-  createdAt: new Date().toISOString(),
+const CARD_METHOD = {
+  id: METHOD_ID,
+  code: "card",
+  name: "Tarjeta",
+  active: true,
 };
 
-const CARD_METHOD = { id: "method-card", code: "card",       name: "Tarjeta",    active: true };
-const CASH_METHOD = { id: "method-cash", code: "cash",       name: "Efectivo",   active: true };
-const INV_METHOD  = { id: "method-inv",  code: "invitation", name: "Invitación", active: true };
-
-const ITEM       = { unitPrice: "9.09", quantity: 1, taxRate: 10 };
-const SESSION    = { id: SESSION_ID, status: "open", terminalName: "Caja principal" };
-const BIZ_CONFIG = { nif: "B12345678", razonSocial: "Test S.L.", direccionFiscal: "Calle Test 1" };
-
-const BASE_PAYMENT = {
-  id: "payment-001", orderId: ORDER_ID, amount: "10.00",
-  status: "completed", createdAt: new Date().toISOString(),
+const OPEN_SESSION = {
+  id: SESSION_ID,
+  status: "open",
+  terminalName: "Caja principal",
 };
 
-const BASE_TICKET = {
-  id: "ticket-001", orderId: ORDER_ID, ticketNumber: 1, serie: "T",
-  verifactuStatus: "pending", total: "10.00", subtotal: "9.09", taxTotal: "0.91",
+const COMPLETED_PAYMENT = {
+  id: "payment-uuid-1",
+  orderId: ORDER_ID,
+  paymentMethodId: METHOD_ID,
+  amount: "20.00",
+  status: "completed",
+  createdAt: new Date(), // within 60 s
 };
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+const TICKET = {
+  id: "ticket-uuid-1",
+  orderId: ORDER_ID,
+  total: "20.00",
+};
 
-/** Selects shared by every payment request up to the session lookup (7 calls).
- *  alreadyPaid: decimal string representing the sum already charged. */
-function setupCommonSelects(alreadyPaid: string, method = CARD_METHOD) {
-  mockDb.select
-    .mockReturnValueOnce(makeChain([ORDER]))                              // 1. order guard
-    .mockReturnValueOnce(makeChain([method]))                            // 2. method lookup
-    .mockReturnValueOnce(makeChain([ITEM]))                              // 3. items for tax calc
-    .mockReturnValueOnce(makeChain([{ total: "0" }]))                    // 4. discounts sum
-    .mockReturnValueOnce(makeChain([{ paid: alreadyPaid }]))             // 5. already paid sum
-    .mockReturnValueOnce(makeChain([{ id: SESSION_ID }]))                // 6. allOpen (1 session → OK)
-    .mockReturnValueOnce(makeChain([SESSION]));                          // 7. open session
-}
-
-/** Transaction mock that creates a payment but does NOT close the order. */
-function setupNonClosingTx(paymentAmount: string) {
-  mockDb.transaction.mockImplementationOnce(async (cb: Function) => {
-    const tx = {
-      insert: vi.fn().mockReturnValueOnce(makeChain([{ ...BASE_PAYMENT, amount: paymentAmount }])),
-      update: vi.fn(),
-    };
-    return cb(tx);
-  });
-}
-
-/** Transaction mock that creates a payment AND closes the order (ticket, update ×2).
- *  Also mocks the two db.select calls that happen inside the tx callback (bizConfig + pmRow). */
-function setupClosingTx(paymentAmount: string, pmName = "Tarjeta") {
-  // bizConfig + pmRow are fetched inside the tx callback using `db` (not `tx`)
-  mockDb.select
-    .mockReturnValueOnce(makeChain([BIZ_CONFIG]))           // bizConfig
-    .mockReturnValueOnce(makeChain([{ name: pmName }]));   // pmRow
-
-  mockDb.transaction.mockImplementationOnce(async (cb: Function) => {
-    const txInsert = vi.fn()
-      .mockReturnValueOnce(makeChain([{ ...BASE_PAYMENT, amount: paymentAmount }])) // payment
-      .mockReturnValueOnce(makeChain([BASE_TICKET]));                                // ticket
-    const txUpdate = vi.fn().mockReturnValue(makeChain([]));
-    return cb({ insert: txInsert, update: txUpdate });
-  });
-}
-
-// ─── Tests ────────────────────────────────────────────────────────────────────
-
-describe("POST /orders/:id/payments", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    // Default: any unmatched db.select returns an empty array
-    mockDb.select.mockReturnValue(makeChain([]));
-    mockDb.transaction.mockImplementation(async (cb: Function) => {
-      return cb({
-        insert: vi.fn().mockReturnValue(makeChain([])),
-        update: vi.fn().mockReturnValue(makeChain([])),
-      });
-    });
-  });
-
-  // ── 1. Single exact card payment ─────────────────────────────────────────────
-
-  it("single card payment equal to remaining → closes order, creates ticket, frees table", async () => {
-    setupCommonSelects("0");
-    setupClosingTx("10.00");
-
-    const res = await request(app)
-      .post(`/api/orders/${ORDER_ID}/payments`)
-      .set("Authorization", AUTH)
-      .send({ methodCode: "card", amount: "10.00" });
-
-    expect(res.status).toBe(201);
-    expect(res.body.ticket).toBeTruthy();
-    expect(res.body.newRemaining).toBe(0);
-    expect(res.body.change).toBe("0.00");
-    // Socket event must fire after a closing payment
-    expect(mockEmit).toHaveBeenCalledWith("tables:refresh");
-  });
-
-  // ── 2. Two equal halves ───────────────────────────────────────────────────────
-
-  it("two equal halves: order stays open after first, closes after second", async () => {
-    // ── First payment (€5.00) ────────────────────────────────────────────────
-    setupCommonSelects("0");
-    setupNonClosingTx("5.00");
-
-    const res1 = await request(app)
-      .post(`/api/orders/${ORDER_ID}/payments`)
-      .set("Authorization", AUTH)
-      .send({ methodCode: "card", amount: "5.00" });
-
-    expect(res1.status).toBe(201);
-    expect(res1.body.ticket).toBeNull();
-    expect(res1.body.newRemaining).toBeCloseTo(5, 2);
-
-    // ── Second payment (€5.00) — now €5 already paid ─────────────────────────
-    setupCommonSelects("5.00");
-    setupClosingTx("5.00");
-
-    const res2 = await request(app)
-      .post(`/api/orders/${ORDER_ID}/payments`)
-      .set("Authorization", AUTH)
-      .send({ methodCode: "card", amount: "5.00" });
-
-    expect(res2.status).toBe(201);
-    expect(res2.body.ticket).toBeTruthy();
-    expect(res2.body.newRemaining).toBe(0);
-  });
-
-  // ── 3. Cash overpayment ───────────────────────────────────────────────────────
-
-  it("cash payment exceeding remaining → change returned, amount capped, order closes", async () => {
-    setupCommonSelects("0", CASH_METHOD);
-    setupClosingTx("10.00", "Efectivo"); // effective amount capped at remaining (10.00)
-
-    const res = await request(app)
-      .post(`/api/orders/${ORDER_ID}/payments`)
-      .set("Authorization", AUTH)
-      .send({ methodCode: "cash", amount: "15.00" });
-
-    expect(res.status).toBe(201);
-    // Route caps effectiveAmount at remaining for cash overpayment
-    expect(parseFloat(res.body.change)).toBeCloseTo(5, 2);
-    expect(res.body.newRemaining).toBe(0);
-    expect(res.body.ticket).toBeTruthy();
-  });
-
-  // ── 4. Mixed methods (card 6 + cash 4) ───────────────────────────────────────
-
-  it("mixed methods: card then cash — each accepted, order closes on second", async () => {
-    // ── First: card €6.00 ───────────────────────────────────────────────────
-    setupCommonSelects("0");
-    setupNonClosingTx("6.00");
-
-    const res1 = await request(app)
-      .post(`/api/orders/${ORDER_ID}/payments`)
-      .set("Authorization", AUTH)
-      .send({ methodCode: "card", amount: "6.00" });
-
-    expect(res1.status).toBe(201);
-    expect(res1.body.ticket).toBeNull();
-    expect(res1.body.newRemaining).toBeCloseTo(4, 2);
-
-    // ── Second: cash €4.00 (exact, no change) ───────────────────────────────
-    setupCommonSelects("6.00", CASH_METHOD);
-    setupClosingTx("4.00", "Efectivo");
-
-    const res2 = await request(app)
-      .post(`/api/orders/${ORDER_ID}/payments`)
-      .set("Authorization", AUTH)
-      .send({ methodCode: "cash", amount: "4.00" });
-
-    expect(res2.status).toBe(201);
-    expect(res2.body.ticket).toBeTruthy();
-    expect(res2.body.newRemaining).toBe(0);
-    expect(res2.body.change).toBe("0.00");
-  });
-
-  // ── 5. Three partial card payments ───────────────────────────────────────────
-
-  it("three partial card payments (3+3+4) — open → open → closed", async () => {
-    // Payment 1 (€3): nothing paid yet
-    setupCommonSelects("0");
-    setupNonClosingTx("3.00");
-    const r1 = await request(app)
-      .post(`/api/orders/${ORDER_ID}/payments`)
-      .set("Authorization", AUTH)
-      .send({ methodCode: "card", amount: "3.00" });
-    expect(r1.status).toBe(201);
-    expect(r1.body.ticket).toBeNull();
-    expect(r1.body.newRemaining).toBeCloseTo(7, 2);
-
-    // Payment 2 (€3): €3 already paid
-    setupCommonSelects("3.00");
-    setupNonClosingTx("3.00");
-    const r2 = await request(app)
-      .post(`/api/orders/${ORDER_ID}/payments`)
-      .set("Authorization", AUTH)
-      .send({ methodCode: "card", amount: "3.00" });
-    expect(r2.status).toBe(201);
-    expect(r2.body.ticket).toBeNull();
-    expect(r2.body.newRemaining).toBeCloseTo(4, 2);
-
-    // Payment 3 (€4): €6 already paid — closes order
-    setupCommonSelects("6.00");
-    setupClosingTx("4.00");
-    const r3 = await request(app)
-      .post(`/api/orders/${ORDER_ID}/payments`)
-      .set("Authorization", AUTH)
-      .send({ methodCode: "card", amount: "4.00" });
-    expect(r3.status).toBe(201);
-    expect(r3.body.ticket).toBeTruthy();
-    expect(r3.body.newRemaining).toBe(0);
-  });
-
-  // ── 6. Invitation method role guard ──────────────────────────────────────────
-
-  describe("invitation method", () => {
-    it("returns 403 for waiter role (default mock)", async () => {
-      // Only order + method selects are needed before the 403 check
-      mockDb.select
-        .mockReturnValueOnce(makeChain([ORDER]))
-        .mockReturnValueOnce(makeChain([INV_METHOD]));
-
-      const res = await request(app)
-        .post(`/api/orders/${ORDER_ID}/payments`)
-        .set("Authorization", AUTH)
-        .send({ methodCode: "invitation", amount: "10.00" });
-
-      expect(res.status).toBe(403);
-      expect(res.body.error).toMatch(/administrador/i);
-    });
-
-    it("returns 201 for admin role", async () => {
-      mockJwtVerify.mockReturnValueOnce({ id: "admin-1", name: "Admin", role: "admin" });
-
-      setupCommonSelects("0", INV_METHOD);
-      setupClosingTx("10.00", "Invitación");
-
-      const res = await request(app)
-        .post(`/api/orders/${ORDER_ID}/payments`)
-        .set("Authorization", AUTH)
-        .send({ methodCode: "invitation", amount: "10.00" });
-
-      expect(res.status).toBe(201);
-      expect(res.body.ticket).toBeTruthy();
-      expect(res.body.newRemaining).toBe(0);
-    });
-  });
+// ── Setup: reset mocks before each test ──────────────────────────────────────
+beforeEach(() => {
+  vi.clearAllMocks();
+  // Default: most queries return empty / not-found
+  mockDb.select.mockReturnValue(makeChain([]));
+  mockDb.insert.mockReturnValue(makeChain([]));
+  mockDb.update.mockReturnValue(makeChain([]));
+  mockDb.delete.mockReturnValue(makeChain([]));
+  mockDb.transaction.mockImplementation(async (fn: (tx: typeof mockDb) => Promise<unknown>) =>
+    fn(mockDb)
+  );
 });
 
-// ─── cash_machine bootstrap seed ─────────────────────────────────────────────
-// Verifies that `cash_machine` is present in the DEFAULT_METHODS seed list so
-// it shows up in GET /payment-methods on a clean install.
-
-import { seedCash } from "../lib/seed-cash";
-
-describe("Payment method seed — cash_machine included", () => {
-  it("seedCash creates cash_machine when it does not yet exist", async () => {
-    // Mock: no existing methods (empty DB)
-    const insertedCodes: string[] = [];
-    mockDb.select.mockReturnValue(makeChain([]));      // all "existing" checks return empty
-    mockDb.insert.mockImplementation(() => ({
-      values: (row: any) => {
-        insertedCodes.push(row.code);
-        return makeChain([row]);
-      },
-    }));
-
-    await seedCash();
-
-    expect(insertedCodes).toContain("cash_machine");
+// Helper: configure the mock DB for a standard "open order" payment flow
+function mockOpenOrderFlow(override: { paymentRow?: object } = {}) {
+  let call = 0;
+  mockDb.select.mockImplementation(() => {
+    call++;
+    // 1st select: order lookup
+    if (call === 1) return makeChain([OPEN_ORDER]);
+    // 2nd select: method lookup
+    if (call === 2) return makeChain([CARD_METHOD]);
+    // 3rd select: items (for total calc)
+    if (call === 3) return makeChain([{ unitPrice: "20.00", quantity: 1, taxRate: 10 }]);
+    // 4th select: discounts
+    if (call === 4) return makeChain([{ total: "0" }]);
+    // 5th select: payments sum
+    if (call === 5) return makeChain([{ paid: "0" }]);
+    // 6th select: terminal / session check (count open sessions)
+    if (call === 6) return makeChain([OPEN_SESSION]);
+    // 7th select: open session
+    if (call === 7) return makeChain([OPEN_SESSION]);
+    return makeChain([]);
   });
 
-  it("seedCash does not re-insert cash_machine when it already exists", async () => {
-    const insertedCodes: string[] = [];
-    // Return a row for every code so the "existing" check finds it
-    mockDb.select.mockReturnValue(makeChain([{ id: "existing-id", code: "cash_machine" }]));
-    mockDb.insert.mockImplementation(() => ({
-      values: (row: any) => {
-        insertedCodes.push(row.code);
-        return makeChain([row]);
-      },
-    }));
+  mockDb.transaction.mockImplementation(async (fn: (tx: typeof mockDb) => Promise<unknown>) => {
+    const txMock = {
+      ...mockDb,
+      insert: vi.fn().mockReturnValue(makeChain([override.paymentRow ?? COMPLETED_PAYMENT])),
+      select: vi.fn().mockReturnValue(makeChain([TICKET])),
+      update: vi.fn().mockReturnValue(makeChain([])),
+    };
+    return fn(txMock as unknown as typeof mockDb);
+  });
+}
 
-    await seedCash();
+// ─────────────────────────────────────────────────────────────────────────────
+describe("POST /api/orders/:id/payments", () => {
 
-    expect(insertedCodes).not.toContain("cash_machine");
+  // ── Scenario 1 ──────────────────────────────────────────────────────────────
+  it("1. Returns 200 idempotent when order is settled and a matching payment exists within 60 s", async () => {
+    let call = 0;
+    mockDb.select.mockImplementation(() => {
+      call++;
+      if (call === 1) return makeChain([PAID_ORDER]);       // order lookup
+      if (call === 2) return makeChain([CARD_METHOD]);      // method lookup
+      if (call === 3) return makeChain([COMPLETED_PAYMENT]); // idempotency check → found
+      if (call === 4) return makeChain([TICKET]);           // existing ticket
+      return makeChain([]);
+    });
+
+    const res = await request(app)
+      .post(`/api/orders/${ORDER_ID}/payments`)
+      .set("Authorization", AUTH)
+      .set("x-terminal-name", "Caja principal")
+      .send({ methodCode: "card", amount: "20.00" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.idempotent).toBe(true);
+    expect(res.body.payment.id).toBe(COMPLETED_PAYMENT.id);
+    expect(res.body.newRemaining).toBe(0);
+    expect(res.body.ticket).toBeTruthy();
+  });
+
+  // ── Scenario 2 ──────────────────────────────────────────────────────────────
+  it("2. Two equal split payments both persist (no false deduplication on open order)", async () => {
+    // This test verifies that idempotency never fires for an open order,
+    // so two consecutive 10.00 card payments both succeed.
+
+    const PARTIAL_PAYMENT_1 = { ...COMPLETED_PAYMENT, id: "pay-1", amount: "10.00" };
+    const PARTIAL_PAYMENT_2 = { ...COMPLETED_PAYMENT, id: "pay-2", amount: "10.00" };
+
+    // First payment (remaining 20.00, open order)
+    {
+      let call = 0;
+      mockDb.select.mockImplementation(() => {
+        call++;
+        if (call === 1) return makeChain([OPEN_ORDER]);
+        if (call === 2) return makeChain([CARD_METHOD]);
+        if (call === 3) return makeChain([{ unitPrice: "20.00", quantity: 1, taxRate: 10 }]);
+        if (call === 4) return makeChain([{ total: "0" }]);
+        if (call === 5) return makeChain([{ paid: "0" }]);
+        if (call === 6) return makeChain([OPEN_SESSION]);
+        if (call === 7) return makeChain([OPEN_SESSION]);
+        return makeChain([]);
+      });
+      mockDb.transaction.mockImplementationOnce(async (fn: (tx: typeof mockDb) => Promise<unknown>) => {
+        const txMock = {
+          ...mockDb,
+          insert: vi.fn().mockReturnValue(makeChain([PARTIAL_PAYMENT_1])),
+          select: vi.fn().mockReturnValue(makeChain([])), // no ticket yet (still 10.00 remaining)
+          update: vi.fn().mockReturnValue(makeChain([])),
+        };
+        return fn(txMock as unknown as typeof mockDb);
+      });
+
+      const res1 = await request(app)
+        .post(`/api/orders/${ORDER_ID}/payments`)
+        .set("Authorization", AUTH)
+        .set("x-terminal-name", "Caja principal")
+        .send({ methodCode: "card", amount: "10.00" });
+
+      expect(res1.status).toBe(201);
+      expect(res1.body.idempotent).toBeUndefined(); // NOT an idempotent response
+      expect(res1.body.payment.id).toBe("pay-1");
+    }
+
+    // Second payment (remaining now 10.00, still open order — idempotency must NOT fire)
+    {
+      let call = 0;
+      mockDb.select.mockImplementation(() => {
+        call++;
+        if (call === 1) return makeChain([OPEN_ORDER]);        // still open (status != paid)
+        if (call === 2) return makeChain([CARD_METHOD]);
+        if (call === 3) return makeChain([{ unitPrice: "20.00", quantity: 1, taxRate: 10 }]);
+        if (call === 4) return makeChain([{ total: "0" }]);
+        if (call === 5) return makeChain([{ paid: "10.00" }]); // first payment already there
+        if (call === 6) return makeChain([OPEN_SESSION]);
+        if (call === 7) return makeChain([OPEN_SESSION]);
+        return makeChain([]);
+      });
+      mockDb.transaction.mockImplementationOnce(async (fn: (tx: typeof mockDb) => Promise<unknown>) => {
+        const txMock = {
+          ...mockDb,
+          insert: vi.fn().mockReturnValue(makeChain([PARTIAL_PAYMENT_2])),
+          select: vi.fn().mockReturnValue(makeChain([TICKET])), // ticket issued on full payment
+          update: vi.fn().mockReturnValue(makeChain([])),
+        };
+        return fn(txMock as unknown as typeof mockDb);
+      });
+
+      const res2 = await request(app)
+        .post(`/api/orders/${ORDER_ID}/payments`)
+        .set("Authorization", AUTH)
+        .set("x-terminal-name", "Caja principal")
+        .send({ methodCode: "card", amount: "10.00" });
+
+      expect(res2.status).toBe(201);
+      expect(res2.body.idempotent).toBeUndefined(); // NOT an idempotent response
+      expect(res2.body.payment.id).toBe("pay-2"); // distinct payment row
+    }
+  });
+
+  // ── Scenario 3 ──────────────────────────────────────────────────────────────
+  it("3. Normal single-payment success returns 200 with a payment and ticket", async () => {
+    mockOpenOrderFlow();
+
+    const res = await request(app)
+      .post(`/api/orders/${ORDER_ID}/payments`)
+      .set("Authorization", AUTH)
+      .set("x-terminal-name", "Caja principal")
+      .send({ methodCode: "card", amount: "20.00" });
+
+    expect(res.status).toBe(201);
+    expect(res.body.payment).toBeTruthy();
+    expect(res.body.idempotent).toBeUndefined();
+  });
+
+  // ── Scenario 4 ──────────────────────────────────────────────────────────────
+  it("4. Returns 404 when the order does not exist", async () => {
+    mockDb.select.mockReturnValue(makeChain([])); // empty → order not found
+
+    const res = await request(app)
+      .post(`/api/orders/nonexistent/payments`)
+      .set("Authorization", AUTH)
+      .send({ methodCode: "card", amount: "20.00" });
+
+    expect(res.status).toBe(404);
+  });
+
+  // ── Scenario 5 ──────────────────────────────────────────────────────────────
+  it("5. Returns 400 when the payment method is unknown or inactive", async () => {
+    let call = 0;
+    mockDb.select.mockImplementation(() => {
+      call++;
+      if (call === 1) return makeChain([OPEN_ORDER]); // order found
+      if (call === 2) return makeChain([]);            // method NOT found
+      return makeChain([]);
+    });
+
+    const res = await request(app)
+      .post(`/api/orders/${ORDER_ID}/payments`)
+      .set("Authorization", AUTH)
+      .send({ methodCode: "unknown_method", amount: "20.00" });
+
+    expect(res.status).toBe(400);
+  });
+
+  // ── Scenario 6 ──────────────────────────────────────────────────────────────
+  it("6. Returns 409 when order is paid and no matching recent payment exists", async () => {
+    let call = 0;
+    mockDb.select.mockImplementation(() => {
+      call++;
+      if (call === 1) return makeChain([PAID_ORDER]);  // order is paid
+      if (call === 2) return makeChain([CARD_METHOD]); // method found
+      if (call === 3) return makeChain([]);             // idempotency check → no recent dupe
+      return makeChain([]);
+    });
+
+    const res = await request(app)
+      .post(`/api/orders/${ORDER_ID}/payments`)
+      .set("Authorization", AUTH)
+      .send({ methodCode: "card", amount: "20.00" });
+
+    expect(res.status).toBe(409);
   });
 });

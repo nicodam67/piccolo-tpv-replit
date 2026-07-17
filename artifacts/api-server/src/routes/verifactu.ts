@@ -415,7 +415,7 @@ async function submitToTestEnvironment(xml: string, config: typeof verifactuConf
   };
 }
 
-async function submitRecord(
+export async function submitRecord(
   record: typeof verifactuRecordsTable.$inferSelect,
   config: typeof verifactuConfigTable.$inferSelect
 ): Promise<AeatSubmitResult> {
@@ -459,7 +459,7 @@ async function logAudit(params: {
 // Config helper — get or create default config
 // ─────────────────────────────────────────────────────────────────────────────
 
-async function getConfig(): Promise<typeof verifactuConfigTable.$inferSelect> {
+export async function getConfig(): Promise<typeof verifactuConfigTable.$inferSelect> {
   const rows = await db.select().from(verifactuConfigTable).limit(1);
   if (rows[0]) return rows[0];
   // Create default config
@@ -684,6 +684,14 @@ router.post("/admin/verifactu/records", requireAuth, requireRole("admin"), async
     const [invoice] = await db.select().from(invoicesTable).where(eq(invoicesTable.id, body.invoiceId));
     if (!invoice) return res.status(404).json({ error: "Factura no encontrada" });
     if (invoice.status === "draft") return res.status(400).json({ error: "No se puede registrar una factura en borrador" });
+
+    // Guard: prefacturas (serie "P") are pre-bills with no fiscal validity.
+    // They must never consume a fiscal series number or generate a VERI*FACTU record.
+    if (invoice.serie && invoice.serie.startsWith("P")) {
+      return res.status(400).json({
+        error: "Las prefacturas (serie P) no generan registros VERI*FACTU ni consumen numeración fiscal. Cobra la comanda primero para emitir el ticket definitivo.",
+      });
+    }
 
     // Load config
     const config = await getConfig();

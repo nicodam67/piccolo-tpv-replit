@@ -10,6 +10,7 @@ import { seedDeliveryDemo } from "./lib/seed-delivery-demo";
 import { seedOnlineDemo } from "./lib/seed-online-demo";
 import { startPrintWorker } from "./lib/print-worker";
 import { startBackupWorker } from "./lib/backup-worker";
+import { startVerifactuWorker } from "./lib/verifactu-worker";
 
 const rawPort = process.env["PORT"];
 
@@ -43,6 +44,7 @@ server.listen(port, async () => {
   }
   startPrintWorker();
   startBackupWorker();
+  startVerifactuWorker();
 });
 
 server.on("error", (err) => {

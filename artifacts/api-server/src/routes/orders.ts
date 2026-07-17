@@ -11,6 +11,7 @@ import {
   orderItemModifiersTable,
   waiterNotificationsTable,
   auditLogTable,
+  auditFindingsTable,
   prefacturaPrintsTable,
   businessConfigTable,
 } from "@workspace/db";
@@ -740,6 +741,23 @@ router.post("/orders/:orderId/send", requireAuth, async (req, res): Promise<void
       orderId,
       err: err instanceof Error ? { message: err.message, stack: err.stack } : String(err),
     });
+    // Record a high-severity audit finding so the issue surfaces in the audit panel
+    try {
+      await db.insert(auditFindingsTable).values({
+        module: "stock",
+        severity: "high",
+        title: `Deducción de stock fallida — pedido ${orderId}`,
+        description: `Error al descontar stock en el envío a cocina: ${err instanceof Error ? err.message : String(err)}`,
+        automated: true,
+      });
+    } catch { /* audit insert must never block the send response */ }
+    // Notify the order screen so staff can manually correct stock
+    try {
+      getIO().emit("stock:deduction_failed", {
+        orderId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    } catch { /* socket not initialised */ }
   }
 
   const [updated] = await db.select().from(ordersTable).where(eq(ordersTable.id, orderId));

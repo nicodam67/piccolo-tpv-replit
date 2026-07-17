@@ -13,7 +13,7 @@ import {
   businessConfigTable,
   discountsTable,
 } from "@workspace/db";
-import { eq, and, sum, inArray } from "drizzle-orm";
+import { eq, and, sum, inArray, gte } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { getIO } from "../lib/socket";
 import { logDocumentAction } from "../lib/document-audit";
@@ -151,11 +151,9 @@ router.post("/orders/:id/payments", requireAuth, requireRole(...PAYMENT_ROLES), 
     res.status(404).json({ error: "Pedido no encontrado" });
     return;
   }
-  if (order.status === "paid") {
-    res.status(409).json({ error: "El pedido ya está cobrado" });
-    return;
-  }
 
+  // Look up the method BEFORE the order-status guard so the idempotency check
+  // (which needs method.id) can run even for already-paid orders.
   const [method] = await db
     .select()
     .from(paymentMethodsTable)
@@ -174,6 +172,52 @@ router.post("/orders/:id/payments", requireAuth, requireRole(...PAYMENT_ROLES), 
       res.status(403).json({ error: `El método "${method.name}" requiere permisos de administrador` });
       return;
     }
+  }
+
+  // ── Settled-order gate with idempotency ──────────────────────────────────
+  // Idempotency is ONLY applied when the order is already fully settled.
+  // During open split-payment accumulation (order not yet "paid") all payment
+  // requests are processed normally so two equal-amount partial payments can
+  // both succeed without false deduplication.
+  //
+  // When the order IS settled: check for a matching completed payment
+  // (orderId + methodId + amount, 60 s window) and return it as an idempotent
+  // 200. This converts what would be a 409 on a final-payment retry into a
+  // success response the client can safely act on.
+  if (order.status === "paid") {
+    const cutoff = new Date(Date.now() - 60_000);
+    const [dupe] = await db
+      .select()
+      .from(paymentsTable)
+      .where(
+        and(
+          eq(paymentsTable.orderId, orderId),
+          eq(paymentsTable.paymentMethodId, method.id),
+          eq(paymentsTable.amount, amount),
+          eq(paymentsTable.status, "completed"),
+          gte(paymentsTable.createdAt, cutoff),
+        )
+      )
+      .limit(1);
+
+    if (dupe) {
+      const [existingTicket] = await db
+        .select()
+        .from(ticketsTable)
+        .where(eq(ticketsTable.orderId, orderId));
+      res.status(200).json({
+        payment: dupe,
+        ticket: existingTicket ?? null,
+        change: "0.00",
+        newRemaining: 0,   // order is settled — remaining is definitively 0
+        idempotent: true,
+      });
+      return;
+    }
+
+    // No recent matching payment found → genuine re-payment on a settled order
+    res.status(409).json({ error: "El pedido ya está cobrado" });
+    return;
   }
 
   // Fetch items with taxRate for accurate total

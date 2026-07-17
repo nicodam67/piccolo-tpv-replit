@@ -140,7 +140,7 @@ export function CartCheckout({ cart, onUpdateQty, onRemove, onClear, accentColor
         };
       }
 
-      const res = await fetch(`${BASE}/api/public/orders/online`, {
+      const res = await fetch(`${BASE}/api/public/orders/online-v2`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
