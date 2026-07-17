@@ -41,6 +41,7 @@ const PUBLIC_ALLOWLIST: RegExp[] = [
   /^\/menu/,                          // public menu redirect
   /^\/config\/business$/,             // used by public setup wizard & QR carta
   /^\/setup\/detect$/,                // pre-auth module detection for setup wizard
+  /^\/setup\/seed-employees$/,        // one-time bootstrap; only acts when DB is empty
 ];
 
 const METHODS = ["get", "post", "put", "patch", "delete"] as const;
