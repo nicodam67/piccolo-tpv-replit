@@ -677,8 +677,8 @@ const MODULES: ModuleCard[] = [
   {
     id: 'devices',
     icon: <Smartphone size={28} />,
-    title: 'Dispositivos offline',
-    description: 'TPVs · tablets · cola de sincronización',
+    title: 'Dispositivos e Inventario',
+    description: 'Tablets · IPs · MAC · zonas · impresoras · diagnóstico de red',
     href: '/admin/devices',
     ready: true,
     accent: 'rgba(6,182,212,0.07)',
