@@ -4,7 +4,7 @@ import jwt from "jsonwebtoken";
 import rateLimit from "express-rate-limit";
 import { db } from "@workspace/db";
 import { employeesTable, employeePinsTable } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, count } from "drizzle-orm";
 import { AuthWithPinBody } from "@workspace/api-zod";
 
 const router: IRouter = Router();
@@ -78,6 +78,42 @@ router.post("/auth/pin", pinLoginLimiter, async (req, res): Promise<void> => {
     token,
     employee: { id: employee.id, name: employee.name, role: employee.role },
   });
+});
+
+// ── One-time bootstrap endpoint ───────────────────────────────────────────────
+// Seeds the two default employees (Admin + Carmen) only when the table is
+// completely empty. Safe to call multiple times — returns 409 if already seeded.
+// Remove or gate behind an env flag once production data is established.
+router.post("/setup/seed-employees", async (_req, res): Promise<void> => {
+  const [{ value: existing }] = await db.select({ value: count() }).from(employeesTable);
+  if (Number(existing) > 0) {
+    res.status(409).json({ error: "Ya existen empleados. Seed no aplicado." });
+    return;
+  }
+
+  // Insert Admin
+  const [admin] = await db.insert(employeesTable).values({
+    id: "5f78bf82-842d-4b42-b0e0-eb26c9687437",
+    name: "Admin",
+    role: "admin",
+    active: true,
+  }).returning();
+
+  // Insert Carmen
+  const [carmen] = await db.insert(employeesTable).values({
+    id: "5ac8e169-90ed-4e6f-aa02-89d1cb4b19a2",
+    name: "Carmen",
+    role: "waiter",
+    active: true,
+  }).returning();
+
+  // Insert their PIN hashes (same as dev so existing PINs work)
+  await db.insert(employeePinsTable).values([
+    { employeeId: admin.id, pinHash: "$2a$06$wsZ.tTKkYlDQIDlJpo31BuRKhQYyTNu9c8b5x.74iu7LERWohilcG" },
+    { employeeId: carmen.id, pinHash: "$2a$06$rD9WJftFkpppIo3nrkUQ4OSvAMX33Ao9628DR4OTuWQetpEbOKGju" },
+  ]);
+
+  res.json({ seeded: [admin.name, carmen.name] });
 });
 
 export default router;
