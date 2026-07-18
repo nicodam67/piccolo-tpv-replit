@@ -1,4 +1,4 @@
-import { boolean, numeric, pgTable, text, uuid, integer } from "drizzle-orm/pg-core";
+import { boolean, jsonb, numeric, pgTable, text, uuid, integer } from "drizzle-orm/pg-core";
 
 
 export const categoriesTable = pgTable("categories", {
@@ -10,6 +10,8 @@ export const categoriesTable = pgTable("categories", {
   icon: text("icon"),
   /** English translation for the public menu */
   nameEn: text("name_en").notNull().default(""),
+  /** Multi-language translations: { en: { name, description }, fr: {…}, … } */
+  translations: jsonb("translations").$type<Record<string, { name?: string; description?: string }>>(),
 });
 
 export const subcategoriesTable = pgTable("subcategories", {
@@ -59,6 +61,8 @@ export const productsTable = pgTable("products", {
   descriptionEn: text("description_en").notNull().default(""),
   nameEs: text("name_es").notNull().default(""),
   descriptionEs: text("description_es").notNull().default(""),
+  /** Full multilingual translations: { en: { name, description }, fr: {…}, … } */
+  translations: jsonb("qr_item_translations").$type<Record<string, { name?: string; description?: string }>>(),
 });
 
 export const productFormatsTable = pgTable("product_formats", {

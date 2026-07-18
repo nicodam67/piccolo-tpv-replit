@@ -92,15 +92,26 @@ router.get("/categories/:categoryId/products", requireAuth, async (req, res): Pr
 
 router.get("/public/menu", async (_req, res): Promise<void> => {
   const categories = await db
-    .select({ id: categoriesTable.id, name: categoriesTable.name, icon: categoriesTable.icon, color: categoriesTable.color, sortOrder: categoriesTable.sortOrder })
+    .select({ id: categoriesTable.id, name: categoriesTable.name, icon: categoriesTable.icon, color: categoriesTable.color, sortOrder: categoriesTable.sortOrder, translations: categoriesTable.translations })
     .from(categoriesTable)
     .where(eq(categoriesTable.active, true))
     .orderBy(asc(categoriesTable.sortOrder));
+
+  const categoryIds = categories.map((c) => c.id);
+
+  const subcats = categoryIds.length
+    ? await db
+        .select({ id: subcategoriesTable.id, categoryId: subcategoriesTable.categoryId, name: subcategoriesTable.name, sortOrder: subcategoriesTable.sortOrder })
+        .from(subcategoriesTable)
+        .where(and(inArray(subcategoriesTable.categoryId, categoryIds), eq(subcategoriesTable.active, true)))
+        .orderBy(asc(subcategoriesTable.sortOrder))
+    : [];
 
   const allProducts = await db
     .select({
       id: productsTable.id,
       categoryId: productsTable.categoryId,
+      subcategoryId: productsTable.subcategoryId,
       name: productsTable.name,
       description: productsTable.description,
       price: productsTable.price,
@@ -114,6 +125,7 @@ router.get("/public/menu", async (_req, res): Promise<void> => {
       isVegano: productsTable.isVegano,
       isSinGluten: productsTable.isSinGluten,
       isPicante: productsTable.isPicante,
+      translations: productsTable.translations,
     })
     .from(productsTable)
     .where(and(eq(productsTable.active, true), eq(productsTable.qrVisible, true)))
@@ -140,11 +152,18 @@ router.get("/public/menu", async (_req, res): Promise<void> => {
     productsByCategory.get(p.categoryId)!.push(p);
   }
 
+  const subcatsByCategory = new Map<string, typeof subcats>();
+  for (const s of subcats) {
+    if (!subcatsByCategory.has(s.categoryId)) subcatsByCategory.set(s.categoryId, []);
+    subcatsByCategory.get(s.categoryId)!.push(s);
+  }
+
   res.json(
     categories
       .filter((c) => (productsByCategory.get(c.id) ?? []).length > 0)
       .map((c) => ({
         ...c,
+        subcategories: subcatsByCategory.get(c.id) ?? [],
         products: (productsByCategory.get(c.id) ?? []).map((p) => ({
           ...p,
           formats: formatsByProduct.get(p.id) ?? [],
@@ -200,8 +219,9 @@ router.post("/admin/categories", requireAuth, requireRole("admin"), async (req, 
 // PATCH /admin/categories/:id — update category
 router.patch("/admin/categories/:id", requireAuth, requireRole("admin"), async (req, res): Promise<void> => {
   const id = req.params.id as string;
-  const { name, color, icon, active, sortOrder } = req.body as {
+  const { name, color, icon, active, sortOrder, translations } = req.body as {
     name?: string; color?: string | null; icon?: string | null; active?: boolean; sortOrder?: number;
+    translations?: Record<string, { name?: string; description?: string }>;
   };
 
   const [existing] = await db.select().from(categoriesTable).where(eq(categoriesTable.id, id));
@@ -213,6 +233,7 @@ router.patch("/admin/categories/:id", requireAuth, requireRole("admin"), async (
   if (icon !== undefined) updates.icon = icon;
   if (active != null) updates.active = active;
   if (sortOrder != null) updates.sortOrder = Number(sortOrder);
+  if (translations !== undefined) updates.translations = translations;
 
   if (!Object.keys(updates).length) { res.status(400).json({ error: "Sin cambios" }); return; }
 

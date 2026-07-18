@@ -287,6 +287,7 @@ router.patch("/admin/products/:productId", requireAuth, requireRole("admin"), as
     prepZone, active, tpvVisible, qrVisible, deliveryVisible, outOfStock,
     taxRate, sortOrder, allergens, imageUrl, videoUrl,
     halfPortionPrice, quantity, isVegetariano, isVegano, isSinGluten, isPicante,
+    translations,
   } = req.body as Record<string, unknown>;
 
   if (taxRate != null && !isValidTaxRate(taxRate as number)) {
@@ -318,6 +319,7 @@ router.patch("/admin/products/:productId", requireAuth, requireRole("admin"), as
   if (isVegano != null) updates.isVegano = isVegano;
   if (isSinGluten != null) updates.isSinGluten = isSinGluten;
   if (isPicante != null) updates.isPicante = isPicante;
+  if (translations !== undefined) updates.translations = translations;
 
   if (!Object.keys(updates).length) { res.status(400).json({ error: "Sin cambios" }); return; }
 

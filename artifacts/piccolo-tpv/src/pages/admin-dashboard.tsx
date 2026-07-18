@@ -209,7 +209,7 @@ const MODULES: ModuleCard[] = [
     icon: <Star size={28} />,
     title: 'Branding & Carta QR',
     description: 'Hero · horarios · colores · layout de la carta',
-    href: '/admin/branding',
+    href: '/admin/qr-menu',
     ready: true,
     accent: 'rgba(245,158,11,0.07)',
     border: 'rgba(245,158,11,0.28)',

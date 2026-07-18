@@ -29,6 +29,8 @@ import Modificadores from './pages/modificadores';
 import Ingredientes from './pages/ingredientes';
 import Stock from './pages/stock';
 import Carta from './pages/carta';
+import CartaCategoria from './pages/carta-categoria';
+import QrMenuPage from './pages/qr-menu/QrMenuPage';
 import Reservations from './pages/reservations';
 import CajaAutomatica from './pages/caja-automatica';
 import CajaAutomaticaEstado from './pages/caja-automatica-estado';
@@ -114,6 +116,7 @@ function Router() {
       <Route path="/" component={Login} />
       <Route path="/fichaje" component={FichajeReloj} />
       <Route path="/carta" component={Carta} />
+      <Route path="/carta/categoria/:categoryId" component={CartaCategoria} />
       <Route path="/menu" component={MenuPage} />
       <Route path="/order-status/:orderNumber" component={OrderStatus} />
       <Route path="/driver/:courierId" component={DriverView} />
@@ -180,6 +183,9 @@ function Router() {
       </Route>
       <Route path="/admin/branding">
         <RequireRole roles={ROLES_MANAGER_UP}><Branding /></RequireRole>
+      </Route>
+      <Route path="/admin/qr-menu">
+        <RequireRole roles={ROLES_MANAGER_UP}><QrMenuPage /></RequireRole>
       </Route>
       <Route path="/admin/backup">
         <RequirePermission permission="backup.manage"><BackupPage /></RequirePermission>

@@ -1,5 +1,41 @@
 import { boolean, integer, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 
+// ── QR Branding types ─────────────────────────────────────────────────────────
+export type ThemeColors = {
+  primary?: string;
+  background?: string;
+  accent?: string;
+  infoTextColor?: string;
+  categoryCardBg?: string;
+  categoryCardText?: string;
+  callButtonBg?: string;
+  callButtonText?: string;
+  scheduleButtonBg?: string;
+  scheduleButtonText?: string;
+  heroTitleColor?: string;
+  heroTaglineColor?: string;
+  heroEstablishedColor?: string;
+  tapDetailsColor?: string;
+};
+export type ThemeFonts = {
+  heading?: string;
+  body?: string;
+  headingColor?: string;
+  bodyColor?: string;
+};
+export type CardSettings = {
+  showImage?: boolean;
+  showDescription?: boolean;
+  showTags?: boolean;
+  showAllergens?: boolean;
+  showPrice?: boolean;
+  showHalfPortion?: boolean;
+  showQuantity?: boolean;
+  layout?: "grid" | "list" | "compact";
+};
+export type QrShift = { open: boolean; openTime: string; closeTime: string };
+export type QrDaySchedule = { day: string; shift1: QrShift; shift2: QrShift };
+
 export const businessConfigTable = pgTable("business_config", {
   id: uuid("id").primaryKey().defaultRandom(),
   nombreComercial: text("nombre_comercial").notNull().default(""),
@@ -51,6 +87,23 @@ export const businessConfigTable = pgTable("business_config", {
   setupCompleted: boolean("setup_completed").notNull().default(false),
   /** When production mode was activated */
   goLiveAt: timestamp("go_live_at", { withTimezone: true }),
+  // ── QR Branding extended fields ────────────────────────────────────────────
+  /** City shown on the public carta footer */
+  qrCity: text("qr_city").notNull().default(""),
+  /** Province/state shown on the public carta footer */
+  qrProvince: text("qr_province").notNull().default(""),
+  /** Postal code shown on the public carta footer */
+  qrPostalCode: text("qr_postal_code").notNull().default(""),
+  /** Country shown on the public carta footer */
+  qrCountry: text("qr_country").notNull().default(""),
+  /** 14-key theme color object for the QR carta */
+  themeColors: jsonb("theme_colors").$type<ThemeColors>(),
+  /** Heading + body font settings for the QR carta */
+  themeFonts: jsonb("theme_fonts").$type<ThemeFonts>(),
+  /** Card display settings for the QR carta items */
+  cardSettings: jsonb("card_settings").$type<CardSettings>(),
+  /** Schedule as DaySchedule[] with two shifts per day */
+  qrSchedule: jsonb("qr_schedule").$type<QrDaySchedule[]>(),
 });
 
 export type BusinessConfig = typeof businessConfigTable.$inferSelect;
