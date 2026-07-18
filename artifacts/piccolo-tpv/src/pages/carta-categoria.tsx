@@ -357,6 +357,8 @@ export default function CartaCategoria() {
   const [activeAllergen, setActiveAllergen] = useState<string | null>(null);
   const [activeDiet, setActiveDiet] = useState<DietaryKey | null>(null);
   const [selectedItem, setSelectedItem] = useState<PublicProduct | null>(null);
+  // Subcategory drill-down: null = show subcategory list (if any), string = show products of that subcat
+  const [selectedSubcategoryId, setSelectedSubcategoryId] = useState<string | null>(null);
   const [locale] = useState<Locale>(() => {
     const stored = localStorage.getItem('qr-locale');
     return (SUPPORTED_LOCALES.includes(stored as Locale) ? stored : 'es') as Locale;
@@ -390,9 +392,23 @@ export default function CartaCategoria() {
     layout: (csRaw?.layout as 'grid' | 'list' | 'compact') ?? 'grid',
   };
 
+  // Subcategories from the category
+  const subcats = useMemo(() => category?.subcategories ?? [], [category]);
+  // Are we showing the subcategory list (not yet drilled in)?
+  const isSubcatListView = subcats.length > 0 && selectedSubcategoryId === null;
+  // Current subcategory name (when drilled in)
+  const selectedSubcat = useMemo(
+    () => subcats.find((s) => s.id === selectedSubcategoryId) ?? null,
+    [subcats, selectedSubcategoryId],
+  );
+
   const displayedItems = useMemo(() => {
-    if (!category) return [];
+    if (!category || isSubcatListView) return [];
     let items = [...(category.products ?? [])];
+    // When drilled into a subcategory, only show its products
+    if (selectedSubcategoryId) {
+      items = items.filter((p) => p.subcategoryId === selectedSubcategoryId);
+    }
     if (activeAllergen) {
       items = items.filter((p) => !parseAllergens(p.allergens).includes(activeAllergen));
     }
@@ -400,7 +416,7 @@ export default function CartaCategoria() {
       items = items.filter((p) => p[activeDiet]);
     }
     return items;
-  }, [category, activeAllergen, activeDiet]);
+  }, [category, activeAllergen, activeDiet, selectedSubcategoryId, isSubcatListView]);
 
   const catName = category ? localeName(category, locale) : '';
   const hasFilters = activeAllergen || activeDiet;
@@ -411,7 +427,16 @@ export default function CartaCategoria() {
       <header className="sticky top-0 z-20 border-b border-gray-200 bg-white/95 backdrop-blur-sm">
         <div className="flex items-center gap-3 px-4 py-3">
           <button
-            onClick={() => navigate(`${BASE}/carta`)}
+            onClick={() => {
+              if (selectedSubcategoryId) {
+                // Go back to subcategory list
+                setSelectedSubcategoryId(null);
+                setActiveDiet(null);
+                setActiveAllergen(null);
+              } else {
+                navigate(`${BASE}/carta`);
+              }
+            }}
             className="shrink-0 p-1.5 rounded-full hover:bg-gray-100 transition-colors cursor-pointer"
           >
             <ArrowLeft size={20} style={{ color: branding?.themeColors?.categoryCardText ?? '#8B1A1A' }} />
@@ -420,61 +445,103 @@ export default function CartaCategoria() {
             className="text-xl font-semibold truncate flex-1 uppercase tracking-wide"
             style={{ fontFamily: headingFont, color: branding?.themeColors?.categoryCardText ?? '#8B1A1A' }}
           >
-            {loading ? '…' : catName}
+            {loading ? '…' : selectedSubcat ? selectedSubcat.name : catName}
           </h1>
         </div>
 
-        {/* Dietary tags */}
-        <div className="flex gap-2 px-4 pb-2 overflow-x-auto scrollbar-none">
-          {DIETARY_FILTERS.map((f) => (
-            <button
-              key={f.key}
-              onClick={() => setActiveDiet((p) => p === f.key ? null : f.key)}
-              className="shrink-0 text-xs px-3 py-1 rounded-full border transition-all cursor-pointer font-medium"
-              style={activeDiet === f.key
-                ? { borderColor: '#1a1a1a', background: '#1a1a1a', color: '#fff' }
-                : { borderColor: '#d1d5db', color: '#6b7280' }
-              }
-            >
-              {f.label}
-            </button>
-          ))}
-          {hasFilters && (
-            <button onClick={() => { setActiveDiet(null); setActiveAllergen(null); }}
-              className="shrink-0 text-xs px-3 py-1 rounded-full border cursor-pointer"
-              style={{ borderColor: '#ef4444', color: '#ef4444' }}>
-              Borrar
-            </button>
-          )}
-        </div>
+        {/* Dietary & allergen filters — only shown when viewing products, not the subcategory list */}
+        {!isSubcatListView && (
+          <>
+            <div className="flex gap-2 px-4 pb-2 overflow-x-auto scrollbar-none">
+              {DIETARY_FILTERS.map((f) => (
+                <button
+                  key={f.key}
+                  onClick={() => setActiveDiet((p) => p === f.key ? null : f.key)}
+                  className="shrink-0 text-xs px-3 py-1 rounded-full border transition-all cursor-pointer font-medium"
+                  style={activeDiet === f.key
+                    ? { borderColor: '#1a1a1a', background: '#1a1a1a', color: '#fff' }
+                    : { borderColor: '#d1d5db', color: '#6b7280' }
+                  }
+                >
+                  {f.label}
+                </button>
+              ))}
+              {hasFilters && (
+                <button onClick={() => { setActiveDiet(null); setActiveAllergen(null); }}
+                  className="shrink-0 text-xs px-3 py-1 rounded-full border cursor-pointer"
+                  style={{ borderColor: '#ef4444', color: '#ef4444' }}>
+                  Borrar
+                </button>
+              )}
+            </div>
 
-        {/* Allergens */}
-        <div className="flex gap-2 px-4 pb-3 overflow-x-auto scrollbar-none border-t border-gray-100 pt-2">
-          <span className="shrink-0 text-xs text-gray-500 font-semibold uppercase tracking-wider self-center mr-1">Contiene alérgenos:</span>
-          {EU_ALLERGENS.map((a) => (
-            <button
-              key={a.id}
-              onClick={() => setActiveAllergen((p) => p === a.id ? null : a.id)}
-              className="shrink-0 text-xs px-3 py-1 rounded-full border transition-all cursor-pointer font-medium gap-1 flex items-center"
-              style={activeAllergen === a.id
-                ? { borderColor: '#d97706', background: '#fef3c7', color: '#92400e' }
-                : { borderColor: '#d1d5db', color: '#6b7280' }
-              }
-            >
-              <span>{a.icon}</span>
-              <span>{a.label}</span>
-            </button>
-          ))}
-        </div>
+            <div className="flex gap-2 px-4 pb-3 overflow-x-auto scrollbar-none border-t border-gray-100 pt-2">
+              <span className="shrink-0 text-xs text-gray-500 font-semibold uppercase tracking-wider self-center mr-1">Contiene alérgenos:</span>
+              {EU_ALLERGENS.map((a) => (
+                <button
+                  key={a.id}
+                  onClick={() => setActiveAllergen((p) => p === a.id ? null : a.id)}
+                  className="shrink-0 text-xs px-3 py-1 rounded-full border transition-all cursor-pointer font-medium gap-1 flex items-center"
+                  style={activeAllergen === a.id
+                    ? { borderColor: '#d97706', background: '#fef3c7', color: '#92400e' }
+                    : { borderColor: '#d1d5db', color: '#6b7280' }
+                  }
+                >
+                  <span>{a.icon}</span>
+                  <span>{a.label}</span>
+                </button>
+              ))}
+            </div>
+          </>
+        )}
       </header>
 
       {/* ── Items ───────────────────────────────────────────────────────────────── */}
       <main className="max-w-5xl mx-auto px-4 py-8">
         {loading ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {[1, 2, 3, 4, 5, 6].map((i) => (
-              <div key={i} className="h-72 bg-gray-200 animate-pulse rounded-2xl" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} className="h-20 bg-gray-200 animate-pulse rounded-2xl" />
             ))}
+          </div>
+        ) : isSubcatListView ? (
+          /* ── Subcategory cards (same design as main category list) ── */
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {subcats.map((sub, i) => {
+              const count = (category?.products ?? []).filter((p) => p.subcategoryId === sub.id).length;
+              return (
+                <motion.button
+                  key={sub.id}
+                  initial={{ opacity: 0, y: 16 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.4, delay: i * 0.07 }}
+                  onClick={() => setSelectedSubcategoryId(sub.id)}
+                  className="group text-left rounded-2xl border shadow-sm hover:shadow-md transition-all cursor-pointer p-5 flex items-center justify-between gap-4"
+                  style={{
+                    background: branding?.themeColors?.categoryCardBg ?? '#ffffff',
+                    borderColor: branding?.themeColors?.categoryCardBorder ?? '#e5e7eb',
+                  }}
+                >
+                  <div className="flex-1 min-w-0">
+                    <h2
+                      className="text-lg font-semibold truncate mb-0.5 tracking-wide uppercase"
+                      style={{ fontFamily: headingFont, color: branding?.themeColors?.categoryCardText ?? '#8B1A1A' }}
+                    >
+                      {sub.name}
+                    </h2>
+                    {count > 0 && (
+                      <p className="text-sm" style={{ color: (branding?.themeColors?.categoryCardText ?? '#8B1A1A') + '80' }}>
+                        {count} {count === 1 ? 'plato' : 'platos'}
+                      </p>
+                    )}
+                  </div>
+                  <ChevronRight
+                    className="w-5 h-5 shrink-0 transition-colors"
+                    style={{ color: branding?.themeColors?.categoryArrowColor ?? '#15803d' }}
+                  />
+                </motion.button>
+              );
+            })}
           </div>
         ) : displayedItems.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-24 text-gray-400 gap-3">
@@ -492,58 +559,36 @@ export default function CartaCategoria() {
         ) : (
           <AnimatePresence mode="wait">
             <motion.div
-              key={`${activeDiet}-${activeAllergen}`}
+              key={`${activeDiet}-${activeAllergen}-${selectedSubcategoryId}`}
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -8 }}
               transition={{ duration: 0.3 }}
             >
               {(() => {
-                const subcats = category?.subcategories ?? [];
-                // Products without subcategory (or when no subcategories exist)
-                const noSubcat = displayedItems.filter((p) => !p.subcategoryId || !subcats.some((s) => s.id === p.subcategoryId));
-                const groups: { label: string | null; items: PublicProduct[] }[] = [];
-
-                if (subcats.length > 0) {
-                  if (noSubcat.length > 0) groups.push({ label: null, items: noSubcat });
-                  for (const sub of subcats) {
-                    const items = displayedItems.filter((p) => p.subcategoryId === sub.id);
-                    if (items.length > 0) groups.push({ label: sub.name, items });
-                  }
-                } else {
-                  groups.push({ label: null, items: displayedItems });
-                }
-
                 const gridClass = cs.layout === 'grid'
                   ? 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6'
                   : cs.layout === 'list' ? 'flex flex-col gap-3'
                   : 'flex flex-col gap-1';
 
-                return groups.map((group, gi) => (
-                  <div key={gi} className="mb-8">
-                    {group.label && (
-                      <h2 className="text-sm font-semibold uppercase tracking-wider text-gray-400 mb-3 px-0.5" style={{ fontFamily: headingFont }}>
-                        {group.label}
-                      </h2>
-                    )}
-                    <div className={gridClass}>
-                      {group.items.map((item, i) => (
-                        <MenuItemCard
-                          key={item.id}
-                          item={item}
-                          cs={cs}
-                          locale={locale}
-                          accentColor={accentColor}
-                          headingFont={headingFont}
-                          bodyFont={bodyFont}
-                          layout={cs.layout}
-                          index={i}
-                          onClick={() => setSelectedItem(item)}
-                        />
-                      ))}
-                    </div>
+                return (
+                  <div className={gridClass}>
+                    {displayedItems.map((item, i) => (
+                      <MenuItemCard
+                        key={item.id}
+                        item={item}
+                        cs={cs}
+                        locale={locale}
+                        accentColor={accentColor}
+                        headingFont={headingFont}
+                        bodyFont={bodyFont}
+                        layout={cs.layout}
+                        index={i}
+                        onClick={() => setSelectedItem(item)}
+                      />
+                    ))}
                   </div>
-                ));
+                );
               })()}
             </motion.div>
           </AnimatePresence>
