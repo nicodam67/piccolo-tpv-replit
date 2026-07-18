@@ -83,6 +83,8 @@ import FichajePortalEmpleado from './pages/fichaje/FichajePortalEmpleado';
 import FichajeAuditoria from './pages/fichaje/FichajeAuditoria';
 import FichajeDispositivos from './pages/fichaje/FichajeDispositivos';
 import TabletApp from './pages/fichaje/tablet/TabletApp';
+import PersonalLanding from './pages/personal/PersonalLanding';
+import PersonalLayout from './pages/personal/PersonalLayout';
 import Verifactu from './pages/verifactu';
 import Crm from './pages/crm';
 import Branding from './pages/branding';
@@ -312,6 +314,97 @@ function Router() {
           <FichajeLayout><FichajePanelDiario /></FichajeLayout>
         </RequireRole>
       </Route>
+
+      {/* ── Personal y Fichaje — módulo unificado (/personal/*) ──────────── */}
+      <Route path="/personal">
+        <RequireRole roles={ROLES_MANAGER_UP}><PersonalLanding /></RequireRole>
+      </Route>
+      <Route path="/personal/empleados">
+        <RequireRole roles={ROLES_MANAGER_UP}>
+          <PersonalLayout><FichajeEmpleados /></PersonalLayout>
+        </RequireRole>
+      </Route>
+      <Route path="/personal/fichaje">
+        <RequireRole roles={ROLES_MANAGER_UP}>
+          <PersonalLayout><FichajePanelDiario /></PersonalLayout>
+        </RequireRole>
+      </Route>
+      <Route path="/personal/fichaje/registros">
+        <RequireRole roles={ROLES_MANAGER_UP}>
+          <PersonalLayout><FichajeRegistros /></PersonalLayout>
+        </RequireRole>
+      </Route>
+      <Route path="/personal/fichaje/turnos">
+        <RequireRole roles={ROLES_MANAGER_UP}>
+          <PersonalLayout><FichajeTurnos /></PersonalLayout>
+        </RequireRole>
+      </Route>
+      <Route path="/personal/fichaje/planificacion">
+        <RequireRole roles={ROLES_MANAGER_UP}>
+          <PersonalLayout><FichajePlanificacion /></PersonalLayout>
+        </RequireRole>
+      </Route>
+      <Route path="/personal/fichaje/pausas">
+        <RequireRole roles={ROLES_MANAGER_UP}>
+          <PersonalLayout><FichajePausas /></PersonalLayout>
+        </RequireRole>
+      </Route>
+      <Route path="/personal/fichaje/incidencias">
+        <RequireRole roles={ROLES_MANAGER_UP}>
+          <PersonalLayout><FichajeIncidencias /></PersonalLayout>
+        </RequireRole>
+      </Route>
+      <Route path="/personal/fichaje/correcciones">
+        <RequireRole roles={ROLES_MANAGER_UP}>
+          <PersonalLayout><FichajeCorrecciones /></PersonalLayout>
+        </RequireRole>
+      </Route>
+      <Route path="/personal/fichaje/vacaciones">
+        <RequireRole roles={ROLES_MANAGER_UP}>
+          <PersonalLayout><FichajeVacaciones /></PersonalLayout>
+        </RequireRole>
+      </Route>
+      <Route path="/personal/fichaje/ausencias">
+        <RequireRole roles={ROLES_MANAGER_UP}>
+          <PersonalLayout><FichajeAusencias /></PersonalLayout>
+        </RequireRole>
+      </Route>
+      <Route path="/personal/fichaje/importar">
+        <RequireRole roles={ROLES_MANAGER_UP}>
+          <PersonalLayout><FichajeImportar /></PersonalLayout>
+        </RequireRole>
+      </Route>
+      <Route path="/personal/fichaje/informes">
+        <RequireRole roles={ROLES_MANAGER_UP}>
+          <PersonalLayout><FichajeInformes /></PersonalLayout>
+        </RequireRole>
+      </Route>
+      <Route path="/personal/fichaje/costes">
+        <RequireRole roles={ROLES_MANAGER_UP}>
+          <PersonalLayout><FichajeCostesLaborales /></PersonalLayout>
+        </RequireRole>
+      </Route>
+      <Route path="/personal/fichaje/portal">
+        <RequireRole roles={ROLES_MANAGER_UP}>
+          <PersonalLayout><FichajePortalEmpleado /></PersonalLayout>
+        </RequireRole>
+      </Route>
+      <Route path="/personal/fichaje/configuracion">
+        <RequireRole roles={ROLES_MANAGER_UP}>
+          <PersonalLayout><FichajeConfiguracion /></PersonalLayout>
+        </RequireRole>
+      </Route>
+      <Route path="/personal/fichaje/auditoria">
+        <RequireRole roles={ROLES_MANAGER_UP}>
+          <PersonalLayout><FichajeAuditoria /></PersonalLayout>
+        </RequireRole>
+      </Route>
+      <Route path="/personal/fichaje/dispositivos">
+        <RequireRole roles={ROLES_MANAGER_UP}>
+          <PersonalLayout><FichajeDispositivos /></PersonalLayout>
+        </RequireRole>
+      </Route>
+
       <Route path="/admin/repartidores">
         <RequireRole roles={ROLES_MANAGER_UP}><AdminRepartidores /></RequireRole>
       </Route>
