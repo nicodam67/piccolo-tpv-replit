@@ -60,6 +60,8 @@ import { OfflineBanner } from './components/OfflineBanner';
 import BackupPage from './pages/backup/BackupPage';
 import DiagnosticsPage from './pages/backup/DiagnosticsPage';
 import DevicesPage from './pages/backup/DevicesPage';
+import FoodCostLayout from './pages/food-cost/FoodCostLayout';
+import FoodCostVista from './pages/food-cost/FoodCostVista';
 import FichajeReloj from './pages/fichaje/FichajeReloj';
 import FichajeLayout from './pages/fichaje/FichajeLayout';
 import FichajePanelDiario from './pages/fichaje/FichajePanelDiario';
@@ -341,11 +343,15 @@ function Router() {
       <Route path="/modificadores">
         <RequireRole roles={ROLES_ADMIN_ONLY}><Modificadores /></RequireRole>
       </Route>
+      {/* ── Food Cost module entry point ──────────────────────────────────── */}
+      <Route path="/admin/food-cost">
+        <RequireRole roles={ROLES_ADMIN_ONLY}><FoodCostLayout><FoodCostVista /></FoodCostLayout></RequireRole>
+      </Route>
       <Route path="/ingredientes">
-        <RequireRole roles={ROLES_ADMIN_ONLY}><Ingredientes /></RequireRole>
+        <RequireRole roles={ROLES_ADMIN_ONLY}><FoodCostLayout><Ingredientes /></FoodCostLayout></RequireRole>
       </Route>
       <Route path="/stock">
-        <RequirePermission permission="stock.manage"><Stock /></RequirePermission>
+        <RequirePermission permission="stock.manage"><FoodCostLayout><Stock /></FoodCostLayout></RequirePermission>
       </Route>
       <Route path="/admin/caja-automatica">
         <RequireRole roles={ROLES_ADMIN_ONLY}><CajaAutomatica /></RequireRole>
@@ -354,43 +360,43 @@ function Router() {
         <RequireRole roles={ROLES_ADMIN_ONLY}><CajaAutomaticaEstado /></RequireRole>
       </Route>
       <Route path="/admin/inventario/fisico">
-        <RequireRole roles={ROLES_ADMIN_ONLY}><InventarioFisico /></RequireRole>
+        <RequireRole roles={ROLES_ADMIN_ONLY}><FoodCostLayout><InventarioFisico /></FoodCostLayout></RequireRole>
       </Route>
       <Route path="/admin/inventario/informes">
-        <RequireRole roles={ROLES_ADMIN_ONLY}><InformesStock /></RequireRole>
+        <RequireRole roles={ROLES_ADMIN_ONLY}><FoodCostLayout><InformesStock /></FoodCostLayout></RequireRole>
       </Route>
       <Route path="/admin/subrecetas">
-        <RequireRole roles={ROLES_ADMIN_ONLY}><Subrecetas /></RequireRole>
+        <RequireRole roles={ROLES_ADMIN_ONLY}><FoodCostLayout><Subrecetas /></FoodCostLayout></RequireRole>
       </Route>
       <Route path="/admin/rentabilidad">
-        <RequireRole roles={ROLES_ADMIN_ONLY}><Rentabilidad /></RequireRole>
+        <RequireRole roles={ROLES_ADMIN_ONLY}><FoodCostLayout><Rentabilidad /></FoodCostLayout></RequireRole>
       </Route>
       <Route path="/admin/simulador-precios">
-        <RequireRole roles={ROLES_ADMIN_ONLY}><SimuladorPrecios /></RequireRole>
+        <RequireRole roles={ROLES_ADMIN_ONLY}><FoodCostLayout><SimuladorPrecios /></FoodCostLayout></RequireRole>
       </Route>
       <Route path="/admin/proveedores">
-        <RequireRole roles={ROLES_ADMIN_ONLY}><Proveedores /></RequireRole>
+        <RequireRole roles={ROLES_ADMIN_ONLY}><FoodCostLayout><Proveedores /></FoodCostLayout></RequireRole>
       </Route>
       <Route path="/admin/comparacion-precios">
-        <RequireRole roles={ROLES_ADMIN_ONLY}><ComparacionPrecios /></RequireRole>
+        <RequireRole roles={ROLES_ADMIN_ONLY}><FoodCostLayout><ComparacionPrecios /></FoodCostLayout></RequireRole>
       </Route>
       <Route path="/admin/pedidos-compra">
-        <RequireRole roles={ROLES_ADMIN_ONLY}><PedidosCompra /></RequireRole>
+        <RequireRole roles={ROLES_ADMIN_ONLY}><FoodCostLayout><PedidosCompra /></FoodCostLayout></RequireRole>
       </Route>
       <Route path="/admin/recepcion-mercancia">
-        <RequireRole roles={ROLES_ADMIN_ONLY}><RecepcionMercancia /></RequireRole>
+        <RequireRole roles={ROLES_ADMIN_ONLY}><FoodCostLayout><RecepcionMercancia /></FoodCostLayout></RequireRole>
       </Route>
       <Route path="/admin/facturas-proveedor">
-        <RequireRole roles={ROLES_ADMIN_ONLY}><FacturasProveedor /></RequireRole>
+        <RequireRole roles={ROLES_ADMIN_ONLY}><FoodCostLayout><FacturasProveedor /></FoodCostLayout></RequireRole>
       </Route>
       <Route path="/admin/conciliacion">
-        <RequireRole roles={ROLES_ADMIN_ONLY}><ConciliacionDocumental /></RequireRole>
+        <RequireRole roles={ROLES_ADMIN_ONLY}><FoodCostLayout><ConciliacionDocumental /></FoodCostLayout></RequireRole>
       </Route>
       <Route path="/admin/lotes-caducidades">
-        <RequireRole roles={ROLES_ADMIN_ONLY}><LotesCaducidades /></RequireRole>
+        <RequireRole roles={ROLES_ADMIN_ONLY}><FoodCostLayout><LotesCaducidades /></FoodCostLayout></RequireRole>
       </Route>
       <Route path="/admin/escaner-facturas">
-        <RequireRole roles={ROLES_ADMIN_ONLY}><EscanerFacturas /></RequireRole>
+        <RequireRole roles={ROLES_ADMIN_ONLY}><FoodCostLayout><EscanerFacturas /></FoodCostLayout></RequireRole>
       </Route>
       <Route path="/admin/revision-factura/:id">
         <RequireRole roles={ROLES_ADMIN_ONLY}><RevisionFactura /></RequireRole>
@@ -399,22 +405,22 @@ function Router() {
         <RequireRole roles={ROLES_ADMIN_ONLY}><ConciliacionFactura /></RequireRole>
       </Route>
       <Route path="/admin/trazabilidad-lotes">
-        <RequireRole roles={ROLES_ADMIN_ONLY}><TrazabilidadLotes /></RequireRole>
+        <RequireRole roles={ROLES_ADMIN_ONLY}><FoodCostLayout><TrazabilidadLotes /></FoodCostLayout></RequireRole>
       </Route>
       <Route path="/admin/retirada-lote">
-        <RequireRole roles={ROLES_ADMIN_ONLY}><RetiradasLote /></RequireRole>
+        <RequireRole roles={ROLES_ADMIN_ONLY}><FoodCostLayout><RetiradasLote /></FoodCostLayout></RequireRole>
       </Route>
       <Route path="/admin/verifactu">
         <RequireRole roles={ROLES_ADMIN_ONLY}><Verifactu /></RequireRole>
       </Route>
       <Route path="/admin/mermas">
-        <RequireRole roles={ROLES_ADMIN_ONLY}><AdminMermas /></RequireRole>
+        <RequireRole roles={ROLES_ADMIN_ONLY}><FoodCostLayout><AdminMermas /></FoodCostLayout></RequireRole>
       </Route>
       <Route path="/admin/categorias-ingredientes">
-        <RequireRole roles={ROLES_ADMIN_ONLY}><AdminCategoriasIngredientes /></RequireRole>
+        <RequireRole roles={ROLES_ADMIN_ONLY}><FoodCostLayout><AdminCategoriasIngredientes /></FoodCostLayout></RequireRole>
       </Route>
       <Route path="/admin/almacenes">
-        <RequireRole roles={ROLES_ADMIN_ONLY}><AdminAlmacenes /></RequireRole>
+        <RequireRole roles={ROLES_ADMIN_ONLY}><FoodCostLayout><AdminAlmacenes /></FoodCostLayout></RequireRole>
       </Route>
       <Route path="/admin/instalacion">
         <RequireRole roles={ROLES_ADMIN_ONLY}><AdminInstalacion /></RequireRole>

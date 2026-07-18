@@ -290,7 +290,7 @@ export default function RevisionFactura() {
   });
 
   const confirmMutation = useMutation({
-    mutationFn: (overrideDuplicate = false) =>
+    mutationFn: (overrideDuplicate: boolean = false) =>
       customFetch(`/api/admin/invoice-scanner/${id}/confirm`, {
         method: 'POST',
         body: JSON.stringify({ overrideDuplicate }),

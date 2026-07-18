@@ -261,7 +261,8 @@ export default function KdsPage() {
 
   const handleUpdateStatus = (taskId: string, status: TaskStatus) => {
     updateStatus.mutate(
-      { taskId, data: { status } },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      { taskId, data: { status: status as any } },
       {
         onSuccess: () => queryClient.invalidateQueries({ queryKey: getGetKdsTasksQueryKey(zone as any) }),
         onError: (err: any) => {
@@ -620,7 +621,7 @@ function PaseView({ tasks, onAction }: { tasks: KitchenTask[]; onAction: (orderI
 
     return {
       orderId, items, activeItems, readyItems, isAllReady, isSomeReady, isOverdue,
-      tableName: items[0].tableName ?? items[0].clientName ?? 'Takeaway',
+      tableName: items[0].tableName ?? (items[0] as any).clientName ?? 'Takeaway',
       employeeName: items[0].employeeName,
       createdAt: earliest.createdAt,
       zoneGroups,

@@ -5,9 +5,10 @@
  * Fiel a la estructura del programa original (AdminDashboard.tsx)
  */
 import { useState, useEffect } from 'react';
+import { useLocation } from 'wouter';
 import {
   Loader2, Save, Check, LayoutGrid, Palette, QrCode, Download,
-  Languages, Monitor, Printer, ExternalLink, X,
+  Languages, Monitor, Printer, X, Settings, ChevronLeft,
 } from 'lucide-react';
 import type { QrBranding } from './types';
 import { DEFAULT_THEME_COLORS, DEFAULT_THEME_FONTS, DEFAULT_CARD_SETTINGS, DEFAULT_SCHEDULE } from './types';
@@ -17,13 +18,14 @@ import TabBranding from './TabBranding';
 import TabQRShare from './TabQRShare';
 import TabExport from './TabExport';
 
-type TabId = 'menu' | 'branding' | 'qr' | 'export';
+type TabId = 'menu' | 'branding' | 'qr' | 'export' | 'ajustes';
 
 const TABS: { id: TabId; label: string; Icon: React.ComponentType<{ className?: string; size?: number }> }[] = [
-  { id: 'menu',     label: 'Menú',           Icon: LayoutGrid },
-  { id: 'branding', label: 'Branding',       Icon: Palette },
-  { id: 'qr',       label: 'QR & Compartir', Icon: QrCode },
-  { id: 'export',   label: 'Exportar',       Icon: Download },
+  { id: 'menu',     label: 'Menú',         Icon: LayoutGrid },
+  { id: 'branding', label: 'Branding',     Icon: Palette },
+  { id: 'qr',       label: 'Publicación',  Icon: QrCode },
+  { id: 'export',   label: 'Exportar',     Icon: Download },
+  { id: 'ajustes',  label: 'Ajustes',      Icon: Settings },
 ];
 
 const DEFAULT_BRANDING: QrBranding = {
@@ -37,6 +39,7 @@ const DEFAULT_BRANDING: QrBranding = {
 };
 
 export default function QrMenuPage() {
+  const [, navigate] = useLocation();
   const [activeTab, setActiveTab] = useState<TabId>('menu');
   const [branding, setBranding] = useState<QrBranding>(DEFAULT_BRANDING);
   const [dirty, setDirty] = useState(false);
@@ -99,7 +102,14 @@ export default function QrMenuPage() {
     <div className="flex min-h-screen bg-gray-50">
       {/* ── Sidebar — desktop ──────────────────────────────────────────────── */}
       <aside className="hidden md:flex flex-col w-56 shrink-0 border-r border-gray-200 bg-white py-6">
-        <div className="px-4 mb-6">
+        <div className="px-4 mb-4">
+          <button
+            onClick={() => navigate('/admin')}
+            className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-600 transition-colors mb-3"
+          >
+            <ChevronLeft size={13} />
+            Admin
+          </button>
           <div className="flex items-center gap-2">
             <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: accentColor }}>
               <QrCode size={14} className="text-white" />
@@ -202,6 +212,50 @@ export default function QrMenuPage() {
           {activeTab === 'branding' && <TabBranding branding={branding} onChange={handleBrandingChange} />}
           {activeTab === 'qr' && <TabQRShare />}
           {activeTab === 'export' && <TabExport />}
+          {activeTab === 'ajustes' && (
+            <div className="p-6 max-w-2xl space-y-6">
+              <div>
+                <h2 className="text-base font-semibold text-gray-900 mb-1">Ajustes del módulo</h2>
+                <p className="text-sm text-gray-500">Configuración general de la carta pública.</p>
+              </div>
+              {/* Quick navigation links */}
+              <div className="rounded-xl border border-gray-200 divide-y divide-gray-100 overflow-hidden">
+                <div className="px-4 py-3 bg-gray-50">
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Accesos rápidos</p>
+                </div>
+                {[
+                  { label: 'Ver carta pública',         href: `${BASE}/carta`,          desc: 'Abre la vista del cliente en nueva pestaña', icon: Monitor },
+                  { label: 'Imprimir carta (5 pestañas)', href: `${BASE}/carta/imprimir`, desc: 'Página de impresión con panel Páginas/Elementos/Colores/Fuentes/Idioma', icon: Printer },
+                ].map(({ label, href, desc, icon: Icon }) => (
+                  <a
+                    key={href} href={href} target="_blank" rel="noopener noreferrer"
+                    className="flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition-colors group"
+                  >
+                    <div className="flex items-center gap-3">
+                      <Icon size={16} className="text-gray-400" />
+                      <div>
+                        <p className="text-sm font-medium text-gray-800">{label}</p>
+                        <p className="text-xs text-gray-400">{desc}</p>
+                      </div>
+                    </div>
+                    <span className="text-xs text-gray-300 group-hover:text-gray-500">↗</span>
+                  </a>
+                ))}
+              </div>
+              {/* Module info */}
+              <div className="rounded-xl border border-gray-200 p-4 space-y-3">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Secciones del módulo</p>
+                <div className="grid grid-cols-2 gap-2 text-xs text-gray-600">
+                  {['Carta (categorías)', 'Productos', 'Alérgenos (14 EU)', 'Etiquetas dietéticas', 'Diseño & colores', 'Tipografías', 'Horarios', 'Idiomas (8 locales)', 'QR dinámico', 'Publicación', 'Exportar CSV', 'Impresión de carta'].map(s => (
+                    <div key={s} className="flex items-center gap-1.5">
+                      <div className="w-1.5 h-1.5 rounded-full bg-green-400 flex-shrink-0" />
+                      {s}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
         </main>
       </div>
 

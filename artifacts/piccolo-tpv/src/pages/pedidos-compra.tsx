@@ -39,17 +39,17 @@ export default function PedidosCompra() {
   const [filterStatus, setFilterStatus] = useState('');
   const [supplierSearch, setSupplierSearch] = useState('');
 
+  const { data: orders = [], isLoading, refetch: refetchOrders } = useQuery<PurchaseOrder[]>({
+    queryKey: ['purchase-orders', filterStatus],
+    queryFn: () => customFetch(`/api/admin/purchase-orders${filterStatus ? `?status=${filterStatus}` : ''}`),
+  });
+
   useEffect(() => {
     const onVisibility = () => { if (!document.hidden) void refetchOrders(); };
     document.addEventListener('visibilitychange', onVisibility);
     return () => document.removeEventListener('visibilitychange', onVisibility);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refetchOrders]);
-
-  const { data: orders = [], isLoading, refetch: refetchOrders } = useQuery<PurchaseOrder[]>({
-    queryKey: ['purchase-orders', filterStatus],
-    queryFn: () => customFetch(`/api/admin/purchase-orders${filterStatus ? `?status=${filterStatus}` : ''}`),
-  });
 
   const { data: detail } = useQuery<PurchaseOrder & { items: PurchaseOrderItem[] }>({
     queryKey: ['purchase-order', selectedId],
@@ -76,7 +76,7 @@ export default function PedidosCompra() {
   const createOrder = useMutation({
     mutationFn: (data: Record<string, unknown>) =>
       customFetch('/api/admin/purchase-orders', { method: 'POST', body: JSON.stringify(data) }),
-    onSuccess: (order) => {
+    onSuccess: (order: any) => {
       qc.invalidateQueries({ queryKey: ['purchase-orders'] });
       toast.success('Pedido creado');
       setShowCreate(false);
@@ -106,7 +106,7 @@ export default function PedidosCompra() {
   const copyOrder = useMutation({
     mutationFn: (sourceId: string) =>
       customFetch('/api/admin/purchase-orders', { method: 'POST', body: JSON.stringify({ supplierId: detail?.supplierId, copyFromOrderId: sourceId }) }),
-    onSuccess: (order) => { qc.invalidateQueries({ queryKey: ['purchase-orders'] }); toast.success('Pedido copiado'); setSelectedId(order.id); },
+    onSuccess: (order: any) => { qc.invalidateQueries({ queryKey: ['purchase-orders'] }); toast.success('Pedido copiado'); setSelectedId(order.id); },
   });
 
   function handleCreateSubmit(e: React.FormEvent<HTMLFormElement>) {
