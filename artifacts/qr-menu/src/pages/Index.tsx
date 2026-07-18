@@ -89,7 +89,10 @@ export default function Index() {
   return (
     <div className="min-h-screen" style={{ background: "var(--background)" }}>
       {/* Hero */}
-      <header className="relative overflow-hidden">
+      {/* Dark background-color ensures text is always legible even if the
+          Convex Storage signed URL or the fallback Unsplash image fails to
+          load as a CSS background (which is silent in the browser). */}
+      <header className="relative overflow-hidden" style={{ backgroundColor: "#1a0a08" }}>
         {heroVideoUrl ? (
           <video
             src={heroVideoUrl}
@@ -97,12 +100,12 @@ export default function Index() {
             style={{ filter: "brightness(0.35)" }}
             autoPlay loop muted playsInline
           />
-        ) : (
+        ) : heroImageUrl ? (
           <div
             className="absolute inset-0 bg-cover bg-center"
             style={{ backgroundImage: `url(${heroImageUrl})`, filter: "brightness(0.35)" }}
           />
-        )}
+        ) : null}
         <div className="relative z-10 flex flex-col items-center justify-center py-20 px-4 text-center">
           <div className="absolute top-4 right-4 flex items-center gap-2">
             <LocaleSwitcher />
