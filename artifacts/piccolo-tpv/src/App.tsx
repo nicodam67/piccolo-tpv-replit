@@ -81,6 +81,8 @@ import FichajeVacaciones from './pages/fichaje/FichajeVacaciones';
 import FichajeCostesLaborales from './pages/fichaje/FichajeCostesLaborales';
 import FichajePortalEmpleado from './pages/fichaje/FichajePortalEmpleado';
 import FichajeAuditoria from './pages/fichaje/FichajeAuditoria';
+import FichajeDispositivos from './pages/fichaje/FichajeDispositivos';
+import TabletApp from './pages/fichaje/tablet/TabletApp';
 import Verifactu from './pages/verifactu';
 import Crm from './pages/crm';
 import Branding from './pages/branding';
@@ -129,6 +131,7 @@ function Router() {
       {/* ── Public routes (no auth required) ──────────────────────────────── */}
       <Route path="/" component={Login} />
       <Route path="/fichaje" component={FichajeReloj} />
+      <Route path="/fichaje/tablet" component={TabletApp} />
       <Route path="/carta" component={Carta} />
       <Route path="/carta/categoria/:categoryId" component={CartaCategoria} />
       <Route path="/carta/imprimir" component={CartaImprimir} />
@@ -296,6 +299,11 @@ function Router() {
       <Route path="/admin/fichaje/auditoria">
         <RequireRole roles={ROLES_MANAGER_UP}>
           <FichajeLayout><FichajeAuditoria /></FichajeLayout>
+        </RequireRole>
+      </Route>
+      <Route path="/admin/fichaje/dispositivos">
+        <RequireRole roles={ROLES_MANAGER_UP}>
+          <FichajeLayout><FichajeDispositivos /></FichajeLayout>
         </RequireRole>
       </Route>
       {/* Legacy redirect: /admin/fichaje/panel → /admin/fichaje */}

@@ -42,6 +42,11 @@ const PUBLIC_ALLOWLIST: RegExp[] = [
   /^\/config\/business$/,             // used by public setup wizard & QR carta
   /^\/setup\/detect$/,                // pre-auth module detection for setup wizard
   /^\/setup\/seed-employees$/,        // one-time bootstrap; only acts when DB is empty
+  // ── Tablet kiosk endpoints (protected by pairing code or device token, not JWT) ──
+  /^\/tablet\/register$/,             // requires admin-generated pairing code
+  /^\/tablet\/device\//,              // device token validation & ping
+  /^\/tablet\/verify-pin$/,           // PIN check gated by device token + rate limiting
+  /^\/tablet\/clock$/,                // clock action gated by device token + idempotency
 ];
 
 const METHODS = ["get", "post", "put", "patch", "delete"] as const;

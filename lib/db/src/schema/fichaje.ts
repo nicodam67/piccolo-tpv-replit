@@ -117,6 +117,19 @@ export const fichajeAuditTable = pgTable("fichaje_audit", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+// ─── Tablets de fichaje (quioscos fijos) ────────────────────────────────────
+export const tabletDevicesTable = pgTable("tablet_devices", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull(),
+  deviceToken: text("device_token").notNull().unique(),
+  location: text("location").notNull().default("Piccolo La Ràpita"),
+  status: text("status").notNull().default("active"), // 'active' | 'revoked'
+  lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
+  appVersion: text("app_version"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+});
+
 // ─── Configuración del módulo de fichaje ─────────────────────────────────────
 export const fichajeSettingsTable = pgTable("fichaje_settings", {
   id: integer("id").primaryKey().default(1), // single-row config

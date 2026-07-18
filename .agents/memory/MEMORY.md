@@ -14,3 +14,4 @@
 - [Production infra](production-infra.md) — VERSION, CHANGELOG.md, /admin/salud health panel, system-info route, PRODUCTION_REPORT.md; risks R1–R6 now resolved.
 - [ExcelJS migration](exceljs-migration.md) — xlsx replaced in 4 files; async writeBuffer/load patterns, hr-import parseFile must be async, .xls dropped.
 - [Vitest JWT auth mock](vitest-auth-mock.md) — requireAuth calls jwt.verify synchronously; mock must return value (not callback) or all auth routes return 401.
+- [Tablet Fichaje kiosk](tablet-fichaje.md) — /fichaje/tablet standalone PWA; device-token auth bypasses mobileClockEnabled; in-memory PIN lockout; migration 0021.

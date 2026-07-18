@@ -25,6 +25,7 @@ import {
   Menu,
   X,
   Fingerprint,
+  Tablet,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 
@@ -53,6 +54,7 @@ const NAV: NavItem[] = [
   { label: "Portal empleado",     icon: <UserCircle size={18} />,        href: "/admin/fichaje/portal" },
   { label: "Configuración",       icon: <Settings size={18} />,          href: "/admin/fichaje/configuracion" },
   { label: "Auditoría",           icon: <Shield size={18} />,            href: "/admin/fichaje/auditoria" },
+  { label: "Dispositivos",        icon: <Tablet size={18} />,            href: "/admin/fichaje/dispositivos" },
 ];
 
 interface Props {

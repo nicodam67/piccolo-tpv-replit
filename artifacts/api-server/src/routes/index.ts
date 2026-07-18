@@ -58,6 +58,7 @@ import setupRouter from "./setup";
 import auditRouter from "./audit";
 import installationRouter from "./installation";
 import demoDataRouter from "./demo-data";
+import tabletRouter from "./tablet";
 import systemInfoRouter from "./system-info";
 import rolePermissionsRouter from "./role-permissions";
 
@@ -124,5 +125,6 @@ router.use(installationRouter);
 router.use(demoDataRouter);
 router.use(systemInfoRouter);
 router.use(rolePermissionsRouter);
+router.use(tabletRouter);
 
 export default router;
