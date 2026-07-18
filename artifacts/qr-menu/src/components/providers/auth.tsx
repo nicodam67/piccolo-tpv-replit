@@ -1,17 +1,21 @@
 import { HerculesAuthProvider } from "@usehercules/auth/react";
 
 const authority = import.meta.env.VITE_HERCULES_OIDC_AUTHORITY;
-const clientId = import.meta.env.VITE_HERCULES_OIDC_CLIENT_ID;
+const clientId  = import.meta.env.VITE_HERCULES_OIDC_CLIENT_ID;
+const isDemoMode = !import.meta.env.VITE_CONVEX_URL;
 
-if (!authority || !clientId) {
+if (!isDemoMode && (!authority || !clientId)) {
   console.warn(
     "[QR Menú] Faltan variables de entorno de Hercules OIDC: " +
     "VITE_HERCULES_OIDC_AUTHORITY y VITE_HERCULES_OIDC_CLIENT_ID. " +
-    "La autenticación de administrador no estará disponible hasta que se configuren."
+    "La autenticación de administrador no estará disponible hasta que se configuren.",
   );
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
+  // Demo mode: skip OIDC entirely — no network calls, no credentials needed.
+  if (isDemoMode) return <>{children}</>;
+
   return (
     <HerculesAuthProvider
       authority={authority ?? "https://placeholder.hercules.app"}

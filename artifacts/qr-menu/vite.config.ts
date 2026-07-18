@@ -17,6 +17,24 @@ if (Number.isNaN(port) || port <= 0) {
 
 const basePath = process.env.BASE_PATH ?? "/qr-menu/";
 
+// When VITE_CONVEX_URL is absent, alias Convex/Hercules packages to local
+// demo mocks so the app renders with seed data — no cloud credentials needed.
+const isDemoMode = !process.env.VITE_CONVEX_URL;
+
+const demoAliases = isDemoMode
+  ? {
+      "convex/react": path.resolve(import.meta.dirname, "src/lib/demo-convex.tsx"),
+      "@usehercules/auth/convex-react": path.resolve(
+        import.meta.dirname,
+        "src/lib/demo-hercules-convex.tsx",
+      ),
+    }
+  : {};
+
+if (isDemoMode) {
+  console.log("[qr-menu] DEMO MODE — serving seed data (no VITE_CONVEX_URL)");
+}
+
 export default defineConfig({
   base: basePath,
   plugins: [
@@ -29,6 +47,7 @@ export default defineConfig({
   ],
   resolve: {
     alias: {
+      ...demoAliases,
       "@/convex": path.resolve(import.meta.dirname, "./convex"),
       "@": path.resolve(import.meta.dirname, "./src"),
     },
