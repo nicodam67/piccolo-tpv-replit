@@ -122,8 +122,13 @@ router.get("/admin/permissions/catalog", requireAuth, requireRole("admin", "mana
 
 // ─── GET /admin/permissions ───────────────────────────────────────────────────
 router.get("/admin/permissions", requireAuth, requireRole("admin", "manager"), async (_req, res) => {
-  const overrides = await db.select().from(rolePermissionsTable);
-  res.json({ overrides });
+  try {
+    const overrides = await db.select().from(rolePermissionsTable);
+    res.json({ overrides });
+  } catch (err) {
+    console.error("[role-permissions] GET /admin/permissions failed:", err);
+    res.status(500).json({ error: "No se pudieron cargar los permisos. Inténtalo de nuevo." });
+  }
 });
 
 // ─── PUT /admin/permissions ───────────────────────────────────────────────────
@@ -138,27 +143,36 @@ router.put("/admin/permissions", requireAuth, requireRole("admin"), async (req, 
     res.status(400).json({ error: `Rol desconocido: ${role}` }); return;
   }
 
-  const [row] = await db
-    .insert(rolePermissionsTable)
-    .values({ role, module: mod, action, allowed, updatedBy: req.user!.id })
-    .onConflictDoUpdate({
-      target: [rolePermissionsTable.role, rolePermissionsTable.module, rolePermissionsTable.action],
-      set: { allowed, updatedBy: req.user!.id, updatedAt: new Date() },
-    })
-    .returning();
-
-  res.json({ permission: row });
+  try {
+    const [row] = await db
+      .insert(rolePermissionsTable)
+      .values({ role, module: mod, action, allowed, updatedBy: req.user!.id })
+      .onConflictDoUpdate({
+        target: [rolePermissionsTable.role, rolePermissionsTable.module, rolePermissionsTable.action],
+        set: { allowed, updatedBy: req.user!.id, updatedAt: new Date() },
+      })
+      .returning();
+    res.json({ permission: row });
+  } catch (err) {
+    console.error("[role-permissions] PUT /admin/permissions failed:", err);
+    res.status(500).json({ error: "No se pudo guardar el permiso. Inténtalo de nuevo." });
+  }
 });
 
 // ─── DELETE /admin/permissions/:id ───────────────────────────────────────────
 router.delete("/admin/permissions/:id", requireAuth, requireRole("admin"), async (req, res) => {
   const id = req.params.id as string;
-  const [deleted] = await db
-    .delete(rolePermissionsTable)
-    .where(eq(rolePermissionsTable.id, id))
-    .returning();
-  if (!deleted) { res.status(404).json({ error: "Permiso no encontrado" }); return; }
-  res.json({ ok: true });
+  try {
+    const [deleted] = await db
+      .delete(rolePermissionsTable)
+      .where(eq(rolePermissionsTable.id, id))
+      .returning();
+    if (!deleted) { res.status(404).json({ error: "Permiso no encontrado" }); return; }
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("[role-permissions] DELETE /admin/permissions/:id failed:", err);
+    res.status(500).json({ error: "No se pudo eliminar el permiso. Inténtalo de nuevo." });
+  }
 });
 
 // ─── Utility: check granular permission (for use in other routes) ─────────────
