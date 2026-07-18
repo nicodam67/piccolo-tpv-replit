@@ -281,7 +281,7 @@ export default function Carta() {
     : `"${CARTA_DEFAULT_FONT}", serif`;
   const bodyFont    = branding?.themeFonts?.body    ? `"${branding.themeFonts.body}", sans-serif` : undefined;
 
-  const heroImageUrl = branding?.heroImageUrl || 'https://images.unsplash.com/photo-1561948955-570b270e7c36?w=1400&q=80';
+  const heroImageUrl = branding?.heroImageUrl || null;   // no fallback: evita flash de imagen placeholder
   const heroVideoUrl = branding?.heroVideoUrl || null;
 
   const sortedCategories = useMemo(() => {
@@ -331,10 +331,16 @@ export default function Carta() {
             style={{ filter: 'brightness(0.35)' }}
             autoPlay loop muted playsInline
           />
-        ) : (
+        ) : heroImageUrl ? (
           <div
             className="absolute inset-0 bg-cover bg-center"
             style={{ backgroundImage: `url(${heroImageUrl})`, filter: 'brightness(0.35)' }}
+          />
+        ) : (
+          // Sin imagen configurada (o mientras carga el branding): fondo oscuro neutro
+          <div
+            className="absolute inset-0"
+            style={{ background: 'linear-gradient(160deg, #1a0a0a 0%, #2d1515 100%)' }}
           />
         )}
         <div className="relative z-10 flex flex-col items-center justify-center py-20 px-4 text-center">
