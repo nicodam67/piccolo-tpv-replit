@@ -6,6 +6,7 @@
 - [lib/db dist rebuild](lib-db-rebuild.md) — After schema changes, run `tsc --build lib/db` to update dist declarations; only then will api-server tsc pick up new columns.
 - [Comandas module schema](comandas-schema.md) — guestCount+notes on orders, formatId+formatName+isInvitation on order_items, productFormatsTable in categories schema, auditLogTable; all pushed to DB.
 - [Fichaje integration](fichaje-integration.md) — fichaje module integrated into TPV; key decisions: Clerk replaced by JWT/PIN, INTEGER IDs migrated to UUIDs, 8 new DB tables, zod must be added explicitly to api-server deps.
+- [Fichaje consolidation](fichaje-consolidation.md) — 7 separate dashboard buttons → 1 "Fichaje" button; FichajeLayout sidebar with 17 sections; mobile clock enabled in DB; FichajeImportarAnviz renamed to FichajeImportar (universal); login.tsx cards use inline style for dark-mode visibility + admin button added.
 - [Stock module additions](stock-module.md) — migration 0004, new tables (ingredient_categories, storage_locations, waste_records), ApiError export fix, fetch queryFn must throw on !r.ok to keep default [].
 - [CRM / Loyalty module](crm-loyalty-module.md) — 15 DB tables, migration 0008, route split crm.ts+loyalty-extended.ts, 7-tab frontend, demo data endpoint.
 - [Director dashboard module](director-module.md) — migration 0010, 5 new tables, 2 routers, 15-tab frontend; use React not Preact imports; fix camelCase SVG attrs.

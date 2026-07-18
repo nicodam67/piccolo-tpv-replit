@@ -60,13 +60,16 @@ import BackupPage from './pages/backup/BackupPage';
 import DiagnosticsPage from './pages/backup/DiagnosticsPage';
 import DevicesPage from './pages/backup/DevicesPage';
 import FichajeReloj from './pages/fichaje/FichajeReloj';
+import FichajeLayout from './pages/fichaje/FichajeLayout';
 import FichajePanelDiario from './pages/fichaje/FichajePanelDiario';
 import FichajeRegistros from './pages/fichaje/FichajeRegistros';
 import FichajeTurnos from './pages/fichaje/FichajeTurnos';
 import FichajeAusencias from './pages/fichaje/FichajeAusencias';
-import FichajeImportarAnviz from './pages/fichaje/FichajeImportarAnviz';
+import FichajeImportar from './pages/fichaje/FichajeImportar';
 import FichajeInformes from './pages/fichaje/FichajeInformes';
 import FichajeConfiguracion from './pages/fichaje/FichajeConfiguracion';
+import FichajeEmpleados from './pages/fichaje/FichajeEmpleados';
+import FichajePlaceholder from './pages/fichaje/FichajePlaceholder';
 import Verifactu from './pages/verifactu';
 import Crm from './pages/crm';
 import Branding from './pages/branding';
@@ -202,26 +205,92 @@ function Router() {
       <Route path="/admin/director">
         <RequireRole roles={ROLES_MANAGER_UP}><DirectorPage /></RequireRole>
       </Route>
-      <Route path="/admin/fichaje/panel">
-        <RequireRole roles={ROLES_MANAGER_UP}><FichajePanelDiario /></RequireRole>
+      {/* ── Fichaje — módulo unificado de control horario ──────────────────── */}
+      <Route path="/admin/fichaje">
+        <RequireRole roles={ROLES_MANAGER_UP}>
+          <FichajeLayout><FichajePanelDiario /></FichajeLayout>
+        </RequireRole>
       </Route>
       <Route path="/admin/fichaje/registros">
-        <RequireRole roles={ROLES_MANAGER_UP}><FichajeRegistros /></RequireRole>
+        <RequireRole roles={ROLES_MANAGER_UP}>
+          <FichajeLayout><FichajeRegistros /></FichajeLayout>
+        </RequireRole>
+      </Route>
+      <Route path="/admin/fichaje/empleados">
+        <RequireRole roles={ROLES_MANAGER_UP}>
+          <FichajeLayout><FichajeEmpleados /></FichajeLayout>
+        </RequireRole>
       </Route>
       <Route path="/admin/fichaje/turnos">
-        <RequireRole roles={ROLES_MANAGER_UP}><FichajeTurnos /></RequireRole>
+        <RequireRole roles={ROLES_MANAGER_UP}>
+          <FichajeLayout><FichajeTurnos /></FichajeLayout>
+        </RequireRole>
+      </Route>
+      <Route path="/admin/fichaje/planificacion">
+        <RequireRole roles={ROLES_MANAGER_UP}>
+          <FichajeLayout><FichajePlaceholder title="Planificación" description="Gestión de turnos semanales, plantillas y publicación de planificación." /></FichajeLayout>
+        </RequireRole>
+      </Route>
+      <Route path="/admin/fichaje/pausas">
+        <RequireRole roles={ROLES_MANAGER_UP}>
+          <FichajeLayout><FichajePlaceholder title="Pausas" description="Registro y control de descansos activos e histórico de pausas por empleado." /></FichajeLayout>
+        </RequireRole>
+      </Route>
+      <Route path="/admin/fichaje/incidencias">
+        <RequireRole roles={ROLES_MANAGER_UP}>
+          <FichajeLayout><FichajePlaceholder title="Incidencias" description="Alertas de fichajes anómalos: sin entrada, doble fichaje, salida sin entrada." /></FichajeLayout>
+        </RequireRole>
+      </Route>
+      <Route path="/admin/fichaje/correcciones">
+        <RequireRole roles={ROLES_MANAGER_UP}>
+          <FichajeLayout><FichajePlaceholder title="Correcciones" description="Solicitudes y aprobaciones de corrección de registros con historial completo." /></FichajeLayout>
+        </RequireRole>
+      </Route>
+      <Route path="/admin/fichaje/vacaciones">
+        <RequireRole roles={ROLES_MANAGER_UP}>
+          <FichajeLayout><FichajePlaceholder title="Vacaciones" description="Solicitudes de vacaciones, aprobaciones y calendario anual por empleado." /></FichajeLayout>
+        </RequireRole>
       </Route>
       <Route path="/admin/fichaje/ausencias">
-        <RequireRole roles={ROLES_MANAGER_UP}><FichajeAusencias /></RequireRole>
+        <RequireRole roles={ROLES_MANAGER_UP}>
+          <FichajeLayout><FichajeAusencias /></FichajeLayout>
+        </RequireRole>
       </Route>
       <Route path="/admin/fichaje/importar">
-        <RequireRole roles={ROLES_MANAGER_UP}><FichajeImportarAnviz /></RequireRole>
+        <RequireRole roles={ROLES_MANAGER_UP}>
+          <FichajeLayout><FichajeImportar /></FichajeLayout>
+        </RequireRole>
       </Route>
       <Route path="/admin/fichaje/informes">
-        <RequireRole roles={ROLES_MANAGER_UP}><FichajeInformes /></RequireRole>
+        <RequireRole roles={ROLES_MANAGER_UP}>
+          <FichajeLayout><FichajeInformes /></FichajeLayout>
+        </RequireRole>
+      </Route>
+      <Route path="/admin/fichaje/costes">
+        <RequireRole roles={ROLES_MANAGER_UP}>
+          <FichajeLayout><FichajePlaceholder title="Costes laborales" description="Coste por empleado, departamento y período con exportación a PDF/XLSX." /></FichajeLayout>
+        </RequireRole>
+      </Route>
+      <Route path="/admin/fichaje/portal">
+        <RequireRole roles={ROLES_MANAGER_UP}>
+          <FichajeLayout><FichajePlaceholder title="Portal del empleado" description="Acceso personal del empleado a sus registros, horarios y solicitudes." /></FichajeLayout>
+        </RequireRole>
       </Route>
       <Route path="/admin/fichaje/configuracion">
-        <RequireRole roles={ROLES_MANAGER_UP}><FichajeConfiguracion /></RequireRole>
+        <RequireRole roles={ROLES_MANAGER_UP}>
+          <FichajeLayout><FichajeConfiguracion /></FichajeLayout>
+        </RequireRole>
+      </Route>
+      <Route path="/admin/fichaje/auditoria">
+        <RequireRole roles={ROLES_MANAGER_UP}>
+          <FichajeLayout><FichajePlaceholder title="Auditoría" description="Trazabilidad completa de todos los cambios en registros de fichaje y configuración." /></FichajeLayout>
+        </RequireRole>
+      </Route>
+      {/* Legacy redirect: /admin/fichaje/panel → /admin/fichaje */}
+      <Route path="/admin/fichaje/panel">
+        <RequireRole roles={ROLES_MANAGER_UP}>
+          <FichajeLayout><FichajePanelDiario /></FichajeLayout>
+        </RequireRole>
       </Route>
       <Route path="/admin/repartidores">
         <RequireRole roles={ROLES_MANAGER_UP}><AdminRepartidores /></RequireRole>

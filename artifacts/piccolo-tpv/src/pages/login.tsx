@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useLocation } from "wouter";
 import { useGetEmployeeLoginList } from "@workspace/api-client-react";
-import { Loader2, Delete, Search, X } from "lucide-react";
+import { Loader2, Delete, Search, X, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "../providers/AuthProvider";
 
@@ -18,7 +18,7 @@ function PinKey({
   const [pressed, setPressed] = useState(false);
 
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
-    e.preventDefault();        // prevents 300 ms click delay on some browsers
+    e.preventDefault();
     setPressed(true);
     onPress();
   }, [onPress]);
@@ -51,7 +51,6 @@ export default function Login() {
   const [isPending, setIsPending] = useState(false);
 
   useEffect(() => {
-    // Clear any stale session on the login page
     localStorage.removeItem("token");
     localStorage.removeItem("employee");
   }, []);
@@ -59,8 +58,6 @@ export default function Login() {
   useEffect(() => {
     if (pin.length === 4 && selectedEmployeeId && !isPending) {
       setIsPending(true);
-      // login() stores token+employee in localStorage AND calls fetchMe()
-      // so AuthProvider state is fully updated before we navigate.
       login(selectedEmployeeId, pin)
         .then(() => {
           const emp = JSON.parse(localStorage.getItem('employee') ?? '{}');
@@ -76,14 +73,10 @@ export default function Login() {
   }, [pin, selectedEmployeeId, isPending, login, setLocation]);
 
   const handlePinPress = (num: number) => {
-    if (pin.length < 4) {
-      setPin((prev) => prev + num);
-    }
+    if (pin.length < 4) setPin((prev) => prev + num);
   };
 
-  const handlePinDelete = () => {
-    setPin((prev) => prev.slice(0, -1));
-  };
+  const handlePinDelete = () => setPin((prev) => prev.slice(0, -1));
 
   const [empFilter, setEmpFilter] = useState('');
   const selectedEmployee = employees?.find(e => e.id === selectedEmployeeId);
@@ -95,14 +88,15 @@ export default function Login() {
 
   return (
     <div className="min-h-screen w-full flex flex-col lg:flex-row bg-background">
-      {/* Left: Employee Selection */}
-      <div className="flex-1 p-8 lg:p-12 overflow-y-auto flex flex-col">
-        <div className="mb-10">
-          <div className="w-12 h-12 bg-primary rounded-xl flex items-center justify-center text-primary-foreground font-bold text-xl mb-6 shadow-md">
+      {/* ── Left: Employee Selection ─────────────────────────────────────────── */}
+      <div className="flex-1 p-6 lg:p-12 overflow-y-auto flex flex-col">
+        {/* Logo + heading */}
+        <div className="mb-8">
+          <div className="w-12 h-12 bg-primary rounded-xl flex items-center justify-center text-primary-foreground font-bold text-xl mb-5 shadow-md">
             P
           </div>
-          <h1 className="text-4xl font-bold tracking-tight text-foreground">Select Profile</h1>
-          <p className="text-muted-foreground mt-2 text-lg">Tap your name to start your shift.</p>
+          <h1 className="text-3xl font-bold tracking-tight text-foreground">Seleccionar perfil</h1>
+          <p className="text-muted-foreground mt-1 text-base">Toca tu nombre para iniciar turno.</p>
         </div>
 
         {loadingEmployees ? (
@@ -111,6 +105,7 @@ export default function Login() {
           </div>
         ) : (
           <>
+            {/* Search bar — only shown when >6 employees */}
             {(employees?.length ?? 0) > 6 && (
               <div className="relative mb-4">
                 <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
@@ -129,65 +124,95 @@ export default function Login() {
                 )}
               </div>
             )}
-          <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-4">
-            {visibleEmployees.map((emp) => {
-              const isSelected = selectedEmployeeId === emp.id;
-              return (
-                <button
-                  key={emp.id}
-                  onClick={() => {
-                    setSelectedEmployeeId(emp.id);
-                    setPin("");
-                  }}
-                  className={`
-                    flex flex-col items-center justify-center p-6 rounded-2xl border-2 transition-all active:scale-95
-                    ${isSelected 
-                      ? "border-primary bg-primary/10 shadow-[0_0_20px_rgba(217,119,54,0.15)]" 
-                      : "border-border bg-card hover:bg-secondary hover:border-muted-foreground/30"
-                    }
-                  `}
-                >
-                  <div className={`
-                    w-16 h-16 rounded-full flex items-center justify-center text-2xl font-bold mb-4
-                    ${isSelected ? "bg-primary text-primary-foreground" : "bg-secondary text-secondary-foreground"}
-                  `}>
-                    {emp.name.charAt(0)}
-                  </div>
-                  <span className={`font-semibold text-lg ${isSelected ? "text-primary" : "text-foreground"}`}>
-                    {emp.name}
-                  </span>
-                  <span className="text-muted-foreground text-sm mt-1">{emp.role}</span>
-                </button>
-              );
-            })}
-          </div>
+
+            {/* Employee grid — explicit bg/border so it's visible in dark mode */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3">
+              {visibleEmployees.map((emp) => {
+                const isSelected = selectedEmployeeId === emp.id;
+                return (
+                  <button
+                    key={emp.id}
+                    onClick={() => { setSelectedEmployeeId(emp.id); setPin(""); }}
+                    style={{
+                      background: isSelected ? 'rgba(217,119,54,0.15)' : 'rgba(255,255,255,0.06)',
+                      borderColor: isSelected ? '#d97736' : 'rgba(255,255,255,0.15)',
+                    }}
+                    className={`
+                      flex flex-col items-center justify-center p-5 rounded-2xl border-2 transition-all active:scale-95
+                    `}
+                  >
+                    <div
+                      style={{
+                        background: isSelected ? '#d97736' : 'rgba(255,255,255,0.12)',
+                        color: isSelected ? '#fff' : 'rgba(255,255,255,0.85)',
+                      }}
+                      className="w-14 h-14 rounded-full flex items-center justify-center text-xl font-bold mb-3"
+                    >
+                      {emp.name.charAt(0).toUpperCase()}
+                    </div>
+                    <span
+                      style={{ color: isSelected ? '#d97736' : 'rgba(255,255,255,0.9)' }}
+                      className="font-semibold text-base text-center leading-tight"
+                    >
+                      {emp.name}
+                    </span>
+                    {(emp as any).role && (
+                      <span className="text-xs mt-1" style={{ color: 'rgba(255,255,255,0.45)' }}>
+                        {(emp as any).role}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+
+              {visibleEmployees.length === 0 && (
+                <div className="col-span-full text-center py-8 text-muted-foreground text-sm">
+                  No se encontraron empleados
+                </div>
+              )}
+            </div>
           </>
         )}
+
+        {/* ── Admin access link ─────────────────────────────────────────────── */}
+        <div className="mt-auto pt-8">
+          <button
+            onClick={() => setLocation('/admin')}
+            className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors mx-auto"
+          >
+            <ShieldCheck size={15} />
+            Acceso administrador
+          </button>
+        </div>
       </div>
 
-      {/* Right: PIN Pad */}
-      <div className="w-full lg:w-[480px] bg-card border-l border-border flex flex-col shadow-2xl relative z-10">
-        <div className="flex-1 flex flex-col justify-center px-10 py-12">
-          
-          <div className="text-center mb-10 h-24 flex flex-col items-center justify-end">
+      {/* ── Right: PIN Pad ───────────────────────────────────────────────────── */}
+      <div className="w-full lg:w-[460px] bg-card border-t lg:border-t-0 lg:border-l border-border flex flex-col shadow-2xl relative z-10">
+        <div className="flex-1 flex flex-col justify-center px-8 py-10">
+
+          {/* Status row */}
+          <div className="text-center mb-8 h-20 flex flex-col items-center justify-end">
             {selectedEmployee ? (
               <>
-                <p className="text-muted-foreground mb-4">Enter PIN for <span className="font-semibold text-foreground">{selectedEmployee.name}</span></p>
+                <p className="text-muted-foreground mb-3 text-sm">
+                  PIN para <span className="font-semibold text-foreground">{selectedEmployee.name}</span>
+                </p>
                 <div className="flex justify-center gap-4">
                   {[...Array(4)].map((_, i) => (
-                    <div 
-                      key={i} 
+                    <div
+                      key={i}
                       className={`w-5 h-5 rounded-full transition-all duration-200 ${i < pin.length ? "bg-primary scale-110 shadow-[0_0_10px_rgba(217,119,54,0.5)]" : "bg-secondary"}`}
                     />
                   ))}
                 </div>
               </>
             ) : (
-              <p className="text-muted-foreground">Select a profile first</p>
+              <p className="text-muted-foreground text-sm">Selecciona un perfil primero</p>
             )}
           </div>
 
-          <div className={`grid grid-cols-3 gap-4 transition-opacity duration-300 ${!selectedEmployee ? "opacity-30 pointer-events-none" : "opacity-100"}`}>
+          {/* PIN grid */}
+          <div className={`grid grid-cols-3 gap-3 transition-opacity duration-300 ${!selectedEmployee ? "opacity-30 pointer-events-none" : "opacity-100"}`}>
             {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => (
               <PinKey
                 key={num}
@@ -211,11 +236,11 @@ export default function Login() {
               <Delete size={28} strokeWidth={2.5} />
             </PinKey>
           </div>
-          
+
           {isPending && (
-             <div className="absolute inset-0 bg-background/50 backdrop-blur-sm flex items-center justify-center rounded-l-3xl">
-               <Loader2 className="w-10 h-10 animate-spin text-primary" />
-             </div>
+            <div className="absolute inset-0 bg-background/50 backdrop-blur-sm flex items-center justify-center rounded-l-3xl">
+              <Loader2 className="w-10 h-10 animate-spin text-primary" />
+            </div>
           )}
         </div>
       </div>
