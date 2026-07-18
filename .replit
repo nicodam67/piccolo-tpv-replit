@@ -53,3 +53,10 @@ externalPort = 8081
 [[ports]]
 localPort = 24683
 externalPort = 80
+
+[userenv]
+
+[userenv.shared]
+VITE_CONVEX_URL = "https://kindhearted-viper-426.convex.cloud"
+VITE_HERCULES_OIDC_AUTHORITY = "https://01krm8rqyc0nx03v525sgx5zvc.hercules-auth.com"
+VITE_HERCULES_OIDC_CLIENT_ID = "oSSAbhxQWqyqWXpgAnLrEDTwCDpHAbXJ"
