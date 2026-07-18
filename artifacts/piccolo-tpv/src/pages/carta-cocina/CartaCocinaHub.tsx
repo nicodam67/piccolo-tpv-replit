@@ -1,12 +1,13 @@
 /**
  * CartaCocinaHub — módulo de carta digital y gestión de costes.
- * Agrupa: QR Menú (carta pública, embebida en iframe) y Food Cost.
+ * Agrupa: QR Menú (pendiente de reconstrucción) y Food Cost.
  */
 import { useLocation } from 'wouter';
 import {
   ChevronLeft, ChevronRight,
   QrCode, Tag, Package, Sliders, Palette, Printer,
   DollarSign, FlaskConical, Truck, ShoppingCart, Warehouse, BarChart3,
+  Construction,
 } from 'lucide-react';
 
 const QR_ACCENT = '#0ea5e9';
@@ -17,7 +18,6 @@ const FC_BG     = 'rgba(245,158,11,0.12)';
 interface Item { icon: React.ReactNode; title: string; desc: string; href: string; accent: string; bg: string }
 
 const QR_ITEMS: Item[] = [
-  { icon: <QrCode size={20} />,   title: 'Carta QR',       desc: 'Carta digital pública — 8 idiomas · PWA · panel admin',   href: '/carta-cocina/qr',  accent: QR_ACCENT, bg: QR_BG },
   { icon: <Tag size={20} />,      title: 'Categorías',     desc: 'Familias y secciones de la carta',                         href: '/categorias',       accent: QR_ACCENT, bg: QR_BG },
   { icon: <Package size={20} />,  title: 'Productos',      desc: 'Escandallos y carta de productos',                         href: '/productos',        accent: QR_ACCENT, bg: QR_BG },
   { icon: <Sliders size={20} />,  title: 'Modificadores',  desc: 'Opciones, variantes y alérgenos',                          href: '/modificadores',    accent: QR_ACCENT, bg: QR_BG },
@@ -37,16 +37,10 @@ const FC_ITEMS: Item[] = [
 
 function HubCard({ item }: { item: Item }) {
   const [, nav] = useLocation();
-  const isQrMain = item.href === '/carta-cocina/qr';
   return (
     <button
       onClick={() => nav(item.href)}
-      className={[
-        'group text-left flex items-center gap-4 p-4 rounded-xl border transition-all active:scale-[0.98]',
-        isQrMain
-          ? 'border-sky-400/60 bg-sky-50/50 dark:bg-sky-950/20 col-span-full hover:border-sky-400'
-          : 'border-border hover:bg-secondary/30 bg-card',
-      ].join(' ')}
+      className="group text-left flex items-center gap-4 p-4 rounded-xl border border-border hover:bg-secondary/30 bg-card transition-all active:scale-[0.98]"
     >
       <div
         className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-transform group-hover:scale-110 duration-150"
@@ -106,6 +100,18 @@ export default function CartaCocinaHub() {
                 Carta digital
               </span>
             </div>
+
+            {/* Aviso QR Menú pendiente de reconstrucción */}
+            <div className="flex items-center gap-3 p-4 mb-3 rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/20">
+              <Construction size={18} className="text-amber-500 shrink-0" />
+              <div>
+                <p className="text-sm font-semibold text-foreground">QR Menú pendiente de reconstrucción</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  La carta digital se está reconstruyendo desde la base original del restaurante.
+                </p>
+              </div>
+            </div>
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {QR_ITEMS.map(item => <HubCard key={item.href} item={item} />)}
             </div>
