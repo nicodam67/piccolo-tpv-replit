@@ -1,24 +1,27 @@
 // ── QR Menu — API helpers ─────────────────────────────────────────────────────
+// Uses customFetch (from @workspace/api-client-react) which automatically
+// reads the JWT from localStorage and sends it as Authorization: Bearer.
+// Do NOT use plain fetch() here — it won't include the auth token.
 
 import type { QrBranding } from './types';
+import { customFetch, ApiError } from '@workspace/api-client-react';
 
-const BASE = import.meta.env.BASE_URL.replace(/\/$/, '');
+// ── Branding ──────────────────────────────────────────────────────────────────
 
 export async function fetchQrBranding(): Promise<QrBranding> {
-  const r = await fetch(`${BASE}/api/admin/qr-branding`, { credentials: 'include' });
-  if (!r.ok) throw new Error('Error cargando branding');
-  return r.json();
+  const data = await customFetch<QrBranding | null>('/api/admin/qr-branding');
+  return data ?? ({} as QrBranding);
 }
 
 export async function saveQrBranding(data: Partial<QrBranding>): Promise<void> {
-  const r = await fetch(`${BASE}/api/admin/qr-branding`, {
+  await customFetch('/api/admin/qr-branding', {
     method: 'PUT',
-    credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
-  if (!r.ok) throw new Error('Error guardando branding');
 }
+
+// ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface QrCategory {
   id: string;
@@ -62,35 +65,20 @@ export interface PublicMenuCategory {
   translations?: Record<string, { name?: string; description?: string }>;
 }
 
+// ── Categories ────────────────────────────────────────────────────────────────
+
 export async function fetchQrCategories(): Promise<QrCategory[]> {
-  const r = await fetch(`${BASE}/api/admin/categories`, { credentials: 'include' });
-  if (!r.ok) throw new Error('Error cargando categorías');
-  const data = await r.json();
-  return Array.isArray(data) ? data : (data.categories ?? []);
-}
-
-export async function fetchQrProducts(): Promise<QrProduct[]> {
-  const r = await fetch(`${BASE}/api/admin/products`, { credentials: 'include' });
-  if (!r.ok) throw new Error('Error cargando productos');
-  const data = await r.json();
-  return Array.isArray(data) ? data : (data.products ?? []);
-}
-
-export async function fetchPublicMenu(): Promise<PublicMenuCategory[]> {
-  const r = await fetch(`${BASE}/api/public/menu`);
-  if (!r.ok) throw new Error('Error cargando menú público');
-  const data = await r.json();
-  return Array.isArray(data) ? data : [];
+  const data = await customFetch<unknown>('/api/admin/categories');
+  if (!data) return [];
+  return Array.isArray(data) ? (data as QrCategory[]) : ((data as any).categories ?? []);
 }
 
 export async function patchCategory(id: string, patch: Record<string, unknown>): Promise<void> {
-  const r = await fetch(`${BASE}/api/admin/categories/${id}`, {
+  await customFetch(`/api/admin/categories/${id}`, {
     method: 'PATCH',
-    credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(patch),
   });
-  if (!r.ok) throw new Error('Error actualizando categoría');
 }
 
 export async function createCategory(data: {
@@ -100,32 +88,31 @@ export async function createCategory(data: {
   sortOrder?: number;
   translations?: Record<string, { name?: string; description?: string }>;
 }): Promise<QrCategory> {
-  const r = await fetch(`${BASE}/api/admin/categories`, {
+  return customFetch<QrCategory>('/api/admin/categories', {
     method: 'POST',
-    credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
-  if (!r.ok) throw new Error('Error creando categoría');
-  return r.json();
 }
 
 export async function deleteCategory(id: string): Promise<void> {
-  const r = await fetch(`${BASE}/api/admin/categories/${id}`, {
-    method: 'DELETE',
-    credentials: 'include',
-  });
-  if (!r.ok) throw new Error('Error eliminando categoría');
+  await customFetch(`/api/admin/categories/${id}`, { method: 'DELETE' });
+}
+
+// ── Products ──────────────────────────────────────────────────────────────────
+
+export async function fetchQrProducts(): Promise<QrProduct[]> {
+  const data = await customFetch<unknown>('/api/admin/products');
+  if (!data) return [];
+  return Array.isArray(data) ? (data as QrProduct[]) : ((data as any).products ?? []);
 }
 
 export async function patchProduct(id: string, patch: Record<string, unknown>): Promise<void> {
-  const r = await fetch(`${BASE}/api/admin/products/${id}`, {
+  await customFetch(`/api/admin/products/${id}`, {
     method: 'PATCH',
-    credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(patch),
   });
-  if (!r.ok) throw new Error('Error actualizando producto');
 }
 
 export async function createProduct(data: {
@@ -143,26 +130,33 @@ export async function createProduct(data: {
   isPicante?: boolean;
   sortOrder?: number;
 }): Promise<QrProduct> {
-  const r = await fetch(`${BASE}/api/admin/products`, {
-    method: 'POST',
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  });
-  if (!r.ok) {
-    const err = await r.json().catch(() => ({}));
-    throw new Error((err as { error?: string }).error ?? 'Error creando producto');
+  try {
+    return await customFetch<QrProduct>('/api/admin/products', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+  } catch (e) {
+    if (e instanceof ApiError) {
+      throw new Error((e.data as { error?: string } | null)?.error ?? e.message);
+    }
+    throw e;
   }
-  return r.json();
 }
 
 export async function deleteProduct(id: string): Promise<void> {
-  const r = await fetch(`${BASE}/api/admin/products/${id}`, {
-    method: 'DELETE',
-    credentials: 'include',
-  });
-  if (!r.ok) throw new Error('Error archivando producto');
+  await customFetch(`/api/admin/products/${id}`, { method: 'DELETE' });
 }
+
+// ── Public menu ───────────────────────────────────────────────────────────────
+
+export async function fetchPublicMenu(): Promise<PublicMenuCategory[]> {
+  const data = await customFetch<unknown>('/api/public/menu');
+  if (!data) return [];
+  return Array.isArray(data) ? (data as PublicMenuCategory[]) : [];
+}
+
+// ── Theme helpers ─────────────────────────────────────────────────────────────
 
 /** Apply themeColors/themeFonts as CSS custom vars on :root */
 export function applyThemeVars(

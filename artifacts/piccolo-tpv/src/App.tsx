@@ -62,6 +62,7 @@ import DiagnosticsPage from './pages/backup/DiagnosticsPage';
 import DevicesPage from './pages/backup/DevicesPage';
 import FoodCostLayout from './pages/food-cost/FoodCostLayout';
 import FoodCostVista from './pages/food-cost/FoodCostVista';
+import QrMenuLayout from './pages/qr-menu/QrMenuLayout';
 import FichajeReloj from './pages/fichaje/FichajeReloj';
 import FichajeLayout from './pages/fichaje/FichajeLayout';
 import FichajePanelDiario from './pages/fichaje/FichajePanelDiario';
@@ -332,16 +333,16 @@ function Router() {
         <RequireRole roles={ROLES_ADMIN_ONLY}><Documentos /></RequireRole>
       </Route>
       <Route path="/fiscal">
-        <RequireRole roles={ROLES_ADMIN_ONLY}><Fiscal /></RequireRole>
+        <RequireRole roles={ROLES_ADMIN_ONLY}><QrMenuLayout><Fiscal /></QrMenuLayout></RequireRole>
       </Route>
       <Route path="/categorias">
-        <RequireRole roles={ROLES_ADMIN_ONLY}><Categorias /></RequireRole>
+        <RequireRole roles={ROLES_ADMIN_ONLY}><QrMenuLayout><Categorias /></QrMenuLayout></RequireRole>
       </Route>
       <Route path="/productos">
-        <RequireRole roles={ROLES_ADMIN_ONLY}><Productos /></RequireRole>
+        <RequireRole roles={ROLES_ADMIN_ONLY}><QrMenuLayout><Productos /></QrMenuLayout></RequireRole>
       </Route>
       <Route path="/modificadores">
-        <RequireRole roles={ROLES_ADMIN_ONLY}><Modificadores /></RequireRole>
+        <RequireRole roles={ROLES_ADMIN_ONLY}><QrMenuLayout><Modificadores /></QrMenuLayout></RequireRole>
       </Route>
       {/* ── Food Cost module entry point ──────────────────────────────────── */}
       <Route path="/admin/food-cost">
