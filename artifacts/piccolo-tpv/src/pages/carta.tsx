@@ -7,7 +7,7 @@
 import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useLocation } from 'wouter';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Clock, ChevronRight, X, MapPin } from 'lucide-react';
+import { Phone, Clock, ChevronRight, X, MapPin } from 'lucide-react';
 import { EU_ALLERGENS, parseAllergens } from '../lib/allergens';
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, '');
@@ -526,6 +526,21 @@ export default function Carta() {
           &copy; {new Date().getFullYear()} {branding?.restaurantName ?? ''}. Todos los derechos reservados.
         </p>
       </footer>
+
+      {/* ── Floating call button ────────────────────────────────────────────────── */}
+      {branding?.phone && (
+        <a
+          href={`tel:${branding.phone}`}
+          className="fixed bottom-6 right-6 z-50 flex items-center gap-2 px-4 py-3 rounded-full shadow-lg text-sm font-medium cursor-pointer transition-transform hover:scale-105 active:scale-95"
+          style={{
+            background: branding?.themeColors?.callButtonBg ?? '#f59e0b',
+            color: branding?.themeColors?.callButtonText ?? '#ffffff',
+          }}
+        >
+          <Phone className="w-4 h-4" />
+          <span>Llamar</span>
+        </a>
+      )}
 
       {/* ── Floating schedule button ────────────────────────────────────────────── */}
       {branding?.schedule && branding.schedule.length > 0 && (
