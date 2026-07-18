@@ -1,0 +1,450 @@
+/**
+ * carta-publica.css
+ *
+ * Estilos aislados del QR Menú público.
+ * Todos los selectores están bajo .qr-pub para no contaminar el TPV.
+ *
+ * Fuentes: se intentan las mismas que la versión de producción en Hercules.
+ * Si la CDN de Hercules no está disponible, Cormorant Garamond actúa de fallback.
+ */
+
+/* ── Google Fonts (fallback) ──────────────────────────────────────────────── */
+@import url("https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400;1,500&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500&display=swap");
+
+/* ── Fuentes personalizadas (Hercules CDN — mismas que producción) ────────── */
+@font-face {
+  font-family: "ZapfChan Md";
+  src: url("https://hercules-cdn.com/file_m7I6BY3ReSetMGf7AFZss0PC") format("truetype");
+  font-weight: 500;
+  font-display: swap;
+}
+@font-face {
+  font-family: "ZapfChan Dm";
+  src: url("https://hercules-cdn.com/file_wcGGxdhmcY2DhGJwliFkA2Zk") format("truetype");
+  font-weight: 600;
+  font-display: swap;
+}
+@font-face {
+  font-family: "AvantGarde Bk";
+  src: url("https://hercules-cdn.com/file_uqU2VMlywYy4NMAsQ7WtxSwQ") format("truetype");
+  font-weight: 600;
+  font-display: swap;
+}
+@font-face {
+  font-family: "American Text BT";
+  src: url("https://hercules-cdn.com/file_gbeYYgRhfigXSrnw8dJ0hCA3") format("truetype");
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Algerian";
+  src: url("https://hercules-cdn.com/file_XRcUszIICfe5N0l0B0EiHqeN") format("truetype");
+  font-weight: 400;
+  font-display: swap;
+}
+
+/* ── Variables del tema (scoped a .qr-pub) ───────────────────────────────── */
+.qr-pub {
+  /* Background cálido marfil / pergamino */
+  --qr-bg:           #f8f4ef;
+  --qr-card:         #ffffff;
+  --qr-border:       #e8e0d5;
+
+  /* Texto */
+  --qr-fg:           #1c1410;
+  --qr-muted:        #7a6e65;
+
+  /* Borgoña profundo */
+  --qr-primary:      #7b1c1c;
+  --qr-primary-fg:   #f8f4ef;
+
+  /* Oro cálido */
+  --qr-accent:       #c9a96e;
+  --qr-accent-fg:    #1c1410;
+
+  /* Hero overlay */
+  --qr-hero-bg:      #1a0808;
+
+  /* Tipografías */
+  --qr-font-display: "Algerian", "Cormorant Garamond", serif;
+  --qr-font-serif:   "ZapfChan Dm", "Cormorant Garamond", ui-serif, Georgia, serif;
+  --qr-font-menu:    "ZapfChan Md", "Cormorant Garamond", serif;
+  --qr-font-script:  "American Text BT", "Cormorant Garamond", serif;
+  --qr-font-sans:    "AvantGarde Bk", "DM Sans", ui-sans-serif, system-ui, sans-serif;
+
+  /* Radios */
+  --qr-radius:       12px;
+  --qr-radius-sm:    8px;
+
+  /* Reset dentro del contenedor */
+  font-family:       var(--qr-font-sans);
+  background-color:  var(--qr-bg);
+  color:             var(--qr-fg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── Scrollbar invisible en filtros ──────────────────────────────────────── */
+.qr-pub .qr-scroll-x {
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.qr-pub .qr-scroll-x::-webkit-scrollbar {
+  display: none;
+}
+
+/* ── Hero ─────────────────────────────────────────────────────────────────── */
+.qr-pub .qr-hero {
+  position:        relative;
+  overflow:        hidden;
+  background-color: var(--qr-hero-bg);
+  min-height:      52vw;
+  max-height:      70vh;
+  display:         flex;
+  flex-direction:  column;
+  align-items:     center;
+  justify-content: center;
+}
+
+.qr-pub .qr-hero-img {
+  position:   absolute;
+  inset:      0;
+  width:      100%;
+  height:     100%;
+  object-fit: cover;
+  filter:     brightness(0.32);
+}
+
+.qr-pub .qr-hero-content {
+  position:    relative;
+  z-index:     1;
+  text-align:  center;
+  padding:     3.5rem 1.5rem 3rem;
+  width:       100%;
+}
+
+.qr-pub .qr-hero-established {
+  font-family:     var(--qr-font-sans);
+  font-size:       0.72rem;
+  letter-spacing:  0.25em;
+  text-transform:  uppercase;
+  color:           var(--qr-accent);
+  margin-bottom:   0.9rem;
+}
+
+.qr-pub .qr-hero-name {
+  font-family:   var(--qr-font-display);
+  font-weight:   400;
+  font-size:     clamp(2rem, 10vw, 4.5rem);
+  line-height:   1.05;
+  color:         #ffffff;
+  margin-bottom: 1rem;
+  letter-spacing: 0.02em;
+}
+
+.qr-pub .qr-hero-divider {
+  width:            5rem;
+  height:           1px;
+  background:       var(--qr-accent);
+  margin:           0 auto 1rem;
+}
+
+.qr-pub .qr-hero-tagline {
+  font-family: var(--qr-font-script);
+  font-size:   1.1rem;
+  font-style:  italic;
+  color:       rgba(255, 255, 255, 0.72);
+  font-weight: 400;
+}
+
+/* ── Idioma selector (top-right) ─────────────────────────────────────────── */
+.qr-pub .qr-locale-btn {
+  position:   absolute;
+  top:        0.75rem;
+  right:      0.75rem;
+  z-index:    10;
+}
+
+/* ── Filtros sticky ──────────────────────────────────────────────────────── */
+.qr-pub .qr-filters {
+  position:         sticky;
+  top:              0;
+  z-index:          20;
+  background:       rgba(248, 244, 239, 0.96);
+  backdrop-filter:  blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-bottom:    1px solid var(--qr-border);
+}
+
+.qr-pub .qr-filter-chip {
+  flex-shrink:    0;
+  font-size:      0.72rem;
+  padding:        0.28rem 0.75rem;
+  border-radius:  999px;
+  border:         1px solid var(--qr-border);
+  color:          var(--qr-muted);
+  background:     transparent;
+  cursor:         pointer;
+  font-family:    var(--qr-font-sans);
+  white-space:    nowrap;
+  transition:     all 0.15s ease;
+  display:        inline-flex;
+  align-items:    center;
+  gap:            0.3rem;
+  line-height:    1;
+  font-weight:    500;
+}
+.qr-pub .qr-filter-chip:hover {
+  border-color: rgba(201, 169, 110, 0.5);
+  color:        var(--qr-fg);
+}
+.qr-pub .qr-filter-chip.active-tag {
+  border-color: var(--qr-fg);
+  background:   var(--qr-fg);
+  color:        var(--qr-bg);
+}
+.qr-pub .qr-filter-chip.active-allergen {
+  border-color: #b45309;
+  background:   rgba(217, 119, 6, 0.1);
+  color:        #92400e;
+}
+.qr-pub .qr-filter-chip.clear {
+  border-color: rgba(180, 83, 9, 0.4);
+  color:        #b45309;
+}
+
+/* ── Categorías grid ─────────────────────────────────────────────────────── */
+.qr-pub .qr-category-card {
+  display:          flex;
+  align-items:      center;
+  gap:              1rem;
+  padding:          1.1rem 1.1rem 1.1rem 1rem;
+  background:       var(--qr-card);
+  border:           1px solid var(--qr-border);
+  border-radius:    var(--qr-radius);
+  cursor:           pointer;
+  text-align:       left;
+  width:            100%;
+  transition:       box-shadow 0.15s ease, transform 0.1s ease;
+  box-shadow:       0 1px 3px rgba(28, 20, 16, 0.06);
+}
+.qr-pub .qr-category-card:hover {
+  box-shadow: 0 4px 12px rgba(28, 20, 16, 0.12);
+}
+.qr-pub .qr-category-card:active {
+  transform: scale(0.98);
+}
+
+.qr-pub .qr-category-emoji {
+  font-size:      1.6rem;
+  width:          2.6rem;
+  height:         2.6rem;
+  border-radius:  var(--qr-radius-sm);
+  background:     rgba(201, 169, 110, 0.12);
+  display:        flex;
+  align-items:    center;
+  justify-content: center;
+  flex-shrink:    0;
+}
+
+.qr-pub .qr-category-name {
+  display:     block;
+  font-family: var(--qr-font-serif);
+  font-size:   1.05rem;
+  font-weight: 500;
+  color:       var(--qr-fg);
+  line-height: 1.2;
+}
+.qr-pub .qr-category-desc {
+  display:    block;
+  font-size:  0.7rem;
+  color:      var(--qr-muted);
+  margin-top: 0.2rem;
+  line-height: 1.3;
+}
+
+.qr-pub .qr-chevron {
+  color:      var(--qr-border);
+  flex-shrink: 0;
+  margin-left: auto;
+  transition: color 0.15s ease, transform 0.15s ease;
+}
+.qr-pub .qr-category-card:hover .qr-chevron {
+  color:     var(--qr-accent);
+  transform: translateX(2px);
+}
+
+/* ── Tarjeta de producto ─────────────────────────────────────────────────── */
+.qr-pub .qr-product-card {
+  display:        flex;
+  gap:            0.9rem;
+  padding:        1rem 0;
+  border-bottom:  1px solid var(--qr-border);
+  align-items:    flex-start;
+}
+.qr-pub .qr-product-card:last-child {
+  border-bottom: none;
+}
+
+.qr-pub .qr-product-img {
+  width:         4.5rem;
+  height:        4.5rem;
+  border-radius: var(--qr-radius-sm);
+  object-fit:    cover;
+  flex-shrink:   0;
+  background:    var(--qr-border);
+}
+
+.qr-pub .qr-product-name {
+  font-family: var(--qr-font-menu);
+  font-size:   1rem;
+  font-weight: 500;
+  color:       var(--qr-fg);
+  line-height: 1.25;
+  margin-bottom: 0.25rem;
+}
+
+.qr-pub .qr-product-desc {
+  font-size:   0.78rem;
+  color:       var(--qr-muted);
+  line-height: 1.45;
+  margin-bottom: 0.4rem;
+}
+
+.qr-pub .qr-product-price {
+  font-family: var(--qr-font-sans);
+  font-size:   0.95rem;
+  font-weight: 600;
+  color:       var(--qr-primary);
+}
+
+.qr-pub .qr-product-half {
+  font-size:  0.72rem;
+  color:      var(--qr-muted);
+  margin-left: 0.4rem;
+}
+
+.qr-pub .qr-allergen-badge {
+  display:       inline-flex;
+  align-items:   center;
+  gap:           0.2rem;
+  font-size:     0.65rem;
+  padding:       0.15rem 0.45rem;
+  border-radius: 999px;
+  background:    rgba(217, 119, 6, 0.1);
+  color:         #92400e;
+  border:        1px solid rgba(217, 119, 6, 0.2);
+  line-height:   1;
+  white-space:   nowrap;
+}
+
+.qr-pub .qr-tag-badge {
+  display:       inline-flex;
+  align-items:   center;
+  gap:           0.2rem;
+  font-size:     0.65rem;
+  padding:       0.15rem 0.45rem;
+  border-radius: 999px;
+  background:    rgba(22, 163, 74, 0.1);
+  color:         #166534;
+  border:        1px solid rgba(22, 163, 74, 0.2);
+  line-height:   1;
+  white-space:   nowrap;
+}
+
+/* ── Footer ──────────────────────────────────────────────────────────────── */
+.qr-pub .qr-footer {
+  border-top:  1px solid var(--qr-border);
+  padding:     2.5rem 1.5rem;
+  text-align:  center;
+}
+
+.qr-pub .qr-footer-name {
+  font-family:   var(--qr-font-serif);
+  font-size:     1rem;
+  color:         var(--qr-fg);
+  opacity:       0.55;
+  margin-bottom: 0.4rem;
+}
+
+.qr-pub .qr-footer-info {
+  font-size:     0.78rem;
+  color:         var(--qr-muted);
+  line-height:   1.7;
+}
+
+.qr-pub .qr-footer-link {
+  display:         inline-flex;
+  align-items:     center;
+  gap:             0.25rem;
+  margin-top:      0.5rem;
+  padding:         0.25rem 0.75rem;
+  border-radius:   999px;
+  background:      var(--qr-accent);
+  color:           var(--qr-accent-fg);
+  font-size:       0.7rem;
+  font-weight:     600;
+  text-decoration: none;
+  transition:      opacity 0.15s ease;
+}
+.qr-pub .qr-footer-link:hover { opacity: 0.82; }
+
+/* ── Vista de categoría ──────────────────────────────────────────────────── */
+.qr-pub .qr-cat-header {
+  position:     sticky;
+  top:          0;
+  z-index:      20;
+  background:   rgba(248, 244, 239, 0.97);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--qr-border);
+  padding:      0.9rem 1rem;
+  display:      flex;
+  align-items:  center;
+  gap:          0.75rem;
+}
+
+.qr-pub .qr-back-btn {
+  display:       inline-flex;
+  align-items:   center;
+  gap:           0.35rem;
+  font-size:     0.82rem;
+  color:         var(--qr-muted);
+  background:    none;
+  border:        none;
+  cursor:        pointer;
+  padding:       0.35rem 0.5rem;
+  border-radius: var(--qr-radius-sm);
+  font-family:   var(--qr-font-sans);
+  transition:    color 0.15s ease, background 0.15s ease;
+  flex-shrink:   0;
+}
+.qr-pub .qr-back-btn:hover {
+  color:       var(--qr-fg);
+  background:  rgba(28, 20, 16, 0.06);
+}
+
+.qr-pub .qr-cat-title {
+  font-family:   var(--qr-font-serif);
+  font-size:     1.2rem;
+  font-weight:   500;
+  color:         var(--qr-fg);
+  flex:          1;
+}
+
+/* ── Animaciones ─────────────────────────────────────────────────────────── */
+@keyframes qr-fade-up {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.qr-pub .qr-animate {
+  animation: qr-fade-up 0.35s ease forwards;
+}
+.qr-pub .qr-animate-d1 { animation-delay: 0.05s; }
+.qr-pub .qr-animate-d2 { animation-delay: 0.10s; }
+.qr-pub .qr-animate-d3 { animation-delay: 0.15s; }
+.qr-pub .qr-animate-d4 { animation-delay: 0.20s; }
+.qr-pub .qr-animate-d5 { animation-delay: 0.25s; }
+.qr-pub .qr-animate-d6 { animation-delay: 0.30s; }
+.qr-pub .qr-animate-d7 { animation-delay: 0.35s; }
+.qr-pub .qr-animate-d8 { animation-delay: 0.40s; }

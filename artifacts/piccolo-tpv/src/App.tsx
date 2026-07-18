@@ -115,6 +115,7 @@ import NotFound from './pages/not-found';
 // ── Hub pages — new 8-module admin navigation ────────────────────────────────
 import OperacionesHub from './pages/operaciones/OperacionesHub';
 import CartaCocinaHub from './pages/carta-cocina/CartaCocinaHub';
+import CartaPublicaApp from './pages/carta-publica/CartaPublicaApp';
 import ClientesPedidosHub from './pages/clientes-pedidos/ClientesPedidosHub';
 import AdministracionHub from './pages/administracion/AdministracionHub';
 import HardwareHub from './pages/hardware/HardwareHub';
@@ -205,8 +206,11 @@ function Router() {
       <Route path="/operaciones">
         <RequireRole roles={ROLES_MANAGER_UP}><OperacionesHub /></RequireRole>
       </Route>
-      {/* ── Carta y Cocina — en reconstrucción ───────────────────────────── */}
-      {/* Catch-all: /carta-cocina y cualquier subruta redirigen al placeholder */}
+      {/* ── QR Menú público — ruta pública, sin autenticación ───────────── */}
+      <Route path="/carta-cocina/qr-menu" component={CartaPublicaApp} />
+
+      {/* ── Carta y Cocina hub — en reconstrucción ───────────────────────── */}
+      {/* Catch-all: /carta-cocina y cualquier otra subruta → placeholder */}
       <Route path="/carta-cocina/:rest*">
         <RequireRole roles={ROLES_MANAGER_UP}><CartaCocinaHub /></RequireRole>
       </Route>
