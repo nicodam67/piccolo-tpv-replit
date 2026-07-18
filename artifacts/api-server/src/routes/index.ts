@@ -127,4 +127,7 @@ router.use(systemInfoRouter);
 router.use(rolePermissionsRouter);
 router.use(tabletRouter);
 
+import reportsRouter from "./reports";
+router.use(reportsRouter);
+
 export default router;

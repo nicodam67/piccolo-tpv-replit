@@ -93,6 +93,7 @@ import OnlineOrdersInbox from './pages/online-orders-inbox';
 import DriverView from './pages/driver-view';
 import OrderStatus from './pages/order-status';
 import OnlineReports from './pages/online-reports';
+import Informes from './pages/informes';
 import AdminImpresoras from './pages/admin-impresoras';
 import AdminColaImpresion from './pages/admin-cola-impresion';
 import AdminKdsStations from './pages/admin-kds-stations';
@@ -200,6 +201,9 @@ function Router() {
       </Route>
       <Route path="/admin/online-reports">
         <RequireRole roles={ROLES_MANAGER_UP}><OnlineReports /></RequireRole>
+      </Route>
+      <Route path="/admin/informes">
+        <RequireRole roles={ROLES_MANAGER_UP}><Informes /></RequireRole>
       </Route>
       <Route path="/admin/branding">
         <RequireRole roles={ROLES_MANAGER_UP}><Branding /></RequireRole>
