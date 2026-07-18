@@ -30,6 +30,7 @@ import Ingredientes from './pages/ingredientes';
 import Stock from './pages/stock';
 import Carta from './pages/carta';
 import CartaCategoria from './pages/carta-categoria';
+import CartaImprimir from './pages/carta-imprimir';
 import QrMenuPage from './pages/qr-menu/QrMenuPage';
 import Reservations from './pages/reservations';
 import CajaAutomatica from './pages/caja-automatica';
@@ -120,6 +121,7 @@ function Router() {
       <Route path="/fichaje" component={FichajeReloj} />
       <Route path="/carta" component={Carta} />
       <Route path="/carta/categoria/:categoryId" component={CartaCategoria} />
+      <Route path="/carta/imprimir" component={CartaImprimir} />
       <Route path="/menu" component={MenuPage} />
       <Route path="/order-status/:orderNumber" component={OrderStatus} />
       <Route path="/driver/:courierId" component={DriverView} />

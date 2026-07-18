@@ -1,20 +1,22 @@
 import { useState } from 'react';
-import type { QrBranding, ThemeColors, EnabledColors, ThemeFonts, CardSettings } from './types';
-import { DEFAULT_THEME_COLORS, DEFAULT_ENABLED_COLORS, DEFAULT_THEME_FONTS, DEFAULT_CARD_SETTINGS } from './types';
+import type { QrBranding, ThemeColors, EnabledColors, ThemeFonts, CardSettings, DaySchedule } from './types';
+import { DEFAULT_THEME_COLORS, DEFAULT_ENABLED_COLORS, DEFAULT_THEME_FONTS, DEFAULT_CARD_SETTINGS, DEFAULT_SCHEDULE } from './types';
 import ThemeColorManager from './ThemeColorManager';
 import FontManager from './FontManager';
 import CardSettingsManager from './CardSettingsManager';
+import TabSchedule from './TabSchedule';
 
 type Props = { branding: QrBranding; onChange: (b: QrBranding) => void };
 
-type BrandingSection = 'info' | 'hero' | 'colors' | 'fonts' | 'cards';
+type BrandingSection = 'info' | 'hero' | 'colors' | 'fonts' | 'cards' | 'schedule';
 
-const SECTIONS: { id: BrandingSection; label: string }[] = [
-  { id: 'info', label: 'Información' },
-  { id: 'hero', label: 'Portada' },
-  { id: 'colors', label: 'Colores' },
-  { id: 'fonts', label: 'Tipografías' },
-  { id: 'cards', label: 'Tarjetas' },
+const SECTIONS: { id: BrandingSection; label: string; icon: string }[] = [
+  { id: 'info',     label: 'Información',   icon: '🏷️' },
+  { id: 'hero',     label: 'Portada',        icon: '🖼️' },
+  { id: 'colors',   label: 'Colores',        icon: '🎨' },
+  { id: 'fonts',    label: 'Tipografías',    icon: '✍️' },
+  { id: 'cards',    label: 'Tarjetas',       icon: '🃏' },
+  { id: 'schedule', label: 'Horario',        icon: '🕐' },
 ];
 
 function FormRow({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
@@ -47,6 +49,7 @@ export default function TabBranding({ branding, onChange }: Props) {
   const enabledColors: EnabledColors = DEFAULT_ENABLED_COLORS;
   const fonts = branding.themeFonts ?? DEFAULT_THEME_FONTS;
   const cardSettings = branding.cardSettings ?? DEFAULT_CARD_SETTINGS;
+  const schedule = branding.schedule ?? DEFAULT_SCHEDULE;
 
   function patch(partial: Partial<QrBranding>) {
     onChange({ ...branding, ...partial });
@@ -56,16 +59,16 @@ export default function TabBranding({ branding, onChange }: Props) {
     <div className="space-y-4">
       {/* Section tabs */}
       <div className="flex gap-1 overflow-x-auto scrollbar-none bg-gray-50 p-1 rounded-xl">
-        {SECTIONS.map(({ id, label }) => (
+        {SECTIONS.map(({ id, label, icon }) => (
           <button
             key={id}
             type="button"
             onClick={() => setSection(id)}
-            className={`shrink-0 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors cursor-pointer ${
+            className={`shrink-0 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors cursor-pointer ${
               section === id ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:text-gray-700'
             }`}
           >
-            {label}
+            <span className="mr-1">{icon}</span>{label}
           </button>
         ))}
       </div>
@@ -132,7 +135,7 @@ export default function TabBranding({ branding, onChange }: Props) {
             <video src={branding.heroVideoUrl} className="w-full h-32 object-cover rounded-xl" autoPlay loop muted playsInline />
           )}
           <p className="text-xs text-gray-500">
-            💡 Si se configura vídeo, tiene preferencia sobre la imagen. Se recomienda usar el mismo aspecto 16:9 o 4:3.
+            💡 Si se configura vídeo, tiene preferencia sobre la imagen. Se recomienda aspecto 16:9 o 4:3.
           </p>
           <FormRow label="URL del logo">
             <TextInput value={branding.logoUrl} onChange={(v) => patch({ logoUrl: v })} placeholder="https://…/logo.png" type="url" />
@@ -145,7 +148,7 @@ export default function TabBranding({ branding, onChange }: Props) {
         <ThemeColorManager
           colors={colors}
           enabledColors={enabledColors}
-          onChange={(newColors) => patch({ themeColors: newColors })}
+          onChange={(newColors, newEnabled) => patch({ themeColors: newColors })}
         />
       )}
 
@@ -157,6 +160,19 @@ export default function TabBranding({ branding, onChange }: Props) {
       {/* Section: cards */}
       {section === 'cards' && (
         <CardSettingsManager settings={cardSettings} onChange={(s) => patch({ cardSettings: s })} />
+      )}
+
+      {/* Section: schedule — embebido tal como el original */}
+      {section === 'schedule' && (
+        <div>
+          <p className="text-sm text-gray-500 mb-4">
+            Configura el horario que verán los clientes en la carta pública al pulsar el botón 🕐 Horario.
+          </p>
+          <TabSchedule
+            schedule={schedule}
+            onChange={(s: DaySchedule[]) => patch({ schedule: s })}
+          />
+        </div>
       )}
     </div>
   );

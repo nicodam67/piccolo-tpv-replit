@@ -27,6 +27,7 @@ export interface QrCategory {
   active: boolean;
   color?: string | null;
   icon?: string | null;
+  description?: string | null;
   translations?: Record<string, { name?: string; description?: string }>;
 }
 
@@ -51,6 +52,16 @@ export interface QrProduct {
   translations?: Record<string, { name?: string; description?: string }>;
 }
 
+export interface PublicMenuCategory {
+  id: string;
+  name: string;
+  icon?: string | null;
+  color?: string | null;
+  products: QrProduct[];
+  subcategories?: { id: string; name: string; products: QrProduct[] }[];
+  translations?: Record<string, { name?: string; description?: string }>;
+}
+
 export async function fetchQrCategories(): Promise<QrCategory[]> {
   const r = await fetch(`${BASE}/api/admin/categories`, { credentials: 'include' });
   if (!r.ok) throw new Error('Error cargando categorías');
@@ -65,6 +76,13 @@ export async function fetchQrProducts(): Promise<QrProduct[]> {
   return Array.isArray(data) ? data : (data.products ?? []);
 }
 
+export async function fetchPublicMenu(): Promise<PublicMenuCategory[]> {
+  const r = await fetch(`${BASE}/api/public/menu`);
+  if (!r.ok) throw new Error('Error cargando menú público');
+  const data = await r.json();
+  return Array.isArray(data) ? data : [];
+}
+
 export async function patchCategory(id: string, patch: Record<string, unknown>): Promise<void> {
   const r = await fetch(`${BASE}/api/admin/categories/${id}`, {
     method: 'PATCH',
@@ -75,6 +93,31 @@ export async function patchCategory(id: string, patch: Record<string, unknown>):
   if (!r.ok) throw new Error('Error actualizando categoría');
 }
 
+export async function createCategory(data: {
+  name: string;
+  icon?: string;
+  color?: string;
+  sortOrder?: number;
+  translations?: Record<string, { name?: string; description?: string }>;
+}): Promise<QrCategory> {
+  const r = await fetch(`${BASE}/api/admin/categories`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!r.ok) throw new Error('Error creando categoría');
+  return r.json();
+}
+
+export async function deleteCategory(id: string): Promise<void> {
+  const r = await fetch(`${BASE}/api/admin/categories/${id}`, {
+    method: 'DELETE',
+    credentials: 'include',
+  });
+  if (!r.ok) throw new Error('Error eliminando categoría');
+}
+
 export async function patchProduct(id: string, patch: Record<string, unknown>): Promise<void> {
   const r = await fetch(`${BASE}/api/admin/products/${id}`, {
     method: 'PATCH',
@@ -83,6 +126,42 @@ export async function patchProduct(id: string, patch: Record<string, unknown>): 
     body: JSON.stringify(patch),
   });
   if (!r.ok) throw new Error('Error actualizando producto');
+}
+
+export async function createProduct(data: {
+  categoryId: string;
+  name: string;
+  price: string;
+  description?: string;
+  allergens?: string;
+  halfPortionPrice?: string | null;
+  quantity?: string;
+  imageUrl?: string;
+  isVegetariano?: boolean;
+  isVegano?: boolean;
+  isSinGluten?: boolean;
+  isPicante?: boolean;
+  sortOrder?: number;
+}): Promise<QrProduct> {
+  const r = await fetch(`${BASE}/api/admin/products`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({}));
+    throw new Error((err as { error?: string }).error ?? 'Error creando producto');
+  }
+  return r.json();
+}
+
+export async function deleteProduct(id: string): Promise<void> {
+  const r = await fetch(`${BASE}/api/admin/products/${id}`, {
+    method: 'DELETE',
+    credentials: 'include',
+  });
+  if (!r.ok) throw new Error('Error archivando producto');
 }
 
 /** Apply themeColors/themeFonts as CSS custom vars on :root */
@@ -112,4 +191,14 @@ export function loadGoogleFont(fontName: string): void {
   link.rel = 'stylesheet';
   link.href = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(fontName)}:ital,wght@0,400;0,700;1,400&display=swap`;
   document.head.appendChild(link);
+}
+
+/** Load a custom CDN font */
+export function loadCustomFont(name: string, cdnUrl: string): void {
+  const id = `custom-font-${name.replace(/\s+/g, '-')}`;
+  if (document.getElementById(id)) return;
+  const style = document.createElement('style');
+  style.id = id;
+  style.textContent = `@font-face { font-family: "${name}"; src: url("${cdnUrl}") format("woff2"), url("${cdnUrl}") format("woff"); font-weight: normal; font-style: normal; font-display: swap; }`;
+  document.head.appendChild(style);
 }

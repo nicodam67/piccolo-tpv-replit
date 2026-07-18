@@ -3,40 +3,70 @@ import { RotateCcw, X } from 'lucide-react';
 import type { ThemeFonts } from './types';
 import { DEFAULT_THEME_FONTS } from './types';
 
-const FONT_OPTIONS = [
+// ── Custom CDN fonts (from original program) ─────────────────────────────────
+const CUSTOM_FONTS = [
+  { label: 'Algerian', value: 'Algerian__custom', cdnUrl: 'https://hercules-cdn.com/file_Up90gFAtg9wEAXyeMzwFEHgS' },
+  { label: 'AvantGarde Demi', value: 'AvantGardeBk__custom', cdnUrl: 'https://hercules-cdn.com/file_89mHnxjgA9M4oKd6cCL5tH3G' },
+  { label: 'American Text BT', value: 'AmericanTextBT__custom', cdnUrl: 'https://hercules-cdn.com/file_ZvU6mje17p5pww4n7ZuLTmNH' },
+  { label: 'ZapfChan Demi', value: 'ZapfChanDm__custom', cdnUrl: 'https://hercules-cdn.com/file_H5zrJAiF1ZRToxIbF6PxUlIC' },
+  { label: 'ZapfChan Medium', value: 'ZapfChanMd__custom', cdnUrl: 'https://hercules-cdn.com/file_46LrUGLTssadG0rlxFlWL1tR' },
+];
+
+const GOOGLE_FONTS = [
   { group: 'Serif (clásica)', fonts: ['Playfair Display', 'Lora', 'Merriweather', 'Cormorant Garamond', 'EB Garamond'] },
   { group: 'Sans-serif (moderna)', fonts: ['Lato', 'Raleway', 'Nunito', 'Montserrat', 'Poppins', 'Inter', 'Jost'] },
   { group: 'Decorativa / Script', fonts: ['Corinthia', 'Dancing Script', 'Pacifico', 'Josefin Sans', 'Cinzel'] },
 ];
 
-function loadGoogleFont(name: string) {
-  const id = `gf-${name.replace(/\s+/g, '-')}`;
+function loadFont(fontValue: string) {
+  const custom = CUSTOM_FONTS.find((f) => f.value === fontValue);
+  if (custom) {
+    const id = `custom-font-${fontValue}`;
+    if (document.getElementById(id)) return;
+    const style = document.createElement('style');
+    style.id = id;
+    style.textContent = `@font-face { font-family: "${custom.label}"; src: url("${custom.cdnUrl}") format("woff2"), url("${custom.cdnUrl}") format("woff"); font-weight: normal; font-style: normal; font-display: swap; }`;
+    document.head.appendChild(style);
+    return;
+  }
+  // Google Font
+  const id = `gf-${fontValue.replace(/\s+/g, '-')}`;
   if (document.getElementById(id)) return;
   const link = document.createElement('link');
   link.id = id; link.rel = 'stylesheet';
-  link.href = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(name)}:wght@400;700&display=swap`;
+  link.href = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(fontValue)}:wght@400;700&display=swap`;
   document.head.appendChild(link);
+}
+
+function getFontFamily(value: string): string {
+  const custom = CUSTOM_FONTS.find((f) => f.value === value);
+  return custom ? `"${custom.label}", serif` : `"${value}", serif`;
 }
 
 type Props = { fonts: ThemeFonts; onChange: (f: ThemeFonts) => void };
 
-function FontSelect({ id, label, value, onChange }: { id: string; label: string; value: string; onChange: (v: string) => void }) {
-  useEffect(() => { loadGoogleFont(value); }, [value]);
+function FontSelect({ id, label, value, onChange }: {
+  id: string; label: string; value: string; onChange: (v: string) => void;
+}) {
+  useEffect(() => { loadFont(value); }, [value]);
   return (
     <div className="space-y-1.5">
       <label htmlFor={id} className="text-xs font-medium text-gray-700 block">{label}</label>
       <select
         id={id} value={value}
-        onChange={(e) => { onChange(e.target.value); loadGoogleFont(e.target.value); }}
+        onChange={(e) => { onChange(e.target.value); loadFont(e.target.value); }}
         className="w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
       >
-        {FONT_OPTIONS.map((g) => (
+        <optgroup label="Fuentes exclusivas (CDN)">
+          {CUSTOM_FONTS.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
+        </optgroup>
+        {GOOGLE_FONTS.map((g) => (
           <optgroup key={g.group} label={g.group}>
             {g.fonts.map((f) => <option key={f} value={f}>{f}</option>)}
           </optgroup>
         ))}
       </select>
-      <p className="text-base truncate" style={{ fontFamily: `"${value}", serif` }}>
+      <p className="text-base truncate" style={{ fontFamily: getFontFamily(value) }}>
         Bienvenido a nuestro restaurante
       </p>
     </div>
@@ -98,10 +128,10 @@ export default function FontManager({ fonts, onChange }: Props) {
 
       {/* Combined preview */}
       <div className="rounded-xl border border-gray-200 p-5 space-y-1 bg-gray-50">
-        <p className="text-xl font-bold" style={{ fontFamily: `"${fonts.heading}", serif`, ...(fonts.headingColor ? { color: fonts.headingColor } : {}) }}>
+        <p className="text-xl font-bold" style={{ fontFamily: getFontFamily(fonts.heading), ...(fonts.headingColor ? { color: fonts.headingColor } : {}) }}>
           Carta del restaurante
         </p>
-        <p className="text-sm text-gray-500" style={{ fontFamily: `"${fonts.body}", sans-serif`, ...(fonts.bodyColor ? { color: fonts.bodyColor } : {}) }}>
+        <p className="text-sm text-gray-500" style={{ fontFamily: getFontFamily(fonts.body), ...(fonts.bodyColor ? { color: fonts.bodyColor } : {}) }}>
           Descubre nuestra selección de platos elaborados con ingredientes frescos de temporada.
         </p>
       </div>
