@@ -68,6 +68,7 @@ export default function CategoriaVista({
               key={p.id}
               product={p}
               activeAllergen={activeAllergen}
+              activeTag={activeTag}
               delay={i}
             />
           ))

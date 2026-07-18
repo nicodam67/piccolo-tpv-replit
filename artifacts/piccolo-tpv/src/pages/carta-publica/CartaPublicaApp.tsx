@@ -5,9 +5,10 @@
  * - Carga carta-publica.css (scope .qr-pub)
  * - Gestiona la navegación interna (inicio ↔ categoría)
  * - Sin Convex, sin Hercules, sin iframes, sin datos de BD
+ * - Sin URLs externas de imágenes — placeholders CSS locales
  * - Datos de prueba en fixtures.ts
  *
- * Fase 1: validación visual únicamente.
+ * Fase 1: validación visual — pendiente de aprobación.
  */
 import './carta-publica.css';
 import { useState } from 'react';
@@ -18,10 +19,10 @@ import type { FixtureCategory, AllergenId, DietaryTagId } from './fixtures';
 type View = 'inicio' | 'categoria';
 
 export default function CartaPublicaApp() {
-  const [view,       setView]       = useState<View>('inicio');
-  const [activeCat,  setActiveCat]  = useState<FixtureCategory | null>(null);
-  const [allergen,   setAllergen]   = useState<AllergenId | null>(null);
-  const [tag,        setTag]        = useState<DietaryTagId | null>(null);
+  const [view,      setView]      = useState<View>('inicio');
+  const [activeCat, setActiveCat] = useState<FixtureCategory | null>(null);
+  const [allergen,  setAllergen]  = useState<AllergenId | null>(null);
+  const [tag,       setTag]       = useState<DietaryTagId | null>(null);
 
   function goToCategory(cat: FixtureCategory) {
     setActiveCat(cat);
