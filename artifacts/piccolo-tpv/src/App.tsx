@@ -112,6 +112,13 @@ import AdminInstalacionQR from './pages/admin-instalacion-qr';
 import AdminPermisos from './pages/admin-permisos';
 import AdminDatosDemo from './pages/admin-datos-demo';
 import NotFound from './pages/not-found';
+// ── Hub pages — new 8-module admin navigation ────────────────────────────────
+import OperacionesHub from './pages/operaciones/OperacionesHub';
+import CartaCocinaHub from './pages/carta-cocina/CartaCocinaHub';
+import ClientesPedidosHub from './pages/clientes-pedidos/ClientesPedidosHub';
+import AdministracionHub from './pages/administracion/AdministracionHub';
+import HardwareHub from './pages/hardware/HardwareHub';
+import SistemaHub from './pages/sistema/SistemaHub';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -193,6 +200,27 @@ function Router() {
       <Route path="/admin">
         <RequireRole roles={ROLES_MANAGER_UP}><AdminDashboard /></RequireRole>
       </Route>
+
+      {/* ── Hub pages — 8-module navigation ──────────────────────────────── */}
+      <Route path="/operaciones">
+        <RequireRole roles={ROLES_MANAGER_UP}><OperacionesHub /></RequireRole>
+      </Route>
+      <Route path="/carta-cocina">
+        <RequireRole roles={ROLES_MANAGER_UP}><CartaCocinaHub /></RequireRole>
+      </Route>
+      <Route path="/clientes-pedidos">
+        <RequireRole roles={ROLES_MANAGER_UP}><ClientesPedidosHub /></RequireRole>
+      </Route>
+      <Route path="/administracion">
+        <RequireRole roles={ROLES_MANAGER_UP}><AdministracionHub /></RequireRole>
+      </Route>
+      <Route path="/hardware">
+        <RequireRole roles={ROLES_MANAGER_UP}><HardwareHub /></RequireRole>
+      </Route>
+      <Route path="/sistema">
+        <RequireRole roles={ROLES_MANAGER_UP}><SistemaHub /></RequireRole>
+      </Route>
+
       <Route path="/admin/crm">
         <RequirePermission permission="crm.manage"><Crm /></RequirePermission>
       </Route>

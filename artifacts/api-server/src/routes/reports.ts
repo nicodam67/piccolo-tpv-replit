@@ -47,7 +47,7 @@ const f2 = (v: string | number | null | undefined) =>
 
 // ─── 1. Summary KPIs ─────────────────────────────────────────────────────────
 
-router.get("/reports/summary", guard, async (req: Request, res: Response): Promise<void> => {
+router.get("/reports/summary", ...guard, async (req: Request, res: Response): Promise<void> => {
   const { from, to } = parseDateRange(req.query as Record<string, string>);
 
   const [ticket] = await db
@@ -97,7 +97,7 @@ router.get("/reports/summary", guard, async (req: Request, res: Response): Promi
 
 // ─── 2. Sales Trend ───────────────────────────────────────────────────────────
 
-router.get("/reports/sales-trend", guard, async (req: Request, res: Response): Promise<void> => {
+router.get("/reports/sales-trend", ...guard, async (req: Request, res: Response): Promise<void> => {
   const q = req.query as Record<string, string>;
   const { from, to } = parseDateRange(q);
   const groupBy = ["day", "week", "month", "year"].includes(q.group_by)
@@ -128,7 +128,7 @@ router.get("/reports/sales-trend", guard, async (req: Request, res: Response): P
 
 // ─── 3. Sales by Waiter ───────────────────────────────────────────────────────
 
-router.get("/reports/by-waiter", guard, async (req: Request, res: Response): Promise<void> => {
+router.get("/reports/by-waiter", ...guard, async (req: Request, res: Response): Promise<void> => {
   const { from, to } = parseDateRange(req.query as Record<string, string>);
 
   const rows = await db
@@ -160,7 +160,7 @@ router.get("/reports/by-waiter", guard, async (req: Request, res: Response): Pro
 
 // ─── 4. Sales by Zone / Table ─────────────────────────────────────────────────
 
-router.get("/reports/by-zone", guard, async (req: Request, res: Response): Promise<void> => {
+router.get("/reports/by-zone", ...guard, async (req: Request, res: Response): Promise<void> => {
   const { from, to } = parseDateRange(req.query as Record<string, string>);
 
   const rows = await db
@@ -196,7 +196,7 @@ router.get("/reports/by-zone", guard, async (req: Request, res: Response): Promi
 
 // ─── 5. Sales by Category & Product ──────────────────────────────────────────
 
-router.get("/reports/by-product", guard, async (req: Request, res: Response): Promise<void> => {
+router.get("/reports/by-product", ...guard, async (req: Request, res: Response): Promise<void> => {
   const q = req.query as Record<string, string>;
   const { from, to } = parseDateRange(q);
   const limit = Math.min(parseInt(q.limit ?? "100", 10), 200);
@@ -248,7 +248,7 @@ router.get("/reports/by-product", guard, async (req: Request, res: Response): Pr
 
 // ─── 6. VAT Breakdown ────────────────────────────────────────────────────────
 
-router.get("/reports/vat", guard, async (req: Request, res: Response): Promise<void> => {
+router.get("/reports/vat", ...guard, async (req: Request, res: Response): Promise<void> => {
   const { from, to } = parseDateRange(req.query as Record<string, string>);
 
   const rows = await db
@@ -283,7 +283,7 @@ router.get("/reports/vat", guard, async (req: Request, res: Response): Promise<v
 
 // ─── 7. Payment Methods ───────────────────────────────────────────────────────
 
-router.get("/reports/payments", guard, async (req: Request, res: Response): Promise<void> => {
+router.get("/reports/payments", ...guard, async (req: Request, res: Response): Promise<void> => {
   const { from, to } = parseDateRange(req.query as Record<string, string>);
 
   const rows = await db
@@ -320,7 +320,7 @@ router.get("/reports/payments", guard, async (req: Request, res: Response): Prom
 
 // ─── 8. Cash Sessions ─────────────────────────────────────────────────────────
 
-router.get("/reports/cash", guard, async (req: Request, res: Response): Promise<void> => {
+router.get("/reports/cash", ...guard, async (req: Request, res: Response): Promise<void> => {
   const { from, to } = parseDateRange(req.query as Record<string, string>);
 
   const sessions = await db
@@ -375,7 +375,7 @@ router.get("/reports/cash", guard, async (req: Request, res: Response): Promise<
 
 // ─── 9. Discounts & Voids ────────────────────────────────────────────────────
 
-router.get("/reports/voids", guard, async (req: Request, res: Response): Promise<void> => {
+router.get("/reports/voids", ...guard, async (req: Request, res: Response): Promise<void> => {
   const { from, to } = parseDateRange(req.query as Record<string, string>);
 
   const discounts = await db
@@ -435,7 +435,7 @@ router.get("/reports/voids", guard, async (req: Request, res: Response): Promise
 
 // ─── 10. Peak Hours ───────────────────────────────────────────────────────────
 
-router.get("/reports/peak-hours", guard, async (req: Request, res: Response): Promise<void> => {
+router.get("/reports/peak-hours", ...guard, async (req: Request, res: Response): Promise<void> => {
   const { from, to } = parseDateRange(req.query as Record<string, string>);
 
   const rows = await db
@@ -464,7 +464,7 @@ router.get("/reports/peak-hours", guard, async (req: Request, res: Response): Pr
 
 // ─── 11. Top Products ─────────────────────────────────────────────────────────
 
-router.get("/reports/top-products", guard, async (req: Request, res: Response): Promise<void> => {
+router.get("/reports/top-products", ...guard, async (req: Request, res: Response): Promise<void> => {
   const q = req.query as Record<string, string>;
   const { from, to } = parseDateRange(q);
   const limit = Math.min(parseInt(q.limit ?? "20", 10), 100);
@@ -506,7 +506,7 @@ router.get("/reports/top-products", guard, async (req: Request, res: Response): 
 
 // ─── 12. Excel Export ────────────────────────────────────────────────────────
 
-router.get("/reports/export/excel", guard, async (req: Request, res: Response): Promise<void> => {
+router.get("/reports/export/excel", ...guard, async (req: Request, res: Response): Promise<void> => {
   const q = req.query as Record<string, string>;
   const { from, to } = parseDateRange(q);
   const label = `${q.from ?? "hoy"}_${q.to ?? "hoy"}`;
