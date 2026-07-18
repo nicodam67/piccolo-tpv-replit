@@ -10,8 +10,11 @@ import {
   csvImportsTable,
   fichajeAuditTable,
   fichajeSettingsTable,
+  nfcCardsTable,
+  tabletDevicesTable,
 } from "@workspace/db";
 import { eq, and, gte, lte, desc, asc, isNull, isNotNull } from "drizzle-orm";
+import * as crypto from "node:crypto";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { idempotency } from "../middlewares/idempotency";
 import { z } from "zod";
@@ -22,17 +25,17 @@ const router: IRouter = Router();
 async function logAudit(
   action: string,
   employeeId: string | null,
-  performedBy: string,
+  performedBy: string | null,
   entityType: string,
-  entityId: string,
+  entityId: string | null,
   details?: object
 ) {
   await db.insert(fichajeAuditTable).values({
     action,
     employeeId: employeeId ?? undefined,
-    performedBy,
+    performedBy: performedBy ?? undefined,
     entityType,
-    entityId,
+    entityId: entityId ?? undefined,
     details: details ?? null,
   });
 }
@@ -796,6 +799,295 @@ router.get(
     res.json(entries);
   }
 );
+
+// ════════════════════════════════════════════════════════════════════════════
+// NFC CARD MANAGEMENT — require auth + manager/admin
+// ════════════════════════════════════════════════════════════════════════════
+
+function hashNfcToken(rawToken: string): string {
+  return crypto.createHash("sha256").update(rawToken.toLowerCase().trim()).digest("hex");
+}
+
+// Anti-debounce store: key = hash:deviceToken, value = timestamp of last identify call
+const nfcDebounce = new Map<string, number>();
+const NFC_DEBOUNCE_MS = 5_000;
+
+// POST /api/fichaje/nfc/cards — assign a new NFC card to an employee
+router.post(
+  "/fichaje/nfc/cards",
+  requireAuth,
+  requireRole("admin", "manager"),
+  async (req, res): Promise<void> => {
+    const { employeeId, rawToken, alias } = req.body as {
+      employeeId?: string;
+      rawToken?: string;
+      alias?: string;
+    };
+
+    if (!employeeId || !rawToken) {
+      res.status(400).json({ error: "Se requieren employeeId y rawToken" });
+      return;
+    }
+
+    const cardTokenHash = hashNfcToken(rawToken);
+
+    // Check employee exists
+    const emp = await db
+      .select({ id: employeesTable.id, name: employeesTable.name })
+      .from(employeesTable)
+      .where(eq(employeesTable.id, employeeId))
+      .limit(1);
+    if (!emp[0]) { res.status(404).json({ error: "Empleado no encontrado" }); return; }
+
+    // Check hash uniqueness
+    const existing = await db
+      .select({ id: nfcCardsTable.id, employeeId: nfcCardsTable.employeeId })
+      .from(nfcCardsTable)
+      .where(eq(nfcCardsTable.cardTokenHash, cardTokenHash))
+      .limit(1);
+
+    if (existing[0]) {
+      if (existing[0].employeeId === employeeId) {
+        res.status(409).json({ error: "Esta tarjeta ya está asignada a este empleado" });
+      } else {
+        res.status(409).json({ error: "Esta tarjeta ya está asignada a otro empleado" });
+      }
+      return;
+    }
+
+    const [card] = await db
+      .insert(nfcCardsTable)
+      .values({
+        employeeId,
+        cardTokenHash,
+        alias: alias?.trim() || null,
+        assignedBy: req.user!.id,
+        status: "active",
+      })
+      .returning();
+
+    await logAudit("nfc_assigned", employeeId, req.user!.id, "nfc_card", card.id, {
+      alias: card.alias,
+      assignedTo: emp[0].name,
+    });
+
+    res.status(201).json({ id: card.id, alias: card.alias, status: card.status, assignedAt: card.assignedAt });
+  }
+);
+
+// GET /api/fichaje/nfc/cards/:employeeId — list NFC cards for an employee
+router.get(
+  "/fichaje/nfc/cards/:employeeId",
+  requireAuth,
+  requireRole("admin", "manager"),
+  async (req, res): Promise<void> => {
+    const employeeId = req.params.employeeId as string;
+    const cards = await db
+      .select({
+        id: nfcCardsTable.id,
+        alias: nfcCardsTable.alias,
+        status: nfcCardsTable.status,
+        lastUsedAt: nfcCardsTable.lastUsedAt,
+        assignedAt: nfcCardsTable.assignedAt,
+        revokedAt: nfcCardsTable.revokedAt,
+        revokedReason: nfcCardsTable.revokedReason,
+      })
+      .from(nfcCardsTable)
+      .where(eq(nfcCardsTable.employeeId, employeeId))
+      .orderBy(desc(nfcCardsTable.assignedAt));
+    res.json(cards);
+  }
+);
+
+// PATCH /api/fichaje/nfc/cards/:id — update alias or status
+router.patch(
+  "/fichaje/nfc/cards/:id",
+  requireAuth,
+  requireRole("admin", "manager"),
+  async (req, res): Promise<void> => {
+    const id = req.params.id as string;
+    const { alias, status } = req.body as { alias?: string; status?: string };
+    const updates: Record<string, unknown> = {};
+    if (alias !== undefined) updates.alias = alias.trim() || null;
+    if (status && ["active", "revoked"].includes(status)) updates.status = status;
+
+    const [updated] = await db
+      .update(nfcCardsTable)
+      .set(updates)
+      .where(eq(nfcCardsTable.id, id))
+      .returning();
+    if (!updated) { res.status(404).json({ error: "Tarjeta no encontrada" }); return; }
+
+    await logAudit("nfc_updated", updated.employeeId, req.user!.id, "nfc_card", id, updates);
+    res.json({ id: updated.id, alias: updated.alias, status: updated.status });
+  }
+);
+
+// POST /api/fichaje/nfc/cards/:id/revoke — revoke a card
+router.post(
+  "/fichaje/nfc/cards/:id/revoke",
+  requireAuth,
+  requireRole("admin", "manager"),
+  async (req, res): Promise<void> => {
+    const id = req.params.id as string;
+    const { reason } = req.body as { reason?: string };
+
+    const [updated] = await db
+      .update(nfcCardsTable)
+      .set({
+        status: "revoked",
+        revokedAt: new Date(),
+        revokedBy: req.user!.id,
+        revokedReason: reason ?? "Revocada por administrador",
+      })
+      .where(eq(nfcCardsTable.id, id))
+      .returning();
+    if (!updated) { res.status(404).json({ error: "Tarjeta no encontrada" }); return; }
+
+    await logAudit("nfc_revoked_admin", updated.employeeId, req.user!.id, "nfc_card", id, { reason });
+    res.json({ success: true });
+  }
+);
+
+// ════════════════════════════════════════════════════════════════════════════
+// PUBLIC NFC IDENTIFY — no auth, gated by device token + anti-debounce
+// Route is under /fichaje/public/ prefix — already in PUBLIC_ALLOWLIST
+// ════════════════════════════════════════════════════════════════════════════
+
+// POST /api/fichaje/public/nfc/identify — identify employee by NFC card token
+router.post("/fichaje/public/nfc/identify", async (req, res): Promise<void> => {
+  const { rawToken, deviceToken } = req.body as { rawToken?: string; deviceToken?: string };
+
+  if (!rawToken || !deviceToken) {
+    res.status(400).json({ error: "Se requieren rawToken y deviceToken" });
+    return;
+  }
+
+  // Validate device
+  const devices = await db
+    .select({ id: tabletDevicesTable.id, name: tabletDevicesTable.name, status: tabletDevicesTable.status })
+    .from(tabletDevicesTable)
+    .where(eq(tabletDevicesTable.deviceToken, deviceToken))
+    .limit(1);
+
+  if (!devices[0] || devices[0].status === "revoked") {
+    res.status(403).json({ error: "Dispositivo no autorizado" });
+    return;
+  }
+
+  const hash = hashNfcToken(rawToken);
+  const debounceKey = `${hash}:${devices[0].id}`;
+  const now = Date.now();
+
+  // Anti-debounce: same card+device blocked for 5 s
+  const lastSeen = nfcDebounce.get(debounceKey);
+  if (lastSeen && now - lastSeen < NFC_DEBOUNCE_MS) {
+    // performedBy: null (device is not an employee); entityId: null (no card row available)
+    await logAudit("nfc_debounced", null, null, "tablet_device", devices[0].id, {
+      deviceName: devices[0].name,
+      tokenPrefix: hash.slice(0, 8),  // partial hash only for debugging, not PII
+    });
+    res.status(429).json({ error: "Doble lectura ignorada", retryAfterMs: NFC_DEBOUNCE_MS - (now - lastSeen) });
+    return;
+  }
+  nfcDebounce.set(debounceKey, now);
+
+  // Lookup card
+  const card = await db
+    .select({
+      id: nfcCardsTable.id,
+      employeeId: nfcCardsTable.employeeId,
+      status: nfcCardsTable.status,
+    })
+    .from(nfcCardsTable)
+    .where(eq(nfcCardsTable.cardTokenHash, hash))
+    .limit(1);
+
+  if (!card[0]) {
+    // performedBy: null (no employee); entityId: null (card not found, no UUID available)
+    await logAudit("nfc_unknown", null, null, "tablet_device", devices[0].id, {
+      deviceName: devices[0].name,
+      tokenPrefix: hash.slice(0, 8),
+    });
+    res.status(404).json({ error: "Tarjeta no reconocida" });
+    return;
+  }
+
+  if (card[0].status === "revoked") {
+    // performedBy: null (device actor, not employee); entityId: card.id (valid UUID)
+    await logAudit("nfc_revoked", card[0].employeeId, null, "nfc_card", card[0].id, {
+      deviceName: devices[0].name,
+      deviceId: devices[0].id,
+    });
+    res.status(403).json({ error: "Tarjeta revocada — contacte con el administrador" });
+    return;
+  }
+
+  // Get employee
+  const emp = await db
+    .select({ id: employeesTable.id, name: employeesTable.name, active: employeesTable.active })
+    .from(employeesTable)
+    .where(eq(employeesTable.id, card[0].employeeId))
+    .limit(1);
+
+  if (!emp[0] || !emp[0].active) {
+    res.status(404).json({ error: "Empleado no encontrado o inactivo" });
+    return;
+  }
+
+  // Get current clock status
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const openRecord = await db
+    .select()
+    .from(timeRecordsTable)
+    .where(and(
+      eq(timeRecordsTable.employeeId, emp[0].id),
+      isNull(timeRecordsTable.clockOut),
+      gte(timeRecordsTable.clockIn, today)
+    ))
+    .limit(1);
+
+  const openBreak = openRecord[0]
+    ? await db
+        .select()
+        .from(breaksTable)
+        .where(and(eq(breaksTable.recordId, openRecord[0].id), isNull(breaksTable.breakEnd)))
+        .limit(1)
+    : [];
+
+  const currentStatus = openBreak[0] ? "break" : openRecord[0] ? "in" : "out";
+
+  // Update lastUsedAt
+  await db
+    .update(nfcCardsTable)
+    .set({ lastUsedAt: new Date() })
+    .where(eq(nfcCardsTable.id, card[0].id));
+
+  // Update device lastSeen
+  await db
+    .update(tabletDevicesTable)
+    .set({ lastSeenAt: new Date() })
+    .where(eq(tabletDevicesTable.id, devices[0].id));
+
+  // performedBy: null (device actor, not an employee); card.id is a valid UUID
+  await logAudit("nfc_identified", emp[0].id, null, "nfc_card", card[0].id, {
+    deviceName: devices[0].name,
+    deviceId: devices[0].id,
+    employeeName: emp[0].name,
+    currentStatus,
+  });
+
+  res.json({
+    employeeId: emp[0].id,
+    employeeName: emp[0].name,
+    currentStatus,
+    record: openRecord[0] ?? null,
+    activeBreak: openBreak[0] ?? null,
+    serverTime: new Date().toISOString(),
+  });
+});
 
 // ─── Employee fichaje profile (my own data) ───────────────────────────────────
 

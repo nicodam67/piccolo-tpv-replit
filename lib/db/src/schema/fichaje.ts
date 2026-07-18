@@ -130,6 +130,25 @@ export const tabletDevicesTable = pgTable("tablet_devices", {
   revokedAt: timestamp("revoked_at", { withTimezone: true }),
 });
 
+// ─── Tarjetas NFC asignadas a empleados ─────────────────────────────────────
+// Solo se almacena el hash SHA-256 del UID de la tarjeta, nunca el UID en claro.
+export const nfcCardsTable = pgTable("nfc_cards", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  employeeId: uuid("employee_id")
+    .notNull()
+    .references(() => employeesTable.id, { onDelete: "cascade" }),
+  cardTokenHash: text("card_token_hash").notNull().unique(),
+  alias: text("alias"),                      // nombre descriptivo ("Llavero azul")
+  status: text("status").notNull().default("active"), // 'active' | 'revoked'
+  lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+  assignedBy: uuid("assigned_by").references(() => employeesTable.id),
+  assignedAt: timestamp("assigned_at", { withTimezone: true }).notNull().defaultNow(),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  revokedBy: uuid("revoked_by").references(() => employeesTable.id),
+  revokedReason: text("revoked_reason"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 // ─── Configuración del módulo de fichaje ─────────────────────────────────────
 export const fichajeSettingsTable = pgTable("fichaje_settings", {
   id: integer("id").primaryKey().default(1), // single-row config

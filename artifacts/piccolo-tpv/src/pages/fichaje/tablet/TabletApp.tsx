@@ -2,14 +2,19 @@
  * TabletApp — standalone kiosk wrapper for /fichaje/tablet.
  * No TPV navigation. Handles device registration and screen state machine.
  *
- * Screen flow:
+ * Screen flow (PIN):
  *   home → pin → status → confirmation → (auto-returns to home after 5 s)
+ *
+ * Screen flow (NFC):
+ *   home → [NFC read] → status → confirmation → (auto-returns to home after 5 s)
+ *
+ * ⚠️ Sección NFC: IMPLEMENTACIÓN PREPARADA — PENDIENTE DE VALIDACIÓN FÍSICA
  *
  * Inactivity: 20 s of no interaction resets to home.
  */
 import { useState, useEffect, useCallback } from "react";
 import { Loader2, WifiOff } from "lucide-react";
-import TabletHome from "./TabletHome";
+import TabletHome, { type NfcClockStatus } from "./TabletHome";
 import TabletPinKeypad from "./TabletPinKeypad";
 import TabletEmployeeStatus from "./TabletEmployeeStatus";
 import TabletConfirmation from "./TabletConfirmation";
@@ -85,7 +90,6 @@ export default function TabletApp() {
         if (!data) { localStorage.removeItem(TOKEN_KEY); setDeviceStatus("unregistered"); return; }
         if (data.status === "revoked") { setDeviceStatus("revoked"); return; }
         setDeviceStatus("ok");
-        // Ping to update lastSeen
         fetch(`${BASE}/api/tablet/device/${token}/ping`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -93,7 +97,6 @@ export default function TabletApp() {
         }).catch(() => {});
       })
       .catch(() => {
-        // Offline — use cached token optimistically
         if (token) { setDeviceToken(token); setDeviceStatus("ok"); }
       });
   }, []);
@@ -106,9 +109,13 @@ export default function TabletApp() {
       const r = await fetch(`${BASE}/api/tablet/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(regForm),
+        body: JSON.stringify({ name: regForm.name, location: regForm.location, pairingCode: regForm.pairingCode }),
       });
-      if (!r.ok) throw new Error("Error al registrar");
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({ error: "Error al registrar" }));
+        alert(err.error ?? "Error al registrar");
+        return;
+      }
       const { deviceToken: token } = await r.json();
       localStorage.setItem(TOKEN_KEY, token);
       setDeviceToken(token);
@@ -130,7 +137,7 @@ export default function TabletApp() {
 
   useInactivityReset(resetToHome, 20);
 
-  // ── Employee selected → load status → go to PIN ───────────────────────────
+  // ── Employee selected via PIN grid → load status → go to PIN ──────────────
   async function onEmployeeSelected(emp: Employee) {
     setSelectedEmployee(emp);
     try {
@@ -143,6 +150,13 @@ export default function TabletApp() {
     setScreen("pin");
   }
 
+  // ── Employee identified via NFC → skip PIN → go to status ─────────────────
+  function onNfcIdentified(emp: Employee, nfcStatus: NfcClockStatus) {
+    setSelectedEmployee(emp);
+    setClockStatus(nfcStatus);
+    setScreen("status");  // No PIN step for NFC
+  }
+
   // ── PIN submitted ──────────────────────────────────────────────────────────
   async function onPinSubmit(pin: string): Promise<PinResult> {
     if (!selectedEmployee || !deviceToken) return { ok: false };
@@ -153,7 +167,6 @@ export default function TabletApp() {
     });
     const data: PinResult = await r.json();
     if (r.ok && data.ok) {
-      // Refresh status
       const sr = await fetch(`${BASE}/api/fichaje/public/my-status/${selectedEmployee.id}`);
       if (sr.ok) setClockStatus(await sr.json());
       setScreen("status");
@@ -164,7 +177,6 @@ export default function TabletApp() {
   // ── Clock action ───────────────────────────────────────────────────────────
   async function onAction(action: Action) {
     if (!selectedEmployee || !deviceToken) return;
-    // Idempotency key: employee + action + current minute
     const idem = `${selectedEmployee.id}-${action}-${new Date().toISOString().slice(0, 16)}`;
     const r = await fetch(`${BASE}/api/tablet/clock`, {
       method: "POST",
@@ -260,7 +272,6 @@ export default function TabletApp() {
   // ── Main kiosk UI ──────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-gray-950 flex flex-col overflow-hidden select-none">
-      {/* Offline banner */}
       {!online && (
         <div className="bg-red-700 text-white text-center text-sm py-2 flex items-center justify-center gap-2 shrink-0">
           <WifiOff size={15} />
@@ -269,11 +280,16 @@ export default function TabletApp() {
       )}
 
       <div className="flex-1 flex flex-col overflow-hidden">
-        {screen === "home" && (
+        {screen === "home" && deviceToken && (
           <TabletHome
+            deviceToken={deviceToken}
             onSelectEmployee={emp => {
               const withInitials: Employee = { ...emp, initials: toInitials(emp.name) };
               onEmployeeSelected(withInitials);
+            }}
+            onNfcIdentified={(emp, nfcStatus) => {
+              const withInitials: Employee = { ...emp, initials: emp.initials ?? toInitials(emp.name) };
+              onNfcIdentified(withInitials, nfcStatus);
             }}
           />
         )}
