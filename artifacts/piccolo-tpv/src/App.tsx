@@ -115,6 +115,7 @@ import NotFound from './pages/not-found';
 // ── Hub pages — new 8-module admin navigation ────────────────────────────────
 import OperacionesHub from './pages/operaciones/OperacionesHub';
 import CartaCocinaHub from './pages/carta-cocina/CartaCocinaHub';
+import QrMenuEmbed from './pages/carta-cocina/QrMenuEmbed';
 import ClientesPedidosHub from './pages/clientes-pedidos/ClientesPedidosHub';
 import AdministracionHub from './pages/administracion/AdministracionHub';
 import HardwareHub from './pages/hardware/HardwareHub';
@@ -207,6 +208,9 @@ function Router() {
       </Route>
       <Route path="/carta-cocina">
         <RequireRole roles={ROLES_MANAGER_UP}><CartaCocinaHub /></RequireRole>
+      </Route>
+      <Route path="/carta-cocina/qr">
+        <RequireRole roles={ROLES_MANAGER_UP}><QrMenuEmbed /></RequireRole>
       </Route>
       <Route path="/clientes-pedidos">
         <RequireRole roles={ROLES_MANAGER_UP}><ClientesPedidosHub /></RequireRole>
