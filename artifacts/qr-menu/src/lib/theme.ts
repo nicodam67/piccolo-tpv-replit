@@ -1,0 +1,193 @@
+// Utilities for dynamic theme color application
+
+export function hexToRgb(hex: string) {
+  const clean = hex.replace("#", "");
+  const r = parseInt(clean.slice(0, 2), 16);
+  const g = parseInt(clean.slice(2, 4), 16);
+  const b = parseInt(clean.slice(4, 6), 16);
+  return { r, g, b };
+}
+
+// Returns 0 (dark) to 1 (light)
+export function getLuminance(hex: string): number {
+  const { r, g, b } = hexToRgb(hex);
+  return (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+}
+
+// Returns a foreground color (white or near-black) that contrasts with bg
+export function contrastForeground(hex: string): string {
+  return getLuminance(hex) > 0.55 ? "#1a1008" : "#faf8f4";
+}
+
+// Inject (or update) a <style> tag with CSS variable overrides
+export function applyThemeColors(colors: {
+  primary?: string;
+  background?: string;
+  accent?: string;
+  heroTitleColor?: string;
+  heroTaglineColor?: string;
+  heroEstablishedColor?: string;
+  callButtonBg?: string;
+  callButtonText?: string;
+  scheduleButtonBg?: string;
+  scheduleButtonText?: string;
+  tapDetailsColor?: string;
+}) {
+  const id = "dynamic-theme";
+  let el = document.getElementById(id) as HTMLStyleElement | null;
+  if (!el) {
+    el = document.createElement("style");
+    el.id = id;
+    document.head.appendChild(el);
+  }
+
+  const rules: string[] = [];
+
+  if (colors.primary) {
+    const fg = contrastForeground(colors.primary);
+    rules.push(`--primary: ${colors.primary};`);
+    rules.push(`--primary-foreground: ${fg};`);
+    rules.push(`--ring: ${colors.primary};`);
+  }
+  if (colors.background) {
+    const fg = contrastForeground(colors.background);
+    rules.push(`--background: ${colors.background};`);
+    rules.push(`--foreground: ${fg};`);
+    // Slightly lighter/darker for card
+    rules.push(`--card: ${colors.background};`);
+    rules.push(`--card-foreground: ${fg};`);
+  }
+  if (colors.accent) {
+    const fg = contrastForeground(colors.accent);
+    rules.push(`--accent: ${colors.accent};`);
+    rules.push(`--accent-foreground: ${fg};`);
+  }
+
+  // Hero color overrides — use !important to beat font-color rules
+  const heroRules: string[] = [];
+  if (colors.heroTitleColor) {
+    heroRules.push(`[data-hero-title] { color: ${colors.heroTitleColor} !important; }`);
+  }
+  if (colors.heroTaglineColor) {
+    heroRules.push(`[data-hero-tagline] { color: ${colors.heroTaglineColor} !important; }`);
+  }
+  if (colors.heroEstablishedColor) {
+    heroRules.push(`[data-hero-established] { color: ${colors.heroEstablishedColor} !important; }`);
+  }
+  if (colors.callButtonText) {
+    heroRules.push(`[data-call-btn], [data-call-btn] * { color: ${colors.callButtonText} !important; }`);
+  }
+  if (colors.callButtonBg) {
+    heroRules.push(`[data-call-btn] { background: ${colors.callButtonBg} !important; }`);
+  }
+  if (colors.scheduleButtonText) {
+    heroRules.push(`[data-schedule-btn], [data-schedule-btn] * { color: ${colors.scheduleButtonText} !important; }`);
+  }
+  if (colors.scheduleButtonBg) {
+    heroRules.push(`[data-schedule-btn] { background: ${colors.scheduleButtonBg} !important; }`);
+  }
+
+  // price color is controlled by applyThemeFonts (headingColor) or falls back to --primary via CSS
+  if (colors.tapDetailsColor) {
+    heroRules.push(`[data-tap-details] { color: ${colors.tapDetailsColor} !important; }`);
+  }
+
+  const rootBlock = rules.length ? `:root { ${rules.join(" ")} }` : "";
+  el.textContent = [rootBlock, ...heroRules].join("\n");
+}
+
+export function removeThemeColors() {
+  const el = document.getElementById("dynamic-theme");
+  if (el) el.remove();
+}
+
+// Custom uploaded fonts map (value -> CDN URL)
+const CUSTOM_FONT_URLS: Record<string, string> = {
+  "Algerian__custom": "https://hercules-cdn.com/file_Up90gFAtg9wEAXyeMzwFEHgS",
+  "AvantGardeBk__custom": "https://hercules-cdn.com/file_89mHnxjgA9M4oKd6cCL5tH3G",
+  "AmericanTextBT__custom": "https://hercules-cdn.com/file_ZvU6mje17p5pww4n7ZuLTmNH",
+  "ZapfChanDm__custom": "https://hercules-cdn.com/file_H5zrJAiF1ZRToxIbF6PxUlIC",
+  "ZapfChanMd__custom": "https://hercules-cdn.com/file_46LrUGLTssadG0rlxFlWL1tR",
+};
+
+function isCustomFont(value: string) {
+  return value.endsWith("__custom");
+}
+
+function ensureCustomFontFace(value: string) {
+  const url = CUSTOM_FONT_URLS[value];
+  if (!url) return;
+  const styleId = `custom-font-${value}`;
+  if (document.getElementById(styleId)) return;
+  const style = document.createElement("style");
+  style.id = styleId;
+  style.textContent = `@font-face { font-family: "${value}"; src: url("${url}") format("truetype"); font-display: swap; }`;
+  document.head.appendChild(style);
+}
+
+// Load Google Fonts and inject CSS variable overrides for typography
+export function applyThemeFonts(fonts: { heading?: string; body?: string; headingColor?: string; bodyColor?: string }) {
+  // Separate Google fonts from custom fonts
+  const googleFamilies: string[] = [];
+  if (fonts.heading && !isCustomFont(fonts.heading)) googleFamilies.push(fonts.heading.replace(/ /g, "+") + ":wght@400;600;700");
+  if (fonts.body && !isCustomFont(fonts.body)) googleFamilies.push(fonts.body.replace(/ /g, "+") + ":wght@400;500;600");
+
+  // Ensure custom font-face rules are injected
+  if (fonts.heading && isCustomFont(fonts.heading)) ensureCustomFontFace(fonts.heading);
+  if (fonts.body && isCustomFont(fonts.body)) ensureCustomFontFace(fonts.body);
+
+  if (googleFamilies.length > 0) {
+    const linkId = "dynamic-fonts-link";
+    let link = document.getElementById(linkId) as HTMLLinkElement | null;
+    if (!link) {
+      link = document.createElement("link");
+      link.id = linkId;
+      link.rel = "stylesheet";
+      document.head.appendChild(link);
+    }
+    link.href = `https://fonts.googleapis.com/css2?${googleFamilies.map((f) => `family=${f}`).join("&")}&display=swap`;
+  }
+
+  // Inject CSS variable overrides
+  const id = "dynamic-fonts";
+  let el = document.getElementById(id) as HTMLStyleElement | null;
+  if (!el) {
+    el = document.createElement("style");
+    el.id = id;
+    document.head.appendChild(el);
+  }
+
+  const rules: string[] = [];
+  if (fonts.heading) rules.push(`--font-serif: "${fonts.heading}", serif;`);
+  if (fonts.body) rules.push(`--font-sans: "${fonts.body}", sans-serif;`);
+
+  // Apply fonts globally since Tailwind 4 compiles font variables at build time
+  const globalRules: string[] = [];
+
+  if (fonts.body) {
+    // Apply body font and optionally color to everything
+    const colorRule = fonts.bodyColor ? `color: ${fonts.bodyColor} !important;` : "";
+    globalRules.push(`body, body * { font-family: "${fonts.body}", sans-serif !important; ${colorRule} }`);
+  }
+
+  if (fonts.heading) {
+    const colorRule = fonts.headingColor ? `color: ${fonts.headingColor} !important;` : "";
+    // Override headings with the heading font and color
+    globalRules.push(
+      `h1, h2, h3, h4, h5, h6,
+       [style*="font-serif"],
+       [class*="font-serif"] { font-family: "${fonts.heading}", serif !important; ${colorRule} }`
+    );
+  }
+
+  // Prices use heading color if set, else fall back to --primary
+  if (fonts.headingColor) {
+    globalRules.push(`[data-item-price] { color: ${fonts.headingColor} !important; }`);
+  } else {
+    globalRules.push(`[data-item-price] { color: var(--primary) !important; }`);
+  }
+
+  el.textContent = rules.length
+    ? `:root { ${rules.join(" ")} } ${globalRules.join("\n")}`
+    : "";
+}

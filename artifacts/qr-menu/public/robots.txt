@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://piccolo-la-rapita.onhercules.app/sitemap.xml

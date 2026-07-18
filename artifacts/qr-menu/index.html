@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <title>Piccolo la Ràpita · Pizzeria Restaurante</title>
+    <meta name="description" content="Piccolo la Ràpita — Pizzeria y restaurante italiano en la Ràpita. Consulta nuestra carta online con platos, pizzas, pastas y más." />
+    <meta name="author" content="Piccolo la Ràpita" />
+    <meta name="keywords" content="pizzeria, restaurante, la rapita, piccolo, carta, menú, pizzas, pasta, italiana" />
+    <link rel="icon" href="https://hercules-cdn.com/file_5w7HKFxu1TK8XeIKb0GGcdpM" />
+
+    <!-- Open Graph -->
+    <meta property="og:title" content="Piccolo la Ràpita · Pizzeria Restaurante" />
+    <meta property="og:description" content="Carta online de Piccolo la Ràpita. Pizzas, pastas y platos de temporada en la Ràpita." />
+    <meta property="og:type" content="restaurant.restaurant" />
+    <meta property="og:url" content="https://piccolo-la-rapita.onhercules.app/" />
+    <meta property="og:image" content="https://piccolo-la-rapita.onhercules.app/icon/icon-512.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:locale" content="es_ES" />
+    <meta property="og:site_name" content="Piccolo la Ràpita" />
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Piccolo la Ràpita · Pizzeria Restaurante" />
+    <meta name="twitter:description" content="Carta online de Piccolo la Ràpita. Pizzas, pastas y platos de temporada." />
+    <meta name="twitter:image" content="https://piccolo-la-rapita.onhercules.app/icon/icon-512.png" />
+
+    <!-- PWA Configuration -->
+    <link rel="manifest" href="site.webmanifest" />
+    <meta name="theme-color" content="#6B1A2A" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+    <meta name="apple-mobile-web-app-title" content="Piccolo" />
+    <link rel="apple-touch-icon" href="icon/icon-192.png" />
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@300..700&family=Geist+Mono:wght@100..900&family=Geist:wght@100..900&family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&family=Montserrat:ital,wght@0,100..900;1,100..900&family=Noto+Serif:ital,wght@0,100..900;1,100..900&display=swap"
+      rel="stylesheet"
+      crossorigin
+    />
+
+    <!-- Detect dark mode preference and set the class before next-themes loads. -->
+    <script>
+      try {
+        let theme = localStorage.getItem("theme");
+        if (theme === "system" || !theme) {
+          let prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+          theme = prefersDark ? "dark" : "light";
+        }
+        document.documentElement.classList.add(theme);
+      } catch (e) {}
+    </script>
+  </head>
+
+  <!-- Structured Data (JSON-LD) -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Restaurant",
+    "name": "Piccolo la Ràpita",
+    "description": "Pizzeria y restaurante italiano en la Ràpita. Carta con pizzas, pastas y platos de temporada.",
+    "url": "https://piccolo-la-rapita.onhercules.app/",
+    "image": "https://piccolo-la-rapita.onhercules.app/icon/icon-512.png",
+    "servesCuisine": ["Italian", "Pizza", "Mediterranean"],
+    "priceRange": "€€",
+    "address": {
+      "@type": "PostalAddress",
+      "addressLocality": "La Ràpita",
+      "addressRegion": "Tarragona",
+      "addressCountry": "ES"
+    },
+    "menu": "https://piccolo-la-rapita.onhercules.app/",
+    "hasMenu": {
+      "@type": "Menu",
+      "name": "Carta Piccolo",
+      "url": "https://piccolo-la-rapita.onhercules.app/"
+    }
+  }
+  </script>
+
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

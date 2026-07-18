@@ -5,7 +5,7 @@
  */
 import { useLocation } from 'wouter';
 import {
-  ChevronLeft, ChevronRight,
+  ChevronLeft, ChevronRight, ExternalLink,
   QrCode, Tag, Package, Sliders, Palette, Printer,
   DollarSign, FlaskConical, Truck, ShoppingCart, Warehouse, BarChart3,
 } from 'lucide-react';
@@ -14,11 +14,41 @@ const QR_ACCENT  = '#0ea5e9';
 const QR_BG      = 'rgba(14,165,233,0.12)';
 const FC_ACCENT  = '#f59e0b';
 const FC_BG      = 'rgba(245,158,11,0.12)';
+const ORIG_ACCENT = '#16a34a';
+const ORIG_BG     = 'rgba(22,163,74,0.12)';
 
 interface Item { icon: React.ReactNode; title: string; desc: string; href: string; accent: string; bg: string }
 
+/** Card that opens the original QR menu (separate Vite app) in a new tab */
+function OriginalQrMenuCard() {
+  const BASE = import.meta.env.BASE_URL?.replace(/\/$/, '') ?? '';
+  const url = `${window.location.origin}${BASE.replace(/\/piccolo-tpv.*/, '')}/qr-menu/`;
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="group col-span-full text-left flex items-center gap-4 p-4 rounded-xl border-2 border-dashed hover:border-solid transition-all active:scale-[0.98] cursor-pointer"
+      style={{ borderColor: ORIG_ACCENT, background: ORIG_BG }}
+    >
+      <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-transform group-hover:scale-110 duration-150"
+        style={{ background: 'rgba(22,163,74,0.2)', color: ORIG_ACCENT }}>
+        <QrCode size={20} />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="font-bold text-sm flex items-center gap-1.5" style={{ color: ORIG_ACCENT }}>
+          Abrir Carta QR Original
+          <ExternalLink size={12} />
+        </p>
+        <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+          Carta digital pública (Convex + Hercules) — 8 idiomas · PWA · impresión
+        </p>
+      </div>
+    </a>
+  );
+}
+
 const QR_ITEMS: Item[] = [
-  { icon: <QrCode size={20} />,   title: 'Vista general',  desc: 'Branding, publicación y estado de la carta',   href: '/admin/qr-menu',    accent: QR_ACCENT, bg: QR_BG },
   { icon: <Tag size={20} />,      title: 'Categorías',     desc: 'Familias y secciones de la carta',             href: '/categorias',       accent: QR_ACCENT, bg: QR_BG },
   { icon: <Package size={20} />,  title: 'Productos',      desc: 'Escandallos y carta de productos',             href: '/productos',        accent: QR_ACCENT, bg: QR_BG },
   { icon: <Sliders size={20} />,  title: 'Modificadores',  desc: 'Opciones, variantes y alérgenos',              href: '/modificadores',    accent: QR_ACCENT, bg: QR_BG },
@@ -91,6 +121,7 @@ export default function CartaCocinaHub() {
               <span className="text-[10px] px-2 py-0.5 rounded-full font-bold" style={{ background: QR_BG, color: QR_ACCENT }}>Carta digital</span>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <OriginalQrMenuCard />
               {QR_ITEMS.map(item => <HubCard key={item.href + item.title} item={item} />)}
             </div>
           </div>

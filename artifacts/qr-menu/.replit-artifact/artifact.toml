@@ -1,0 +1,27 @@
+kind = "web"
+previewPath = "/qr-menu/"
+title = "QR Menú — Piccolo la Ràpita"
+version = "1.0.0"
+id = "artifacts/qr-menu"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/qr-menu/" ]
+localPort = 19636
+
+[services.development]
+run = "pnpm --filter @workspace/qr-menu run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/qr-menu", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/qr-menu/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "19636"
+BASE_PATH = "/qr-menu/"
