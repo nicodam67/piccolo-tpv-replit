@@ -7,7 +7,7 @@
 import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useLocation } from 'wouter';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Phone, Clock, ChevronRight, X, MapPin } from 'lucide-react';
+import { Clock, ChevronRight, X, MapPin } from 'lucide-react';
 import { EU_ALLERGENS, parseAllergens } from '../lib/allergens';
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, '');
@@ -102,6 +102,10 @@ function localizeName(item: { name: string; translations?: Record<string, { name
   return item.translations?.[locale]?.name || item.name;
 }
 
+// Default display font — loaded unconditionally so the carta looks right
+// even before the admin has configured custom fonts.
+const CARTA_DEFAULT_FONT = 'Cinzel';
+
 function applyTheme(branding: PublicBranding) {
   const root = document.documentElement;
   const c = branding.themeColors ?? {};
@@ -117,6 +121,9 @@ function applyTheme(branding: PublicBranding) {
     loadFont(f.body);
   }
 }
+
+// Ensure default display font is always loaded
+loadFont(CARTA_DEFAULT_FONT);
 
 function loadFont(name: string) {
   const id = `gf-${name.replace(/\s+/g, '-')}`;
@@ -268,8 +275,10 @@ export default function Carta() {
     localStorage.setItem('qr-locale', locale);
   }, [locale]);
 
-  const accentColor = branding?.themeColors?.accent ?? branding?.themeColors?.primary ?? '#c8963e';
-  const headingFont = branding?.themeFonts?.heading ? `"${branding.themeFonts.heading}", serif` : undefined;
+  const accentColor = branding?.themeColors?.accent ?? branding?.themeColors?.primary ?? '#8B1A1A';
+  const headingFont = branding?.themeFonts?.heading
+    ? `"${branding.themeFonts.heading}", "${CARTA_DEFAULT_FONT}", serif`
+    : `"${CARTA_DEFAULT_FONT}", serif`;
   const bodyFont    = branding?.themeFonts?.body    ? `"${branding.themeFonts.body}", sans-serif` : undefined;
 
   const heroImageUrl = branding?.heroImageUrl || 'https://images.unsplash.com/photo-1561948955-570b270e7c36?w=1400&q=80';
@@ -350,7 +359,7 @@ export default function Carta() {
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.7, delay: 0.1 }}
-            className="text-5xl md:text-7xl font-light text-balance mb-4"
+            className="text-5xl md:text-7xl font-bold text-balance mb-4 tracking-wide"
             style={{ fontFamily: headingFont, color: branding?.themeColors?.heroTitleColor ?? '#ffffff' }}
           >
             {loading ? '…' : (branding?.restaurantName || '')}
@@ -407,8 +416,8 @@ export default function Carta() {
         </div>
         {/* Allergens */}
         <div className="flex gap-2 px-4 pb-3 overflow-x-auto scrollbar-none border-t border-gray-100 pt-2">
-          <span className="shrink-0 text-xs text-gray-400 uppercase tracking-wider self-center mr-1">
-            Alérgenos:
+          <span className="shrink-0 text-xs text-gray-500 font-semibold uppercase tracking-wider self-center mr-1">
+            Contiene alérgenos:
           </span>
           {EU_ALLERGENS.map((a) => (
             <button
@@ -449,29 +458,29 @@ export default function Carta() {
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.4, delay: i * 0.07 }}
                   onClick={() => goToCategory(cat.id)}
-                  className="group text-left rounded-2xl border shadow-sm hover:shadow-md transition-all cursor-pointer p-6 flex items-center justify-between gap-4"
+                  className="group text-left rounded-2xl border shadow-sm hover:shadow-md transition-all cursor-pointer p-5 flex items-center justify-between gap-4"
                   style={{
                     background: branding?.themeColors?.categoryCardBg ?? '#ffffff',
-                    borderColor: '#e5e7eb',
+                    borderColor: branding?.themeColors?.categoryCardBorder ?? '#e5e7eb',
                   }}
                 >
                   <div className="flex-1 min-w-0">
                     <h2
-                      className="text-xl font-medium truncate mb-1"
-                      style={{ fontFamily: headingFont, color: branding?.themeColors?.categoryCardText ?? '#1a1a1a' }}
+                      className="text-lg font-semibold truncate mb-0.5 tracking-wide uppercase"
+                      style={{ fontFamily: headingFont, color: branding?.themeColors?.categoryCardText ?? '#8B1A1A' }}
                     >
                       {cat.icon && <span className="mr-2">{cat.icon}</span>}
                       {displayName}
                     </h2>
                     {count > 0 && hasFilters && (
-                      <p className="text-sm" style={{ color: (branding?.themeColors?.categoryCardText ?? '#1a1a1a') + '80' }}>
+                      <p className="text-sm" style={{ color: (branding?.themeColors?.categoryCardText ?? '#8B1A1A') + '80' }}>
                         {count} {count === 1 ? 'plato' : 'platos'}
                       </p>
                     )}
                   </div>
                   <ChevronRight
                     className="w-5 h-5 shrink-0 transition-colors"
-                    style={{ color: (branding?.themeColors?.categoryCardText ?? '#1a1a1a') + '55' }}
+                    style={{ color: branding?.themeColors?.categoryArrowColor ?? '#15803d' }}
                   />
                 </motion.button>
               );
@@ -532,21 +541,6 @@ export default function Carta() {
           <Clock className="w-4 h-4" />
           <span>Horario</span>
         </button>
-      )}
-
-      {/* ── Floating call button ────────────────────────────────────────────────── */}
-      {branding?.phone && (
-        <a
-          href={`tel:${branding.phone}`}
-          className="fixed bottom-6 right-6 z-50 flex items-center gap-2 px-4 py-3 rounded-full shadow-lg text-sm font-medium cursor-pointer transition-transform hover:scale-105 active:scale-95"
-          style={{
-            background: branding?.themeColors?.callButtonBg ?? accentColor,
-            color: branding?.themeColors?.callButtonText ?? '#ffffff',
-          }}
-        >
-          <Phone className="w-4 h-4" />
-          <span>Llamar</span>
-        </a>
       )}
 
       {/* ── Schedule modal ───────────────────────────────────────────────────────── */}

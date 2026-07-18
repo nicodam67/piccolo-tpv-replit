@@ -414,9 +414,12 @@ export default function CartaCategoria() {
             onClick={() => navigate(`${BASE}/carta`)}
             className="shrink-0 p-1.5 rounded-full hover:bg-gray-100 transition-colors cursor-pointer"
           >
-            <ArrowLeft size={20} className="text-gray-500" />
+            <ArrowLeft size={20} style={{ color: branding?.themeColors?.categoryCardText ?? '#8B1A1A' }} />
           </button>
-          <h1 className="text-xl font-medium text-gray-900 truncate flex-1" style={{ fontFamily: headingFont }}>
+          <h1
+            className="text-xl font-semibold truncate flex-1 uppercase tracking-wide"
+            style={{ fontFamily: headingFont, color: branding?.themeColors?.categoryCardText ?? '#8B1A1A' }}
+          >
             {loading ? '…' : catName}
           </h1>
         </div>
@@ -447,7 +450,7 @@ export default function CartaCategoria() {
 
         {/* Allergens */}
         <div className="flex gap-2 px-4 pb-3 overflow-x-auto scrollbar-none border-t border-gray-100 pt-2">
-          <span className="shrink-0 text-xs text-gray-400 uppercase tracking-wider self-center mr-1">Alérgenos:</span>
+          <span className="shrink-0 text-xs text-gray-500 font-semibold uppercase tracking-wider self-center mr-1">Contiene alérgenos:</span>
           {EU_ALLERGENS.map((a) => (
             <button
               key={a.id}

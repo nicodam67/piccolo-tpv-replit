@@ -1,14 +1,13 @@
 /**
  * /admin/qr-menu — Módulo unificado de QR Menú
- * 4 tabs: Menú | Branding | QR & Compartir | Exportar
- * + botón "Traducir menú" en cabecera
- * Fiel a la estructura del programa original (AdminDashboard.tsx)
+ * 4 tabs: Menú | Branding | QR & Share | Exportar
+ * Tema oscuro, coherente con el resto del panel de administración.
  */
 import { useState, useEffect } from 'react';
 import { useLocation } from 'wouter';
 import {
   Loader2, Save, Check, LayoutGrid, Palette, QrCode, Download,
-  Languages, Monitor, Printer, X, Settings, ChevronLeft,
+  Languages, Monitor, Printer, X, Settings, ChevronLeft, Shield,
 } from 'lucide-react';
 import type { QrBranding } from './types';
 import { DEFAULT_THEME_COLORS, DEFAULT_THEME_FONTS, DEFAULT_CARD_SETTINGS, DEFAULT_SCHEDULE } from './types';
@@ -21,11 +20,11 @@ import TabExport from './TabExport';
 type TabId = 'menu' | 'branding' | 'qr' | 'export' | 'ajustes';
 
 const TABS: { id: TabId; label: string; Icon: React.ComponentType<{ className?: string; size?: number }> }[] = [
-  { id: 'menu',     label: 'Menú',         Icon: LayoutGrid },
-  { id: 'branding', label: 'Branding',     Icon: Palette },
-  { id: 'qr',       label: 'Publicación',  Icon: QrCode },
-  { id: 'export',   label: 'Exportar',     Icon: Download },
-  { id: 'ajustes',  label: 'Ajustes',      Icon: Settings },
+  { id: 'menu',     label: 'Menú',        Icon: LayoutGrid },
+  { id: 'branding', label: 'Branding',    Icon: Palette },
+  { id: 'qr',       label: 'QR & Share',  Icon: QrCode },
+  { id: 'export',   label: 'Exportar',    Icon: Download },
+  { id: 'ajustes',  label: 'Ajustes',     Icon: Settings },
 ];
 
 const DEFAULT_BRANDING: QrBranding = {
@@ -50,7 +49,7 @@ export default function QrMenuPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [translateOpen, setTranslateOpen] = useState(false);
 
-  const BASE = import.meta.env.BASE_URL.replace(/\/$/, '');
+  const BASE = (import.meta.env.BASE_URL ?? '/').replace(/\/$/, '');
 
   useEffect(() => {
     fetchQrBranding()
@@ -88,35 +87,39 @@ export default function QrMenuPage() {
     }
   }
 
-  const accentColor = branding.themeColors?.accent ?? '#c8963e';
+  const accentColor = branding.themeColors?.primary ?? '#8B1A1A';
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+      <div className="flex items-center justify-center min-h-screen bg-background">
+        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
       </div>
     );
   }
 
   return (
-    <div className="flex min-h-screen bg-gray-50">
+    <div className="flex min-h-screen bg-background">
       {/* ── Sidebar — desktop ──────────────────────────────────────────────── */}
-      <aside className="hidden md:flex flex-col w-56 shrink-0 border-r border-gray-200 bg-white py-6">
-        <div className="px-4 mb-4">
+      <aside className="hidden md:flex flex-col w-56 shrink-0 border-r border-border bg-card py-6">
+        <div className="px-4 mb-5">
           <button
             onClick={() => navigate('/admin')}
-            className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-600 transition-colors mb-3"
+            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors mb-4"
           >
             <ChevronLeft size={13} />
             Admin
           </button>
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: accentColor }}>
-              <QrCode size={14} className="text-white" />
+          {/* Module header */}
+          <div className="flex items-center gap-2.5">
+            <div
+              className="w-8 h-8 rounded-xl flex items-center justify-center"
+              style={{ background: accentColor }}
+            >
+              <QrCode size={15} className="text-white" />
             </div>
             <div>
-              <p className="text-sm font-bold text-gray-900 leading-none">QR Menú</p>
-              <p className="text-xs text-gray-400">Carta pública</p>
+              <p className="text-sm font-bold text-foreground leading-none">QR Menú</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Carta pública</p>
             </div>
           </div>
         </div>
@@ -125,30 +128,36 @@ export default function QrMenuPage() {
           {TABS.map(({ id, label, Icon }) => (
             <button
               key={id} type="button" onClick={() => setActiveTab(id)}
-              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm font-medium transition-all cursor-pointer ${
+              className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium transition-all cursor-pointer ${
                 activeTab === id
-                  ? 'bg-gray-100 text-gray-900'
-                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                  ? 'text-foreground'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
               }`}
+              style={activeTab === id
+                ? { background: `${accentColor}18`, color: accentColor }
+                : {}
+              }
             >
-              <Icon size={16} className={activeTab === id ? 'text-gray-700' : 'text-gray-400'} />
+              <span style={activeTab === id ? { color: accentColor } : {}}>
+                <Icon size={16} className={activeTab === id ? '' : 'text-muted-foreground'} />
+              </span>
               {label}
             </button>
           ))}
         </nav>
 
-        {/* Links */}
-        <div className="px-4 pt-4 border-t border-gray-100 space-y-2">
+        {/* External links */}
+        <div className="px-4 pt-4 border-t border-border space-y-2 mt-2">
           <a
             href={`${BASE}/carta`} target="_blank" rel="noopener noreferrer"
-            className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-600 transition-colors"
+            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
           >
             <Monitor size={12} />
             Ver carta pública ↗
           </a>
           <a
             href={`${BASE}/carta/imprimir`} target="_blank" rel="noopener noreferrer"
-            className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-600 transition-colors"
+            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
           >
             <Printer size={12} />
             Imprimir carta ↗
@@ -159,17 +168,19 @@ export default function QrMenuPage() {
       {/* ── Main ─────────────────────────────────────────────────────────── */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Top bar */}
-        <header className="sticky top-0 z-10 bg-white border-b border-gray-200 px-4 md:px-6 py-3 flex items-center gap-3">
+        <header className="sticky top-0 z-10 bg-card border-b border-border px-4 md:px-6 py-3 flex items-center gap-3">
           {/* Mobile hamburger */}
           <button
             type="button"
-            className="md:hidden p-1.5 rounded-lg hover:bg-gray-100 cursor-pointer"
+            className="md:hidden p-1.5 rounded-lg hover:bg-secondary cursor-pointer text-muted-foreground"
             onClick={() => setSidebarOpen(v => !v)}
           >
             <LayoutGrid size={18} />
           </button>
 
-          <h1 className="text-base font-semibold text-gray-900 flex-1 truncate">
+          {/* Shield icon + title matching original */}
+          <Shield size={16} className="text-muted-foreground hidden md:block" />
+          <h1 className="text-base font-semibold text-foreground flex-1 truncate">
             {TABS.find(t => t.id === activeTab)?.label ?? 'QR Menú'}
           </h1>
 
@@ -177,7 +188,7 @@ export default function QrMenuPage() {
           {activeTab === 'menu' && (
             <button
               type="button" onClick={() => setTranslateOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-200 hover:border-gray-300 text-gray-600 cursor-pointer transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-border hover:bg-secondary text-muted-foreground hover:text-foreground cursor-pointer transition-colors"
             >
               <Languages size={14} />
               Traducir menú
@@ -190,7 +201,7 @@ export default function QrMenuPage() {
               type="button" onClick={handleSave}
               disabled={saving || !dirty}
               className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-40 transition-all cursor-pointer"
-              style={{ background: dirty ? '#1a1a1a' : '#9ca3af' }}
+              style={{ background: dirty ? accentColor : '#6b7280' }}
             >
               {saving ? <Loader2 size={14} className="animate-spin" /> : saved ? <Check size={14} /> : <Save size={14} />}
               {saving ? 'Guardando…' : saved ? '¡Guardado!' : 'Guardar'}
@@ -200,55 +211,59 @@ export default function QrMenuPage() {
 
         {/* Error banner */}
         {error && (
-          <div className="mx-4 md:mx-6 mt-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-600 text-sm flex items-center justify-between">
+          <div className="mx-4 md:mx-6 mt-4 p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-sm flex items-center justify-between">
             <span>{error}</span>
-            <button type="button" onClick={() => setError(null)} className="text-red-400 hover:text-red-600 cursor-pointer ml-2">✕</button>
+            <button type="button" onClick={() => setError(null)} className="opacity-60 hover:opacity-100 cursor-pointer ml-2">✕</button>
           </div>
         )}
 
         {/* Content */}
-        <main className="flex-1 p-4 md:p-6 overflow-auto">
+        <main className="flex-1 overflow-auto">
           {activeTab === 'menu' && <TabMenuTree accentColor={accentColor} />}
-          {activeTab === 'branding' && <TabBranding branding={branding} onChange={handleBrandingChange} />}
+          {activeTab === 'branding' && (
+            <div className="p-4 md:p-6">
+              <TabBranding branding={branding} onChange={handleBrandingChange} />
+            </div>
+          )}
           {activeTab === 'qr' && <TabQRShare />}
           {activeTab === 'export' && <TabExport />}
           {activeTab === 'ajustes' && (
             <div className="p-6 max-w-2xl space-y-6">
               <div>
-                <h2 className="text-base font-semibold text-gray-900 mb-1">Ajustes del módulo</h2>
-                <p className="text-sm text-gray-500">Configuración general de la carta pública.</p>
+                <h2 className="text-base font-semibold text-foreground mb-1">Ajustes del módulo</h2>
+                <p className="text-sm text-muted-foreground">Configuración general de la carta pública.</p>
               </div>
               {/* Quick navigation links */}
-              <div className="rounded-xl border border-gray-200 divide-y divide-gray-100 overflow-hidden">
-                <div className="px-4 py-3 bg-gray-50">
-                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Accesos rápidos</p>
+              <div className="rounded-xl border border-border divide-y divide-border overflow-hidden">
+                <div className="px-4 py-3 bg-secondary/50">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Accesos rápidos</p>
                 </div>
                 {[
                   { label: 'Ver carta pública',         href: `${BASE}/carta`,          desc: 'Abre la vista del cliente en nueva pestaña', icon: Monitor },
-                  { label: 'Imprimir carta (5 pestañas)', href: `${BASE}/carta/imprimir`, desc: 'Página de impresión con panel Páginas/Elementos/Colores/Fuentes/Idioma', icon: Printer },
+                  { label: 'Imprimir carta',             href: `${BASE}/carta/imprimir`, desc: 'Página de impresión con panel Páginas/Elementos/Colores/Fuentes/Idioma', icon: Printer },
                 ].map(({ label, href, desc, icon: Icon }) => (
                   <a
                     key={href} href={href} target="_blank" rel="noopener noreferrer"
-                    className="flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition-colors group"
+                    className="flex items-center justify-between px-4 py-3 hover:bg-secondary/50 transition-colors group"
                   >
                     <div className="flex items-center gap-3">
-                      <Icon size={16} className="text-gray-400" />
+                      <Icon size={16} className="text-muted-foreground" />
                       <div>
-                        <p className="text-sm font-medium text-gray-800">{label}</p>
-                        <p className="text-xs text-gray-400">{desc}</p>
+                        <p className="text-sm font-medium text-foreground">{label}</p>
+                        <p className="text-xs text-muted-foreground">{desc}</p>
                       </div>
                     </div>
-                    <span className="text-xs text-gray-300 group-hover:text-gray-500">↗</span>
+                    <span className="text-xs text-muted-foreground/50 group-hover:text-muted-foreground">↗</span>
                   </a>
                 ))}
               </div>
               {/* Module info */}
-              <div className="rounded-xl border border-gray-200 p-4 space-y-3">
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Secciones del módulo</p>
-                <div className="grid grid-cols-2 gap-2 text-xs text-gray-600">
+              <div className="rounded-xl border border-border p-4 space-y-3">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Secciones del módulo</p>
+                <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
                   {['Carta (categorías)', 'Productos', 'Alérgenos (14 EU)', 'Etiquetas dietéticas', 'Diseño & colores', 'Tipografías', 'Horarios', 'Idiomas (8 locales)', 'QR dinámico', 'Publicación', 'Exportar CSV', 'Impresión de carta'].map(s => (
                     <div key={s} className="flex items-center gap-1.5">
-                      <div className="w-1.5 h-1.5 rounded-full bg-green-400 flex-shrink-0" />
+                      <div className="w-1.5 h-1.5 rounded-full bg-green-500 flex-shrink-0" />
                       {s}
                     </div>
                   ))}
@@ -262,30 +277,34 @@ export default function QrMenuPage() {
       {/* ── Mobile sidebar overlay ─────────────────────────────────────── */}
       {sidebarOpen && (
         <div className="fixed inset-0 z-50 md:hidden">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setSidebarOpen(false)} />
-          <aside className="absolute left-0 top-0 bottom-0 w-64 bg-white py-6 shadow-xl">
-            <div className="px-4 mb-6">
-              <p className="text-sm font-bold text-gray-900">QR Menú</p>
+          <div className="absolute inset-0 bg-black/50" onClick={() => setSidebarOpen(false)} />
+          <aside className="absolute left-0 top-0 bottom-0 w-64 bg-card py-6 shadow-2xl border-r border-border">
+            <div className="px-4 mb-6 flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: accentColor }}>
+                <QrCode size={15} className="text-white" />
+              </div>
+              <p className="text-sm font-bold text-foreground">QR Menú</p>
             </div>
             <nav className="px-2 space-y-0.5">
               {TABS.map(({ id, label, Icon }) => (
                 <button
                   key={id} type="button"
                   onClick={() => { setActiveTab(id); setSidebarOpen(false); }}
-                  className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium cursor-pointer ${
-                    activeTab === id ? 'bg-gray-100 text-gray-900' : 'text-gray-500'
+                  className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium cursor-pointer transition-all ${
+                    activeTab === id ? 'text-foreground' : 'text-muted-foreground hover:bg-secondary'
                   }`}
+                  style={activeTab === id ? { background: `${accentColor}18`, color: accentColor } : {}}
                 >
                   <Icon size={16} />
                   {label}
                 </button>
               ))}
             </nav>
-            <div className="px-4 pt-4 mt-4 border-t border-gray-100 space-y-2">
-              <a href={`${BASE}/carta`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-xs text-gray-400">
+            <div className="px-4 pt-4 mt-4 border-t border-border space-y-2">
+              <a href={`${BASE}/carta`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-xs text-muted-foreground">
                 <Monitor size={12} />Ver carta ↗
               </a>
-              <a href={`${BASE}/carta/imprimir`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-xs text-gray-400">
+              <a href={`${BASE}/carta/imprimir`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-xs text-muted-foreground">
                 <Printer size={12} />Imprimir ↗
               </a>
             </div>
@@ -295,36 +314,36 @@ export default function QrMenuPage() {
 
       {/* ── Translate dialog ──────────────────────────────────────────── */}
       {translateOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl p-6 space-y-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-card rounded-2xl w-full max-w-sm shadow-2xl border border-border p-6 space-y-4">
             <div className="flex items-start justify-between">
               <div>
-                <h2 className="font-semibold text-gray-900">Traducir menú automáticamente</h2>
-                <p className="text-xs text-gray-500 mt-1">Traducción a 8 idiomas con IA</p>
+                <h2 className="font-semibold text-foreground">Traducir menú automáticamente</h2>
+                <p className="text-xs text-muted-foreground mt-1">Traducción a 8 idiomas con IA</p>
               </div>
-              <button type="button" onClick={() => setTranslateOpen(false)} className="p-1.5 rounded-lg hover:bg-gray-100 cursor-pointer">
+              <button type="button" onClick={() => setTranslateOpen(false)} className="p-1.5 rounded-lg hover:bg-secondary cursor-pointer text-muted-foreground">
                 <X size={16} />
               </button>
             </div>
-            <div className="rounded-xl bg-amber-50 border border-amber-200 p-4 text-sm text-amber-700">
+            <div className="rounded-xl bg-amber-500/10 border border-amber-500/20 p-4 text-sm text-amber-600 dark:text-amber-400">
               <p className="font-medium mb-1">⚡ Funcionalidad disponible</p>
               <p className="text-xs leading-relaxed">
                 Para activar la auto-traducción, configura una integración de OpenAI en el servidor y añade el endpoint
-                <code className="bg-amber-100 px-1 rounded mx-0.5 text-xs font-mono">POST /api/admin/qr-translate</code>.
+                <code className="bg-amber-500/15 px-1 rounded mx-0.5 text-xs font-mono">POST /api/admin/qr-translate</code>.
                 Los textos del menú se traducirán a ES, EN, FR, DE, CA, IT, NL y RO en lotes de 5.
               </p>
             </div>
             <div className="space-y-1.5">
-              <p className="text-xs font-medium text-gray-600">Idiomas destino:</p>
+              <p className="text-xs font-medium text-muted-foreground">Idiomas destino:</p>
               <div className="flex flex-wrap gap-1.5">
                 {['🇪🇸 ES', '🇬🇧 EN', '🇫🇷 FR', '🇩🇪 DE', '🏴 CA', '🇮🇹 IT', '🇳🇱 NL', '🇷🇴 RO'].map(l => (
-                  <span key={l} className="px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-600 font-medium">{l}</span>
+                  <span key={l} className="px-2 py-0.5 rounded-full text-xs bg-secondary text-foreground font-medium">{l}</span>
                 ))}
               </div>
             </div>
             <button
               type="button" onClick={() => setTranslateOpen(false)}
-              className="w-full py-2 rounded-xl text-sm font-medium border border-gray-200 hover:bg-gray-50 cursor-pointer transition-colors"
+              className="w-full py-2 rounded-xl text-sm font-medium border border-border hover:bg-secondary cursor-pointer transition-colors text-foreground"
             >
               Cerrar
             </button>
