@@ -36,7 +36,6 @@ export default function CartaPublicaApp() {
   }
 
   return (
-    // .qr-pub aísla todos los estilos del CSS de la carta
     <div className="qr-pub">
       {view === 'inicio' && (
         <CartaInicio
@@ -47,7 +46,6 @@ export default function CartaPublicaApp() {
           onCategory={goToCategory}
         />
       )}
-
       {view === 'categoria' && activeCat && (
         <CategoriaVista
           category={activeCat}
