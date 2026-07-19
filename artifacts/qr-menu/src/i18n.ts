@@ -5,7 +5,7 @@ export const SUPPORTED_LOCALES = {
   en: { code: "en", emoji: "🇬🇧", name: "English", nativeName: "English", dir: "ltr" },
   fr: { code: "fr", emoji: "🇫🇷", name: "French", nativeName: "Français", dir: "ltr" },
   de: { code: "de", emoji: "🇩🇪", name: "German", nativeName: "Deutsch", dir: "ltr" },
-  ca: { code: "ca", emoji: "", flagUrl: "https://hercules-cdn.com/file_nx3rs7YcQUBsmDNpEzcqfLds", name: "Catalan", nativeName: "Català", dir: "ltr" },
+  ca: { code: "ca", emoji: "", flagUrl: "/flag-ca.svg", name: "Catalan", nativeName: "Català", dir: "ltr" },
   es: { code: "es", emoji: "🇪🇸", name: "Spanish", nativeName: "Español", dir: "ltr" },
   it: { code: "it", emoji: "🇮🇹", name: "Italian", nativeName: "Italiano", dir: "ltr" },
   nl: { code: "nl", emoji: "🇳🇱", name: "Dutch", nativeName: "Nederlands", dir: "ltr" },

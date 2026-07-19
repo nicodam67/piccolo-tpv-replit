@@ -8,14 +8,14 @@
     <meta name="description" content="Piccolo la Ràpita — Pizzeria y restaurante italiano en la Ràpita. Consulta nuestra carta online con platos, pizzas, pastas y más." />
     <meta name="author" content="Piccolo la Ràpita" />
     <meta name="keywords" content="pizzeria, restaurante, la rapita, piccolo, carta, menú, pizzas, pasta, italiana" />
-    <link rel="icon" href="https://hercules-cdn.com/file_5w7HKFxu1TK8XeIKb0GGcdpM" />
+    <link rel="icon" href="/favicon-piccolo.png" />
 
     <!-- Open Graph -->
     <meta property="og:title" content="Piccolo la Ràpita · Pizzeria Restaurante" />
     <meta property="og:description" content="Carta online de Piccolo la Ràpita. Pizzas, pastas y platos de temporada en la Ràpita." />
     <meta property="og:type" content="restaurant.restaurant" />
-    <meta property="og:url" content="https://piccolo-la-rapita.onhercules.app/" />
-    <meta property="og:image" content="https://piccolo-la-rapita.onhercules.app/icon/icon-512.png" />
+    <meta property="og:url" content="https://piccolo-qr-menu.replit.app/" />
+    <meta property="og:image" content="https://piccolo-qr-menu.replit.app/icon/icon-512.png" />
     <meta property="og:image:type" content="image/png" />
     <meta property="og:locale" content="es_ES" />
     <meta property="og:site_name" content="Piccolo la Ràpita" />
@@ -24,7 +24,7 @@
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="Piccolo la Ràpita · Pizzeria Restaurante" />
     <meta name="twitter:description" content="Carta online de Piccolo la Ràpita. Pizzas, pastas y platos de temporada." />
-    <meta name="twitter:image" content="https://piccolo-la-rapita.onhercules.app/icon/icon-512.png" />
+    <meta name="twitter:image" content="https://piccolo-qr-menu.replit.app/icon/icon-512.png" />
 
     <!-- PWA Configuration -->
     <link rel="manifest" href="site.webmanifest" />
@@ -44,13 +44,14 @@
     />
 
     <!-- Pre-load custom fonts so they are ready before JS/useEffect runs.
+         Served locally from public/fonts/ — no external CDN dependency.
          These match the CUSTOM_FONTS list in FontManager.tsx / theme.ts. -->
     <style>
-      @font-face { font-family: "Algerian__custom";     src: url("https://hercules-cdn.com/file_Up90gFAtg9wEAXyeMzwFEHgS") format("truetype"); font-display: swap; }
-      @font-face { font-family: "AvantGardeBk__custom"; src: url("https://hercules-cdn.com/file_89mHnxjgA9M4oKd6cCL5tH3G") format("truetype"); font-display: swap; }
-      @font-face { font-family: "AmericanTextBT__custom";src: url("https://hercules-cdn.com/file_ZvU6mje17p5pww4n7ZuLTmNH") format("truetype"); font-display: swap; }
-      @font-face { font-family: "ZapfChanDm__custom";   src: url("https://hercules-cdn.com/file_H5zrJAiF1ZRToxIbF6PxUlIC") format("truetype"); font-display: swap; }
-      @font-face { font-family: "ZapfChanMd__custom";   src: url("https://hercules-cdn.com/file_46LrUGLTssadG0rlxFlWL1tR") format("truetype"); font-display: swap; }
+      @font-face { font-family: "Algerian__custom";      src: url("/fonts/Algerian__custom.ttf")      format("truetype"); font-display: swap; }
+      @font-face { font-family: "AvantGardeBk__custom";  src: url("/fonts/AvantGardeBk__custom.ttf")  format("truetype"); font-display: swap; }
+      @font-face { font-family: "AmericanTextBT__custom"; src: url("/fonts/AmericanTextBT__custom.ttf") format("truetype"); font-display: swap; }
+      @font-face { font-family: "ZapfChanDm__custom";    src: url("/fonts/ZapfChanDm__custom.ttf")    format("truetype"); font-display: swap; }
+      @font-face { font-family: "ZapfChanMd__custom";    src: url("/fonts/ZapfChanMd__custom.ttf")    format("truetype"); font-display: swap; }
     </style>
 
     <!-- Detect dark mode preference and set the class before next-themes loads. -->
@@ -73,8 +74,8 @@
     "@type": "Restaurant",
     "name": "Piccolo la Ràpita",
     "description": "Pizzeria y restaurante italiano en la Ràpita. Carta con pizzas, pastas y platos de temporada.",
-    "url": "https://piccolo-la-rapita.onhercules.app/",
-    "image": "https://piccolo-la-rapita.onhercules.app/icon/icon-512.png",
+    "url": "https://piccolo-qr-menu.replit.app/",
+    "image": "https://piccolo-qr-menu.replit.app/icon/icon-512.png",
     "servesCuisine": ["Italian", "Pizza", "Mediterranean"],
     "priceRange": "€€",
     "address": {
@@ -83,11 +84,11 @@
       "addressRegion": "Tarragona",
       "addressCountry": "ES"
     },
-    "menu": "https://piccolo-la-rapita.onhercules.app/",
+    "menu": "https://piccolo-qr-menu.replit.app/",
     "hasMenu": {
       "@type": "Menu",
       "name": "Carta Piccolo",
-      "url": "https://piccolo-la-rapita.onhercules.app/"
+      "url": "https://piccolo-qr-menu.replit.app/"
     }
   }
   </script>

@@ -6,7 +6,7 @@ export default defineSchema({
   // ── Auth (@convex-dev/auth tables) ───────────────────────────────────────
   // Provides: users, authAccounts, authSessions, authRefreshTokens,
   //           authVerificationCodes, authVerifiers, authRateLimits.
-  // The `users` table replaces the old OIDC/Hercules `users` table.
+  // Custom auth (Password provider) replaces the old OIDC auth.
   ...authTables,
 
   // ── Admin role management ─────────────────────────────────────────────────
@@ -24,7 +24,7 @@ export default defineSchema({
   // ── Import tracking (Task #274 — reanudable imports) ─────────────────────
   importLog: defineTable({
     table: v.string(),            // "categories" | "menuItems" | "branding" | "_storage"
-    externalId: v.string(),       // ID in the original (Hercules) system
+    externalId: v.string(),       // ID in the original backup system
     convexId: v.string(),         // New Convex document ID
     importedAt: v.number(),       // Unix ms timestamp
     batch: v.optional(v.string()),

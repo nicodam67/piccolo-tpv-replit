@@ -25,10 +25,16 @@ export const autoTranslate = action({
     locales: v.optional(v.array(v.string())), // if provided, only translate these locales
   },
   handler: async (_ctx, args): Promise<TranslationMap> => {
-    const openai = new OpenAI({
-      baseURL: "https://ai-gateway.hercules.app/v1",
-      apiKey: process.env.HERCULES_API_KEY,
-    });
+    // Uses standard OpenAI API. Set OPENAI_API_KEY in Convex environment variables
+    // (Convex dashboard → Settings → Environment Variables).
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) {
+      throw new Error(
+        "OPENAI_API_KEY is not configured. Set it in the Convex dashboard under Settings → Environment Variables.",
+      );
+    }
+
+    const openai = new OpenAI({ apiKey });
 
     const targetLocales = (args.locales && args.locales.length > 0)
       ? LOCALES.filter((l) => (args.locales as string[]).includes(l))
@@ -53,7 +59,7 @@ Example format:
 }`;
 
     const response = await openai.chat.completions.create({
-      model: "openai/gpt-5-mini",
+      model: "gpt-4o-mini",
       messages: [{ role: "user", content: prompt }],
       response_format: { type: "json_object" },
     });

@@ -155,11 +155,11 @@ function detectLocaleFromPath(): SupportedLocale {
 }
 
 const CUSTOM_FONT_URLS: Record<string, string> = {
-  "Algerian__custom": "https://hercules-cdn.com/file_Up90gFAtg9wEAXyeMzwFEHgS",
-  "AvantGardeBk__custom": "https://hercules-cdn.com/file_89mHnxjgA9M4oKd6cCL5tH3G",
-  "AmericanTextBT__custom": "https://hercules-cdn.com/file_ZvU6mje17p5pww4n7ZuLTmNH",
-  "ZapfChanDm__custom": "https://hercules-cdn.com/file_H5zrJAiF1ZRToxIbF6PxUlIC",
-  "ZapfChanMd__custom": "https://hercules-cdn.com/file_46LrUGLTssadG0rlxFlWL1tR",
+  "Algerian__custom": "/fonts/Algerian__custom.ttf",
+  "AvantGardeBk__custom": "/fonts/AvantGardeBk__custom.ttf",
+  "AmericanTextBT__custom": "/fonts/AmericanTextBT__custom.ttf",
+  "ZapfChanDm__custom": "/fonts/ZapfChanDm__custom.ttf",
+  "ZapfChanMd__custom": "/fonts/ZapfChanMd__custom.ttf",
 };
 const CUSTOM_FONT_LABELS: Record<string, string> = {
   "Algerian__custom": "Algerian",

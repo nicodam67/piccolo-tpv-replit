@@ -28,11 +28,11 @@ type FontOption = {
 
 // Custom uploaded fonts with their CDN URLs
 const CUSTOM_FONTS: FontOption[] = [
-  { label: "Algerian", value: "Algerian__custom", category: "custom", preview: "Menú del día", cdnUrl: "https://hercules-cdn.com/file_Up90gFAtg9wEAXyeMzwFEHgS" },
-  { label: "AvantGarde Demi", value: "AvantGardeBk__custom", category: "custom", preview: "Menú del día", cdnUrl: "https://hercules-cdn.com/file_89mHnxjgA9M4oKd6cCL5tH3G" },
-  { label: "American Text BT", value: "AmericanTextBT__custom", category: "custom", preview: "Menú del día", cdnUrl: "https://hercules-cdn.com/file_ZvU6mje17p5pww4n7ZuLTmNH" },
-  { label: "ZapfChan Demi", value: "ZapfChanDm__custom", category: "custom", preview: "Menú del día", cdnUrl: "https://hercules-cdn.com/file_H5zrJAiF1ZRToxIbF6PxUlIC" },
-  { label: "ZapfChan Medium", value: "ZapfChanMd__custom", category: "custom", preview: "Menú del día", cdnUrl: "https://hercules-cdn.com/file_46LrUGLTssadG0rlxFlWL1tR" },
+  { label: "Algerian", value: "Algerian__custom", category: "custom", preview: "Menú del día", cdnUrl: "/fonts/Algerian__custom.ttf" },
+  { label: "AvantGarde Demi", value: "AvantGardeBk__custom", category: "custom", preview: "Menú del día", cdnUrl: "/fonts/AvantGardeBk__custom.ttf" },
+  { label: "American Text BT", value: "AmericanTextBT__custom", category: "custom", preview: "Menú del día", cdnUrl: "/fonts/AmericanTextBT__custom.ttf" },
+  { label: "ZapfChan Demi", value: "ZapfChanDm__custom", category: "custom", preview: "Menú del día", cdnUrl: "/fonts/ZapfChanDm__custom.ttf" },
+  { label: "ZapfChan Medium", value: "ZapfChanMd__custom", category: "custom", preview: "Menú del día", cdnUrl: "/fonts/ZapfChanMd__custom.ttf" },
 ];
 
 const FONT_OPTIONS: FontOption[] = [

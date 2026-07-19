@@ -15,6 +15,7 @@ import type * as files from "../files.js";
 import type * as importSupport from "../importSupport.js";
 import type * as menu from "../menu.js";
 import type * as seed from "../seed.js";
+import type * as shared from "../shared.js";
 import type * as translate from "../translate.js";
 import type * as users from "../users.js";
 
@@ -32,6 +33,7 @@ declare const fullApi: ApiFromModules<{
   importSupport: typeof importSupport;
   menu: typeof menu;
   seed: typeof seed;
+  shared: typeof shared;
   translate: typeof translate;
   users: typeof users;
 }>;

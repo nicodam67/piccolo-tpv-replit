@@ -6,34 +6,34 @@
 
 @import url("https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400&family=DM+Sans:wght@300;400;500&display=swap");
 
-/* Custom restaurant fonts */
+/* Custom restaurant fonts — served locally from public/fonts/ */
 @font-face {
   font-family: "ZapfChan Md";
-  src: url("https://hercules-cdn.com/file_m7I6BY3ReSetMGf7AFZss0PC") format("truetype");
+  src: url("/fonts/ZapfChanMd.ttf") format("truetype");
   font-weight: 500;
   font-display: swap;
 }
 @font-face {
   font-family: "ZapfChan Dm";
-  src: url("https://hercules-cdn.com/file_wcGGxdhmcY2DhGJwliFkA2Zk") format("truetype");
+  src: url("/fonts/ZapfChanDm.ttf") format("truetype");
   font-weight: 600;
   font-display: swap;
 }
 @font-face {
   font-family: "AvantGarde Bk";
-  src: url("https://hercules-cdn.com/file_uqU2VMlywYy4NMAsQ7WtxSwQ") format("truetype");
+  src: url("/fonts/AvantGardeBk.ttf") format("truetype");
   font-weight: 600;
   font-display: swap;
 }
 @font-face {
   font-family: "American Text BT";
-  src: url("https://hercules-cdn.com/file_gbeYYgRhfigXSrnw8dJ0hCA3") format("truetype");
+  src: url("/fonts/AmericanTextBT.ttf") format("truetype");
   font-weight: 400;
   font-display: swap;
 }
 @font-face {
   font-family: "Algerian";
-  src: url("https://hercules-cdn.com/file_XRcUszIICfe5N0l0B0EiHqeN") format("truetype");
+  src: url("/fonts/Algerian.ttf") format("truetype");
   font-weight: 400;
   font-display: swap;
 }

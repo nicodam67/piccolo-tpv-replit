@@ -29,7 +29,7 @@ export default function Index() {
   const allItems   = useQuery(api.menu.listAvailableItems, {});
   const seed       = useMutation(api.seed.publicSeedIfEmpty);
 
-  // Apply Hercules / Convex branding theme (fonts + colors)
+  // Apply branding theme (fonts + colors) from Convex
   useThemeColors(branding?.themeColors ? { ...branding.themeColors } : null);
   useThemeFonts(branding?.themeFonts ?? null);
 
