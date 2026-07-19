@@ -1,17 +1,11 @@
 import { Authenticated, Unauthenticated, AuthLoading } from "convex/react";
-import { SignInButton } from "@/components/ui/signin.tsx";
+import { AdminLoginForm, SignOutButton } from "@/components/ui/signin.tsx";
 import { Skeleton } from "@/components/ui/skeleton.tsx";
 import AdminDashboard from "../admin/_components/AdminDashboard.tsx";
 import InstallAdminButton from "./_components/InstallAdminButton.tsx";
 import { ShieldCheck } from "lucide-react";
-import { useCallback } from "react";
 
 export default function AdminPortalPage() {
-  // Save return URL so after auth callback we come back here
-  const handleSignInClick = useCallback(() => {
-    sessionStorage.setItem("auth_return_url", "/admin");
-  }, []);
-
   return (
     <div className="min-h-screen bg-background">
       {/* Top bar */}
@@ -23,7 +17,10 @@ export default function AdminPortalPage() {
         >
           Panel de Administración
         </h1>
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-2">
+          <Authenticated>
+            <SignOutButton />
+          </Authenticated>
           <InstallAdminButton />
         </div>
       </header>
@@ -37,21 +34,7 @@ export default function AdminPortalPage() {
       </AuthLoading>
 
       <Unauthenticated>
-        <div className="flex flex-col items-center justify-center py-40 gap-6 px-4 text-center">
-          <ShieldCheck className="w-14 h-14 text-primary/30" />
-          <div>
-            <p
-              className="text-2xl font-light text-foreground mb-2"
-              style={{ fontFamily: "var(--font-serif)" }}
-            >
-              Acceso restringido
-            </p>
-            <p className="text-muted-foreground text-sm max-w-xs mx-auto">
-              Esta área es exclusiva para administradores. Inicia sesión para continuar.
-            </p>
-          </div>
-          <SignInButton onClick={handleSignInClick} />
-        </div>
+        <AdminLoginForm />
       </Unauthenticated>
 
       <Authenticated>

@@ -1,6 +1,5 @@
 import path from "node:path";
 import tailwindcss from "@tailwindcss/vite";
-import hercules from "@usehercules/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
@@ -17,16 +16,16 @@ if (Number.isNaN(port) || port <= 0) {
 
 const basePath = process.env.BASE_PATH ?? "/qr-menu/";
 
-// When VITE_CONVEX_URL is absent, alias Convex/Hercules packages to local
+// When VITE_CONVEX_URL is absent, alias Convex/auth packages to local
 // demo mocks so the app renders with seed data — no cloud credentials needed.
 const isDemoMode = !process.env.VITE_CONVEX_URL;
 
 const demoAliases = isDemoMode
   ? {
       "convex/react": path.resolve(import.meta.dirname, "src/lib/demo-convex.tsx"),
-      "@usehercules/auth/convex-react": path.resolve(
+      "@convex-dev/auth/react": path.resolve(
         import.meta.dirname,
-        "src/lib/demo-hercules-convex.tsx",
+        "src/lib/demo-convex-auth.tsx",
       ),
     }
   : {};
@@ -40,7 +39,6 @@ export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
-    hercules(),
     ...(process.env.NODE_ENV !== "production" && process.env.REPL_ID !== undefined
       ? [runtimeErrorOverlay()]
       : []),

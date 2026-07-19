@@ -1,33 +1,33 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+import { authTables } from "@convex-dev/auth/server";
 
 export default defineSchema({
-  // ── Auth (OIDC / legacy Hercules sync) ───────────────────────────────────
-  // Kept for backward compatibility; new auth uses the `admins` table below.
-  users: defineTable({
-    tokenIdentifier: v.string(),
-    name: v.optional(v.string()),
-    email: v.optional(v.string()),
-  }).index("by_token", ["tokenIdentifier"]),
+  // ── Auth (@convex-dev/auth tables) ───────────────────────────────────────
+  // Provides: users, authAccounts, authSessions, authRefreshTokens,
+  //           authVerificationCodes, authVerifiers, authRateLimits.
+  // The `users` table replaces the old OIDC/Hercules `users` table.
+  ...authTables,
 
-  // ── Custom admin authentication (Task #273 wires the frontend) ───────────
+  // ── Admin role management ─────────────────────────────────────────────────
+  // Tracks which users have admin/employee roles. Credentials (password hash)
+  // are stored in authAccounts by @convex-dev/auth; this table is role-only.
   admins: defineTable({
     email: v.string(),
-    passwordHash: v.string(),     // bcrypt hash — never store plaintext
-    role: v.string(),             // "admin" | "employee"
-    createdAt: v.number(),        // Unix ms timestamp
+    role: v.string(),                         // "admin" | "employee"
+    createdAt: v.number(),                     // Unix ms timestamp
     lastLoginAt: v.optional(v.number()),
   })
     .index("by_email", ["email"])
     .index("by_role", ["role"]),
 
-  // ── Import tracking (Task #274 uses this for reanudable imports) ─────────
+  // ── Import tracking (Task #274 — reanudable imports) ─────────────────────
   importLog: defineTable({
-    table: v.string(),            // "categories" | "menuItems" | "branding" | "images"
+    table: v.string(),            // "categories" | "menuItems" | "branding" | "_storage"
     externalId: v.string(),       // ID in the original (Hercules) system
     convexId: v.string(),         // New Convex document ID
     importedAt: v.number(),       // Unix ms timestamp
-    batch: v.optional(v.string()), // Batch identifier for grouping
+    batch: v.optional(v.string()),
     status: v.optional(v.string()), // "ok" | "skipped" | "error"
     errorMessage: v.optional(v.string()),
   })
@@ -40,11 +40,8 @@ export default defineSchema({
     name: v.string(),
     description: v.optional(v.string()),
     order: v.number(),
-    // Optional parent category ID for subcategories
     parentId: v.optional(v.id("categories")),
-    // Whether the category is visible in the public menu (default: true)
     available: v.optional(v.boolean()),
-    // Per-locale overrides: { fr: { name: "...", description: "..." }, ... }
     translations: v.optional(
       v.record(
         v.string(),
@@ -99,7 +96,7 @@ export default defineSchema({
       showPrice: v.optional(v.boolean()),
       showHalfPortion: v.optional(v.boolean()),
       showQuantity: v.optional(v.boolean()),
-      layout: v.optional(v.string()), // "grid" | "list" | "compact"
+      layout: v.optional(v.string()),
     })),
     schedule: v.optional(
       v.array(
@@ -128,7 +125,6 @@ export default defineSchema({
     tags: v.optional(v.array(v.string())),
     halfPortionPrice: v.optional(v.number()),
     allergens: v.optional(v.array(v.string())),
-    // Per-locale overrides: { fr: { name: "...", description: "..." }, ... }
     translations: v.optional(
       v.record(
         v.string(),

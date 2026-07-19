@@ -90,9 +90,10 @@ export const importBatch = mutation({
       const data = Object.fromEntries(
         Object.entries(rawData as Record<string, unknown>).filter(([k]) => !k.startsWith("_old")),
       );
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const convexId = await ctx.db.insert(
         args.table as "categories" | "menuItems" | "branding",
-        data,
+        data as any,
       );
       inserted.push({ externalId: String(externalId), convexId });
       // Auto-log in importLog

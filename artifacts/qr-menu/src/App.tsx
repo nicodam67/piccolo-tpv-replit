@@ -4,7 +4,6 @@ import { DefaultProviders } from "./components/providers/default.tsx";
 import LocaleWrapper from "./components/providers/locale-wrapper.tsx";
 import { SAVED_OR_DEFAULT_LOCALE, setLocaleInPath } from "./i18n";
 import "./i18n";
-import AuthCallback from "./pages/auth/Callback.tsx";
 import Index from "./pages/Index.tsx";
 import AdminPage from "./pages/admin/page.tsx";
 import AdminPortalPage from "./pages/admin-portal/page.tsx";
@@ -14,11 +13,6 @@ import NotFound from "./pages/NotFound.tsx";
 import { useServiceWorker } from "@/hooks/use-service-worker.ts";
 
 function RootRedirect() {
-  const savedReturn = sessionStorage.getItem("auth_return_url");
-  if (savedReturn) {
-    sessionStorage.removeItem("auth_return_url");
-    return <Navigate to={savedReturn} replace />;
-  }
   return <Navigate to={setLocaleInPath(SAVED_OR_DEFAULT_LOCALE, "/")} replace />;
 }
 
@@ -27,14 +21,10 @@ function AppRoutes() {
 
   return (
     <Routes>
-      {/* Root: redirect to stored return URL or saved/default locale */}
-      <Route
-        path="/"
-        element={<RootRedirect />}
-      />
+      {/* Root: redirect to saved/default locale */}
+      <Route path="/" element={<RootRedirect />} />
 
-      {/* Non-localized routes */}
-      <Route path="/auth/callback" element={<AuthCallback />} />
+      {/* Non-localized admin portal */}
       <Route path="/admin" element={<AdminPortalPage />} />
       <Route path="/imprimir" element={<PrintPage />} />
 

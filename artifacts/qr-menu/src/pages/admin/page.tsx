@@ -1,7 +1,6 @@
 "use client";
-import { useState } from "react";
 import { Authenticated, Unauthenticated, AuthLoading } from "convex/react";
-import { SignInButton } from "@/components/ui/signin.tsx";
+import { AdminLoginForm, SignOutButton } from "@/components/ui/signin.tsx";
 import { Skeleton } from "@/components/ui/skeleton.tsx";
 import AdminDashboard from "./_components/AdminDashboard.tsx";
 import { Link, useParams } from "react-router-dom";
@@ -31,6 +30,9 @@ export default function AdminPage() {
             {t("admin.panel")}
           </h1>
         </div>
+        <Authenticated>
+          <SignOutButton />
+        </Authenticated>
       </header>
 
       <AuthLoading>
@@ -42,15 +44,7 @@ export default function AdminPage() {
       </AuthLoading>
 
       <Unauthenticated>
-        <div className="flex flex-col items-center justify-center py-32 gap-4">
-          <p
-            className="text-2xl font-light text-foreground mb-2"
-            style={{ fontFamily: "var(--font-serif)" }}
-          >
-            {t("admin.sign_in")}
-          </p>
-          <SignInButton />
-        </div>
+        <AdminLoginForm />
       </Unauthenticated>
 
       <Authenticated>

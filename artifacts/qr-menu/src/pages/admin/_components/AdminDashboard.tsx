@@ -8,6 +8,7 @@ import MenuTree from "./MenuTree.tsx";
 import BrandingManager from "./BrandingManager.tsx";
 import QRShare from "./QRShare.tsx";
 import MenuExport from "./MenuExport.tsx";
+import ChangePasswordForm from "./ChangePasswordForm.tsx";
 import { Languages, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -132,6 +133,7 @@ export default function AdminDashboard() {
             <TabsTrigger value="branding" className="cursor-pointer">Branding</TabsTrigger>
             <TabsTrigger value="share" className="cursor-pointer">QR & Share</TabsTrigger>
             <TabsTrigger value="export" className="cursor-pointer">Exportar</TabsTrigger>
+            <TabsTrigger value="cuenta" className="cursor-pointer">Cuenta</TabsTrigger>
           </TabsList>
 
           <div className="flex items-center gap-2 flex-wrap">
@@ -178,6 +180,9 @@ export default function AdminDashboard() {
         </TabsContent>
         <TabsContent value="export">
           <MenuExport />
+        </TabsContent>
+        <TabsContent value="cuenta">
+          <ChangePasswordForm />
         </TabsContent>
       </Tabs>
     </div>

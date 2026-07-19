@@ -8,8 +8,11 @@
  * @module
  */
 
+import type * as adminAuth from "../adminAuth.js";
+import type * as auth from "../auth.js";
 import type * as branding from "../branding.js";
 import type * as files from "../files.js";
+import type * as importSupport from "../importSupport.js";
 import type * as menu from "../menu.js";
 import type * as seed from "../seed.js";
 import type * as translate from "../translate.js";
@@ -22,8 +25,11 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  adminAuth: typeof adminAuth;
+  auth: typeof auth;
   branding: typeof branding;
   files: typeof files;
+  importSupport: typeof importSupport;
   menu: typeof menu;
   seed: typeof seed;
   translate: typeof translate;
