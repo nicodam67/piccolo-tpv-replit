@@ -1,23 +1,21 @@
-import InstallBanner from "@/components/InstallBanner.tsx";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api.js";
 import { useState, useEffect } from "react";
 import { motion } from "motion/react";
 import type { Doc } from "@/convex/_generated/dataModel.d.ts";
-import { Skeleton } from "@/components/ui/skeleton.tsx";
-import ItemDetailModal from "./_components/ItemDetailModal.tsx";
-import { useNavigate, useParams } from "react-router-dom";
-import { Phone, Clock, ChevronRight } from "lucide-react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog.tsx";
+import { ChevronRight, Clock, Phone } from "lucide-react";
 import { ALLERGENS } from "@/lib/allergens.ts";
 import { DIETARY_TAGS } from "@/lib/dietary-tags.ts";
-import { cn } from "@/lib/utils.ts";
 import { useTranslation } from "react-i18next";
-import LocaleSwitcher from "@/components/ui/locale-switcher.tsx";
 import { isSupportedLocale } from "@/i18n.ts";
-import { localize, localizeCategory } from "@/lib/translations.ts";
-import ScheduleDisplay from "./_components/ScheduleDisplay.tsx";
+import { localizeCategory } from "@/lib/translations.ts";
 import { useThemeColors, useThemeFonts } from "@/hooks/use-theme-colors.ts";
+import { useNavigate, useParams } from "react-router-dom";
+import LocaleSwitcher from "@/components/ui/locale-switcher.tsx";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog.tsx";
+import ScheduleDisplay from "./_components/ScheduleDisplay.tsx";
+import InstallBanner from "@/components/InstallBanner.tsx";
+import ItemDetailModal from "./_components/ItemDetailModal.tsx";
 
 export default function Index() {
   const { lng } = useParams<{ lng: string }>();
@@ -25,131 +23,162 @@ export default function Index() {
   const locale = isSupportedLocale(lng) ? lng : "en";
   const navigate = useNavigate();
 
+  // ── Convex data ───────────────────────────────────────────────────────────
   const categories = useQuery(api.menu.listCategories, {});
-  const branding = useQuery(api.branding.get, {});
-  const allItems = useQuery(api.menu.listAvailableItems, {});
-  const seed = useMutation(api.seed.publicSeedIfEmpty);
+  const branding   = useQuery(api.branding.get, {});
+  const allItems   = useQuery(api.menu.listAvailableItems, {});
+  const seed       = useMutation(api.seed.publicSeedIfEmpty);
 
-  useThemeColors(branding?.themeColors ? {
-    primary: branding.themeColors.primary,
-    background: branding.themeColors.background,
-    accent: branding.themeColors.accent,
-    heroTitleColor: branding.themeColors.heroTitleColor,
-    heroTaglineColor: branding.themeColors.heroTaglineColor,
-    heroEstablishedColor: branding.themeColors.heroEstablishedColor,
-    callButtonBg: branding.themeColors.callButtonBg,
-    callButtonText: branding.themeColors.callButtonText,
-    scheduleButtonBg: branding.themeColors.scheduleButtonBg,
-    scheduleButtonText: branding.themeColors.scheduleButtonText,
-    tapDetailsColor: branding.themeColors.tapDetailsColor,
-  } : null);
+  // Apply Hercules / Convex branding theme (fonts + colors)
+  useThemeColors(branding?.themeColors ? { ...branding.themeColors } : null);
   useThemeFonts(branding?.themeFonts ?? null);
 
-  const restaurantName = branding?.restaurantName ?? "";
-  const tagline = branding?.tagline ?? "";
-  const heroImageUrl = branding?.heroImageUrl ?? "https://images.unsplash.com/photo-1761515397055-1bba63a150d3?w=1400&q=80";
-  const heroVideoUrl = branding?.heroVideoUrl ?? null;
-  const establishedYear = branding?.establishedYear ?? "";
+  // Seed demo data only when the DB is empty
+  useEffect(() => { seed({ secret: "init" }).catch(() => {}); }, [seed]);
 
+  // ── Derived branding values (with safe fallbacks) ─────────────────────────
+  const restaurantName  = branding?.restaurantName  ?? "Piccolo La Ràpita";
+  const tagline         = branding?.tagline         ?? "";
+  const heroImageUrl    = branding?.heroImageUrl    ?? "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=1400&q=80";
+  const heroVideoUrl    = branding?.heroVideoUrl    ?? null;
+  const establishedYear = branding?.establishedYear ?? "2007";
+
+  const accentColor     = branding?.themeColors?.accent            ?? "#c9a84c";
+  const heroTitleColor  = branding?.themeColors?.heroTitleColor    ?? "#ffffff";
+  const heroTaglineColor= branding?.themeColors?.heroTaglineColor  ?? "rgba(255,255,255,0.85)";
+  const heroEstColor    = branding?.themeColors?.heroEstablishedColor ?? accentColor;
+  const catCardBg       = branding?.themeColors?.categoryCardBg    ?? "#ffffff";
+  const catCardText     = branding?.themeColors?.categoryCardText  ?? branding?.themeColors?.primary ?? "#c41a1a";
+
+  // ── Filter state ──────────────────────────────────────────────────────────
   const [activeAllergen, setActiveAllergen] = useState<string | null>(null);
-  const [activeTag, setActiveTag] = useState<string | null>(null);
-  const [scheduleOpen, setScheduleOpen] = useState(false);
-  const [selectedItem, setSelectedItem] = useState<Doc<"menuItems"> | null>(null);
+  const [activeTag,      setActiveTag     ] = useState<string | null>(null);
+  const [scheduleOpen,   setScheduleOpen  ] = useState(false);
+  const [selectedItem,   setSelectedItem  ] = useState<Doc<"menuItems"> | null>(null);
 
-  useEffect(() => {
-    seed({ secret: "init" }).catch(() => {});
-  }, [seed]);
-
-  // Only top-level categories (no parentId) that are available
-  const sortedCategories = categories
-    ? [...categories].filter((c) => !c.parentId && c.available !== false).sort((a, b) => a.order - b.order)
+  // ── Category list: prefer top-level (no parentId), else show all ──────────
+  const allTopLevel = categories
+    ? categories.filter(c => !c.parentId && c.available !== false)
     : [];
-
-  // Count items per category (filtered), including subcategory items
-  function countForCategory(catId: string) {
-    if (!allItems) return null;
-    let items = allItems.filter((i) => i.categoryId === catId);
-    if (activeAllergen) {
-      items = items.filter((i) => !(i.allergens ?? []).includes(activeAllergen));
-    }
-    if (activeTag) {
-      items = items.filter((i) => i.tags?.includes(activeTag));
-    }
-    return items.length;
-  }
+  const sortedCategories = categories
+    ? (allTopLevel.length > 0 ? allTopLevel : categories.filter(c => c.available !== false))
+        .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+    : [];
 
   function goToCategory(catId: string) {
     const params = new URLSearchParams();
     if (activeAllergen) params.set("allergen", activeAllergen);
-    if (activeTag) params.set("tag", activeTag);
+    if (activeTag)      params.set("tag",      activeTag);
     const qs = params.toString();
     navigate(`/${lng}/categoria/${catId}${qs ? `?${qs}` : ""}`);
   }
 
+  // ── Shared pill style helpers ─────────────────────────────────────────────
+  const pillBase: React.CSSProperties = {
+    flexShrink: 0, fontSize: "13px", padding: "6px 14px",
+    borderRadius: "9999px", border: "1.5px solid #d1d5db",
+    cursor: "pointer", fontWeight: 500, whiteSpace: "nowrap",
+    background: "#ffffff", color: "#374151", lineHeight: 1.4,
+    fontFamily: "inherit",
+  };
+  const pillOn: React.CSSProperties = {
+    ...pillBase, background: "#1f2937", borderColor: "#1f2937", color: "#ffffff",
+  };
+  const aPillBase: React.CSSProperties = {
+    ...pillBase, fontSize: "12px", padding: "4px 10px",
+    display: "flex", alignItems: "center", gap: "4px",
+  };
+  const aPillOn: React.CSSProperties = {
+    ...aPillBase, background: "#fef3c7", borderColor: "#d97706", color: "#92400e",
+  };
+
+  // ─────────────────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen" style={{ background: "var(--background)" }}>
-      {/* Hero */}
-      {/* Dark background-color ensures text is always legible even if the
-          Convex Storage signed URL or the fallback Unsplash image fails to
-          load as a CSS background (which is silent in the browser). */}
-      <header className="relative overflow-hidden" style={{ backgroundColor: "#1a0a08" }}>
+    <div style={{ minHeight: "100vh", background: "#f0f0f0" }}>
+
+      {/* ── HERO ─────────────────────────────────────────────────────────── */}
+      <header style={{ position: "relative", minHeight: "55vmax", background: "#1a0a08", overflow: "hidden" }}>
+
+        {/* Background media */}
         {heroVideoUrl ? (
           <video
             src={heroVideoUrl}
-            className="absolute inset-0 w-full h-full object-cover"
-            style={{ filter: "brightness(0.35)" }}
+            style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", filter: "brightness(0.38)" }}
             autoPlay loop muted playsInline
           />
-        ) : heroImageUrl ? (
-          <div
-            className="absolute inset-0 bg-cover bg-center"
-            style={{
-              backgroundImage: `url("${heroImageUrl}"), url("https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=1400&q=80")`,
-              filter: "brightness(0.35)",
-            }}
-          />
-        ) : null}
-        <div className="relative z-10 flex flex-col items-center justify-center py-20 px-4 text-center">
-          <div className="absolute top-4 right-4 flex items-center gap-2">
-            <LocaleSwitcher />
-          </div>
+        ) : (
+          <div style={{
+            position: "absolute", inset: 0,
+            backgroundImage: `url("${heroImageUrl}"), url("https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=1400&q=80")`,
+            backgroundSize: "cover", backgroundPosition: "center",
+            filter: "brightness(0.38)",
+          }} />
+        )}
+
+        {/* Language switcher — absolute top-right */}
+        <div style={{ position: "absolute", top: "1rem", right: "1rem", zIndex: 10 }}>
+          <LocaleSwitcher />
+        </div>
+
+        {/* Centered hero text */}
+        <div style={{
+          position: "relative", zIndex: 10,
+          display: "flex", flexDirection: "column",
+          alignItems: "center", justifyContent: "center",
+          textAlign: "center",
+          minHeight: "55vmax",
+          padding: "2rem 1.5rem",
+        }}>
           {establishedYear && (
             <motion.p
               data-hero-established
-              initial={{ opacity: 0, y: 10 }}
+              initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6 }}
-              className="text-sm tracking-[0.25em] uppercase mb-3"
-              style={{ fontFamily: "var(--font-sans)", color: branding?.themeColors?.heroEstablishedColor ?? "var(--accent)" }}
+              transition={{ duration: 0.55 }}
+              style={{
+                color: heroEstColor, fontStyle: "italic",
+                letterSpacing: "0.3em", fontSize: "0.875rem",
+                marginBottom: "1rem", textTransform: "uppercase",
+              }}
             >
               {t("established")} {establishedYear}
             </motion.p>
           )}
+
           <motion.h1
             data-hero-title
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: branding !== undefined ? 1 : 0, y: 0 }}
-            transition={{ duration: 0.7, delay: 0.1 }}
-            className="text-5xl md:text-7xl font-light text-balance mb-4"
-            style={{ fontFamily: "var(--font-display)", color: branding?.themeColors?.heroTitleColor ?? "#ffffff" }}
+            initial={{ opacity: 0, y: 18 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.65, delay: 0.08 }}
+            style={{
+              color: heroTitleColor,
+              fontSize: "clamp(2.8rem, 13vw, 6rem)",
+              lineHeight: 1.05,
+              letterSpacing: "0.01em",
+              fontFamily: "var(--font-serif, serif)",
+              fontWeight: "bold",
+              marginBottom: "1.25rem",
+              maxWidth: "90vw",
+            }}
           >
             {restaurantName}
           </motion.h1>
+
+          {/* Gold separator */}
           <motion.div
             initial={{ scaleX: 0 }}
             animate={{ scaleX: 1 }}
-            transition={{ duration: 0.7, delay: 0.3 }}
-            className="h-px w-24 mx-auto mb-4"
-            style={{ background: "var(--accent)" }}
+            transition={{ duration: 0.6, delay: 0.25 }}
+            style={{ width: "7rem", height: "1px", background: accentColor, marginBottom: "1.25rem" }}
           />
+
           {tagline && (
             <motion.p
               data-hero-tagline
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              transition={{ duration: 0.7, delay: 0.4 }}
-              className="text-lg max-w-md"
-              style={{ fontFamily: "var(--font-script)", fontWeight: 400, color: branding?.themeColors?.heroTaglineColor ?? "rgba(255,255,255,0.7)" }}
+              transition={{ duration: 0.6, delay: 0.35 }}
+              style={{ color: heroTaglineColor, fontStyle: "italic", fontSize: "1.125rem" }}
             >
               {tagline}
             </motion.p>
@@ -157,94 +186,89 @@ export default function Index() {
         </div>
       </header>
 
-      {/* Filters bar */}
-      <div className="sticky top-0 z-20 border-b border-border/60 bg-background/95 backdrop-blur-sm">
-        {/* Dietary tag filters */}
-        <div className="flex gap-2 px-4 pt-3 pb-2 overflow-x-auto scrollbar-none">
-          {DIETARY_TAGS.map((tag) => (
-            <button
-              key={tag.id}
-              onClick={() => setActiveTag((prev) => prev === tag.id ? null : tag.id)}
-              className={cn(
-                "shrink-0 text-xs px-3 py-1 rounded-full border transition-all cursor-pointer font-medium",
-                activeTag === tag.id
-                  ? "border-foreground bg-foreground text-background"
-                  : "border-border text-muted-foreground hover:border-foreground/40",
-              )}
-            >
+      {/* ── FILTER BAR ───────────────────────────────────────────────────── */}
+      <div style={{
+        position: "sticky", top: 0, zIndex: 20,
+        background: "#ffffff",
+        borderBottom: "1px solid #e5e7eb",
+        boxShadow: "0 1px 4px rgba(0,0,0,0.06)",
+      }}>
+        {/* Dietary tag pills */}
+        <div style={{ display: "flex", gap: "8px", padding: "10px 16px 8px", overflowX: "auto", scrollbarWidth: "none" }}>
+          {DIETARY_TAGS.map(tag => (
+            <button key={tag.id} onClick={() => setActiveTag(p => p === tag.id ? null : tag.id)}
+              style={activeTag === tag.id ? pillOn : pillBase}>
               {tag.icon} {t(`tag.${tag.id}`)}
             </button>
           ))}
           {(activeTag || activeAllergen) && (
-            <button
-              onClick={() => { setActiveTag(null); setActiveAllergen(null); }}
-              className="shrink-0 text-xs px-3 py-1 rounded-full border border-destructive/50 text-destructive hover:bg-destructive/10 transition-all cursor-pointer"
-            >
+            <button onClick={() => { setActiveTag(null); setActiveAllergen(null); }}
+              style={{ ...pillBase, borderColor: "#fca5a5", color: "#dc2626" }}>
               {t("search.clear")}
             </button>
           )}
         </div>
-        {/* Allergen filters */}
-        <div className="flex gap-2 px-4 pb-3 overflow-x-auto scrollbar-none border-t border-border/40 pt-2">
-          <span className="shrink-0 text-xs text-muted-foreground/60 uppercase tracking-wider self-center mr-1">
+
+        {/* Allergen pills */}
+        <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "4px 16px 10px", overflowX: "auto", scrollbarWidth: "none" }}>
+          <span style={{ flexShrink: 0, fontSize: "11px", fontWeight: "bold", color: "#4b5563", textTransform: "uppercase", letterSpacing: "0.1em", marginRight: "4px" }}>
             {t("allergens.title")}:
           </span>
-          {ALLERGENS.map((a) => (
-            <button
-              key={a.id}
-              onClick={() => setActiveAllergen((prev) => prev === a.id ? null : a.id)}
-              className={cn(
-                "shrink-0 text-xs px-3 py-1 rounded-full border transition-all cursor-pointer font-medium gap-1 flex items-center",
-                activeAllergen === a.id
-                  ? "border-amber-500 bg-amber-500/10 text-amber-700 dark:text-amber-400"
-                  : "border-border text-muted-foreground hover:border-amber-400/60",
-              )}
-            >
-              <span>{a.icon}</span>
-              <span>{t(`allergen.${a.id}`)}</span>
+          {ALLERGENS.map(a => (
+            <button key={a.id} onClick={() => setActiveAllergen(p => p === a.id ? null : a.id)}
+              style={activeAllergen === a.id ? aPillOn : aPillBase}>
+              <span>{a.icon}</span><span>{t(`allergen.${a.id}`)}</span>
             </button>
           ))}
         </div>
       </div>
 
-      {/* Categories grid */}
-      <main className="max-w-4xl mx-auto px-4 py-10">
+      {/* ── CATEGORY LIST ────────────────────────────────────────────────── */}
+      <main style={{ padding: "16px 12px", maxWidth: "672px", margin: "0 auto" }}>
         {categories === undefined ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {[1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-32 w-full rounded-xl" />)}
+          /* Loading skeletons */
+          <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+            {[1,2,3,4,5].map(i => (
+              <div key={i} style={{ height: "68px", borderRadius: "16px", background: "#e5e7eb", opacity: 0.6 }} />
+            ))}
           </div>
         ) : sortedCategories.length === 0 ? (
-          <div className="text-center py-24 text-muted-foreground">
-            <p className="text-lg" style={{ fontFamily: "var(--font-serif)" }}>{t("menu.no_items")}</p>
+          <div style={{ textAlign: "center", padding: "6rem 0", color: "#9ca3af" }}>
+            <p style={{ fontSize: "1.125rem" }}>{t("menu.no_items")}</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
             {sortedCategories.map((cat, i) => {
-              const { name, description } = localizeCategory(cat, locale);
-              const count = countForCategory(cat._id);
+              const { name } = localizeCategory(cat, locale);
               return (
                 <motion.button
                   key={cat._id}
-                  initial={{ opacity: 0, y: 16 }}
+                  initial={{ opacity: 0, y: 12 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.4, delay: i * 0.07 }}
+                  transition={{ duration: 0.35, delay: i * 0.05 }}
                   onClick={() => goToCategory(cat._id)}
-                  className="group text-left rounded-2xl border border-border/60 shadow-sm hover:shadow-md transition-all cursor-pointer p-6 flex items-center justify-between gap-4"
-                  style={{ background: branding?.themeColors?.categoryCardBg ?? "var(--card)" }}
+                  style={{
+                    width: "100%", textAlign: "left",
+                    border: "none", outline: "none",
+                    borderRadius: "16px",
+                    background: catCardBg,
+                    boxShadow: "0 1px 3px rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.06)",
+                    cursor: "pointer",
+                    display: "flex", alignItems: "center",
+                    justifyContent: "space-between", gap: "12px",
+                    padding: "20px 24px",
+                    transition: "box-shadow 0.15s, transform 0.1s",
+                  }}
                 >
-                  <div className="flex-1 min-w-0">
-                    <h2
-                      className="text-xl font-medium truncate mb-1"
-                      style={{ fontFamily: "var(--font-serif)", color: branding?.themeColors?.categoryCardText ?? "var(--foreground)" }}
-                    >
-                      {name}
-                    </h2>
-                    {description && (
-                      <p className="text-sm line-clamp-2" style={{ color: branding?.themeColors?.categoryCardText ? branding.themeColors.categoryCardText + "99" : "var(--muted-foreground)" }}>{description}</p>
-                    )}
-
-                  </div>
-                  <ChevronRight className="w-5 h-5 shrink-0 transition-colors" style={{ color: branding?.themeColors?.categoryCardText ? branding.themeColors.categoryCardText + "55" : "var(--muted-foreground)" }} />
+                  <span style={{
+                    fontSize: "1.35rem", fontWeight: "bold",
+                    fontFamily: "var(--font-serif, serif)",
+                    color: catCardText,
+                    letterSpacing: "0.05em", lineHeight: 1.2,
+                  }}>
+                    {name}
+                  </span>
+                  <ChevronRight style={{ color: catCardText, width: "20px", height: "20px", flexShrink: 0 }} />
                 </motion.button>
               );
             })}
@@ -252,91 +276,111 @@ export default function Index() {
         )}
       </main>
 
-      {/* Footer */}
-      <footer className="border-t border-border/60 py-10 text-center text-sm">
-        <p style={{ fontFamily: "var(--font-serif)", fontSize: "1rem", color: branding?.themeColors?.infoTextColor ?? "var(--foreground)", opacity: 0.6 }} className="mb-1">
-          {branding !== undefined ? restaurantName : ""}
+      {/* ── FOOTER ───────────────────────────────────────────────────────── */}
+      <footer style={{
+        background: "#ffffff", borderTop: "1px solid #e5e7eb",
+        marginTop: "24px", padding: "32px 16px", textAlign: "center",
+      }}>
+        {branding && (
+          <>
+            <p style={{ fontFamily: "var(--font-serif, serif)", fontWeight: 600, marginBottom: "4px", color: "#374151" }}>
+              {restaurantName}
+            </p>
+            {(branding.address || branding.city) && (
+              <div style={{ color: "#9ca3af", fontSize: "0.875rem", marginBottom: "8px", lineHeight: 1.6 }}>
+                {branding.address && <p>{branding.address}</p>}
+                {(branding.postalCode || branding.city) && (
+                  <p>{[branding.postalCode, branding.city].filter(Boolean).join(" ")}</p>
+                )}
+                {(branding.province || branding.country) && (
+                  <p>{[branding.province, branding.country].filter(Boolean).join(" · ")}</p>
+                )}
+                <a
+                  href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+                    [branding.address, branding.postalCode, branding.city, branding.province, branding.country]
+                      .filter(Boolean).join(", ")
+                  )}`}
+                  target="_blank" rel="noopener noreferrer"
+                  style={{
+                    display: "inline-block", marginTop: "8px",
+                    padding: "4px 12px", borderRadius: "9999px",
+                    fontSize: "11px", fontWeight: 500,
+                    background: "#f3f4f6", color: "#6b7280",
+                    textDecoration: "none",
+                  }}
+                >
+                  📍 Ver en Google Maps
+                </a>
+              </div>
+            )}
+            {branding.phone && (
+              <p style={{ marginBottom: "8px" }}>
+                <a href={`tel:${branding.phone}`} style={{ color: "#6b7280", textDecoration: "none" }}>
+                  {branding.phone}
+                </a>
+              </p>
+            )}
+          </>
+        )}
+        <p style={{ marginTop: "8px", fontSize: "0.75rem", color: "#9ca3af" }}>
+          &copy; {new Date().getFullYear()} {restaurantName}. {t("footer.rights")}
         </p>
-        {(branding?.address || branding?.city) && (
-          <div className="mb-2 space-y-0.5" style={{ color: branding?.themeColors?.infoTextColor ?? "var(--muted-foreground)" }}>
-            {branding?.address && <p>{branding.address}</p>}
-            {(branding?.postalCode || branding?.city) && (
-              <p>{[branding?.postalCode, branding?.city].filter(Boolean).join(" ")}</p>
-            )}
-            {(branding?.province || branding?.country) && (
-              <p>{[branding?.province, branding?.country].filter(Boolean).join(" · ")}</p>
-            )}
-            <a
-              href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-                [branding?.address, branding?.postalCode, branding?.city, branding?.province, branding?.country]
-                  .filter(Boolean)
-                  .join(", ")
-              )}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 mt-2 px-2.5 py-1 rounded-full text-[11px] font-medium cursor-pointer transition-colors hover:opacity-80"
-              style={{ background: "var(--accent)", color: "var(--accent-foreground)" }}
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-3 h-3">
-                <path fillRule="evenodd" d="M11.54 22.351l.07.04.028.016a.76.76 0 00.723 0l.028-.015.071-.041a16.975 16.975 0 001.144-.742 19.58 19.58 0 002.683-2.282c1.944-2.003 3.5-4.697 3.5-8.057a8 8 0 10-16 0c0 3.36 1.556 6.054 3.5 8.057a19.58 19.58 0 002.682 2.282 16.975 16.975 0 001.145.742zM12 13.25a3.25 3.25 0 100-6.5 3.25 3.25 0 000 6.5z" clipRule="evenodd" />
-              </svg>
-              Ver en Google Maps
-            </a>
-          </div>
-        )}
-        {branding?.phone && (
-          <p className="mb-2" style={{ color: branding?.themeColors?.infoTextColor ?? "var(--muted-foreground)" }}>
-            <a href={`tel:${branding.phone}`} className="hover:opacity-70 transition-opacity">{branding.phone}</a>
-          </p>
-        )}
-        <p className="mt-2" style={{ color: branding?.themeColors?.infoTextColor ?? "var(--muted-foreground)" }}>&copy; {new Date().getFullYear()} {restaurantName}. {t("footer.rights")}</p>
       </footer>
 
-      {/* Floating schedule button */}
-      {(branding?.schedule && branding.schedule.length > 0) && (
+      {/* ── FLOATING BUTTONS ─────────────────────────────────────────────── */}
+      {branding?.schedule && branding.schedule.length > 0 && (
         <button
           data-schedule-btn
           onClick={() => setScheduleOpen(true)}
-          className="fixed bottom-6 left-6 z-50 flex items-center gap-2 px-4 py-3 rounded-full shadow-lg text-sm font-medium cursor-pointer transition-transform hover:scale-105 active:scale-95"
           style={{
-            background: branding?.themeColors?.scheduleButtonBg ?? "var(--secondary)",
-            color: branding?.themeColors?.scheduleButtonText ?? "var(--secondary-foreground)",
-            border: "1px solid var(--border)",
+            position: "fixed", bottom: "24px", left: "16px", zIndex: 50,
+            display: "flex", alignItems: "center", gap: "8px",
+            padding: "12px 16px", borderRadius: "9999px",
+            boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+            fontSize: "14px", fontWeight: 500, cursor: "pointer",
+            border: "1px solid #e5e7eb",
+            background: branding?.themeColors?.scheduleButtonBg ?? "#ffffff",
+            color: branding?.themeColors?.scheduleButtonText ?? "#374151",
           }}
         >
-          <Clock className="w-4 h-4" />
+          <Clock style={{ width: "16px", height: "16px" }} />
           <span>{t("schedule.title")}</span>
         </button>
+      )}
+
+      {branding?.phone && (
+        <a
+          data-call-btn
+          href={`tel:${branding.phone}`}
+          style={{
+            position: "fixed", bottom: "24px", right: "16px", zIndex: 50,
+            display: "flex", alignItems: "center", gap: "8px",
+            padding: "12px 16px", borderRadius: "9999px",
+            boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+            fontSize: "14px", fontWeight: 500,
+            textDecoration: "none",
+            background: branding?.themeColors?.callButtonBg ?? "#c41a1a",
+            color: branding?.themeColors?.callButtonText ?? "#ffffff",
+          }}
+        >
+          <Phone style={{ width: "16px", height: "16px" }} />
+          <span>{t("call")}</span>
+        </a>
       )}
 
       {/* Schedule modal */}
       <Dialog open={scheduleOpen} onOpenChange={setScheduleOpen}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle style={{ fontFamily: "var(--font-serif)" }}>{t("schedule.title")}</DialogTitle>
+            <DialogTitle style={{ fontFamily: "var(--font-serif, serif)" }}>
+              {t("schedule.title")}
+            </DialogTitle>
           </DialogHeader>
           {branding?.schedule && <ScheduleDisplay schedule={branding.schedule} />}
         </DialogContent>
       </Dialog>
 
-      {/* Floating call button */}
-      {branding?.phone && (
-        <a
-          data-call-btn
-          href={`tel:${branding.phone}`}
-          className="fixed bottom-6 right-6 z-50 flex items-center gap-2 px-4 py-3 rounded-full shadow-lg text-sm font-medium cursor-pointer transition-transform hover:scale-105 active:scale-95"
-          style={{
-            background: branding?.themeColors?.callButtonBg ?? "var(--primary)",
-            color: branding?.themeColors?.callButtonText ?? "var(--primary-foreground)",
-          }}
-        >
-          <Phone className="w-4 h-4" />
-          <span>{t("call")}</span>
-        </a>
-      )}
-
       <InstallBanner />
-
       <ItemDetailModal item={selectedItem} onClose={() => setSelectedItem(null)} />
     </div>
   );

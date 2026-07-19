@@ -63,17 +63,15 @@ export function applyThemeColors(colors: {
     rules.push(`--accent-foreground: ${fg};`);
   }
 
-  // Hero color overrides — use !important to beat font-color rules
-  const heroRules: string[] = [];
-  if (colors.heroTitleColor) {
-    heroRules.push(`[data-hero-title] { color: ${colors.heroTitleColor} !important; }`);
-  }
-  if (colors.heroTaglineColor) {
-    heroRules.push(`[data-hero-tagline] { color: ${colors.heroTaglineColor} !important; }`);
-  }
-  if (colors.heroEstablishedColor) {
-    heroRules.push(`[data-hero-established] { color: ${colors.heroEstablishedColor} !important; }`);
-  }
+  // Hero color overrides — ALWAYS injected with defaults so they beat
+  // the global h1/h2 heading-color rule from applyThemeFonts.
+  // [data-hero-*] is an attribute selector (0,1,0) vs h1 type selector (0,0,1),
+  // so it wins when both carry !important.
+  const heroRules: string[] = [
+    `[data-hero-title]       { color: ${colors.heroTitleColor       ?? "#ffffff"                  } !important; }`,
+    `[data-hero-established] { color: ${colors.heroEstablishedColor ?? "#c9a84c"                  } !important; }`,
+    `[data-hero-tagline]     { color: ${colors.heroTaglineColor     ?? "rgba(255,255,255,0.85)"   } !important; }`,
+  ];
   if (colors.callButtonText) {
     heroRules.push(`[data-call-btn], [data-call-btn] * { color: ${colors.callButtonText} !important; }`);
   }
@@ -165,17 +163,25 @@ export function applyThemeFonts(fonts: { heading?: string; body?: string; headin
   const globalRules: string[] = [];
 
   if (fonts.body) {
-    // Apply body font and optionally color to everything
-    const colorRule = fonts.bodyColor ? `color: ${fonts.bodyColor} !important;` : "";
-    globalRules.push(`body, body * { font-family: "${fonts.body}", sans-serif !important; ${colorRule} }`);
+    // Apply body font to body (inherited by children).
+    // bodyColor uses normal cascade — no !important — so inline styles and
+    // heading-font rules can override it on individual elements.
+    const colorRule = fonts.bodyColor ? `color: ${fonts.bodyColor};` : "";
+    globalRules.push(`body { font-family: "${fonts.body}", sans-serif; ${colorRule} }`);
+    // Font-family only (no color !important) on children so specific selectors win.
+    globalRules.push(`body * { font-family: "${fonts.body}", sans-serif; }`);
   }
 
   if (fonts.heading) {
     const colorRule = fonts.headingColor ? `color: ${fonts.headingColor} !important;` : "";
-    // Override headings with the heading font and color
+    // Heading font + color take priority over inherited body styles.
+    // Note: [style*="font-serif"] is intentionally omitted here — elements that
+    // use fontFamily:"var(--font-serif)" via inline style already inherit the
+    // heading font through the CSS variable; including that selector would bleed
+    // headingColor into hero elements (h1 with data-hero-title) unexpectedly.
     globalRules.push(
       `h1, h2, h3, h4, h5, h6,
-       [style*="font-serif"],
+       [data-heading],
        [class*="font-serif"] { font-family: "${fonts.heading}", serif !important; ${colorRule} }`
     );
   }

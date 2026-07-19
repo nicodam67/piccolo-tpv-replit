@@ -7,6 +7,15 @@ export function useServiceWorker() {
   useEffect(() => {
     if (!("serviceWorker" in navigator)) return;
 
+    // In Vite dev mode, unregister ALL service workers so stale caches never
+    // intercept hot-reloaded modules (which causes MIME-type errors).
+    if (import.meta.env.DEV) {
+      navigator.serviceWorker.getRegistrations().then((regs) => {
+        for (const reg of regs) reg.unregister();
+      });
+      return;
+    }
+
     // Purge every SW that is not scoped to this app's base path.
     // This clears the stale root-scoped SW ("/") that was incorrectly
     // registered in a previous version and corrupts module-script loading.
