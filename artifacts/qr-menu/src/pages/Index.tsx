@@ -103,7 +103,10 @@ export default function Index() {
         ) : heroImageUrl ? (
           <div
             className="absolute inset-0 bg-cover bg-center"
-            style={{ backgroundImage: `url(${heroImageUrl})`, filter: "brightness(0.35)" }}
+            style={{
+              backgroundImage: `url("${heroImageUrl}"), url("https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=1400&q=80")`,
+              filter: "brightness(0.35)",
+            }}
           />
         ) : null}
         <div className="relative z-10 flex flex-col items-center justify-center py-20 px-4 text-center">

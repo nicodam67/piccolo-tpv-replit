@@ -43,6 +43,16 @@
       crossorigin
     />
 
+    <!-- Pre-load custom fonts so they are ready before JS/useEffect runs.
+         These match the CUSTOM_FONTS list in FontManager.tsx / theme.ts. -->
+    <style>
+      @font-face { font-family: "Algerian__custom";     src: url("https://hercules-cdn.com/file_Up90gFAtg9wEAXyeMzwFEHgS") format("truetype"); font-display: swap; }
+      @font-face { font-family: "AvantGardeBk__custom"; src: url("https://hercules-cdn.com/file_89mHnxjgA9M4oKd6cCL5tH3G") format("truetype"); font-display: swap; }
+      @font-face { font-family: "AmericanTextBT__custom";src: url("https://hercules-cdn.com/file_ZvU6mje17p5pww4n7ZuLTmNH") format("truetype"); font-display: swap; }
+      @font-face { font-family: "ZapfChanDm__custom";   src: url("https://hercules-cdn.com/file_H5zrJAiF1ZRToxIbF6PxUlIC") format("truetype"); font-display: swap; }
+      @font-face { font-family: "ZapfChanMd__custom";   src: url("https://hercules-cdn.com/file_46LrUGLTssadG0rlxFlWL1tR") format("truetype"); font-display: swap; }
+    </style>
+
     <!-- Detect dark mode preference and set the class before next-themes loads. -->
     <script>
       try {
