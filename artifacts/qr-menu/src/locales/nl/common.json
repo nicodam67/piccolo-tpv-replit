@@ -1,5 +1,6 @@
 {
   "nav.admin": "Admin",
+  "nav.back": "Terug",
   "search.placeholder": "Gerechten zoeken...",
   "search.results_one": "{{count}} gerecht gevonden",
   "search.results_other": "{{count}} gerechten gevonden",
@@ -12,7 +13,9 @@
   "menu.full_price": "Hele portie",
   "menu.half_portion": "Halve portie",
   "footer.rights": "Alle rechten voorbehouden.",
+  "footer.maps": "Bekijk op Google Maps",
   "filter.all": "Alles",
+  "modal.close": "Sluiten",
   "admin.sign_in": "Log in om het menu te beheren",
   "admin.panel": "Beheerderspaneel",
   "admin.link": "Beheer",
@@ -41,6 +44,7 @@
   "schedule.closed": "Gesloten",
   "schedule.midday": "Lunch",
   "schedule.evening": "Diner",
+  "schedule.no_schedule": "Openingstijden niet beschikbaar",
   "schedule.monday": "Maandag",
   "schedule.tuesday": "Dinsdag",
   "schedule.wednesday": "Woensdag",
@@ -48,5 +52,10 @@
   "schedule.friday": "Vrijdag",
   "schedule.saturday": "Zaterdag",
   "schedule.sunday": "Zondag",
-  "call": "Bellen"
+  "call": "Bellen",
+  "install.add_to_home": "Voeg het menu toe aan uw beginscherm",
+  "install.ios_instructions": "Tik op Delen en dan «Voeg toe aan beginscherm»",
+  "install.ios_share": "Delen",
+  "install.ios_add": "Voeg toe aan beginscherm",
+  "install.install_btn": "Installeren"
 }

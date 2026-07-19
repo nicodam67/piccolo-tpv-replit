@@ -57,7 +57,7 @@ externalPort = 80
 [userenv]
 
 [userenv.shared]
-VITE_CONVEX_URL = "https://kindhearted-viper-426.convex.cloud"
+VITE_CONVEX_URL = "https://basic-rook-96.eu-west-1.convex.cloud"
 VITE_HERCULES_OIDC_AUTHORITY = "https://01krm8rqyc0nx03v525sgx5zvc.hercules-auth.com"
 VITE_HERCULES_OIDC_CLIENT_ID = "oSSAbhxQWqyqWXpgAnLrEDTwCDpHAbXJ"
 VITE_HERCULES_WEBSITE_ID = "01KRM8RQYC0NX03V525SGX5ZVC"

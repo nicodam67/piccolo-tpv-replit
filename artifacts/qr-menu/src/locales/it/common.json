@@ -1,5 +1,6 @@
 {
   "nav.admin": "Admin",
+  "nav.back": "Indietro",
   "search.placeholder": "Cerca piatti...",
   "search.results_one": "{{count}} piatto trovato",
   "search.results_other": "{{count}} piatti trovati",
@@ -12,7 +13,9 @@
   "menu.full_price": "Porzione intera",
   "menu.half_portion": "Mezza porzione",
   "footer.rights": "Tutti i diritti riservati.",
+  "footer.maps": "Vedi su Google Maps",
   "filter.all": "Tutto",
+  "modal.close": "Chiudi",
   "admin.sign_in": "Accedi per gestire il menu",
   "admin.panel": "Pannello di amministrazione",
   "admin.link": "Amministrazione",
@@ -41,6 +44,7 @@
   "schedule.closed": "Chiuso",
   "schedule.midday": "Pranzo",
   "schedule.evening": "Cena",
+  "schedule.no_schedule": "Orari non disponibili",
   "schedule.monday": "Lunedì",
   "schedule.tuesday": "Martedì",
   "schedule.wednesday": "Mercoledì",
@@ -48,5 +52,10 @@
   "schedule.friday": "Venerdì",
   "schedule.saturday": "Sabato",
   "schedule.sunday": "Domenica",
-  "call": "Chiama"
+  "call": "Chiama",
+  "install.add_to_home": "Aggiungi il menu alla schermata iniziale",
+  "install.ios_instructions": "Tocca Condividi e poi «Aggiungi a schermata Home»",
+  "install.ios_share": "Condividi",
+  "install.ios_add": "Aggiungi a schermata Home",
+  "install.install_btn": "Installa"
 }

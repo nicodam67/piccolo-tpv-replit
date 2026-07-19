@@ -72,7 +72,7 @@ export default function ItemDetailModal({ item, onClose }: Props) {
             {/* Close button */}
             <button
               onClick={onClose}
-              aria-label="Close"
+              aria-label={t("modal.close")}
               className="absolute top-4 right-4 z-10 flex items-center justify-center w-9 h-9 rounded-full bg-black/30 text-white hover:bg-black/50 transition-colors cursor-pointer backdrop-blur-sm"
             >
               <X className="w-5 h-5" />

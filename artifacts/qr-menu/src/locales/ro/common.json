@@ -1,5 +1,6 @@
 {
   "nav.admin": "Admin",
+  "nav.back": "Înapoi",
   "search.placeholder": "Caută preparate...",
   "search.results_one": "{{count}} preparat găsit",
   "search.results_other": "{{count}} preparate găsite",
@@ -12,7 +13,9 @@
   "menu.full_price": "Porție întreagă",
   "menu.half_portion": "Jumătate de porție",
   "footer.rights": "Toate drepturile rezervate.",
+  "footer.maps": "Vezi pe Google Maps",
   "filter.all": "Toate",
+  "modal.close": "Închide",
   "admin.sign_in": "Conectează-te pentru a gestiona meniul",
   "admin.panel": "Panou de administrare",
   "admin.link": "Administrare",
@@ -41,6 +44,7 @@
   "schedule.closed": "Închis",
   "schedule.midday": "Prânz",
   "schedule.evening": "Cină",
+  "schedule.no_schedule": "Program nedisponibil",
   "schedule.monday": "Luni",
   "schedule.tuesday": "Marți",
   "schedule.wednesday": "Miercuri",
@@ -48,5 +52,10 @@
   "schedule.friday": "Vineri",
   "schedule.saturday": "Sâmbătă",
   "schedule.sunday": "Duminică",
-  "call": "Sună"
+  "call": "Sună",
+  "install.add_to_home": "Adaugă meniul pe ecranul de start",
+  "install.ios_instructions": "Apasă Distribuie și apoi «Adaugă pe ecranul de start»",
+  "install.ios_share": "Distribuie",
+  "install.ios_add": "Adaugă pe ecranul de start",
+  "install.install_btn": "Instalează"
 }

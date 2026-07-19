@@ -1,5 +1,6 @@
 {
   "nav.admin": "Admin",
+  "nav.back": "Retour",
   "search.placeholder": "Rechercher des plats...",
   "search.results_one": "{{count}} plat trouvé",
   "search.results_other": "{{count}} plats trouvés",
@@ -12,7 +13,9 @@
   "menu.full_price": "Portion entière",
   "menu.half_portion": "Demi portion",
   "footer.rights": "Tous droits réservés.",
+  "footer.maps": "Voir sur Google Maps",
   "filter.all": "Tout",
+  "modal.close": "Fermer",
   "admin.sign_in": "Connectez-vous pour gérer le menu",
   "admin.panel": "Panneau d'administration",
   "admin.link": "Administration",
@@ -41,6 +44,7 @@
   "schedule.closed": "Fermé",
   "schedule.midday": "Midi",
   "schedule.evening": "Soir",
+  "schedule.no_schedule": "Horaires non disponibles",
   "schedule.monday": "Lundi",
   "schedule.tuesday": "Mardi",
   "schedule.wednesday": "Mercredi",
@@ -48,5 +52,10 @@
   "schedule.friday": "Vendredi",
   "schedule.saturday": "Samedi",
   "schedule.sunday": "Dimanche",
-  "call": "Appeler"
+  "call": "Appeler",
+  "install.add_to_home": "Ajoutez le menu à votre écran d'accueil",
+  "install.ios_instructions": "Appuyez sur Partager puis «Ajouter à l'écran d'accueil»",
+  "install.ios_share": "Partager",
+  "install.ios_add": "Ajouter à l'écran d'accueil",
+  "install.install_btn": "Installer"
 }

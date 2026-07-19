@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { X, Share, Download } from "lucide-react";
 import { Button } from "@/components/ui/button.tsx";
+import { useTranslation } from "react-i18next";
 
 type BeforeInstallPromptEvent = Event & {
   prompt: () => Promise<void>;
@@ -25,23 +26,21 @@ function isSafari(): boolean {
 const DISMISSED_KEY = "install_banner_dismissed";
 
 export default function InstallBanner() {
+  const { t } = useTranslation("common");
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [showIosInstructions, setShowIosInstructions] = useState(false);
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
-    // Don't show if already installed or user dismissed recently
     if (isStandalone()) return;
     if (sessionStorage.getItem(DISMISSED_KEY)) return;
 
-    // iOS Safari: show manual instructions
     if (isIos() && isSafari()) {
       setVisible(true);
       setShowIosInstructions(true);
       return;
     }
 
-    // Android/Chrome: wait for install prompt
     const handler = (e: Event) => {
       e.preventDefault();
       setDeferredPrompt(e as BeforeInstallPromptEvent);
@@ -80,15 +79,15 @@ export default function InstallBanner() {
           </p>
           <p className="text-xs text-muted-foreground mt-0.5">
             {showIosInstructions
-              ? "Toca Compartir y luego «Añadir a pantalla de inicio»"
-              : "Añade la carta a tu pantalla de inicio"}
+              ? t("install.ios_instructions")
+              : t("install.add_to_home")}
           </p>
           {showIosInstructions ? (
             <div className="flex items-center gap-1.5 mt-2 text-xs text-muted-foreground">
               <Share className="w-3.5 h-3.5 shrink-0 text-primary" />
-              <span>Compartir</span>
+              <span>{t("install.ios_share")}</span>
               <span>→</span>
-              <span>Añadir a pantalla de inicio</span>
+              <span>{t("install.ios_add")}</span>
             </div>
           ) : (
             <Button
@@ -97,14 +96,14 @@ export default function InstallBanner() {
               onClick={handleInstall}
             >
               <Download className="w-3 h-3" />
-              Instalar
+              {t("install.install_btn")}
             </Button>
           )}
         </div>
         <button
           onClick={handleDismiss}
           className="shrink-0 p-1 rounded-full hover:bg-muted transition-colors cursor-pointer text-muted-foreground"
-          aria-label="Cerrar"
+          aria-label={t("modal.close")}
         >
           <X className="w-4 h-4" />
         </button>

@@ -2,7 +2,7 @@ import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api.js";
 import { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import type { Doc, Id } from "@/convex/_generated/dataModel.d.ts";
+import type { Doc } from "@/convex/_generated/dataModel.d.ts";
 import MenuItemCard from "../_components/MenuItemCard.tsx";
 import ItemDetailModal from "../_components/ItemDetailModal.tsx";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
@@ -23,11 +23,11 @@ export default function CategoriaPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
-  const catId = categoryId as Id<"categories">;
+  const catId = categoryId ?? "";
 
   // ── Convex data ───────────────────────────────────────────────────────────
   const categories = useQuery(api.menu.listCategories, {});
-  const items      = useQuery(api.menu.listAvailableItems, { categoryId: catId });
+  const items      = useQuery(api.menu.getItemsByCategoryId, { catId });
   const branding   = useQuery(api.branding.get, {});
 
   useThemeColors(branding?.themeColors ?? null);
@@ -110,7 +110,7 @@ export default function CategoriaPage() {
         <div style={{ display: "flex", alignItems: "center", gap: "12px", padding: "12px 16px 8px" }}>
           <button
             onClick={() => navigate(`/${lng}`)}
-            aria-label="Volver"
+            aria-label={t("nav.back")}
             style={{
               flexShrink: 0, padding: "6px", borderRadius: "9999px",
               border: "none", background: "transparent", cursor: "pointer",

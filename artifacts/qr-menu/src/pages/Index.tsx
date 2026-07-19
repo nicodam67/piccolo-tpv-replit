@@ -2,7 +2,6 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api.js";
 import { useState, useEffect } from "react";
 import { motion } from "motion/react";
-import type { Doc } from "@/convex/_generated/dataModel.d.ts";
 import { ChevronRight, Clock, Phone } from "lucide-react";
 import { ALLERGENS } from "@/lib/allergens.ts";
 import { DIETARY_TAGS } from "@/lib/dietary-tags.ts";
@@ -15,18 +14,16 @@ import LocaleSwitcher from "@/components/ui/locale-switcher.tsx";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog.tsx";
 import ScheduleDisplay from "./_components/ScheduleDisplay.tsx";
 import InstallBanner from "@/components/InstallBanner.tsx";
-import ItemDetailModal from "./_components/ItemDetailModal.tsx";
 
 export default function Index() {
   const { lng } = useParams<{ lng: string }>();
   const { t } = useTranslation("common");
-  const locale = isSupportedLocale(lng) ? lng : "en";
+  const locale = isSupportedLocale(lng) ? lng : "es";
   const navigate = useNavigate();
 
   // ── Convex data ───────────────────────────────────────────────────────────
   const categories = useQuery(api.menu.listCategories, {});
   const branding   = useQuery(api.branding.get, {});
-  const allItems   = useQuery(api.menu.listAvailableItems, {});
   const seed       = useMutation(api.seed.publicSeedIfEmpty);
 
   // Apply branding theme (fonts + colors) from Convex
@@ -43,20 +40,19 @@ export default function Index() {
   const heroVideoUrl    = branding?.heroVideoUrl    ?? null;
   const establishedYear = branding?.establishedYear ?? "2007";
 
-  const accentColor     = branding?.themeColors?.accent            ?? "#c9a84c";
-  const heroTitleColor  = branding?.themeColors?.heroTitleColor    ?? "#ffffff";
-  const heroTaglineColor= branding?.themeColors?.heroTaglineColor  ?? "rgba(255,255,255,0.85)";
-  const heroEstColor    = branding?.themeColors?.heroEstablishedColor ?? accentColor;
-  const catCardBg       = branding?.themeColors?.categoryCardBg    ?? "#ffffff";
-  const catCardText     = branding?.themeColors?.categoryCardText  ?? branding?.themeColors?.primary ?? "#c41a1a";
+  const accentColor      = branding?.themeColors?.accent              ?? "#c9a84c";
+  const heroTitleColor   = branding?.themeColors?.heroTitleColor      ?? "#ffffff";
+  const heroTaglineColor = branding?.themeColors?.heroTaglineColor    ?? "rgba(255,255,255,0.85)";
+  const heroEstColor     = branding?.themeColors?.heroEstablishedColor ?? accentColor;
+  const catCardBg        = branding?.themeColors?.categoryCardBg      ?? "#ffffff";
+  const catCardText      = branding?.themeColors?.categoryCardText    ?? branding?.themeColors?.primary ?? "#c41a1a";
 
   // ── Filter state ──────────────────────────────────────────────────────────
   const [activeAllergen, setActiveAllergen] = useState<string | null>(null);
   const [activeTag,      setActiveTag     ] = useState<string | null>(null);
   const [scheduleOpen,   setScheduleOpen  ] = useState(false);
-  const [selectedItem,   setSelectedItem  ] = useState<Doc<"menuItems"> | null>(null);
 
-  // ── Category list: prefer top-level (no parentId), else show all ──────────
+  // ── Category list: top-level only, sorted ────────────────────────────────
   const allTopLevel = categories
     ? categories.filter(c => !c.parentId && c.available !== false)
     : [];
@@ -70,7 +66,7 @@ export default function Index() {
     if (activeAllergen) params.set("allergen", activeAllergen);
     if (activeTag)      params.set("tag",      activeTag);
     const qs = params.toString();
-    navigate(`/${lng}/categoria/${catId}${qs ? `?${qs}` : ""}`);
+    navigate(`/${locale}/categoria/${catId}${qs ? `?${qs}` : ""}`);
   }
 
   // ── Shared pill style helpers ─────────────────────────────────────────────
@@ -97,7 +93,7 @@ export default function Index() {
     <div style={{ minHeight: "100vh", background: "#f0f0f0" }}>
 
       {/* ── HERO ─────────────────────────────────────────────────────────── */}
-      <header style={{ position: "relative", minHeight: "55vmax", background: "#1a0a08", overflow: "hidden" }}>
+      <header style={{ position: "relative", minHeight: "50vmax", background: "#1a0a08", overflow: "hidden" }}>
 
         {/* Background media */}
         {heroVideoUrl ? (
@@ -126,7 +122,7 @@ export default function Index() {
           display: "flex", flexDirection: "column",
           alignItems: "center", justifyContent: "center",
           textAlign: "center",
-          minHeight: "55vmax",
+          minHeight: "50vmax",
           padding: "2rem 1.5rem",
         }}>
           {establishedYear && (
@@ -164,7 +160,7 @@ export default function Index() {
             {restaurantName}
           </motion.h1>
 
-          {/* Gold separator */}
+          {/* Accent separator */}
           <motion.div
             initial={{ scaleX: 0 }}
             animate={{ scaleX: 1 }}
@@ -223,12 +219,13 @@ export default function Index() {
         </div>
       </div>
 
-      {/* ── CATEGORY LIST ────────────────────────────────────────────────── */}
-      <main style={{ padding: "16px 12px", maxWidth: "672px", margin: "0 auto" }}>
+      {/* ── CATEGORY GRID ────────────────────────────────────────────────── */}
+      {/* Extra bottom padding avoids floating buttons overlapping last category row */}
+      <main style={{ padding: "16px 12px 120px", maxWidth: "800px", margin: "0 auto" }}>
         {categories === undefined ? (
-          /* Loading skeletons */
-          <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-            {[1,2,3,4,5].map(i => (
+          /* Loading skeletons — 2-col grid */
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "12px" }}>
+            {[1,2,3,4,5,6].map(i => (
               <div key={i} style={{ height: "68px", borderRadius: "16px", background: "#e5e7eb", opacity: 0.6 }} />
             ))}
           </div>
@@ -237,7 +234,8 @@ export default function Index() {
             <p style={{ fontSize: "1.125rem" }}>{t("menu.no_items")}</p>
           </div>
         ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+          /* 2-column grid matching Hércules layout */
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "12px" }}>
             {sortedCategories.map((cat, i) => {
               const { name } = localizeCategory(cat, locale);
               return (
@@ -245,30 +243,36 @@ export default function Index() {
                   key={cat._id}
                   initial={{ opacity: 0, y: 12 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.35, delay: i * 0.05 }}
+                  transition={{ duration: 0.35, delay: i * 0.04 }}
                   onClick={() => goToCategory(cat._id)}
                   style={{
                     width: "100%", textAlign: "left",
-                    border: "none", outline: "none",
+                    border: "1px solid #e5e7eb", outline: "none",
                     borderRadius: "16px",
                     background: catCardBg,
-                    boxShadow: "0 1px 3px rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.06)",
+                    boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
                     cursor: "pointer",
                     display: "flex", alignItems: "center",
-                    justifyContent: "space-between", gap: "12px",
-                    padding: "20px 24px",
+                    justifyContent: "space-between", gap: "8px",
+                    padding: "18px 16px",
                     transition: "box-shadow 0.15s, transform 0.1s",
+                    minHeight: "68px",
                   }}
                 >
                   <span style={{
-                    fontSize: "1.35rem", fontWeight: "bold",
+                    fontSize: "clamp(0.85rem, 2.8vw, 1.1rem)",
+                    fontWeight: "bold",
                     fontFamily: "var(--font-serif, serif)",
                     color: catCardText,
-                    letterSpacing: "0.05em", lineHeight: 1.2,
+                    letterSpacing: "0.04em",
+                    lineHeight: 1.25,
+                    textTransform: "uppercase",
+                    wordBreak: "break-word",
+                    hyphens: "auto",
                   }}>
                     {name}
                   </span>
-                  <ChevronRight style={{ color: catCardText, width: "20px", height: "20px", flexShrink: 0 }} />
+                  <ChevronRight style={{ color: catCardText, width: "18px", height: "18px", flexShrink: 0 }} />
                 </motion.button>
               );
             })}
@@ -309,7 +313,7 @@ export default function Index() {
                     textDecoration: "none",
                   }}
                 >
-                  📍 Ver en Google Maps
+                  📍 {t("footer.maps")}
                 </a>
               </div>
             )}
@@ -328,7 +332,8 @@ export default function Index() {
       </footer>
 
       {/* ── FLOATING BUTTONS ─────────────────────────────────────────────── */}
-      {branding?.schedule && branding.schedule.length > 0 && (
+      {/* Schedule button: always visible when branding is loaded */}
+      {branding !== undefined && (
         <button
           data-schedule-btn
           onClick={() => setScheduleOpen(true)}
@@ -348,6 +353,7 @@ export default function Index() {
         </button>
       )}
 
+      {/* Call button: always visible when branding has phone */}
       {branding?.phone && (
         <a
           data-call-btn
@@ -368,7 +374,7 @@ export default function Index() {
         </a>
       )}
 
-      {/* Schedule modal */}
+      {/* ── SCHEDULE MODAL ───────────────────────────────────────────────── */}
       <Dialog open={scheduleOpen} onOpenChange={setScheduleOpen}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
@@ -376,12 +382,18 @@ export default function Index() {
               {t("schedule.title")}
             </DialogTitle>
           </DialogHeader>
-          {branding?.schedule && <ScheduleDisplay schedule={branding.schedule} />}
+          {branding?.schedule && branding.schedule.length > 0
+            ? <ScheduleDisplay schedule={branding.schedule} />
+            : (
+              <p style={{ textAlign: "center", color: "#9ca3af", padding: "1rem 0", fontStyle: "italic" }}>
+                {t("schedule.no_schedule")}
+              </p>
+            )
+          }
         </DialogContent>
       </Dialog>
 
       <InstallBanner />
-      <ItemDetailModal item={selectedItem} onClose={() => setSelectedItem(null)} />
     </div>
   );
 }

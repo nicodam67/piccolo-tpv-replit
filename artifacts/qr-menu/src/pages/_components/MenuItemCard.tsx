@@ -20,42 +20,34 @@ type Props = {
 export default function MenuItemCard({ item, index, onClick, cardSettings = DEFAULT_CARD_SETTINGS }: Props) {
   const { t } = useTranslation("common");
   const { lng } = useParams<{ lng: string }>();
-  const locale = isSupportedLocale(lng) ? lng : "en";
+  const locale = isSupportedLocale(lng) ? lng : "es";
   const { name, description } = localize(item, locale);
 
-  const hasMedia = item.videoUrl || item.imageUrl;
+  const hasMedia = !!(item.videoUrl || item.imageUrl);
 
-  // List layout: horizontal row
+  // ── List layout (default — matches Hércules compact style) ────────────────
   if (cardSettings.layout === "list") {
     return (
       <motion.div
-        initial={{ opacity: 0, y: 12 }}
+        initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3, delay: index * 0.04 }}
+        transition={{ duration: 0.28, delay: index * 0.04 }}
         onClick={onClick}
-        className="group flex gap-4 p-4 rounded-xl border border-border/60 bg-card hover:shadow-md transition-shadow cursor-pointer items-start"
+        className="group flex gap-3 p-3 rounded-xl border border-border/60 bg-card hover:shadow-md transition-shadow cursor-pointer items-start"
       >
-        {cardSettings.showImage && hasMedia && (
-          <div className="w-24 h-24 rounded-lg overflow-hidden bg-muted shrink-0">
-            {item.videoUrl ? (
-              <video src={item.videoUrl} className="w-full h-full object-cover" autoPlay loop muted playsInline />
-            ) : (
-              <img src={item.imageUrl} alt={name} className="w-full h-full object-contain transition-transform duration-500 group-hover:scale-105" />
-            )}
-          </div>
-        )}
+        {/* Text side */}
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between gap-2">
-            <h3 className="text-base font-medium text-foreground leading-tight" style={{ fontFamily: "var(--font-serif)" }}>
+            <h3 className="text-sm font-semibold text-foreground leading-tight" style={{ fontFamily: "var(--font-serif)" }}>
               {name}
             </h3>
             {cardSettings.showPrice && (
-              <div className="shrink-0 text-right">
-                <span data-item-price className="text-sm font-semibold block">
+              <div className="shrink-0 text-right ml-2 flex flex-col items-end">
+                <span data-item-price className="text-sm font-bold whitespace-nowrap" style={{ color: "var(--primary, #c41a1a)" }}>
                   {item.halfPortionPrice !== undefined ? `${t("menu.full_price")} ` : ""}€{item.price.toFixed(2)}
                 </span>
                 {cardSettings.showHalfPortion && item.halfPortionPrice !== undefined && (
-                  <span data-item-price className="text-xs">
+                  <span data-item-price className="text-xs whitespace-nowrap" style={{ color: "var(--primary, #c41a1a)" }}>
                     {t("menu.half_portion")} €{item.halfPortionPrice.toFixed(2)}
                   </span>
                 )}
@@ -63,32 +55,47 @@ export default function MenuItemCard({ item, index, onClick, cardSettings = DEFA
             )}
           </div>
           {cardSettings.showQuantity && item.quantity && (
-            <span className="text-xs text-muted-foreground/70">{item.quantity}</span>
+            <span className="text-xs text-muted-foreground/60">{item.quantity}</span>
           )}
           {cardSettings.showDescription && description && (
-            <p className="text-sm text-muted-foreground leading-relaxed line-clamp-2 mt-1">{description}</p>
+            <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2 mt-0.5">{description}</p>
           )}
-          <div className="flex flex-wrap gap-1.5 mt-2">
+          <div className="flex flex-wrap gap-1.5 mt-1.5">
             {cardSettings.showTags && item.tags?.map((tagId) => {
               const meta = getTagMeta(tagId);
               if (!meta) return null;
-              return <span key={tagId} className={cn("text-xs px-2 py-0.5 rounded-full font-medium", meta.color)}>{meta.icon} {t(`tag.${tagId}`)}</span>;
+              return <span key={tagId} className={cn("text-xs px-1.5 py-0.5 rounded-full font-medium", meta.color)}>{meta.icon} {t(`tag.${tagId}`)}</span>;
             })}
             {cardSettings.showAllergens && item.allergens?.map((id) => {
               const meta = getAllergenMeta(id);
               if (!meta) return null;
-              return <span key={id} className="text-xs px-1.5 py-0.5 rounded border border-orange-200 dark:border-orange-800/50 bg-orange-50 dark:bg-orange-900/20 text-orange-700 dark:text-orange-300">{meta.icon} {t(`allergen.${id}`)}</span>;
+              return <span key={id} className="text-xs px-1.5 py-0.5 rounded border border-orange-200 dark:border-orange-800/50 bg-orange-50 dark:bg-orange-900/20 text-orange-700 dark:text-orange-300">{meta.icon}</span>;
             })}
           </div>
           <p data-tap-details className="text-xs opacity-40 group-hover:opacity-70 transition-opacity mt-1" style={{ color: "var(--primary)" }}>
             {t("menu.tap_details")}
           </p>
         </div>
+
+        {/* Image thumbnail — right side, compact square */}
+        {cardSettings.showImage && hasMedia && (
+          <div className="w-20 h-20 rounded-lg overflow-hidden bg-muted shrink-0">
+            {item.videoUrl ? (
+              <video src={item.videoUrl} className="w-full h-full object-cover" autoPlay loop muted playsInline />
+            ) : (
+              <img
+                src={item.imageUrl}
+                alt={name}
+                className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+              />
+            )}
+          </div>
+        )}
       </motion.div>
     );
   }
 
-  // Compact layout: single line, no image
+  // ── Compact layout: single line, no image ─────────────────────────────────
   if (cardSettings.layout === "compact") {
     return (
       <motion.div
@@ -124,7 +131,7 @@ export default function MenuItemCard({ item, index, onClick, cardSettings = DEFA
     );
   }
 
-  // Grid layout (default)
+  // ── Grid layout ───────────────────────────────────────────────────────────
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -135,11 +142,11 @@ export default function MenuItemCard({ item, index, onClick, cardSettings = DEFA
     >
       {/* Media */}
       {cardSettings.showImage && (
-        <div className="relative h-48 overflow-hidden bg-muted">
+        <div className="relative h-40 overflow-hidden bg-muted">
           {item.videoUrl ? (
             <video src={item.videoUrl} className="w-full h-full object-cover" autoPlay loop muted playsInline />
           ) : item.imageUrl ? (
-            <img src={item.imageUrl} alt={name} className="w-full h-full object-contain transition-transform duration-500 group-hover:scale-105" />
+            <img src={item.imageUrl} alt={name} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
           ) : (
             <div className="w-full h-full flex items-center justify-center text-muted-foreground text-4xl">🍽</div>
           )}
@@ -148,18 +155,18 @@ export default function MenuItemCard({ item, index, onClick, cardSettings = DEFA
       )}
 
       {/* Content */}
-      <div className="p-5">
+      <div className="p-4">
         <div className="flex items-start justify-between gap-2 mb-2">
-          <h3 className="text-lg font-medium leading-tight text-foreground" style={{ fontFamily: "var(--font-serif)" }}>
+          <h3 className="text-base font-medium leading-tight text-foreground" style={{ fontFamily: "var(--font-serif)" }}>
             {name}
           </h3>
           {cardSettings.showPrice && (
             <div className="shrink-0 text-right">
-              <span data-item-price className="text-base font-medium block">
+              <span data-item-price className="text-sm font-semibold block" style={{ color: "var(--primary)" }}>
                 {item.halfPortionPrice !== undefined ? `${t("menu.full_price")} ` : ""}€{item.price.toFixed(2)}
               </span>
               {cardSettings.showHalfPortion && item.halfPortionPrice !== undefined && (
-                <span data-item-price className="text-xs">
+                <span data-item-price className="text-xs" style={{ color: "var(--primary)" }}>
                   {t("menu.half_portion")} €{item.halfPortionPrice.toFixed(2)}
                 </span>
               )}

@@ -12,7 +12,8 @@ export const SUPPORTED_LOCALES = {
   ro: { code: "ro", emoji: "🇷🇴", name: "Romanian", nativeName: "Română", dir: "ltr" },
 } as const;
 
-export const DEFAULT_LOCALE: keyof typeof SUPPORTED_LOCALES = "en";
+// Spanish is the default — this is a Spanish restaurant.
+export const DEFAULT_LOCALE: keyof typeof SUPPORTED_LOCALES = "es";
 
 export const SUPPORTED_LOCALES_ARRAY = Object.keys(SUPPORTED_LOCALES) as Array<
   keyof typeof SUPPORTED_LOCALES
@@ -21,6 +22,17 @@ export type SupportedLocale = keyof typeof SUPPORTED_LOCALES;
 
 export function isSupportedLocale(locale: string | undefined): locale is SupportedLocale {
   return !!locale && SUPPORTED_LOCALES_ARRAY.includes(locale as SupportedLocale);
+}
+
+/** Return the best locale the browser prefers, falling back to DEFAULT_LOCALE. */
+function detectBrowserLocale(): SupportedLocale {
+  if (typeof window === "undefined") return DEFAULT_LOCALE;
+  const candidates = (navigator.languages?.length ? navigator.languages : [navigator.language]).filter(Boolean);
+  for (const l of candidates) {
+    const code = l.split("-")[0].toLowerCase();
+    if (isSupportedLocale(code)) return code as SupportedLocale;
+  }
+  return DEFAULT_LOCALE;
 }
 
 export const SAVED_LOCALE =
@@ -35,7 +47,8 @@ export const SAVED_LOCALE =
       })()
     : null;
 
-export const SAVED_OR_DEFAULT_LOCALE: SupportedLocale = SAVED_LOCALE ?? DEFAULT_LOCALE;
+// Priority: explicitly saved → browser preference → Spanish
+export const SAVED_OR_DEFAULT_LOCALE: SupportedLocale = SAVED_LOCALE ?? detectBrowserLocale();
 
 export function setLocaleInPath(
   locale: string,

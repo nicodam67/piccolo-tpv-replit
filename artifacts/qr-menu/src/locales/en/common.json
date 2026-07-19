@@ -1,5 +1,6 @@
 {
   "nav.admin": "Admin",
+  "nav.back": "Back",
   "search.placeholder": "Search dishes...",
   "search.results_one": "{{count}} item found",
   "search.results_other": "{{count}} items found",
@@ -12,7 +13,9 @@
   "menu.full_price": "Full portion",
   "menu.half_portion": "Half portion",
   "footer.rights": "All rights reserved.",
+  "footer.maps": "View on Google Maps",
   "filter.all": "All",
+  "modal.close": "Close",
   "admin.sign_in": "Sign in to manage the menu",
   "admin.panel": "Admin Panel",
   "admin.link": "Administration",
@@ -41,6 +44,7 @@
   "schedule.closed": "Closed",
   "schedule.midday": "Lunch",
   "schedule.evening": "Dinner",
+  "schedule.no_schedule": "Schedule not available",
   "schedule.monday": "Monday",
   "schedule.tuesday": "Tuesday",
   "schedule.wednesday": "Wednesday",
@@ -48,5 +52,10 @@
   "schedule.friday": "Friday",
   "schedule.saturday": "Saturday",
   "schedule.sunday": "Sunday",
-  "call": "Call"
+  "call": "Call",
+  "install.add_to_home": "Add the menu to your home screen",
+  "install.ios_instructions": "Tap Share then «Add to Home Screen»",
+  "install.ios_share": "Share",
+  "install.ios_add": "Add to Home Screen",
+  "install.install_btn": "Install"
 }

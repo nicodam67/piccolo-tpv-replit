@@ -1,5 +1,6 @@
 {
   "nav.admin": "Admin",
+  "nav.back": "Volver",
   "search.placeholder": "Buscar platos...",
   "search.results_one": "{{count}} plato encontrado",
   "search.results_other": "{{count}} platos encontrados",
@@ -12,7 +13,9 @@
   "menu.full_price": "Entera",
   "menu.half_portion": "Media ración",
   "footer.rights": "Todos los derechos reservados.",
+  "footer.maps": "Ver en Google Maps",
   "filter.all": "Todo",
+  "modal.close": "Cerrar",
   "admin.sign_in": "Inicia sesión para gestionar el menú",
   "admin.panel": "Panel de administración",
   "admin.link": "Administración",
@@ -41,6 +44,7 @@
   "schedule.closed": "Cerrado",
   "schedule.midday": "Mediodía",
   "schedule.evening": "Noche",
+  "schedule.no_schedule": "Horario no disponible",
   "schedule.monday": "Lunes",
   "schedule.tuesday": "Martes",
   "schedule.wednesday": "Miércoles",
@@ -48,5 +52,10 @@
   "schedule.friday": "Viernes",
   "schedule.saturday": "Sábado",
   "schedule.sunday": "Domingo",
-  "call": "Llamar"
+  "call": "Llamar",
+  "install.add_to_home": "Añade la carta a tu pantalla de inicio",
+  "install.ios_instructions": "Toca Compartir y luego «Añadir a pantalla de inicio»",
+  "install.ios_share": "Compartir",
+  "install.ios_add": "Añadir a pantalla de inicio",
+  "install.install_btn": "Instalar"
 }

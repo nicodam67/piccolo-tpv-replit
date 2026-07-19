@@ -19,43 +19,57 @@ export const generateUploadUrl = mutation({
   },
 });
 
-// Helper to resolve imageStorageId -> imageUrl and videoStorageId -> videoUrl on items
+// Helper to resolve imageStorageId -> imageUrl and videoStorageId -> videoUrl on items.
+// Uses try/catch per item so a single bad storage ID never crashes the whole query.
 async function resolveItemImages<T extends { imageUrl?: string; imageStorageId?: string; videoUrl?: string; videoStorageId?: string }>(
-  ctx: { storage: { getUrl: (id: string) => Promise<string | null> } },
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ctx: { storage: { getUrl: (id: any) => Promise<string | null> } },
   items: T[]
 ): Promise<T[]> {
   return Promise.all(
     items.map(async (item) => {
       let resolved: T = item;
       if (item.imageStorageId) {
-        const url = await ctx.storage.getUrl(item.imageStorageId);
-        resolved = { ...resolved, imageUrl: url ?? item.imageUrl };
+        try {
+          const url = await ctx.storage.getUrl(item.imageStorageId);
+          if (url) resolved = { ...resolved, imageUrl: url };
+        } catch {
+          // Keep the existing imageUrl if storage lookup fails
+        }
       }
       if (item.videoStorageId) {
-        const url = await ctx.storage.getUrl(item.videoStorageId);
-        resolved = { ...resolved, videoUrl: url ?? item.videoUrl };
+        try {
+          const url = await ctx.storage.getUrl(item.videoStorageId);
+          if (url) resolved = { ...resolved, videoUrl: url };
+        } catch {
+          // Keep the existing videoUrl if storage lookup fails
+        }
       }
       return resolved;
     })
   );
 }
 
+// Legacy alias — kept for backward compat with any cached client subscriptions.
 export const listAvailableItems = query({
-  args: { categoryId: v.optional(v.id("categories")) },
+  args: { categoryId: v.optional(v.string()) },
   handler: async (ctx, args) => {
-    let items;
-    if (args.categoryId) {
-      items = await ctx.db
-        .query("menuItems")
-        .withIndex("by_category_and_available", (q) =>
-          q.eq("categoryId", args.categoryId!).eq("available", true),
-        )
-        .collect();
-    } else {
-      const all = await ctx.db.query("menuItems").collect();
-      items = all.filter((i) => i.available);
-    }
-    return resolveItemImages(ctx, items);
+    const all = await ctx.db.query("menuItems").collect();
+    return all.filter((i) => {
+      if (!i.available) return false;
+      if (args.categoryId && i.categoryId !== args.categoryId) return false;
+      return true;
+    });
+  },
+});
+
+// New public query used by the updated CategoriaPage.
+// Separate name avoids stale Convex function cache issues.
+export const getItemsByCategoryId = query({
+  args: { catId: v.string() },
+  handler: async (ctx, args) => {
+    const all = await ctx.db.query("menuItems").collect();
+    return all.filter((i) => i.available === true && i.categoryId === args.catId);
   },
 });
 

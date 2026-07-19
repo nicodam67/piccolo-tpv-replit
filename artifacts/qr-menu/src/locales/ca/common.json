@@ -1,5 +1,6 @@
 {
   "nav.admin": "Admin",
+  "nav.back": "Tornar",
   "search.placeholder": "Cerca plats...",
   "search.results_one": "{{count}} plat trobat",
   "search.results_other": "{{count}} plats trobats",
@@ -12,7 +13,9 @@
   "menu.full_price": "Ració sencera",
   "menu.half_portion": "Mitja ració",
   "footer.rights": "Tots els drets reservats.",
+  "footer.maps": "Veure a Google Maps",
   "filter.all": "Tot",
+  "modal.close": "Tancar",
   "admin.sign_in": "Inicia sessió per gestionar el menú",
   "admin.panel": "Panell d'administració",
   "admin.link": "Administració",
@@ -41,6 +44,7 @@
   "schedule.closed": "Tancat",
   "schedule.midday": "Migdia",
   "schedule.evening": "Nit",
+  "schedule.no_schedule": "Horari no disponible",
   "schedule.monday": "Dilluns",
   "schedule.tuesday": "Dimarts",
   "schedule.wednesday": "Dimecres",
@@ -48,5 +52,10 @@
   "schedule.friday": "Divendres",
   "schedule.saturday": "Dissabte",
   "schedule.sunday": "Diumenge",
-  "call": "Trucar"
+  "call": "Trucar",
+  "install.add_to_home": "Afegeix la carta a la teva pantalla d'inici",
+  "install.ios_instructions": "Toca Compartir i després «Afegir a la pantalla d'inici»",
+  "install.ios_share": "Compartir",
+  "install.ios_add": "Afegir a la pantalla d'inici",
+  "install.install_btn": "Instal·lar"
 }

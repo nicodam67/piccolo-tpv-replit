@@ -1,5 +1,6 @@
 {
   "nav.admin": "Admin",
+  "nav.back": "Zurück",
   "search.placeholder": "Gerichte suchen...",
   "search.results_one": "{{count}} Gericht gefunden",
   "search.results_other": "{{count}} Gerichte gefunden",
@@ -12,7 +13,9 @@
   "menu.full_price": "Ganze Portion",
   "menu.half_portion": "Halbe Portion",
   "footer.rights": "Alle Rechte vorbehalten.",
+  "footer.maps": "Auf Google Maps ansehen",
   "filter.all": "Alle",
+  "modal.close": "Schließen",
   "admin.sign_in": "Anmelden um das Menü zu verwalten",
   "admin.panel": "Administrationspanel",
   "admin.link": "Verwaltung",
@@ -41,6 +44,7 @@
   "schedule.closed": "Geschlossen",
   "schedule.midday": "Mittagessen",
   "schedule.evening": "Abendessen",
+  "schedule.no_schedule": "Öffnungszeiten nicht verfügbar",
   "schedule.monday": "Montag",
   "schedule.tuesday": "Dienstag",
   "schedule.wednesday": "Mittwoch",
@@ -48,5 +52,10 @@
   "schedule.friday": "Freitag",
   "schedule.saturday": "Samstag",
   "schedule.sunday": "Sonntag",
-  "call": "Anrufen"
+  "call": "Anrufen",
+  "install.add_to_home": "Menü zum Startbildschirm hinzufügen",
+  "install.ios_instructions": "Tippen Sie auf Teilen und dann «Zum Home-Bildschirm»",
+  "install.ios_share": "Teilen",
+  "install.ios_add": "Zum Home-Bildschirm",
+  "install.install_btn": "Installieren"
 }

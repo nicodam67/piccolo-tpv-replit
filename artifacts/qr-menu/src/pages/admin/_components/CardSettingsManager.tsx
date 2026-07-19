@@ -22,7 +22,7 @@ export const DEFAULT_CARD_SETTINGS: CardSettings = {
   showPrice: true,
   showHalfPortion: true,
   showQuantity: true,
-  layout: "grid",
+  layout: "list",   // compact list layout matching Hércules reference
 };
 
 type Props = {
