@@ -2,12 +2,40 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
 export default defineSchema({
+  // ── Auth (OIDC / legacy Hercules sync) ───────────────────────────────────
+  // Kept for backward compatibility; new auth uses the `admins` table below.
   users: defineTable({
     tokenIdentifier: v.string(),
     name: v.optional(v.string()),
     email: v.optional(v.string()),
   }).index("by_token", ["tokenIdentifier"]),
 
+  // ── Custom admin authentication (Task #273 wires the frontend) ───────────
+  admins: defineTable({
+    email: v.string(),
+    passwordHash: v.string(),     // bcrypt hash — never store plaintext
+    role: v.string(),             // "admin" | "employee"
+    createdAt: v.number(),        // Unix ms timestamp
+    lastLoginAt: v.optional(v.number()),
+  })
+    .index("by_email", ["email"])
+    .index("by_role", ["role"]),
+
+  // ── Import tracking (Task #274 uses this for reanudable imports) ─────────
+  importLog: defineTable({
+    table: v.string(),            // "categories" | "menuItems" | "branding" | "images"
+    externalId: v.string(),       // ID in the original (Hercules) system
+    convexId: v.string(),         // New Convex document ID
+    importedAt: v.number(),       // Unix ms timestamp
+    batch: v.optional(v.string()), // Batch identifier for grouping
+    status: v.optional(v.string()), // "ok" | "skipped" | "error"
+    errorMessage: v.optional(v.string()),
+  })
+    .index("by_table", ["table"])
+    .index("by_external_id", ["externalId"])
+    .index("by_table_and_external_id", ["table", "externalId"]),
+
+  // ── Menu categories ───────────────────────────────────────────────────────
   categories: defineTable({
     name: v.string(),
     description: v.optional(v.string()),
@@ -25,6 +53,7 @@ export default defineSchema({
     ),
   }),
 
+  // ── Restaurant branding & settings ───────────────────────────────────────
   branding: defineTable({
     restaurantName: v.string(),
     tagline: v.optional(v.string()),
@@ -83,6 +112,7 @@ export default defineSchema({
     ),
   }),
 
+  // ── Menu items (products) ─────────────────────────────────────────────────
   menuItems: defineTable({
     categoryId: v.id("categories"),
     name: v.string(),
