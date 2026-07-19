@@ -7,6 +7,10 @@ import { sanitizeInputs } from "./middlewares/sanitize";
 
 const app: Express = express();
 
+// Trust the Replit / Google Cloud proxy — required for express-rate-limit to
+// read X-Forwarded-For correctly and for secure cookies over HTTPS.
+app.set("trust proxy", 1);
+
 // Build the list of allowed CORS origins.
 // ALLOWED_ORIGINS (comma-separated) lets ops override at deploy time.
 // REPLIT_DEV_DOMAIN is injected automatically in the Replit dev environment.

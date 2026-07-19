@@ -120,7 +120,7 @@ router.get("/reservations", requireAuth, async (req, res): Promise<void> => {
       clientApellidos: crmClientsTable.apellidos,
       clientEmail:  crmClientsTable.email,
       clientTelefono: crmClientsTable.telefono,
-      mesaNumero:   restaurantTablesTable.tableNumber,
+      mesaNumero:   restaurantTablesTable.name,
     })
     .from(reservationsTable)
     .leftJoin(crmClientsTable, eq(reservationsTable.clientId, crmClientsTable.id))
