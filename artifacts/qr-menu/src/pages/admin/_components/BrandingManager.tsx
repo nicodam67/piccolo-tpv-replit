@@ -69,6 +69,7 @@ export default function BrandingManager() {
     watch,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
+    // @ts-ignore — @hookform/resolvers v3.10 types expect Zod v4; project uses Zod v3 (compatible at runtime)
     resolver: zodResolver(schema),
     defaultValues: {
       restaurantName: "",

@@ -315,6 +315,7 @@ export default function PrintPage() {
       const t = setTimeout(() => { setAutoPrinted(true); window.print(); }, 900);
       return () => clearTimeout(t);
     }
+    return undefined;
   }, [isLoading, autoPrinted]);
 
   const p = pt(printLocale);

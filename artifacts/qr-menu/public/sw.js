@@ -1,12 +1,14 @@
-const CACHE_NAME = "la-maison-v1";
-const urlsToCache = ["/", "/icon/icon-192.png", "/icon/icon-512.png"];
+// Cache version bump: clears stale demo-mode assets when connecting to real Convex.
+const CACHE_NAME = "piccolo-v1";
+const BASE = "/qr-menu";
+const urlsToCache = [`${BASE}/`, `${BASE}/icon/icon-192.png`, `${BASE}/icon/icon-512.png`];
 
 // Install event - cache core assets
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches
       .open(CACHE_NAME)
-      .then((cache) => cache.addAll(urlsToCache))
+      .then((cache) => cache.addAll(urlsToCache).catch(() => {}))
       .then(() => self.skipWaiting()),
   );
 });
@@ -18,7 +20,7 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Never intercept cross-origin requests
+  // Never intercept cross-origin requests (Convex, Hercules, Google Fonts…)
   let url;
   try {
     url = new URL(event.request.url);
@@ -34,21 +36,28 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Handle navigation requests differently
-  if (event.request.mode === "navigate") {
-    event.respondWith(fetch(event.request).catch(() => caches.match("/")));
+  // Never intercept Vite HMR or dev-server internal paths
+  if (url.pathname.includes("/@vite") || url.pathname.includes("/@fs") || url.pathname.includes("/__vite")) {
     return;
   }
 
-  // Network-first for other same-origin GET requests
+  // Handle navigation requests: network first, fall back to app shell
+  if (event.request.mode === "navigate") {
+    event.respondWith(
+      fetch(event.request).catch(() => caches.match(`${BASE}/`) ?? fetch(`${BASE}/`)),
+    );
+    return;
+  }
+
+  // Network-first for all other same-origin GET requests
   event.respondWith(
     fetch(event.request)
       .then((response) => {
-        if (!response.ok) {
-          return response;
+        // Only cache successful responses; never cache error pages
+        if (response.ok) {
+          const responseToCache = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseToCache));
         }
-        const responseToCache = response.clone();
-        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseToCache));
         return response;
       })
       .catch(() => caches.match(event.request)),
@@ -60,15 +69,15 @@ self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches
       .keys()
-      .then((cacheNames) => {
-        return Promise.all(
+      .then((cacheNames) =>
+        Promise.all(
           cacheNames.map((cacheName) => {
             if (cacheName !== CACHE_NAME) {
               return caches.delete(cacheName);
             }
           }),
-        );
-      })
+        ),
+      )
       .then(() => self.clients.claim()),
   );
 });
@@ -94,7 +103,7 @@ self.addEventListener("notificationclick", (event) => {
       for (const client of clientList) {
         if ("focus" in client) return client.focus();
       }
-      if (clients.openWindow) return clients.openWindow("/");
+      if (clients.openWindow) return clients.openWindow(`${BASE}/`);
     }),
   );
 });

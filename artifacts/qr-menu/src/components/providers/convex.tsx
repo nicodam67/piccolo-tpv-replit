@@ -11,8 +11,10 @@ const convex = isDemoMode ? null : new ConvexReactClient(convexUrl!);
 
 export function ConvexProvider({ children }: { children: React.ReactNode }) {
   if (isDemoMode) {
-    // ConvexProviderWithHerculesAuth is already a passthrough mock in this mode.
-    return <ConvexProviderWithHerculesAuth>{children}</ConvexProviderWithHerculesAuth>;
+    // ConvexProviderWithHerculesAuth is aliased to a passthrough mock in demo mode.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const DemoProvider = ConvexProviderWithHerculesAuth as any;
+    return <DemoProvider>{children}</DemoProvider>;
   }
   return (
     <ConvexProviderWithHerculesAuth client={convex!}>

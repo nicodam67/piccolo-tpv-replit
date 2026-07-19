@@ -7,10 +7,22 @@ export function useServiceWorker() {
   useEffect(() => {
     if (!("serviceWorker" in navigator)) return;
 
+    // Purge every SW that is not scoped to this app's base path.
+    // This clears the stale root-scoped SW ("/") that was incorrectly
+    // registered in a previous version and corrupts module-script loading.
+    navigator.serviceWorker.getRegistrations().then((registrations) => {
+      for (const reg of registrations) {
+        const appBase = import.meta.env.BASE_URL; // "/qr-menu/"
+        if (!reg.scope.endsWith(appBase) && !reg.scope.includes(appBase)) {
+          console.log("[SW] Unregistering stale scope:", reg.scope);
+          reg.unregister();
+        }
+      }
+    });
+
     const showUpdateToast = () => {
       if (toastShown.current) return;
       toastShown.current = true;
-
       toast("A new version is available!", {
         duration: Infinity,
         action: { label: "Refresh", onClick: () => window.location.reload() },
@@ -18,7 +30,7 @@ export function useServiceWorker() {
     };
 
     navigator.serviceWorker
-      .register("/sw.js")
+      .register(`${import.meta.env.BASE_URL}sw.js`)
       .then((registration) => {
         console.log("Service Worker registered:", registration);
 
