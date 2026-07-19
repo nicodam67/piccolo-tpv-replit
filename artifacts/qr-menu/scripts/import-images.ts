@@ -141,21 +141,48 @@ async function main() {
   storageLog.forEach((e) => { idMap.storage[e.externalId] = e.convexId; });
   log.info(`${uploadedIds.size} already uploaded, ${storageEntries.length - uploadedIds.size} to go`);
 
-  // ── Open ZIPs ──────────────────────────────────────────────────────────────
+  // ── Open ZIPs (optional) — also support loose files in _storage/ ──────────
   const mediaDir = path.join(input, "media");
+  const storageDir = path.join(input, "_storage");
   const zipPaths = fs.existsSync(mediaDir)
     ? fs.readdirSync(mediaDir).filter((f) => f.endsWith(".zip")).sort()
         .map((f) => path.join(mediaDir, f))
     : [];
-  if (zipPaths.length === 0) {
-    log.error(`No ZIPs found in ${mediaDir}`);
-    log.info("Copy the piccolo_qr_media_XX.zip files there and re-run.");
+  const hasLooseFiles = fs.existsSync(storageDir);
+
+  if (zipPaths.length === 0 && !hasLooseFiles) {
+    log.error(`No ZIPs found in ${mediaDir} and no _storage/ directory found.`);
+    log.info("Copy the piccolo_qr_media_XX.zip files to media/ or place loose files in _storage/.");
     process.exit(1);
   }
-  log.info(`Opening ${zipPaths.length} ZIP archive(s)…`);
+
+  if (zipPaths.length > 0) log.info(`Opening ${zipPaths.length} ZIP archive(s)…`);
+  if (hasLooseFiles) log.info(`Also scanning loose files in ${storageDir}`);
   const zips = zipPaths.map((p) => new AdmZip(p));
 
-  function findInZips(internalId: string): Buffer | null {
+  // Extension map derived from contentType
+  function extFor(contentType: string): string {
+    const map: Record<string, string> = {
+      "image/jpeg": ".jpeg", "image/jpg": ".jpg", "image/png": ".png",
+      "image/webp": ".webp", "image/gif": ".gif", "video/mp4": ".mp4",
+    };
+    return map[contentType] ?? "";
+  }
+
+  function findFile(storageId: string, internalId: string, contentType: string): Buffer | null {
+    // 1. Try loose files named by storageId (Convex backup format)
+    if (hasLooseFiles) {
+      const ext = extFor(contentType);
+      const candidates = ext
+        ? [path.join(storageDir, storageId + ext)]
+        : fs.readdirSync(storageDir)
+            .filter((f) => f.startsWith(storageId) && !f.endsWith(".jsonl"))
+            .map((f) => path.join(storageDir, f));
+      for (const candidate of candidates) {
+        if (fs.existsSync(candidate)) return fs.readFileSync(candidate);
+      }
+    }
+    // 2. Try ZIPs by internalId
     for (const zip of zips) {
       const entry = zip.getEntry(internalId) ?? zip.getEntry(path.basename(internalId));
       if (entry) return zip.readFile(entry);
@@ -179,18 +206,23 @@ async function main() {
       continue;
     }
 
-    const data = findInZips(entry.internalId);
+    const data = findFile(entry._id, entry.internalId, entry.contentType);
     if (!data) {
-      log.error(`  Not found: ${entry.internalId}`);
+      log.error(`  Not found: ${entry._id} / ${entry.internalId}`);
       report.summary.missing++;
       report.images.push({ storageId: entry._id, internalId: entry.internalId, status: "missing" });
       continue;
     }
 
-    // Integrity check
-    const actualHash = sha256(data);
-    if (entry.sha256 && actualHash !== entry.sha256) {
-      log.error(`  Hash mismatch: ${entry.internalId} (expected ${entry.sha256}, got ${actualHash})`);
+    // Integrity check — backup sha256 may be base64-encoded; normalise both to hex
+    const actualHashHex = sha256(data);
+    let expectedHashHex = entry.sha256 ?? "";
+    if (expectedHashHex && !expectedHashHex.match(/^[0-9a-f]{64}$/i)) {
+      // Looks like base64 — convert to hex
+      expectedHashHex = Buffer.from(expectedHashHex, "base64").toString("hex");
+    }
+    if (expectedHashHex && actualHashHex !== expectedHashHex) {
+      log.error(`  Hash mismatch: ${entry._id} (expected ${expectedHashHex}, got ${actualHashHex})`);
       report.summary.error++;
       report.images.push({ storageId: entry._id, internalId: entry.internalId, status: "error", error: "sha256 mismatch" });
       continue;
@@ -209,7 +241,7 @@ async function main() {
       idMap.storage[entry._id] = newId;
       await client.mutation(fn.markImported, { table: "_storage", externalId: entry._id, convexId: newId, status: "ok", secret });
       report.summary.uploaded++;
-      report.images.push({ storageId: entry._id, internalId: entry.internalId, status: "ok", newStorageId: newId, contentType: entry.contentType, size: data.length, sha256: actualHash });
+      report.images.push({ storageId: entry._id, internalId: entry.internalId, status: "ok", newStorageId: newId, contentType: entry.contentType, size: data.length, sha256: actualHashHex });
       counter++;
       if (counter % 25 === 0) { log.ok(`  ${counter + report.summary.skipped}/${storageEntries.length}`); saveIdMap(input, idMap); }
     } catch (err) {

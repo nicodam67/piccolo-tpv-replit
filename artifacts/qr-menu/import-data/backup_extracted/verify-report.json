@@ -1,0 +1,49 @@
+{
+  "generatedAt": "2026-07-19T12:54:23.530Z",
+  "passed": true,
+  "checks": {
+    "categories": {
+      "source": 26,
+      "convex": 26,
+      "ok": true
+    },
+    "menuItems": {
+      "source": 195,
+      "convex": 195,
+      "ok": true
+    },
+    "branding": {
+      "source": 1,
+      "convex": 1,
+      "ok": true
+    }
+  },
+  "issues": [],
+  "idMapCompleteness": {
+    "categories": "26/26",
+    "menuItems": "195/195",
+    "storage": "262/262"
+  },
+  "importLogSummary": {
+    "_storage": {
+      "error": 0,
+      "ok": 262,
+      "skipped": 0
+    },
+    "branding": {
+      "error": 0,
+      "ok": 1,
+      "skipped": 0
+    },
+    "categories": {
+      "error": 0,
+      "ok": 26,
+      "skipped": 0
+    },
+    "menuItems": {
+      "error": 0,
+      "ok": 195,
+      "skipped": 0
+    }
+  }
+}
