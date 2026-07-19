@@ -5,8 +5,8 @@
  * user session auth so they can be called from CLI scripts.
  *
  * Usage from scripts:
- *   const convex = new ConvexHttpClient(process.env.VITE_CONVEX_URL);
- *   await convex.mutation(api.importSupport.markImported, { ... });
+ *   const convex = new ConvexHttpClient(process.env.CONVEX_URL);
+ *   await convex.mutation(api.importSupport.importBatch, { ... });
  */
 
 import { mutation, query } from "./_generated/server";
@@ -14,7 +14,6 @@ import { v } from "convex/values";
 import { ConvexError } from "convex/values";
 
 // ── Auth helper for import scripts ────────────────────────────────────────────
-// Scripts must pass the CONVEX_IMPORT_SECRET env var to authenticate.
 function requireImportSecret(secret: string | undefined) {
   const expected = process.env.CONVEX_IMPORT_SECRET;
   if (!expected || secret !== expected) {
@@ -31,17 +30,16 @@ export const checkImported = query({
   },
   handler: async (ctx, args) => {
     requireImportSecret(args.secret);
-    const existing = await ctx.db
+    return await ctx.db
       .query("importLog")
       .withIndex("by_table_and_external_id", (q) =>
         q.eq("table", args.table).eq("externalId", args.externalId),
       )
-      .first();
-    return existing ?? null;
+      .first() ?? null;
   },
 });
 
-// ── Mark a record as imported ─────────────────────────────────────────────────
+// ── Mark a record as imported (upsert) ───────────────────────────────────────
 export const markImported = mutation({
   args: {
     table: v.string(),
@@ -55,7 +53,6 @@ export const markImported = mutation({
   handler: async (ctx, args) => {
     requireImportSecret(args.secret);
     const { secret, ...rest } = args;
-    // Upsert: update if exists, insert if not
     const existing = await ctx.db
       .query("importLog")
       .withIndex("by_table_and_external_id", (q) =>
@@ -70,7 +67,7 @@ export const markImported = mutation({
   },
 });
 
-// ── Batch-import records into a table ─────────────────────────────────────────
+// ── Batch-import records, returns old→new ID pairs ───────────────────────────
 export const importBatch = mutation({
   args: {
     table: v.union(
@@ -86,15 +83,61 @@ export const importBatch = mutation({
     const inserted: Array<{ externalId: string; convexId: string }> = [];
     for (const record of args.records) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { _id: externalId, ...data } = record as any;
-      const convexId = await ctx.db.insert(args.table as "categories" | "menuItems" | "branding", data);
+      const { _id: externalId, _creationTime, ...rawData } = record as any;
+      // Strip any migration-only metadata (fields starting with _old) so they
+      // never reach the schema-validated table writer.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const data = Object.fromEntries(
+        Object.entries(rawData as Record<string, unknown>).filter(([k]) => !k.startsWith("_old")),
+      );
+      const convexId = await ctx.db.insert(
+        args.table as "categories" | "menuItems" | "branding",
+        data,
+      );
       inserted.push({ externalId: String(externalId), convexId });
+      // Auto-log in importLog
+      await ctx.db.insert("importLog", {
+        table: args.table,
+        externalId: String(externalId),
+        convexId,
+        importedAt: Date.now(),
+        status: "ok",
+      });
     }
     return inserted;
   },
 });
 
-// ── Get full import log (for verification scripts) ────────────────────────────
+// ── Patch a document (to update storage IDs after upload) ────────────────────
+export const patchDocument = mutation({
+  args: {
+    table: v.union(
+      v.literal("categories"),
+      v.literal("menuItems"),
+      v.literal("branding"),
+    ),
+    convexId: v.string(),
+    fields: v.any(),
+    secret: v.string(),
+  },
+  handler: async (ctx, args) => {
+    requireImportSecret(args.secret);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const id = args.convexId as any;
+    await ctx.db.patch(id, args.fields);
+  },
+});
+
+// ── Generate a storage upload URL (for importing media files) ─────────────────
+export const generateImportUploadUrl = mutation({
+  args: { secret: v.string() },
+  handler: async (ctx, args) => {
+    requireImportSecret(args.secret);
+    return await ctx.storage.generateUploadUrl();
+  },
+});
+
+// ── Get the import log for all tables or a specific table ─────────────────────
 export const getImportLog = query({
   args: {
     table: v.optional(v.string()),
@@ -109,6 +152,22 @@ export const getImportLog = query({
         .collect();
     }
     return await ctx.db.query("importLog").collect();
+  },
+});
+
+// ── Summary counts by table ───────────────────────────────────────────────────
+export const getImportSummary = query({
+  args: { secret: v.string() },
+  handler: async (ctx, args) => {
+    requireImportSecret(args.secret);
+    const all = await ctx.db.query("importLog").collect();
+    const byTable: Record<string, { ok: number; error: number; skipped: number }> = {};
+    for (const entry of all) {
+      if (!byTable[entry.table]) byTable[entry.table] = { ok: 0, error: 0, skipped: 0 };
+      const status = (entry.status ?? "ok") as "ok" | "error" | "skipped";
+      if (status in byTable[entry.table]) byTable[entry.table][status]++;
+    }
+    return byTable;
   },
 });
 
@@ -128,5 +187,22 @@ export const clearImportLog = mutation({
       await ctx.db.delete(entry._id);
     }
     return { deleted: entries.length };
+  },
+});
+
+// ── List all documents in a table (admin check) ───────────────────────────────
+export const countTable = query({
+  args: {
+    table: v.union(
+      v.literal("categories"),
+      v.literal("menuItems"),
+      v.literal("branding"),
+    ),
+    secret: v.string(),
+  },
+  handler: async (ctx, args) => {
+    requireImportSecret(args.secret);
+    const docs = await ctx.db.query(args.table as "categories" | "menuItems" | "branding").collect();
+    return docs.length;
   },
 });

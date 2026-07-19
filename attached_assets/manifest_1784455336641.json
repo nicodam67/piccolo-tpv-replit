@@ -1,0 +1,35 @@
+{
+  "source": "snapshot_base datos qr.menu.zip",
+  "media_files": 262,
+  "packages": [
+    {
+      "file": "piccolo_qr_media_01.zip",
+      "files": 58,
+      "size_bytes": 111053048,
+      "sha256": "f0287678a31fe9f2f405f6aff974d22c16475b6d7b5fdc5ada00f8266cb8c694"
+    },
+    {
+      "file": "piccolo_qr_media_02.zip",
+      "files": 63,
+      "size_bytes": 118136902,
+      "sha256": "5333698a956b8d42523a75acf9bad59e8bfc78993036337011973be63026f022"
+    },
+    {
+      "file": "piccolo_qr_media_03.zip",
+      "files": 78,
+      "size_bytes": 119637896,
+      "sha256": "b296dab35a77fcb03e54c1844940a8d77434cb12ddfc12549278287f1e34f875"
+    },
+    {
+      "file": "piccolo_qr_media_04.zip",
+      "files": 63,
+      "size_bytes": 115554032,
+      "sha256": "78b8199ecd4aa5cff00e689501b9b6d1adf82faab706cd96c300eb71fbe54de7"
+    }
+  ],
+  "data_package": {
+    "file": "piccolo_qr_datos.zip",
+    "size_bytes": 95270,
+    "sha256": "a2e96f7ceb7afd716f2d910ad96c653cd0e4b61f70471f816b1c6181687c15df"
+  }
+}

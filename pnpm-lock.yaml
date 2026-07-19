@@ -778,6 +778,9 @@ importers:
       '@tanstack/react-query':
         specifier: 'catalog:'
         version: 5.101.2(react@19.1.0)
+      '@types/adm-zip':
+        specifier: ^0.5.7
+        version: 0.5.8
       '@types/node':
         specifier: 'catalog:'
         version: 25.9.5
@@ -802,6 +805,9 @@ importers:
       '@vitejs/plugin-react':
         specifier: 'catalog:'
         version: 5.2.0(vite@7.3.6(@types/node@25.9.5)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.0)(yaml@2.9.0))
+      adm-zip:
+        specifier: ^0.5.16
+        version: 0.5.18
       class-variance-authority:
         specifier: 'catalog:'
         version: 0.7.1
@@ -889,6 +895,9 @@ importers:
       tailwindcss:
         specifier: 'catalog:'
         version: 4.3.2
+      tsx:
+        specifier: ^4.19.4
+        version: 4.23.0
       tw-animate-css:
         specifier: ^1.4.0
         version: 1.4.0
@@ -1977,6 +1986,9 @@ packages:
     peerDependencies:
       react: ^18 || ^19
 
+  '@types/adm-zip@0.5.8':
+    resolution: {integrity: sha512-RVVH7QvZYbN+ihqZ4kX/dMiowf6o+Jk1fNwiSdx0NahBJLU787zkULhGhJM8mf/obmLGmgdMM0bXsQTmyfbR7Q==}
+
   '@types/babel__core@7.20.5':
     resolution: {integrity: sha512-qoQprZvz5wQFJwMDqeseRXWv3rqMvhgpbXFfVyWhbx9X47POIA6i/+dXefEmZKoAgOaTdaIgNSMqMIU61yRyzA==}
 
@@ -2178,6 +2190,10 @@ packages:
     resolution: {integrity: sha512-xRQbDb9BnwDafYNn6Vwl839DYVjqXYb1XVGtWAZ1kcDc6iwAL4hg3B1dZlRiuENFeO2H53gFG3in621AdERVAg==}
     engines: {node: '>=0.4.0'}
     hasBin: true
+
+  adm-zip@0.5.18:
+    resolution: {integrity: sha512-ufJnssQGbxzLNS1Ho9bCtX4rQKCCvoVuDLHoJyc3F9dOGDB4BkWs2Ci0kv53lqocAEQ/Cbi+I2XCsNYGqVYqng==}
+    engines: {node: '>=12.0'}
 
   ajv-draft-04@1.0.0:
     resolution: {integrity: sha512-mv00Te6nmYbRp5DCwclxtt7yV/joXJPGS7nM+97GdxvuttCOfgI3K4U25zboyeX0O+myI8ERluxQe5wljMmVIw==}
@@ -5571,6 +5587,10 @@ snapshots:
       '@tanstack/query-core': 5.101.2
       react: 19.1.0
 
+  '@types/adm-zip@0.5.8':
+    dependencies:
+      '@types/node': 25.9.5
+
   '@types/babel__core@7.20.5':
     dependencies:
       '@babel/parser': 7.29.7
@@ -5824,6 +5844,8 @@ snapshots:
       negotiator: 1.0.0
 
   acorn@8.17.0: {}
+
+  adm-zip@0.5.18: {}
 
   ajv-draft-04@1.0.0(ajv@8.20.0):
     optionalDependencies:

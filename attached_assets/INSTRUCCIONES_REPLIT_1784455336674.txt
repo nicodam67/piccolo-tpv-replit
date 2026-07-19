@@ -1,0 +1,11 @@
+TAREA DE IMPORTACIÓN PARA REPLIT
+
+1. Subir piccolo_qr_datos.zip y todos los piccolo_qr_media_XX.zip.
+2. Crear import_piccolo_qr.
+3. Descomprimir todos los ZIP dentro de esa misma carpeta, conservando rutas internas.
+4. Verificar branding/documents.jsonl, categories/documents.jsonl, menuItems/documents.jsonl, _storage/documents.jsonl y archivos en _storage/.
+5. No cambiar los nombres de _storage.
+6. Crear un importador reanudable: primero tablas, después storage, manteniendo relaciones por IDs antiguos.
+7. Validar recuentos, archivos faltantes y duplicados.
+
+Todos los paquetes son ZIP estándar y menores de 150 MB.
