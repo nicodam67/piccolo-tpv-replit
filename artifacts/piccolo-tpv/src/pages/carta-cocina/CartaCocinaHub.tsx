@@ -12,7 +12,7 @@ export default function CartaCocinaHub() {
 
   // El QR Menú es un artefacto independiente montado en /qr-menu (raíz del workspace),
   // no un sub-path del TPV — no usar BASE_URL aquí.
-  const qrMenuHref = `${window.location.origin}/qr-menu`;
+  const qrMenuHref = `${window.location.origin}/qr-menu/`;
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
