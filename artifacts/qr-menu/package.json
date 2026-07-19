@@ -8,9 +8,13 @@
     "build": "vite build --config vite.config.ts",
     "serve": "vite preview --config vite.config.ts --host 0.0.0.0",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "import:data": "tsx scripts/import-data.ts",
+    "import:images": "tsx scripts/import-images.ts",
+    "import:verify": "tsx scripts/verify-import.ts",
+    "import:report": "tsx scripts/export-import-report.ts",
     "import:tables": "tsx scripts/import/01-import-tables.ts",
     "import:storage": "tsx scripts/import/02-import-storage.ts",
-    "import:verify": "tsx scripts/import/03-verify.ts"
+    "import:verify-legacy": "tsx scripts/import/03-verify.ts"
   },
   "devDependencies": {
     "@auth/core": "^0.37.0",
