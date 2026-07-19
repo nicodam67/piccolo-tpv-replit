@@ -12,6 +12,7 @@ import type * as adminAuth from "../adminAuth.js";
 import type * as auth from "../auth.js";
 import type * as branding from "../branding.js";
 import type * as files from "../files.js";
+import type * as http from "../http.js";
 import type * as importSupport from "../importSupport.js";
 import type * as menu from "../menu.js";
 import type * as seed from "../seed.js";
@@ -30,6 +31,7 @@ declare const fullApi: ApiFromModules<{
   auth: typeof auth;
   branding: typeof branding;
   files: typeof files;
+  http: typeof http;
   importSupport: typeof importSupport;
   menu: typeof menu;
   seed: typeof seed;
