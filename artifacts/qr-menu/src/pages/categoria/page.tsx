@@ -73,8 +73,9 @@ export default function CategoriaPage() {
   const hasFilters = !!(activeTag || activeAllergen);
 
   // ── Colors ────────────────────────────────────────────────────────────────
-  const catCardBg   = branding?.themeColors?.categoryCardBg   ?? "#ffffff";
-  const catCardText = branding?.themeColors?.categoryCardText ?? branding?.themeColors?.primary ?? "#c41a1a";
+  const catCardBg        = branding?.themeColors?.categoryCardBg   ?? "#ffffff";
+  const catCardText      = branding?.themeColors?.categoryCardText ?? branding?.themeColors?.primary ?? "#c41a1a";
+  const cardChevronColor = branding?.themeFonts?.headingColor ?? catCardText;
 
   // ── Pill helpers ──────────────────────────────────────────────────────────
   const pillBase: React.CSSProperties = {
@@ -97,7 +98,7 @@ export default function CategoriaPage() {
 
   // ─────────────────────────────────────────────────────────────────────────
   return (
-    <div style={{ minHeight: "100vh", background: "#f0f0f0" }}>
+    <div style={{ minHeight: "100vh", background: branding?.themeColors?.background ?? "#ffffff" }}>
 
       {/* ── STICKY HEADER (back + title + filters) ───────────────────────── */}
       <header style={{
@@ -195,7 +196,7 @@ export default function CategoriaPage() {
                   }}
                 >
                   <div style={{ minWidth: 0 }}>
-                    <span style={{
+                    <span data-heading="" style={{
                       display: "block",
                       fontSize: "1.2rem", fontWeight: "bold",
                       fontFamily: "var(--font-serif, serif)",
@@ -209,7 +210,7 @@ export default function CategoriaPage() {
                       </span>
                     )}
                   </div>
-                  <ChevronRight style={{ color: catCardText, width: "20px", height: "20px", flexShrink: 0 }} />
+                  <ChevronRight style={{ color: cardChevronColor, width: "20px", height: "20px", flexShrink: 0 }} />
                 </motion.button>
               );
             })}

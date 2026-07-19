@@ -100,12 +100,14 @@ export function removeThemeColors() {
 }
 
 // Custom uploaded fonts map (value -> local path served from public/fonts/)
+// NOTE: paths are relative to the Vite base path (e.g. /qr-menu/) so we
+// must use import.meta.env.BASE_URL to avoid loading from the wrong origin root.
 const CUSTOM_FONT_URLS: Record<string, string> = {
-  "Algerian__custom": "/fonts/Algerian__custom.ttf",
-  "AvantGardeBk__custom": "/fonts/AvantGardeBk__custom.ttf",
-  "AmericanTextBT__custom": "/fonts/AmericanTextBT__custom.ttf",
-  "ZapfChanDm__custom": "/fonts/ZapfChanDm__custom.ttf",
-  "ZapfChanMd__custom": "/fonts/ZapfChanMd__custom.ttf",
+  "Algerian__custom": `${import.meta.env.BASE_URL}fonts/Algerian__custom.ttf`,
+  "AvantGardeBk__custom": `${import.meta.env.BASE_URL}fonts/AvantGardeBk__custom.ttf`,
+  "AmericanTextBT__custom": `${import.meta.env.BASE_URL}fonts/AmericanTextBT__custom.ttf`,
+  "ZapfChanDm__custom": `${import.meta.env.BASE_URL}fonts/ZapfChanDm__custom.ttf`,
+  "ZapfChanMd__custom": `${import.meta.env.BASE_URL}fonts/ZapfChanMd__custom.ttf`,
 };
 
 function isCustomFont(value: string) {

@@ -46,6 +46,8 @@ export default function Index() {
   const heroEstColor     = branding?.themeColors?.heroEstablishedColor ?? accentColor;
   const catCardBg        = branding?.themeColors?.categoryCardBg      ?? "#ffffff";
   const catCardText      = branding?.themeColors?.categoryCardText    ?? branding?.themeColors?.primary ?? "#c41a1a";
+  // Chevrons use heading color (matches font heading color set in applyThemeFonts)
+  const cardChevronColor = branding?.themeFonts?.headingColor ?? catCardText;
 
   // ── Filter state ──────────────────────────────────────────────────────────
   const [activeAllergen, setActiveAllergen] = useState<string | null>(null);
@@ -90,7 +92,7 @@ export default function Index() {
 
   // ─────────────────────────────────────────────────────────────────────────
   return (
-    <div style={{ minHeight: "100vh", background: "#f0f0f0" }}>
+    <div style={{ minHeight: "100vh", background: branding?.themeColors?.background ?? "#ffffff" }}>
 
       {/* ── HERO ─────────────────────────────────────────────────────────── */}
       <header style={{ position: "relative", minHeight: "50vmax", background: "#1a0a08", overflow: "hidden" }}>
@@ -259,7 +261,7 @@ export default function Index() {
                     minHeight: "68px",
                   }}
                 >
-                  <span style={{
+                  <span data-heading="" style={{
                     fontSize: "clamp(0.85rem, 2.8vw, 1.1rem)",
                     fontWeight: "bold",
                     fontFamily: "var(--font-serif, serif)",
@@ -272,7 +274,7 @@ export default function Index() {
                   }}>
                     {name}
                   </span>
-                  <ChevronRight style={{ color: catCardText, width: "18px", height: "18px", flexShrink: 0 }} />
+                  <ChevronRight style={{ color: cardChevronColor, width: "18px", height: "18px", flexShrink: 0 }} />
                 </motion.button>
               );
             })}
