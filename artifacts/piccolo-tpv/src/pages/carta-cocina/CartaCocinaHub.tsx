@@ -1,24 +1,18 @@
 /**
- * CartaCocinaHub — ZONA EN RECONSTRUCCIÓN.
+ * CartaCocinaHub — punto de entrada temporal al módulo Carta y Cocina.
  *
- * El módulo "Carta y Cocina" (QR Menú + Food Cost) está siendo
- * reconstruido desde una base limpia.
- *
- * Esta página es el único punto de entrada temporal hasta que
- * el nuevo diseño esté aprobado e implementado.
- *
- * NO contiene:
- * - Convex / Hercules
- * - iframes
- * - tarjetas de navegación fragmentadas
- * - imports CSS externos
- * - datos demo
+ * Muestra el QR Menú público y reserva espacio para las herramientas de
+ * gestión que se añadirán en fases posteriores.
  */
 import { useLocation } from 'wouter';
-import { ChevronLeft, Construction } from 'lucide-react';
+import { ChevronLeft, QrCode, ExternalLink } from 'lucide-react';
 
 export default function CartaCocinaHub() {
   const [, nav] = useLocation();
+
+  // Construye la URL pública del QR menú para abrirla en nueva pestaña
+  const qrMenuHref = `${window.location.origin}${import.meta.env.BASE_URL}qr-menu`.replace(/\/\//g, '/').replace(/:\//,'://');
+
   return (
     <div className="min-h-screen bg-background flex flex-col">
       {/* Header */}
@@ -30,37 +24,49 @@ export default function CartaCocinaHub() {
           <ChevronLeft size={16} />
           <span>Volver al panel</span>
         </button>
+        <span className="text-sm font-semibold text-foreground">Carta y Cocina</span>
       </header>
 
       {/* Contenido */}
       <main className="flex-1 flex items-center justify-center p-8">
         <div className="max-w-sm w-full text-center space-y-6">
-          {/* Icono */}
-          <div className="w-24 h-24 rounded-3xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 flex items-center justify-center mx-auto">
-            <Construction size={40} className="text-amber-500" />
+
+          {/* Icono QR */}
+          <div className="w-24 h-24 rounded-3xl bg-primary/10 border border-primary/20 flex items-center justify-center mx-auto">
+            <QrCode size={40} className="text-primary" />
           </div>
 
           {/* Texto */}
           <div>
             <h1 className="text-2xl font-black text-foreground mb-2">
-              Carta y Cocina
+              QR Menú
             </h1>
-            <p className="text-base font-medium text-amber-600 dark:text-amber-400 mb-3">
-              En reconstrucción
-            </p>
             <p className="text-sm text-muted-foreground leading-relaxed">
-              Carta y Cocina se está reconstruyendo desde una base limpia.
+              Carta pública para clientes — escanea el QR de mesa o comparte el enlace directo.
             </p>
           </div>
 
-          {/* Botón volver */}
-          <button
-            onClick={() => nav('/admin')}
-            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity"
+          {/* Botón principal — abre en nueva pestaña */}
+          <a
+            href={qrMenuHref}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 transition-opacity w-full justify-center"
           >
-            <ChevronLeft size={16} />
-            Volver al panel
-          </button>
+            <QrCode size={16} />
+            Ver carta pública
+            <ExternalLink size={14} className="ml-1 opacity-70" />
+          </a>
+
+          {/* URL directa para copiar */}
+          <div className="bg-muted/50 rounded-lg p-3 text-left">
+            <p className="text-xs text-muted-foreground mb-1 font-medium">Enlace directo</p>
+            <p className="text-xs font-mono text-foreground break-all select-all">{qrMenuHref}</p>
+          </div>
+
+          <p className="text-xs text-muted-foreground/60">
+            Fase 1 — diseño en validación
+          </p>
         </div>
       </main>
     </div>
