@@ -10,8 +10,9 @@ import { ChevronLeft, QrCode, ExternalLink } from 'lucide-react';
 export default function CartaCocinaHub() {
   const [, nav] = useLocation();
 
-  // Construye la URL pública del QR menú para abrirla en nueva pestaña
-  const qrMenuHref = `${window.location.origin}${import.meta.env.BASE_URL}qr-menu`.replace(/\/\//g, '/').replace(/:\//,'://');
+  // El QR Menú es un artefacto independiente montado en /qr-menu (raíz del workspace),
+  // no un sub-path del TPV — no usar BASE_URL aquí.
+  const qrMenuHref = `${window.location.origin}/qr-menu`;
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
