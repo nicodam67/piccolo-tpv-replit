@@ -51,6 +51,38 @@
 
 ---
 
+## Análisis del backup de código (entrega 1 — 2026-07-19)
+
+El archivo `app_(1).tar.gz` contiene el **código fuente** del proyecto Convex original (no datos).
+
+### Hallazgos clave
+
+| Aspecto | Estado |
+|---------|--------|
+| Esquema del backup | ✅ **100% idéntico** al nuevo `convex/schema.ts` — sin diferencias |
+| `convex.json` | Sin `projectId` — no hay enlace a ningún proyecto concreto |
+| `convex/auth.config.ts` | Hércules OIDC: `HERCULES_OIDC_AUTHORITY` + `HERCULES_OIDC_CLIENT_ID` |
+| `convex/translate.ts` | Usa cliente OpenAI-compatible (`new OpenAI({ baseURL: "https://ai-gateway.hercules.app/v1" })`) con `HERCULES_API_KEY` — **migración trivial**: cambiar baseURL y API key |
+| `convex/seed.ts` | Solo datos DEMO (Burrata, Filet Mignon…) — **no** es el menú real de Piccolo |
+| `convex/menu.ts` | CRUD completo: categorías, ítems, traducciones, reordenar |
+| `convex/branding.ts` | Upsert único documento de branding, resuelve URLs de Storage |
+
+### Conclusión
+- El esquema está listo para el proyecto nuevo tal como está.
+- Los datos reales del menú (categorías y platos de Piccolo la Ràpita) llegarán en las entregas siguientes.
+- Para Task #275, `translate.ts` solo necesita cambiar `baseURL` → `https://api.openai.com/v1` y `apiKey` → la nueva clave.
+
+### Formato esperado para las entregas de datos
+Convex exporta los datos como archivos JSON con un documento por línea (NDJSON) o como array JSON.
+Si exportas desde el dashboard, cada tabla genera un fichero separado:
+```
+categories.json   → array de objetos con _id, _creationTime, name, order, ...
+menuItems.json    → array de objetos con _id, _creationTime, categoryId, name, price, ...
+branding.json     → array con 1 objeto (el único documento de branding)
+```
+
+---
+
 ## Cambios realizados en Task #272
 
 ### Esquema (`convex/schema.ts`)
