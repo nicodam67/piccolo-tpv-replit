@@ -6,7 +6,7 @@ import type { Doc } from "@/convex/_generated/dataModel.d.ts";
 import MenuItemCard from "../_components/MenuItemCard.tsx";
 import ItemDetailModal from "../_components/ItemDetailModal.tsx";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { ArrowLeft, ChevronRight, Search } from "lucide-react";
+import { ArrowLeft, ChevronRight, Clock, Phone, Search } from "lucide-react";
 import { DIETARY_TAGS } from "@/lib/dietary-tags.ts";
 import { ALLERGENS } from "@/lib/allergens.ts";
 import { useTranslation } from "react-i18next";
@@ -15,6 +15,8 @@ import { localizeCategory } from "@/lib/translations.ts";
 import { useThemeColors, useThemeFonts } from "@/hooks/use-theme-colors.ts";
 import { DEFAULT_CARD_SETTINGS } from "@/pages/admin/_components/CardSettingsManager.tsx";
 import type { CardSettings } from "@/pages/admin/_components/CardSettingsManager.tsx";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog.tsx";
+import ScheduleDisplay from "../_components/ScheduleDisplay.tsx";
 
 export default function CategoriaPage() {
   const { lng, categoryId } = useParams<{ lng: string; categoryId: string }>();
@@ -62,6 +64,7 @@ export default function CategoriaPage() {
   const [activeTag,      setActiveTag     ] = useState<string | null>(searchParams.get("tag"));
   const [activeAllergen, setActiveAllergen] = useState<string | null>(searchParams.get("allergen"));
   const [selectedItem,   setSelectedItem  ] = useState<Doc<"menuItems"> | null>(null);
+  const [scheduleOpen,   setScheduleOpen  ] = useState(false);
 
   const displayedItems = useMemo(() => {
     let result = [...(items ?? [])].sort((a, b) => a.order - b.order);
@@ -166,7 +169,7 @@ export default function CategoriaPage() {
       </header>
 
       {/* ── CONTENT ──────────────────────────────────────────────────────── */}
-      <main style={{ maxWidth: "800px", margin: "0 auto", padding: "24px 12px" }}>
+      <main style={{ maxWidth: "800px", margin: "0 auto", padding: "24px 12px 120px" }}>
         {catDescription && !hasFilters && !hasSubcategories && (
           <p style={{ color: "#6b7280", marginBottom: "24px", fontSize: "0.875rem" }}>{catDescription}</p>
         )}
@@ -267,6 +270,66 @@ export default function CategoriaPage() {
       </main>
 
       <ItemDetailModal item={selectedItem} onClose={() => setSelectedItem(null)} />
+
+      {/* ── FLOATING BUTTONS ─────────────────────────────────────────────── */}
+      {branding !== undefined && (
+        <button
+          data-schedule-btn
+          onClick={() => setScheduleOpen(true)}
+          style={{
+            position: "fixed", bottom: "24px", left: "16px", zIndex: 50,
+            display: "flex", alignItems: "center", gap: "8px",
+            padding: "12px 16px", borderRadius: "9999px",
+            boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+            fontSize: "14px", fontWeight: 500, cursor: "pointer",
+            border: "1px solid #e5e7eb",
+            background: branding?.themeColors?.scheduleButtonBg ?? "#ffffff",
+            color: branding?.themeColors?.scheduleButtonText ?? "#374151",
+          }}
+        >
+          <Clock style={{ width: "16px", height: "16px" }} />
+          <span>{t("schedule.title")}</span>
+        </button>
+      )}
+
+      {branding?.phone && (
+        <a
+          data-call-btn
+          href={`tel:${branding.phone}`}
+          style={{
+            position: "fixed", bottom: "24px", right: "16px", zIndex: 50,
+            display: "flex", alignItems: "center", gap: "8px",
+            padding: "12px 16px", borderRadius: "9999px",
+            boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+            fontSize: "14px", fontWeight: 500,
+            textDecoration: "none",
+            background: branding?.themeColors?.callButtonBg ?? "#c41a1a",
+            color: branding?.themeColors?.callButtonText ?? "#ffffff",
+          }}
+        >
+          <Phone style={{ width: "16px", height: "16px" }} />
+          <span>{t("call")}</span>
+        </a>
+      )}
+
+      {/* ── SCHEDULE MODAL ───────────────────────────────────────────────── */}
+      <Dialog open={scheduleOpen} onOpenChange={setScheduleOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle style={{ fontFamily: "var(--font-serif, serif)" }}>
+              {t("schedule.title")}
+            </DialogTitle>
+          </DialogHeader>
+          {branding?.schedule && branding.schedule.length > 0
+            ? <ScheduleDisplay schedule={branding.schedule} />
+            : (
+              <p style={{ textAlign: "center", color: "#9ca3af", padding: "1rem 0", fontStyle: "italic" }}>
+                {t("schedule.no_schedule")}
+              </p>
+            )
+          }
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
