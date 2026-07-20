@@ -99,15 +99,17 @@ export function removeThemeColors() {
   if (el) el.remove();
 }
 
-// Custom uploaded fonts map (value -> local path served from public/fonts/)
-// NOTE: paths are relative to the Vite base path (e.g. /qr-menu/) so we
-// must use import.meta.env.BASE_URL to avoid loading from the wrong origin root.
-const CUSTOM_FONT_URLS: Record<string, string> = {
-  "Algerian__custom": `${import.meta.env.BASE_URL}fonts/Algerian__custom.ttf`,
-  "AvantGardeBk__custom": `${import.meta.env.BASE_URL}fonts/AvantGardeBk__custom.ttf`,
-  "AmericanTextBT__custom": `${import.meta.env.BASE_URL}fonts/AmericanTextBT__custom.ttf`,
-  "ZapfChanDm__custom": `${import.meta.env.BASE_URL}fonts/ZapfChanDm__custom.ttf`,
-  "ZapfChanMd__custom": `${import.meta.env.BASE_URL}fonts/ZapfChanMd__custom.ttf`,
+// Custom uploaded fonts map (value -> public/fonts/ paths served under Vite base).
+// WOFF2 is served first (smaller, universally supported, no OTS quirks from
+// legacy TTF table ordering). TTF is kept as a fallback for very old clients.
+// NOTE: paths use import.meta.env.BASE_URL because the app is mounted at
+// /qr-menu/ — omitting the base would fetch from the wrong origin root.
+const CUSTOM_FONT_URLS: Record<string, { woff2: string; ttf: string }> = {
+  "Algerian__custom":     { woff2: `${import.meta.env.BASE_URL}fonts/Algerian__custom.woff2`,     ttf: `${import.meta.env.BASE_URL}fonts/Algerian__custom.ttf`     },
+  "AvantGardeBk__custom": { woff2: `${import.meta.env.BASE_URL}fonts/AvantGardeBk__custom.woff2`, ttf: `${import.meta.env.BASE_URL}fonts/AvantGardeBk__custom.ttf` },
+  "AmericanTextBT__custom": { woff2: `${import.meta.env.BASE_URL}fonts/AmericanTextBT__custom.woff2`, ttf: `${import.meta.env.BASE_URL}fonts/AmericanTextBT__custom.ttf` },
+  "ZapfChanDm__custom":   { woff2: `${import.meta.env.BASE_URL}fonts/ZapfChanDm__custom.woff2`,   ttf: `${import.meta.env.BASE_URL}fonts/ZapfChanDm__custom.ttf`   },
+  "ZapfChanMd__custom":   { woff2: `${import.meta.env.BASE_URL}fonts/ZapfChanMd__custom.woff2`,   ttf: `${import.meta.env.BASE_URL}fonts/ZapfChanMd__custom.ttf`   },
 };
 
 function isCustomFont(value: string) {
@@ -115,13 +117,15 @@ function isCustomFont(value: string) {
 }
 
 function ensureCustomFontFace(value: string) {
-  const url = CUSTOM_FONT_URLS[value];
-  if (!url) return;
+  const urls = CUSTOM_FONT_URLS[value];
+  if (!urls) return;
   const styleId = `custom-font-${value}`;
   if (document.getElementById(styleId)) return;
   const style = document.createElement("style");
   style.id = styleId;
-  style.textContent = `@font-face { font-family: "${value}"; src: url("${url}") format("truetype"); font-display: swap; }`;
+  // WOFF2 first — modern format with no OTS legacy-TTF parsing issues.
+  // TTF kept as fallback for clients that don't support WOFF2 (< 1% today).
+  style.textContent = `@font-face { font-family: "${value}"; src: url("${urls.woff2}") format("woff2"), url("${urls.ttf}") format("truetype"); font-display: swap; }`;
   document.head.appendChild(style);
 }
 
