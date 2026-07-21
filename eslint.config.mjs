@@ -13,6 +13,8 @@ export default [
     linterOptions: {
       reportUnusedDisableDirectives: false,
     },
+  },
+  {
     ignores: [
       "**/node_modules/**",
       "**/dist/**",
