@@ -292,7 +292,7 @@ describeWithDatabase("PATCH /courier/:courierId/orders/:orderId/status — incid
     const noteText = "Cliente no localizado: no atendió el portero";
     const res = await request(app)
       .patch(`/api/courier/${testCourierId}/orders/${incidentOrderId}/status`)
-      .query({ token: "test-courier-token-uuid-0001" })
+      .set("Authorization", "Bearer test-courier-token-uuid-0001")
       .send({ status: "incident", note: noteText })
       .expect(200);
 
@@ -325,7 +325,7 @@ describeWithDatabase("PATCH /courier/:courierId/orders/:orderId/status — incid
 
     const res = await request(app)
       .patch(`/api/courier/${testCourierId}/orders/${incidentOrderId}/status`)
-      .query({ token: "test-courier-token-uuid-0001" })
+      .set("Authorization", "Bearer test-courier-token-uuid-0001")
       .send({ status: "delivered", note: "Recibido por: Juan García" })
       .expect(200);
 
@@ -344,7 +344,7 @@ describeWithDatabase("PATCH /courier/:courierId/orders/:orderId/status — incid
     if (!incidentOrderId) return;
     const res = await request(app)
       .patch(`/api/courier/${testCourierId}/orders/${incidentOrderId}/status`)
-      .query({ token: "test-courier-token-uuid-0001" })
+      .set("Authorization", "Bearer test-courier-token-uuid-0001")
       .send({ status: "rejected" })  // not allowed from driver app
       .expect(400);
 
@@ -384,7 +384,7 @@ describeWithDatabase("Double-delivered idempotency via courier token endpoint", 
     if (!dblOrderId) return;
     const res = await request(app)
       .patch(`/api/courier/${testCourierId}/orders/${dblOrderId}/status`)
-      .query({ token: "test-courier-token-uuid-0001" })
+      .set("Authorization", "Bearer test-courier-token-uuid-0001")
       .send({ status: "delivered" })
       .expect(200);
     expect(res.body.ok).toBe(true);
@@ -400,7 +400,7 @@ describeWithDatabase("Double-delivered idempotency via courier token endpoint", 
     // Replay the same transition
     const res = await request(app)
       .patch(`/api/courier/${testCourierId}/orders/${dblOrderId}/status`)
-      .query({ token: "test-courier-token-uuid-0001" })
+      .set("Authorization", "Bearer test-courier-token-uuid-0001")
       .send({ status: "delivered" });
 
     // Either idempotent 200 or 409 conflict — both are acceptable; what must NOT happen is a 200 that inflates stats
