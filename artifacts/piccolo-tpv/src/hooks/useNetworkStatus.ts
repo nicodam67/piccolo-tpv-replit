@@ -47,11 +47,9 @@ export function useNetworkStatus(): NetworkStatus {
 
   const triggerSync = useCallback(async () => {
     if (isSyncing) return;
-    const token = localStorage.getItem('token') ?? '';
-    if (!token) return;
     setIsSyncing(true);
     try {
-      await syncQueue(token);
+      await syncQueue();
       await refreshPending();
     } finally {
       setIsSyncing(false);

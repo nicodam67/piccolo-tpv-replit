@@ -26,7 +26,7 @@ function getDeviceId(): string {
 
 /** Register this device with the server if not already done.
  *  Returns false only if the server is unreachable; throws on auth errors. */
-async function ensureDeviceRegistered(token: string): Promise<boolean> {
+async function ensureDeviceRegistered(): Promise<boolean> {
   if (localStorage.getItem(REGISTERED_KEY) === 'true') return true;
 
   const deviceId = getDeviceId();
@@ -35,7 +35,8 @@ async function ensureDeviceRegistered(token: string): Promise<boolean> {
   try {
     const r = await fetch(`${BASE}/api/offline/devices`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
       body: JSON.stringify({ name: deviceName, deviceType: 'tpv', fingerprint: deviceId }),
     });
 
@@ -76,7 +77,7 @@ export async function enqueueOperation(
   return key;
 }
 
-export async function syncQueue(token: string): Promise<{
+export async function syncQueue(): Promise<{
   synced: number;
   conflicts: number;
   failed: number;
@@ -86,7 +87,7 @@ export async function syncQueue(token: string): Promise<{
 
   // Ensure this device is registered before attempting any sync.
   // If registration fails (network down), abort gracefully.
-  const registered = await ensureDeviceRegistered(token);
+  const registered = await ensureDeviceRegistered();
   if (!registered) {
     return { synced: 0, conflicts: 0, failed: 0 };
   }
@@ -108,8 +109,8 @@ export async function syncQueue(token: string): Promise<{
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
         },
+        credentials: 'include',
         body: JSON.stringify({
           deviceId: getDeviceId(),
           operations: batch.map((op) => ({

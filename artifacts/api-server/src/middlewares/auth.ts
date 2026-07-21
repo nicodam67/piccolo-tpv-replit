@@ -63,7 +63,11 @@ declare global {
 
 export async function requireAuth(req: Request, res: Response, next: NextFunction): Promise<void> {
   const header = req.headers.authorization || "";
-  const token = header.startsWith("Bearer ") ? header.slice(7) : null;
+  const bearerToken = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
+  const cookieToken = typeof req.cookies?.piccolo_session === "string"
+    ? req.cookies.piccolo_session
+    : "";
+  const token = bearerToken || cookieToken;
 
   if (!token) {
     res.status(401).json({ error: "No autorizado" });

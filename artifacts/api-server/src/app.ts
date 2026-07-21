@@ -1,6 +1,7 @@
 import express, { type Express } from "express";
 import cors from "cors";
 import pinoHttp from "pino-http";
+import cookieParser from "cookie-parser";
 import router from "./routes";
 import { logger } from "./lib/logger";
 import { sanitizeInputs } from "./middlewares/sanitize";
@@ -58,8 +59,14 @@ app.use(
       callback(new Error(`CORS: origin not allowed — ${origin}`));
     },
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
-    credentials: false,
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "Idempotency-Key",
+      "X-Manager-Token",
+      "X-Courier-Token",
+    ],
+    credentials: true,
   }),
 );
 // Capture raw request body for Stripe webhook signature verification.
@@ -83,6 +90,7 @@ app.use(express.json({
   },
 }));
 app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser());
 
 // Strip HTML tags from all text body fields (defense-in-depth; Zod schemas are
 // still the primary validation layer).

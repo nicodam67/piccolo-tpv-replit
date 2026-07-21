@@ -13,6 +13,20 @@ import { requireAuth } from "../middlewares/auth";
 
 const router: IRouter = Router();
 const DUMMY_PIN_HASH = bcrypt.hashSync(randomUUID(), 10);
+const SESSION_COOKIE = "piccolo_session";
+const SESSION_COOKIE_OPTIONS = {
+  httpOnly: true,
+  secure: process.env["NODE_ENV"] === "production",
+  sameSite: "strict" as const,
+  path: "/api",
+  maxAge: 12 * 60 * 60 * 1000,
+};
+const SESSION_COOKIE_CLEAR_OPTIONS = {
+  httpOnly: SESSION_COOKIE_OPTIONS.httpOnly,
+  secure: SESSION_COOKIE_OPTIONS.secure,
+  sameSite: SESSION_COOKIE_OPTIONS.sameSite,
+  path: SESSION_COOKIE_OPTIONS.path,
+};
 
 function safeSecretEqual(actual: string, expected: string): boolean {
   const actualBuffer = Buffer.from(actual);
@@ -130,6 +144,7 @@ router.post("/auth/pin", pinLoginLimiter, async (req, res): Promise<void> => {
     secret,
     { expiresIn: "12h" }
   );
+  res.cookie(SESSION_COOKIE, token, SESSION_COOKIE_OPTIONS);
 
   res.json({
     token,
@@ -154,6 +169,7 @@ router.post("/auth/logout", requireAuth, async (req, res): Promise<void> => {
 
   // Tokens without jti cannot be individually revoked — treat as logged out.
   if (!user.jti || !user.exp) {
+    res.clearCookie(SESSION_COOKIE, SESSION_COOKIE_CLEAR_OPTIONS);
     res.json({ ok: true });
     return;
   }
@@ -176,6 +192,7 @@ router.post("/auth/logout", requireAuth, async (req, res): Promise<void> => {
     .where(lt(revokedTokensTable.expiresAt, new Date()))
     .catch(() => {/* ignore cleanup errors */});
 
+  res.clearCookie(SESSION_COOKIE, SESSION_COOKIE_CLEAR_OPTIONS);
   res.json({ ok: true });
 });
 

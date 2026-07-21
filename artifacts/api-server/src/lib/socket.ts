@@ -52,6 +52,17 @@ function socketCorsOrigin(
     : callback(new Error("origin not allowed"));
 }
 
+function sessionCookie(rawCookie: string | undefined): string {
+  if (!rawCookie) return "";
+  for (const item of rawCookie.split(";")) {
+    const [name, ...value] = item.trim().split("=");
+    if (name === "piccolo_session") {
+      return decodeURIComponent(value.join("="));
+    }
+  }
+  return "";
+}
+
 export function initSocket(server: HttpServer): SocketIOServer {
   io = new SocketIOServer(server, {
     cors: { origin: socketCorsOrigin },
@@ -71,7 +82,7 @@ export function initSocket(server: HttpServer): SocketIOServer {
     const headerToken = authorization?.startsWith("Bearer ")
       ? authorization.slice(7)
       : "";
-    const token = authToken || headerToken;
+    const token = authToken || headerToken || sessionCookie(socket.handshake.headers.cookie);
     if (!token) return next(new Error("unauthorized"));
 
     try {

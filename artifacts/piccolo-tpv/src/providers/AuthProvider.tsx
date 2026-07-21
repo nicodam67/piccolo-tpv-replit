@@ -1,14 +1,14 @@
 /**
  * AuthProvider — global authentication context for Piccolo TPV.
  *
- * On mount, calls GET /api/auth/me using the token stored in localStorage.
+ * On mount, calls GET /api/auth/me using the HttpOnly session cookie.
  * Exposes:
  *   - `user`            — decoded server-side user, or null when unauthenticated
  *   - `isLoading`       — true while the initial /me request is in-flight
  *   - `isAuthenticated` — true once /me succeeded
  *   - `error`           — ApiClientError if /me failed (e.g. expired token)
- *   - `login(id, pin)`  — POST /api/auth/pin, stores token, re-fetches /me
- *   - `logout()`        — clears localStorage, redirects to BASE_URL
+ *   - `login(id, pin)`  — POST /api/auth/pin, receives cookie, re-fetches /me
+ *   - `logout()`        — revokes the session cookie and redirects
  *   - `refreshSession()`— re-fetches /me (e.g. after a settings change)
  */
 
@@ -56,18 +56,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // ── /me fetch ─────────────────────────────────────────────────────────────
   const fetchMe = useCallback(async () => {
-    const token = localStorage.getItem('token');
-    if (!token) {
-      setState({ user: null, isLoading: false, isAuthenticated: false, error: null });
-      return;
-    }
     try {
       const user = await api.get<AuthUser>('/api/auth/me');
       setState({ user, isLoading: false, isAuthenticated: true, error: null });
     } catch (err) {
-      // Expired or invalid token — purge local storage
+      // Expired or invalid cookie — purge only non-sensitive compatibility data.
       if (err instanceof ApiClientError && err.isAuth) {
-        localStorage.removeItem('token');
         localStorage.removeItem('employee');
       }
       setState({
@@ -89,11 +83,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setState(s => ({ ...s, isLoading: true, error: null }));
       // login throws ApiClientError on failure — caller handles it
       const data = await api.post<{
-        token: string;
         employee: { id: string; name: string; role: string };
       }>('/api/auth/pin', { employeeId, pin });
-      localStorage.setItem('token', data.token);
-      // Keep legacy key while other components still read it from localStorage
+      // Compatibility-only profile cache; the credential remains HttpOnly.
       localStorage.setItem('employee', JSON.stringify(data.employee));
       await fetchMe();
     },
@@ -104,23 +96,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Calls POST /api/auth/logout to revoke the JWT server-side (inserts jti into
   // revoked_tokens). Only clears localStorage and redirects after the server
   // confirms the revocation — if the server returns an error we throw so the
-  // caller can retry or show a message. This is authoritative: client-side state
-  // is NOT cleared until server-side invalidation is confirmed.
+  // caller can retry or show a message.
   const logout = useCallback(async () => {
-    // If no token exists, just clean up locally — nothing to revoke.
-    const token = localStorage.getItem('token');
-    if (!token) {
-      localStorage.removeItem('employee');
-      setState({ user: null, isLoading: false, isAuthenticated: false, error: null });
-      window.location.href = import.meta.env.BASE_URL ?? '/';
-      return;
-    }
-
     // Authoritative revocation — must succeed before clearing local state.
     await api.post('/api/auth/logout', {});
 
     // Revocation confirmed — now safe to clear client-side state.
-    localStorage.removeItem('token');
     localStorage.removeItem('employee');
     setState({ user: null, isLoading: false, isAuthenticated: false, error: null });
     window.location.href = import.meta.env.BASE_URL ?? '/';

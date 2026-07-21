@@ -192,6 +192,10 @@ describe("POST /api/auth/pin", () => {
     expect(res.body).toHaveProperty("token");
     expect(res.body).toHaveProperty("employee");
     expect(res.body.employee).toMatchObject({ id: "emp-admin", name: "Admin", role: "admin" });
+    const cookie = res.headers["set-cookie"]?.[0] ?? "";
+    expect(cookie).toContain("piccolo_session=");
+    expect(cookie).toContain("HttpOnly");
+    expect(cookie).toContain("SameSite=Strict");
   });
 
   it("2. wrong PIN → 401", async () => {
@@ -263,6 +267,18 @@ describe("GET /api/auth/me", () => {
     expect(res.status).toBe(401);
     expect(res.body.error).toMatch(/Sesión cerrada/i);
   });
+
+  it("accepts the HttpOnly session cookie without a bearer header", async () => {
+    const res = await request(app)
+      .get("/api/auth/me")
+      .set("Cookie", "piccolo_session=cookie-session-token");
+
+    expect(res.status).toBe(200);
+    expect(mockJwtVerify).toHaveBeenCalledWith(
+      "cookie-session-token",
+      expect.any(String),
+    );
+  });
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -281,6 +297,7 @@ describe("POST /api/auth/logout", () => {
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ ok: true });
+    expect(res.headers["set-cookie"]?.[0] ?? "").toContain("piccolo_session=;");
     // The insert was called to persist the revoked jti
     expect(mockDb.insert).toHaveBeenCalled();
   });

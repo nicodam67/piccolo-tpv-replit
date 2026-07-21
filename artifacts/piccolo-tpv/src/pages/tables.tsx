@@ -826,9 +826,8 @@ export default function Tables() {
   }, []);
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
     const empStr = localStorage.getItem("employee");
-    if (!token) { setLocation("/"); } else if (empStr) {
+    if (empStr) {
       try { const emp = JSON.parse(empStr); setEmployeeName(emp.name); setEmployeeRole(emp.role ?? ""); setEmployeeId(emp.id ?? ""); } catch { /* */ }
     }
   }, [setLocation]);
@@ -1111,7 +1110,7 @@ export default function Tables() {
   // Legend panel state
   const [showLegend, setShowLegend] = useState(false);
 
-  const handleLogout = () => { localStorage.removeItem("token"); localStorage.removeItem("employee"); setLocation("/"); };
+  const handleLogout = () => { localStorage.removeItem("employee"); setLocation("/"); };
 
   // Merge group bounding boxes
   const mergeGroups: Record<string, Table[]> = {};
