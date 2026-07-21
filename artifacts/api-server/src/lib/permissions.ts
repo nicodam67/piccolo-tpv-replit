@@ -61,6 +61,7 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     'cash.open', 'cash.close', 'cash.view',
     'invoices.create',
     'stock.view',
+    'timeclock.manage',
     'reports.view',
     'discounts.apply',
     'crm.view',
