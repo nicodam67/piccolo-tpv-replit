@@ -11,6 +11,7 @@ import { seedOnlineDemo } from "./lib/seed-online-demo";
 import { startPrintWorker } from "./lib/print-worker";
 import { startBackupWorker } from "./lib/backup-worker";
 import { startVerifactuWorker } from "./lib/verifactu-worker";
+import { verifyMigrations } from "@workspace/db";
 
 const rawPort = process.env["PORT"];
 
@@ -27,7 +28,14 @@ if (Number.isNaN(port) || port <= 0) {
 const server = createServer(app);
 initSocket(server);
 
-server.listen(port, async () => {
+async function start(): Promise<void> {
+  // Fail before opening the HTTP port if the authoritative migration ledger is
+  // missing, pending, or has a checksum mismatch.
+  await verifyMigrations();
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(port, resolve);
+  });
   logger.info({ port }, "Server listening");
   try {
     await seedDocuments();
@@ -45,9 +53,13 @@ server.listen(port, async () => {
   startPrintWorker();
   startBackupWorker();
   startVerifactuWorker();
-});
+}
 
 server.on("error", (err) => {
   logger.error({ err }, "Server error");
+});
+
+void start().catch((err) => {
+  logger.fatal({ err }, "Startup aborted");
   process.exit(1);
 });

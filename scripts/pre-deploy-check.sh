@@ -49,29 +49,10 @@ echo ""
 
 # ─── 3. DB migration dry-run ──────────────────────────────────────────────────
 echo "③ Database migration status…"
-# Check for any .sql files in lib/db/migrations that haven't been applied
-# by comparing the count of migration files vs applied migrations in the DB
-MIGRATION_COUNT=$(find lib/db/migrations -name "*.sql" | wc -l | tr -d '[:space:]')
-log_info "Found ${MIGRATION_COUNT} migration file(s) in lib/db/migrations/"
-
-# Try to query the drizzle migrations table for applied count
-APPLIED=$(node -e "
-import('pg').then(({ default: pg }) => {
-  const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
-  pool.query('SELECT COUNT(*) FROM drizzle_migrations', (err, res) => {
-    if (err) { process.stdout.write('unknown'); }
-    else { process.stdout.write(res.rows[0].count); }
-    pool.end();
-  });
-}).catch(() => process.stdout.write('unknown'));
-" 2>/dev/null || echo "unknown")
-
-if [ "$APPLIED" = "unknown" ]; then
-  log_info "Could not query applied migrations (DB may be offline)"
-elif [ "$APPLIED" = "$MIGRATION_COUNT" ]; then
-  log_pass "All ${MIGRATION_COUNT} migration(s) applied"
+if pnpm --filter @workspace/db run migrate:check 2>&1; then
+  log_pass "Migration ledger, checksums and pending status verified"
 else
-  log_fail "Migration drift: ${MIGRATION_COUNT} files, ${APPLIED} applied — run migrations before deploy"
+  log_fail "Migration verification FAILED — run pnpm --filter @workspace/db migrate"
 fi
 echo ""
 
