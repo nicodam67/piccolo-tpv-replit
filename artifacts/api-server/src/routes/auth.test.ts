@@ -91,6 +91,9 @@ vi.mock("jsonwebtoken", () => ({
 }));
 
 vi.mock("bcryptjs", () => ({
+  compare: mockBcryptCompare,
+  hash: vi.fn().mockResolvedValue("$2a$12$bootstrap-hash"),
+  hashSync: vi.fn(() => "$2a$10$dummy-hash"),
   default: {
     compare: mockBcryptCompare,
     hash: vi.fn().mockResolvedValue("$2a$12$bootstrap-hash"),
