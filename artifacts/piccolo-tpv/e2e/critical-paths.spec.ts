@@ -146,11 +146,23 @@ test.describe("3. Order lifecycle: open mesa → comanda → cobro", () => {
 
   test("send comanda to kitchen", async ({ request }) => {
     expect(orderId).toBeTruthy();
-    const api = apiWithAuth(request, waiterToken);
-    const res = await api.post(`/orders/${orderId}/send`, {});
+    const idempotencyKey = `e2e-send-${orderId}`;
+    const requestOptions = {
+      headers: {
+        ...authHeader(waiterToken),
+        "Idempotency-Key": idempotencyKey,
+      },
+      data: {},
+    };
+    const res = await request.post(`${API}/orders/${orderId}/send`, requestOptions);
     expect(res.status()).toBeLessThan(300);
     const order = await res.json();
     expect(order.status).toBe("sent");
+
+    const replay = await request.post(`${API}/orders/${orderId}/send`, requestOptions);
+    expect(replay.status()).toBe(200);
+    expect(replay.headers()["idempotency-replayed"]).toBe("true");
+    expect(await replay.json()).toEqual(order);
   });
 
   test("cobrar — complete payment", async ({ request }) => {
