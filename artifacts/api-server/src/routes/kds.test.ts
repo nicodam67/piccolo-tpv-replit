@@ -207,11 +207,12 @@ describe("Test 1 — GET /kds/:zone filters by prep zone", () => {
     expect(res.body[0].allergyNote).toBe("Frutos secos");
   });
 
-  it("never returns collected or served tasks from a production zone", async () => {
+  it("never returns finished or cancelled tasks from a production zone", async () => {
     mockState.selectRows = [
       TASK_NEW,
       { ...TASK_NEW, id: "task-collected", status: "collected" },
       { ...TASK_NEW, id: "task-served", status: "served" },
+      { ...TASK_NEW, id: "task-cancelled", status: "cancelled" },
     ];
 
     const res = await request(app).get("/api/kds/cocina").set("Authorization", WAITER);

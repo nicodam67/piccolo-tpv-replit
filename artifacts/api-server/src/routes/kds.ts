@@ -20,7 +20,7 @@ const router: IRouter = Router();
 const VALID_ZONES = ["cocina", "pizza", "ensalada", "barra", "pase", "sin_partida"];
 
 // Active statuses shown per zone
-const ZONE_STATUSES = ["new", "preparing", "in_oven", "ready", "cancelled"];
+const ZONE_STATUSES = ["new", "preparing", "in_oven", "ready"];
 const PASE_STATUSES = ["new", "preparing", "in_oven", "ready"];
 
 // Per-zone allowed transitions: { fromStatus → allowedToStatuses[] }
@@ -117,7 +117,7 @@ router.get("/kds/history", requireAuth, async (req, res): Promise<void> => {
 
 // ── GET /kds/:zone ─────────────────────────────────────────────────────────────
 router.get("/kds/:zone", requireAuth, async (req, res): Promise<void> => {
-  const { zone } = req.params;
+  const zone = req.params.zone as string;
 
   if (!VALID_ZONES.includes(zone)) {
     res.status(400).json({ error: "Zona no válida" });
@@ -177,7 +177,7 @@ router.get("/kds/:zone", requireAuth, async (req, res): Promise<void> => {
 
 // ── PATCH /kitchen-tasks/:taskId/status ───────────────────────────────────────
 router.patch("/kitchen-tasks/:taskId/status", requireAuth, async (req, res): Promise<void> => {
-  const { taskId } = req.params;
+  const taskId = req.params.taskId as string;
   const { status } = req.body as { status: string };
 
   const allValidStatuses = ["new", "preparing", "in_oven", "ready", "collected", "served", "cancelled"];
@@ -284,7 +284,7 @@ router.patch("/kitchen-tasks/:taskId/status", requireAuth, async (req, res): Pro
 
 // ── POST /kitchen-tasks/:taskId/resend ────────────────────────────────────────
 router.post("/kitchen-tasks/:taskId/resend", requireAuth, async (req, res): Promise<void> => {
-  const { taskId } = req.params;
+  const taskId = req.params.taskId as string;
 
   const [existing] = await db
     .select({ id: kitchenTasksTable.id, orderId: kitchenTasksTable.orderId, productName: kitchenTasksTable.productName })
