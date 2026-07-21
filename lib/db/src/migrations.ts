@@ -7,10 +7,26 @@ import { pool } from "./pool.ts";
 
 const MIGRATION_LOCK_ID = 26002;
 const here = path.dirname(fileURLToPath(import.meta.url));
-const packageRoot = path.resolve(here, "..");
-const prerequisitesPath = path.join(packageRoot, "drizzle", "0000_prerequisites.sql");
-const baselinePath = path.join(packageRoot, "drizzle", "0000_mysterious_hitman.sql");
-const numberedDirectory = path.join(packageRoot, "migrations");
+
+async function resolvePackageRoot(): Promise<string> {
+  const candidates = [
+    process.env["DB_MIGRATIONS_ROOT"],
+    path.resolve(process.cwd(), "lib", "db"),
+    process.cwd(),
+    path.resolve(process.cwd(), "..", "..", "lib", "db"),
+    path.resolve(here, ".."),
+  ].filter((candidate): candidate is string => Boolean(candidate));
+  for (const candidate of candidates) {
+    try {
+      await fs.access(path.join(candidate, "migrations"));
+      await fs.access(path.join(candidate, "drizzle", "0000_mysterious_hitman.sql"));
+      return candidate;
+    } catch {
+      // Try the next supported execution context.
+    }
+  }
+  throw new Error("Unable to locate lib/db migration assets");
+}
 
 interface MigrationFile {
   version: string;
@@ -32,6 +48,10 @@ async function readMigration(filePath: string, version: string, baseline = false
 }
 
 export async function discoverMigrations(): Promise<MigrationFile[]> {
+  const packageRoot = await resolvePackageRoot();
+  const prerequisitesPath = path.join(packageRoot, "drizzle", "0000_prerequisites.sql");
+  const baselinePath = path.join(packageRoot, "drizzle", "0000_mysterious_hitman.sql");
+  const numberedDirectory = path.join(packageRoot, "migrations");
   const names = (await fs.readdir(numberedDirectory))
     .filter((name) => /^\d{4}_.+\.sql$/.test(name) && !name.endsWith(".down.sql"))
     .sort();
