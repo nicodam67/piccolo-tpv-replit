@@ -98,7 +98,7 @@ const TASK_FIELDS = {
 };
 
 // ── GET /kds/history ──────────────────────────────────────────────────────────
-router.get("/kds/history", requireAuth, async (req, res): Promise<void> => {
+router.get("/kds/history", requireAuth, requireRole("admin", "manager", "encargado", "waiter", "kitchen"), async (req, res): Promise<void> => {
   const cutoff = new Date(Date.now() - 8 * 60 * 60 * 1000);
 
   const tasks = await db
@@ -116,7 +116,7 @@ router.get("/kds/history", requireAuth, async (req, res): Promise<void> => {
 });
 
 // ── GET /kds/:zone ─────────────────────────────────────────────────────────────
-router.get("/kds/:zone", requireAuth, async (req, res): Promise<void> => {
+router.get("/kds/:zone", requireAuth, requireRole("admin", "manager", "encargado", "waiter", "kitchen"), async (req, res): Promise<void> => {
   const zone = req.params.zone as string;
 
   if (!VALID_ZONES.includes(zone)) {
@@ -176,7 +176,7 @@ router.get("/kds/:zone", requireAuth, async (req, res): Promise<void> => {
 });
 
 // ── PATCH /kitchen-tasks/:taskId/status ───────────────────────────────────────
-router.patch("/kitchen-tasks/:taskId/status", requireAuth, async (req, res): Promise<void> => {
+router.patch("/kitchen-tasks/:taskId/status", requireAuth, requireRole("admin", "manager", "encargado", "waiter", "kitchen"), async (req, res): Promise<void> => {
   const taskId = req.params.taskId as string;
   const { status } = req.body as { status: string };
 
@@ -282,7 +282,7 @@ router.patch("/kitchen-tasks/:taskId/status", requireAuth, async (req, res): Pro
 });
 
 // ── POST /kitchen-tasks/:taskId/resend ────────────────────────────────────────
-router.post("/kitchen-tasks/:taskId/resend", requireAuth, async (req, res): Promise<void> => {
+router.post("/kitchen-tasks/:taskId/resend", requireAuth, requireRole("admin", "manager", "encargado", "waiter", "kitchen"), async (req, res): Promise<void> => {
   const taskId = req.params.taskId as string;
 
   const [existing] = await db

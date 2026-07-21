@@ -1,8 +1,8 @@
 import { type Request, type Response, type NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import { db } from "@workspace/db";
-import { revokedTokensTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { revokedTokensTable, rolePermissionsTable } from "@workspace/db";
+import { and, eq } from "drizzle-orm";
 import { hasPermission } from "../lib/permissions";
 
 export interface AuthenticatedUser {
@@ -114,13 +114,32 @@ export function requireRole(...allowedRoles: string[]) {
  * @param permission - a permission string in the format "module.action"
  */
 export function requirePermission(permission: string) {
-  return function (req: Request, res: Response, next: NextFunction): void {
+  return async function (req: Request, res: Response, next: NextFunction): Promise<void> {
     const role = req.user?.role;
-    if (!hasPermission(role, permission)) {
+    if (!role) {
       res.status(403).json({ error: `Permiso requerido: ${permission}` });
       return;
     }
-    next();
+
+    const [module, action] = permission.split(".", 2);
+    try {
+      const [override] = await db
+        .select({ allowed: rolePermissionsTable.allowed })
+        .from(rolePermissionsTable)
+        .where(and(
+          eq(rolePermissionsTable.role, role),
+          eq(rolePermissionsTable.module, module),
+          eq(rolePermissionsTable.action, action),
+        ))
+        .limit(1);
+      if (override ? !override.allowed : !hasPermission(role, permission)) {
+        res.status(403).json({ error: `Permiso requerido: ${permission}` });
+        return;
+      }
+      next();
+    } catch {
+      res.status(503).json({ error: "No se pudo verificar el permiso" });
+    }
   };
 }
 
