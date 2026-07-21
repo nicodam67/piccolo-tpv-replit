@@ -240,7 +240,7 @@ test.describe("6. Caja — close session and Z report", () => {
     const res = await api.get(`/cash-sessions/${cashSessionId}/report`);
     expect(res.status()).toBeLessThan(300);
     const report = await res.json();
-    expect(report.sessionId ?? report.id).toBeTruthy();
+    expect(report.session?.id).toBe(cashSessionId);
   });
 });
 
