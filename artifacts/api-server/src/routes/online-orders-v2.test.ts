@@ -86,6 +86,10 @@ vi.mock("../middlewares/auth", () => ({
     (..._roles: string[]) =>
     (_req: any, _res: any, next: any) =>
       next(),
+  requirePermission:
+    (_permission: string) =>
+    (_req: any, _res: any, next: any) =>
+      next(),
 }));
 
 // ─── Import app AFTER mocks are registered ───────────────────────────────────
