@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useLocation, Link } from 'wouter';
 import { useQueryClient } from '@tanstack/react-query';
-import { io } from 'socket.io-client';
+import { connectAuthenticatedSocket } from '../lib/socket-client';
 import { toast } from 'sonner';
 import {
   ChevronLeft, Trash2, Send, Clock, CheckCircle2, CircleDashed, Loader2, PenLine,
@@ -360,14 +360,7 @@ export default function OrderPage() {
   // Socket
   useEffect(() => {
     if (!order?.id && !employeeId) return;
-    const socket = io({
-      path: '/api/socket.io',
-      // Ensure the client always tries to reconnect, even after long idle gaps.
-      reconnection: true,
-      reconnectionAttempts: Infinity,
-      reconnectionDelay: 1000,
-      reconnectionDelayMax: 30000,
-    });
+    const socket = connectAuthenticatedSocket();
 
     // Track connection state for the reconnecting indicator.
     socket.on('connect', () => setSocketConnected(true));

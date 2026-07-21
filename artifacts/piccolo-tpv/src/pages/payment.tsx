@@ -6,7 +6,7 @@ import { ManagerPinModal } from '../components/auth/ManagerPinModal';
 import { useManagerAuth } from '../hooks/use-manager-auth';
 import { useParams, useLocation, Link } from 'wouter';
 import { useQueryClient } from '@tanstack/react-query';
-import { io } from 'socket.io-client';
+import { connectAuthenticatedSocket } from '../lib/socket-client';
 import {
   ChevronLeft, Check, Loader2, Euro, CreditCard, Smartphone, FileText, X,
   Printer, Percent, Scissors, Wallet, Gift, Plus, Minus, ArrowRight, AlertCircle,
@@ -1218,13 +1218,7 @@ export default function Payment() {
   // and the staff member is informed if the order was modified by a colleague.
   useEffect(() => {
     if (!orderId) return;
-    const socket = io({
-      path: '/api/socket.io',
-      reconnection: true,
-      reconnectionAttempts: Infinity,
-      reconnectionDelay: 1000,
-      reconnectionDelayMax: 30000,
-    });
+    const socket = connectAuthenticatedSocket();
 
     // After any reconnect, suppress the banner and re-fetch fresh data.
     const handleReconnect = () => {

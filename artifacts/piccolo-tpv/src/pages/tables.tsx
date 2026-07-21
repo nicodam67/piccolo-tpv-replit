@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useScrollGuard } from "../hooks/use-scroll-guard";
 import { useLocation } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
-import { io } from "socket.io-client";
+import { connectAuthenticatedSocket } from "../lib/socket-client";
 import {
   useGetDashboardSummary,
   useGetZones,
@@ -934,7 +934,7 @@ export default function Tables() {
   useEffect(() => { pinchRef.current = null; panRef.current = null; }, [activeZone]);
 
   useEffect(() => {
-    const socket = io({ path: "/api/socket.io" });
+    const socket = connectAuthenticatedSocket();
     const refreshAll = () => {
       const zone = activeZoneRef.current;
       if (zone) queryClient.invalidateQueries({ queryKey: getGetZoneTablesQueryKey(zone) });

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useLocation, Link } from 'wouter';
 import { useQueryClient } from '@tanstack/react-query';
-import { io } from 'socket.io-client';
+import { connectAuthenticatedSocket } from '../lib/socket-client';
 import { toast } from 'sonner';
 import { ChevronLeft, CheckCircle2, Package, Loader2 } from 'lucide-react';
 import {
@@ -51,7 +51,7 @@ export default function RecogidaPage() {
 
   // Real-time socket
   useEffect(() => {
-    const socket = io({ path: '/api/socket.io' });
+    const socket = connectAuthenticatedSocket();
 
     const invalidate = () => {
       queryClient.invalidateQueries({ queryKey: getGetKdsTasksQueryKey('pase') });

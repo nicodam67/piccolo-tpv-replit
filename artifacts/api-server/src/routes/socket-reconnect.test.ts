@@ -1,104 +1,81 @@
-/**
- * Socket.IO reconnection integration test
- *
- * Proves that a client that disconnects and reconnects still receives
- * `tables:refresh` events emitted by the server afterwards.
- *
- * ─── Manual verification procedure (client floor plan) ────────────────────────
- * To confirm the same guarantee holds for a real browser/tablet:
- *
- *   1. Open the floor plan page (`/tables`) and confirm the socket connects
- *      (DevTools → Network → WS → you should see the /api/socket.io handshake).
- *   2. Simulate a network drop: DevTools → Network → throttle to "Offline"
- *      (or physically disconnect the device from Wi-Fi for ~5 s).
- *   3. While offline, trigger a change on any other terminal that normally emits
- *      `tables:refresh` — e.g. mark a table as cleaned via another tab still online.
- *   4. Restore the network connection (un-throttle / reconnect Wi-Fi).
- *   5. Confirm: the floor plan updates automatically within a few seconds
- *      WITHOUT a manual page reload.
- *
- * Why it works: `socket.on('tables:refresh', handler)` in tables.tsx is
- * registered on the *client* Socket.IO instance, not on a server-side socket.
- * That binding survives reconnects because the client object is reused —
- * only the underlying transport is torn down and rebuilt. After reconnect the
- * server assigns a new socket ID, but the next `io.emit('tables:refresh')`
- * from the server reaches the client because the client is now part of the
- * global broadcast pool again.
- * ──────────────────────────────────────────────────────────────────────────────
- */
-
 import { createServer, type Server as HttpServer } from "node:http";
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { io as ioClient, type Socket } from "socket.io-client";
-import { initSocket, getIO } from "../lib/socket";
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+const mockAuthenticate = vi.hoisted(() => vi.fn(async (token: string) => {
+  if (token === "expired" || token === "revoked") throw new Error("unauthorized");
+  if (token === "wrong-role") {
+    return { id: "external-1", name: "External", role: "external", jti: "jti-external" };
+  }
+  if (token === "kds-token") {
+    return { id: "kitchen-1", name: "Kitchen", role: "kitchen", jti: "jti-kds" };
+  }
+  return { id: "waiter-1", name: "Waiter", role: "waiter", jti: "jti-floor" };
+}));
 
-/**
- * Returns a promise that resolves when `socket` emits `event`.
- * IMPORTANT: call this BEFORE performing the action that triggers the event,
- * otherwise the event may fire before the listener is registered.
- */
-function waitForEvent(socket: Socket, event: string, timeoutMs = 4000): Promise<void> {
+vi.mock("../middlewares/auth", () => ({
+  authenticateSessionToken: mockAuthenticate,
+}));
+
+const {
+  employeeRoom,
+  functionRoom,
+  getIO,
+  initSocket,
+  restaurantRoom,
+} = await import("../lib/socket");
+const { emitToFunction } = await import("../lib/socket-events");
+
+function waitForEvent(socket: Socket, event: string, timeoutMs = 2_000): Promise<void> {
   return new Promise<void>((resolve, reject) => {
-    const t = setTimeout(
-      () => reject(new Error(`Timed out waiting for "${event}" (${timeoutMs} ms)`)),
-      timeoutMs,
-    );
-    socket.once(event, () => { clearTimeout(t); resolve(); });
+    const timeout = setTimeout(() => reject(new Error(`Timed out waiting for ${event}`)), timeoutMs);
+    socket.once(event, () => {
+      clearTimeout(timeout);
+      resolve();
+    });
   });
 }
 
-/** Connects a client and waits for the `connect` event. */
-async function connectAndWait(url: string, opts?: Parameters<typeof ioClient>[1]): Promise<Socket> {
+function expectNoEvent(socket: Socket, event: string, timeoutMs = 250): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    const timeout = setTimeout(resolve, timeoutMs);
+    socket.once(event, () => {
+      clearTimeout(timeout);
+      reject(new Error(`Unexpected ${event}`));
+    });
+  });
+}
+
+async function connectAndWait(
+  url: string,
+  token = "floor-token",
+  extraAuth: Record<string, unknown> = {},
+): Promise<Socket> {
   const client = ioClient(url, {
     path: "/api/socket.io",
+    auth: { token, ...extraAuth },
     reconnection: true,
-    reconnectionDelay: 50,
-    reconnectionDelayMax: 200,
-    timeout: 3000,
+    reconnectionDelay: 20,
     forceNew: true,
-    autoConnect: false,      // We'll call connect() manually so we can set up listeners first
-    ...opts,
+    autoConnect: false,
   });
-  const ready = waitForEvent(client, "connect");
+  const connected = waitForEvent(client, "connect");
   client.connect();
-  await ready;
+  await connected;
   return client;
 }
 
-/** Disconnects a client and waits for the `disconnect` event. */
-async function disconnectAndWait(client: Socket): Promise<void> {
-  const gone = waitForEvent(client, "disconnect");
-  client.disconnect();
-  await gone;
-}
-
-/** Reconnects a client and waits for the `connect` event. */
-async function reconnectAndWait(client: Socket): Promise<void> {
-  const ready = waitForEvent(client, "connect");
-  client.connect();
-  await ready;
-}
-
-// ─── Suite ────────────────────────────────────────────────────────────────────
-
-describe("Socket.IO — tables:refresh re-delivery after reconnect", () => {
+describe("Socket.IO authenticated restaurant/function rooms", () => {
   let httpServer: HttpServer;
   let serverUrl: string;
 
   beforeAll(async () => {
-    // Start a real HTTP server wired through the existing initSocket configuration
-    // (same path "/api/socket.io", same pingInterval/pingTimeout settings).
+    process.env["RESTAURANT_ID"] = "test-restaurant";
     httpServer = createServer();
     initSocket(httpServer);
-
-    await new Promise<void>((resolve) => {
-      httpServer.listen(0, "127.0.0.1", resolve); // port 0 → OS picks a free port
-    });
-
-    const addr = httpServer.address() as { port: number };
-    serverUrl = `http://127.0.0.1:${addr.port}`;
+    await new Promise<void>((resolve) => httpServer.listen(0, "127.0.0.1", resolve));
+    const address = httpServer.address() as { port: number };
+    serverUrl = `http://127.0.0.1:${address.port}`;
   });
 
   afterAll(async () => {
@@ -106,101 +83,89 @@ describe("Socket.IO — tables:refresh re-delivery after reconnect", () => {
     await new Promise<void>((resolve) => httpServer.close(() => resolve()));
   });
 
-  // ── Test 1: single disconnect / reconnect ─────────────────────────────────
-
-  it("client receives tables:refresh after a single disconnect / reconnect", async () => {
-    const client = await connectAndWait(serverUrl);
-
-    try {
-      expect(client.connected).toBe(true);
-
-      // Simulate network drop then restore
-      await disconnectAndWait(client);
-      expect(client.connected).toBe(false);
-
-      await reconnectAndWait(client);
-      expect(client.connected).toBe(true);
-
-      // Server emits tables:refresh AFTER the reconnect — client must still receive it
-      const received = waitForEvent(client, "tables:refresh");
-      getIO().emit("tables:refresh");
-      await expect(received).resolves.toBeUndefined();
-    } finally {
-      client.disconnect();
-    }
+  it("rejects an anonymous handshake", async () => {
+    const client = ioClient(serverUrl, {
+      path: "/api/socket.io",
+      autoConnect: false,
+      forceNew: true,
+    });
+    const rejected = waitForEvent(client, "connect_error");
+    client.connect();
+    await expect(rejected).resolves.toBeUndefined();
+    expect(client.connected).toBe(false);
+    client.close();
   });
 
-  // ── Test 2: multiple reconnect cycles ────────────────────────────────────
-
-  it("client receives tables:refresh after three successive disconnect / reconnect cycles", async () => {
-    const client = await connectAndWait(serverUrl);
-
-    try {
-      for (let i = 0; i < 3; i++) {
-        await disconnectAndWait(client);
-        await reconnectAndWait(client);
-      }
-
-      expect(client.connected).toBe(true);
-
-      const received = waitForEvent(client, "tables:refresh");
-      getIO().emit("tables:refresh");
-      await expect(received).resolves.toBeUndefined();
-    } finally {
-      client.disconnect();
-    }
+  it.each(["expired", "revoked"])("rejects a %s session", async (token) => {
+    const client = ioClient(serverUrl, {
+      path: "/api/socket.io",
+      auth: { token },
+      autoConnect: false,
+      forceNew: true,
+    });
+    const rejected = waitForEvent(client, "connect_error");
+    client.connect();
+    await expect(rejected).resolves.toBeUndefined();
+    client.close();
   });
 
-  // ── Test 3: stable client unaffected by a peer reconnecting ───────────────
-  // Confirms the broadcast reaches ALL connected clients simultaneously.
-
-  it("stable client also receives tables:refresh while a peer is reconnecting", async () => {
-    const stable = await connectAndWait(serverUrl, { reconnection: false });
-    const peer   = await connectAndWait(serverUrl);
-
-    try {
-      // Drop and restore the peer
-      await disconnectAndWait(peer);
-      await reconnectAndWait(peer);
-      expect(peer.connected).toBe(true);
-      expect(stable.connected).toBe(true);
-
-      // Both clients must receive the next broadcast
-      const stableReceived = waitForEvent(stable, "tables:refresh");
-      const peerReceived   = waitForEvent(peer,   "tables:refresh");
-      getIO().emit("tables:refresh");
-
-      await expect(stableReceived).resolves.toBeUndefined();
-      await expect(peerReceived).resolves.toBeUndefined();
-    } finally {
-      stable.disconnect();
-      peer.disconnect();
-    }
+  it("rejects a valid session whose role has no socket function", async () => {
+    const client = ioClient(serverUrl, {
+      path: "/api/socket.io",
+      auth: { token: "wrong-role" },
+      autoConnect: false,
+      forceNew: true,
+    });
+    const rejected = waitForEvent(client, "connect_error");
+    client.connect();
+    await expect(rejected).resolves.toBeUndefined();
+    client.close();
   });
 
-  // ── Test 4: event is NOT delivered to a disconnected (offline) client ─────
-  // Confirms the test setup is meaningful: events are NOT delivered to
-  // clients that have disconnected and not yet reconnected.
+  it("server assigns restaurant, function and employee rooms", async () => {
+    const client = await connectAndWait(serverUrl, "floor-token", {
+      restaurantId: "attacker-controlled",
+    });
+    const serverSocket = [...getIO().sockets.sockets.values()][0];
+    expect(serverSocket.rooms).toContain(restaurantRoom());
+    expect(serverSocket.rooms).toContain(functionRoom("floor"));
+    expect(serverSocket.rooms).toContain(employeeRoom("waiter-1"));
+    expect([...serverSocket.rooms].join(" ")).not.toContain("attacker-controlled");
+    client.close();
+  });
 
-  it("does NOT receive tables:refresh while disconnected — only after reconnecting", async () => {
-    const client = await connectAndWait(serverUrl);
+  it("delivers floor events only to the floor room", async () => {
+    const floor = await connectAndWait(serverUrl, "floor-token");
+    const kitchen = await connectAndWait(serverUrl, "kds-token");
+    const received = waitForEvent(floor, "tables:refresh");
+    const isolated = expectNoEvent(kitchen, "tables:refresh");
 
-    try {
-      await disconnectAndWait(client);
+    emitToFunction("floor", "tables:refresh");
 
-      // Emit while the client is offline — it should miss this
-      getIO().emit("tables:refresh");
+    await expect(received).resolves.toBeUndefined();
+    await expect(isolated).resolves.toBeUndefined();
+    floor.close();
+    kitchen.close();
+  });
 
-      // Now reconnect
-      await reconnectAndWait(client);
-      expect(client.connected).toBe(true);
+  it("rejoins authorized rooms after reconnect", async () => {
+    const floor = await connectAndWait(serverUrl);
+    floor.disconnect();
+    const reconnected = waitForEvent(floor, "connect");
+    floor.connect();
+    await reconnected;
 
-      // Emit again after reconnect — this one must arrive
-      const receivedAfterReconnect = waitForEvent(client, "tables:refresh");
-      getIO().emit("tables:refresh");
-      await expect(receivedAfterReconnect).resolves.toBeUndefined();
-    } finally {
-      client.disconnect();
-    }
+    const received = waitForEvent(floor, "tables:refresh");
+    emitToFunction("floor", "tables:refresh");
+    await expect(received).resolves.toBeUndefined();
+    floor.close();
+  });
+
+  it("rejects inbound business events", async () => {
+    const floor = await connectAndWait(serverUrl);
+    const rejected = waitForEvent(floor, "socket:error");
+    floor.emit("orders:update", { orderId: "other-restaurant" });
+    await expect(rejected).resolves.toBeUndefined();
+    floor.close();
   });
 });
