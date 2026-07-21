@@ -21,6 +21,7 @@ const API = process.env.API_BASE_URL ?? "http://localhost:3000/api";
 // Tests are serial (workers:1) so we can share IDs between them.
 let adminToken = "";
 let waiterToken = "";
+let zoneId = "";
 let tableId = "";
 let orderId = "";
 let cashSessionId = "";
@@ -98,7 +99,8 @@ test.describe("3. Order lifecycle: open mesa → comanda → cobro", () => {
     expect(Array.isArray(zones)).toBe(true);
 
     expect(zones.length).toBeGreaterThan(0);
-    const tablesRes = await api.get(`/zones/${zones[0].id}/tables`);
+    zoneId = zones[0].id;
+    const tablesRes = await api.get(`/zones/${zoneId}/tables`);
     expect(tablesRes.status()).toBe(200);
     const tables = await tablesRes.json();
     const available = tables.find((table: { status: string }) =>
@@ -173,10 +175,13 @@ test.describe("3. Order lifecycle: open mesa → comanda → cobro", () => {
 
   test("table is free after payment", async ({ request }) => {
     expect(tableId).toBeTruthy();
+    expect(zoneId).toBeTruthy();
     const api = apiWithAuth(request, waiterToken);
-    const res = await api.get(`/tables/${tableId}`);
+    const res = await api.get(`/zones/${zoneId}/tables`);
     expect(res.status()).toBe(200);
-    const table = await res.json();
+    const tables = await res.json();
+    const table = tables.find((candidate: { id: string }) => candidate.id === tableId);
+    expect(table).toBeTruthy();
     // After full payment the table should not be "occupied"
     expect(table.status).not.toBe("occupied");
   });
