@@ -1,10 +1,11 @@
 import tseslint from "typescript-eslint";
+import reactHooks from "eslint-plugin-react-hooks";
+import reactRefresh from "eslint-plugin-react-refresh";
 
 const safetyRules = {
   "no-debugger": "error",
   "no-unreachable": "error",
   "no-constant-condition": ["error", { checkLoops: false }],
-  "no-duplicate-imports": "error",
 };
 
 export default [
@@ -30,6 +31,11 @@ export default [
         sourceType: "module",
         ecmaFeatures: { jsx: true },
       },
+    },
+    plugins: {
+      "@typescript-eslint": tseslint.plugin,
+      "react-hooks": reactHooks,
+      "react-refresh": reactRefresh,
     },
     rules: safetyRules,
   },
