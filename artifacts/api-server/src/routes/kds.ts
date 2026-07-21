@@ -11,7 +11,7 @@ import {
 } from "@workspace/db";
 import { eq, and, inArray, desc, sql } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
-import { getIO } from "../lib/socket";
+import { emitToEmployee, emitToFunction } from "../lib/socket-events";
 
 const router: IRouter = Router();
 
@@ -232,7 +232,7 @@ router.patch("/kitchen-tasks/:taskId/status", requireAuth, async (req, res): Pro
     return;
   }
 
-  try { getIO().emit("kds:refresh"); } catch { /* socket not initialised */ }
+  try { emitToFunction("kds", "kds:refresh"); } catch { /* socket not initialised */ }
 
   // Notify waiter when all tasks for an order are ready
   if (status === "ready") {
@@ -265,10 +265,9 @@ router.patch("/kitchen-tasks/:taskId/status", requireAuth, async (req, res): Pro
         });
 
         try {
-          const io = getIO();
           const payload = { orderId: order.id, tableId: order.tableId, tableName, employeeId: order.employeeId };
-          io.emit("waiter:order-ready", payload);
-          io.emit(`waiter:${order.employeeId}:notification`, {
+          emitToFunction("floor", "waiter:order-ready", payload);
+          emitToEmployee(order.employeeId, "waiter:notification", {
             type: "order_ready",
             title: `${tableName} lista para recoger`,
             message: `El pedido de ${tableName} está listo en el pase.`,
@@ -312,7 +311,7 @@ router.post("/kitchen-tasks/:taskId/resend", requireAuth, async (req, res): Prom
     details:      `Reenviado a cocina: ${existing.productName}`,
   });
 
-  try { getIO().emit("kds:refresh", { employeeName: req.user?.name ?? null }); } catch { /* ignore */ }
+  try { emitToFunction("kds", "kds:refresh", { employeeName: req.user?.name ?? null }); } catch { /* ignore */ }
 
   res.json(updated);
 });

@@ -19,7 +19,7 @@ import { eq, and, inArray, desc, asc, sql } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import { idempotency } from "../middlewares/idempotency";
 import { recipeItemsTable, ingredientsTable, stockMovementsTable } from "@workspace/db";
-import { getIO } from "../lib/socket";
+import { emitToEmployee, emitToFunction } from "../lib/socket-events";
 import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
@@ -89,7 +89,7 @@ async function writeAudit(
 
 function emitRefresh(orderId: string, employeeName?: string) {
   try {
-    getIO().emit("orders:refresh", { orderId, employeeName });
+    emitToFunction("floor", "orders:refresh", { orderId, employeeName });
   } catch { /* socket not initialised */ }
 }
 
@@ -150,7 +150,7 @@ router.patch("/orders/:orderId", requireAuth, async (req, res): Promise<void> =>
         .update(restaurantTablesTable)
         .set({ status: "bill_requested" })
         .where(eq(restaurantTablesTable.id, order.tableId));
-      try { getIO().emit("tables:refresh"); } catch { /* ignore */ }
+      try { emitToFunction("floor", "tables:refresh"); } catch { /* ignore */ }
     }
     await writeAudit(orderId, req.user?.id, req.user?.name ?? "", "bill_request", "Cuenta solicitada");
   }
@@ -513,7 +513,7 @@ router.delete("/order-items/:itemId", requireAuth, async (req, res): Promise<voi
       `Anulado tras envío a cocina: ${item.products.name}`);
 
     // Notify KDS displays immediately
-    try { getIO().emit("kds:refresh", { employeeName: req.user?.name ?? null }); } catch { /* ignore */ }
+    try { emitToFunction("kds", "kds:refresh", { employeeName: req.user?.name ?? null }); } catch { /* ignore */ }
     emitRefresh(item.order_items.orderId, req.user?.name);
     res.status(204).send();
     return;
@@ -754,7 +754,7 @@ router.post("/orders/:orderId/send", requireAuth, idempotency, async (req, res):
     } catch { /* audit insert must never block the send response */ }
     // Notify the order screen so staff can manually correct stock
     try {
-      getIO().emit("stock:deduction_failed", {
+      emitToFunction("inventory", "stock:deduction_failed", {
         orderId,
         error: err instanceof Error ? err.message : String(err),
       });
@@ -767,11 +767,10 @@ router.post("/orders/:orderId/send", requireAuth, idempotency, async (req, res):
     `${draftItems.length} línea(s) enviada(s) a preparación`);
 
   try {
-    const io = getIO();
     // kds:refresh is only meaningful when KDS is active (kds_only or both).
     // printers_only mode skips KDS socket event to avoid confusing KDS screens.
     if (sendToKds) {
-      io.emit("kds:refresh", { employeeName: req.user?.name ?? null });
+      emitToFunction("kds", "kds:refresh", { employeeName: req.user?.name ?? null });
     }
     emitRefresh(orderId, req.user?.name);
   } catch { /* ignore */ }
@@ -989,19 +988,20 @@ router.post("/orders/:orderId/pase", requireAuth, async (req, res): Promise<void
     });
 
     try {
-      const io = getIO();
       if (order.tableId) {
         const [tableRow] = await db
           .select({ name: restaurantTablesTable.name })
           .from(restaurantTablesTable)
           .where(eq(restaurantTablesTable.id, order.tableId));
-        io.emit("tables:refresh");
-        io.emit("waiter:order-served", {
+        emitToFunction("floor", "tables:refresh");
+        const payload = {
           orderId,
           tableId: order.tableId,
           tableName: tableRow?.name,
           employeeId: order.employeeId,
-        });
+        };
+        emitToFunction("floor", "waiter:order-served", payload);
+        if (order.employeeId) emitToEmployee(order.employeeId, "waiter:order-served", payload);
       }
     } catch { /* ignore */ }
   }

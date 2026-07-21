@@ -36,7 +36,7 @@ import {
 } from "@workspace/db";
 import { eq, and, inArray, desc, asc, gte, lte, count, avg, sum, sql, or, isNotNull } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
-import { getIO } from "../lib/socket";
+import { emitToFunction } from "../lib/socket-events";
 import { calcMultiRateBreakdown } from "../lib/tax";
 
 const router: IRouter = Router();
@@ -299,7 +299,7 @@ router.post("/delivery-orders", requireAuth, async (req: any, res): Promise<void
   await recordStatusHistory(order.id, null, "confirmed", (req as any).employee?.id, (req as any).employee?.name ?? "TPV");
 
   // ── WebSocket refresh ─────────────────────────────────────────────────────
-  try { getIO().emit("online-orders:refresh", {}); } catch { /* ignore */ }
+  try { emitToFunction("floor", "online-orders:refresh", {}); } catch { /* ignore */ }
 
   res.status(201).json({
     id: order.id, orderNumber, status: "confirmed",
@@ -490,7 +490,7 @@ router.patch("/delivery-orders/:id", requireAuth, async (req: any, res): Promise
       .where(eq(couriersTable.id, effectiveCourierId));
   }
 
-  try { getIO().emit("online-orders:refresh", { orderId: id }); } catch { /* ignore */ }
+  try { emitToFunction("floor", "online-orders:refresh", { orderId: id }); } catch { /* ignore */ }
   res.json({ success: true, courierId: effectiveCourierId });
 });
 

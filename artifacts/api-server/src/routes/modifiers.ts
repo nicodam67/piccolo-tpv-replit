@@ -9,7 +9,7 @@ import {
 } from "@workspace/db";
 import { eq, and, asc } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
-import { getIO } from "../lib/socket";
+import { emitToFunction } from "../lib/socket-events";
 
 const router: IRouter = Router();
 
@@ -81,7 +81,7 @@ router.patch("/order-items/:itemId/details", requireAuth, async (req, res): Prom
   }
 
   const itemModifiers = await db.select().from(orderItemModifiersTable).where(eq(orderItemModifiersTable.orderItemId, itemId));
-  try { getIO().emit("orders:refresh", { orderId: item.orderId, employeeName: req.user?.name }); } catch { /* socket not initialised */ }
+  try { emitToFunction("floor", "orders:refresh", { orderId: item.orderId, employeeName: req.user?.name }); } catch { /* socket not initialised */ }
   res.json({ ...updated, modifiers: itemModifiers });
 });
 

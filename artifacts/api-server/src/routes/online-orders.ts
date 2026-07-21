@@ -60,7 +60,7 @@ import {
 } from "@workspace/db";
 import { eq, and, inArray, desc, asc, gte, lte, count, avg, sum, sql } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
-import { getIO } from "../lib/socket";
+import { emitToFunction } from "../lib/socket-events";
 import { calcMultiRateBreakdown } from "../lib/tax";
 import { issuePoints } from "./crm.js";
 
@@ -115,7 +115,7 @@ async function simulateNotification(
 
 /** Emit a WebSocket event to refresh the online orders inbox */
 function emitOnlineOrdersRefresh(extra?: object) {
-  try { getIO().emit("online-orders:refresh", extra ?? {}); } catch { /* ignore */ }
+  try { emitToFunction("floor", "online-orders:refresh", extra ?? {}); } catch { /* ignore */ }
 }
 
 /** Check if a given time is within the configured service hours */
@@ -434,7 +434,7 @@ router.post("/online-orders/:id/confirm", requireAuth, requireRole("manager", "a
     message: `Tu pedido ${orderNumber} ha sido confirmado. Estará listo aproximadamente a las ${readyAt.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}.`,
   });
 
-  try { getIO().emit("kds:refresh"); } catch { /* ignore */ }
+  try { emitToFunction("kds", "kds:refresh"); } catch { /* ignore */ }
   emitOnlineOrdersRefresh({ orderId: id });
 
   res.json({ ok: true, status: "sent_to_kitchen", estimatedReadyAt: readyAt.toISOString() });
@@ -914,7 +914,7 @@ router.patch("/courier/:courierId/orders/:orderId/status", async (req, res): Pro
   }
 
   // Emit WebSocket refresh so the board updates
-  try { getIO().emit("online-orders:refresh", {}); } catch { /* ignore */ }
+  try { emitToFunction("floor", "online-orders:refresh", {}); } catch { /* ignore */ }
 
   res.json({ ok: true, status, note });
 });

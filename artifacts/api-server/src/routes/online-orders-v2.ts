@@ -53,7 +53,7 @@ import {
 import { eq, and, desc, asc, sql } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { calcMultiRateBreakdown } from "../lib/tax";
-import { getIO } from "../lib/socket";
+import { emitToFunction } from "../lib/socket-events";
 
 const router: IRouter = Router();
 
@@ -360,7 +360,7 @@ router.post("/public/orders/online-v2", async (req, res): Promise<void> => {
   }
 
   // Notify staff via socket
-  try { getIO().emit("online-orders:refresh"); } catch { /* ignore */ }
+  try { emitToFunction("floor", "online-orders:refresh"); } catch { /* ignore */ }
 
   res.status(201).json({
     orderId,
@@ -521,7 +521,7 @@ router.post("/public/payment/webhook", async (req, res): Promise<void> => {
       await db.execute(sql`
         UPDATE payment_attempts SET status = 'succeeded' WHERE external_id = ${externalId}
       `);
-      try { getIO().emit("online-orders:refresh"); } catch { /* ignore */ }
+      try { emitToFunction("floor", "online-orders:refresh"); } catch { /* ignore */ }
     }
   }
 
@@ -557,7 +557,7 @@ router.post("/public/payment/webhook", async (req, res): Promise<void> => {
         UPDATE payment_attempts SET status = ${approve ? "succeeded" : "failed"}
         WHERE id = ${attemptId}
       `);
-      try { getIO().emit("online-orders:refresh"); } catch { /* ignore */ }
+      try { emitToFunction("floor", "online-orders:refresh"); } catch { /* ignore */ }
     } else if (orderId) {
       // No attemptId provided — update order status only (no payment_ref)
       await db.execute(sql`
@@ -566,7 +566,7 @@ router.post("/public/payment/webhook", async (req, res): Promise<void> => {
           status = ${approve ? "pending_confirm" : "pending_payment"}
         WHERE id = ${orderId}
       `);
-      try { getIO().emit("online-orders:refresh"); } catch { /* ignore */ }
+      try { emitToFunction("floor", "online-orders:refresh"); } catch { /* ignore */ }
     }
   }
 
@@ -624,7 +624,7 @@ router.patch("/admin/products/:id/soldout", requireAuth, requireRole("manager", 
   if (!product) { res.status(404).json({ error: "Producto no encontrado." }); return; }
 
   // Emit menu refresh so open menu pages reload automatically
-  try { getIO().emit("menu:refresh"); } catch { /* ignore */ }
+  try { emitToFunction("admin", "menu:refresh"); } catch { /* ignore */ }
 
   res.json({ ok: true, outOfStock: product.outOfStock });
 });
@@ -775,7 +775,7 @@ router.post("/admin/online-orders/:id/refund", requireAuth, requireRole("manager
     VALUES (${id}, 'refund_issued', ${req.user?.id ?? null}, ${req.user?.name ?? "admin"}, ${JSON.stringify({ refundRef, reason })}::jsonb)
   `);
 
-  try { getIO().emit("online-orders:refresh"); } catch { /* ignore */ }
+  try { emitToFunction("floor", "online-orders:refresh"); } catch { /* ignore */ }
   res.json({ ok: true, refundRef });
 });
 
