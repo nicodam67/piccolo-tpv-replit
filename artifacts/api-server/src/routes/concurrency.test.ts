@@ -498,7 +498,12 @@ describe("5. Idempotencia — doble clic y reintentos de red", () => {
       .mockReturnValueOnce(makeChain([{ printMode: "kds_only" }]))                       // 2. bizConfig
       .mockReturnValueOnce(makeChain([{ sentAt: null }]))                                // 3. sentAt
       .mockReturnValueOnce(makeChain([{ order_items: F.orderItem, products: F.product }])) // 4. draft items
-      .mockReturnValueOnce(makeChain([]));                                               // 5. modifiers (empty)
+      .mockReturnValueOnce(makeChain([]))                                                // 5. modifiers (empty)
+      .mockReturnValueOnce(makeChain([{ status: "open" }]))                              // 6. locked order
+      .mockReturnValueOnce(makeChain([{ order_items: F.orderItem, products: F.product }])) // 7. locked drafts
+      .mockReturnValueOnce(makeChain([]))                                                // 8. locked modifiers
+      .mockReturnValueOnce(makeChain([]))                                                // 9. recipe
+      .mockReturnValueOnce(makeChain([F.order]));                                        // 10. response order
     mockDb.insert.mockReturnValue(makeChain([F.kdsTask]));
     mockDb.update.mockReturnValue(makeChain([]));
 
@@ -797,7 +802,12 @@ describe("9. Verificación de eventos WebSocket", () => {
       .mockReturnValueOnce(makeChain([{ printMode: "kds_only" }]))
       .mockReturnValueOnce(makeChain([{ sentAt: null }]))
       .mockReturnValueOnce(makeChain([{ order_items: F.orderItem, products: F.product }]))
-      .mockReturnValueOnce(makeChain([]));  // modifiers vacíos
+      .mockReturnValueOnce(makeChain([])) // initial modifiers
+      .mockReturnValueOnce(makeChain([{ status: "open" }]))
+      .mockReturnValueOnce(makeChain([{ order_items: F.orderItem, products: F.product }]))
+      .mockReturnValueOnce(makeChain([])) // locked modifiers
+      .mockReturnValueOnce(makeChain([])) // recipe
+      .mockReturnValueOnce(makeChain([F.order])); // response order
     mockDb.insert.mockReturnValue(makeChain([F.kdsTask]));
     mockDb.update.mockReturnValue(makeChain([]));
 

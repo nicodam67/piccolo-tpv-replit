@@ -74,9 +74,13 @@ vi.mock("jsonwebtoken", () => ({
 }));
 
 vi.mock("bcryptjs", () => ({
+  compare: vi.fn(),
+  hash: vi.fn(),
+  hashSync: vi.fn(() => "$2a$10$dummy-hash"),
   default: {
     compare: vi.fn(),
     hash:    vi.fn(),
+    hashSync: vi.fn(() => "$2a$10$dummy-hash"),
   },
 }));
 
