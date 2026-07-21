@@ -36,6 +36,8 @@ interface ClockStatus {
 
 interface PinResult {
   ok?: boolean;
+  proofs?: Record<Action, string>;
+  expiresAt?: string;
   locked?: boolean;
   retryAfterSeconds?: number;
   attemptsLeft?: number;
@@ -66,6 +68,7 @@ export default function TabletApp() {
   const [screen, setScreen] = useState<Screen>("home");
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
   const [clockStatus, setClockStatus] = useState<ClockStatus | null>(null);
+  const [clockProofs, setClockProofs] = useState<Record<Action, string> | null>(null);
   const [confirmation, setConfirmation] = useState<{ action: string; time: string; name: string } | null>(null);
 
   // ── Online indicator ───────────────────────────────────────────────────────
@@ -132,6 +135,7 @@ export default function TabletApp() {
     setScreen("home");
     setSelectedEmployee(null);
     setClockStatus(null);
+    setClockProofs(null);
     setConfirmation(null);
   }, []);
 
@@ -141,7 +145,9 @@ export default function TabletApp() {
   async function onEmployeeSelected(emp: Employee) {
     setSelectedEmployee(emp);
     try {
-      const r = await fetch(`${BASE}/api/fichaje/public/my-status/${emp.id}`);
+      const r = await fetch(
+        `${BASE}/api/fichaje/public/my-status/${emp.id}?deviceToken=${encodeURIComponent(deviceToken ?? "")}`,
+      );
       if (r.ok) setClockStatus(await r.json());
       else setClockStatus({ status: "out", record: null, activeBreak: null });
     } catch {
@@ -154,6 +160,7 @@ export default function TabletApp() {
   function onNfcIdentified(emp: Employee, nfcStatus: NfcClockStatus) {
     setSelectedEmployee(emp);
     setClockStatus(nfcStatus);
+    setClockProofs(nfcStatus.proofs);
     setScreen("status");  // No PIN step for NFC
   }
 
@@ -167,7 +174,10 @@ export default function TabletApp() {
     });
     const data: PinResult = await r.json();
     if (r.ok && data.ok) {
-      const sr = await fetch(`${BASE}/api/fichaje/public/my-status/${selectedEmployee.id}`);
+      setClockProofs(data.proofs ?? null);
+      const sr = await fetch(
+        `${BASE}/api/fichaje/public/my-status/${selectedEmployee.id}?deviceToken=${encodeURIComponent(deviceToken)}`,
+      );
       if (sr.ok) setClockStatus(await sr.json());
       setScreen("status");
     }
@@ -176,15 +186,21 @@ export default function TabletApp() {
 
   // ── Clock action ───────────────────────────────────────────────────────────
   async function onAction(action: Action) {
-    if (!selectedEmployee || !deviceToken) return;
+    if (!selectedEmployee || !deviceToken || !clockProofs?.[action]) return;
     const idem = `${selectedEmployee.id}-${action}-${new Date().toISOString().slice(0, 16)}`;
     const r = await fetch(`${BASE}/api/tablet/clock`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "Idempotency-Key": idem },
-      body: JSON.stringify({ employeeId: selectedEmployee.id, action, deviceToken }),
+      body: JSON.stringify({
+        employeeId: selectedEmployee.id,
+        action,
+        deviceToken,
+        proof: clockProofs[action],
+      }),
     });
     const data = await r.json();
     if (r.ok && data.success) {
+      setClockProofs(null);
       const rawTime = data.serverTime ?? new Date().toISOString();
       const t = new Date(rawTime).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
       setConfirmation({ action: ACTION_LABELS[action], time: t, name: selectedEmployee.name });

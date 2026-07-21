@@ -18,8 +18,37 @@ import * as crypto from "node:crypto";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { idempotency } from "../middlewares/idempotency";
 import { z } from "zod";
+import rateLimit from "express-rate-limit";
+import {
+  auditClockAuthorizationFailure,
+  CLOCK_AUTH_DENIED,
+  ClockAuthorizationError,
+  consumeClockProof,
+  issueClockProofs,
+} from "../lib/clock-authorization";
 
 const router: IRouter = Router();
+const publicClockLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: CLOCK_AUTH_DENIED },
+});
+
+async function getActivePublicDevice(deviceToken: string | undefined) {
+  if (!deviceToken) return null;
+  const [device] = await db
+    .select({
+      id: tabletDevicesTable.id,
+      name: tabletDevicesTable.name,
+      status: tabletDevicesTable.status,
+    })
+    .from(tabletDevicesTable)
+    .where(eq(tabletDevicesTable.deviceToken, deviceToken))
+    .limit(1);
+  return device?.status === "active" ? device : null;
+}
 
 // ─── Helper: log audit ───────────────────────────────────────────────────────
 async function logAudit(
@@ -45,7 +74,12 @@ async function logAudit(
 // ════════════════════════════════════════════════════════════════════════════
 
 // GET /api/fichaje/public/employees — list active employees for PIN selection
-router.get("/fichaje/public/employees", async (_req, res): Promise<void> => {
+router.get("/fichaje/public/employees", async (req, res): Promise<void> => {
+  const device = await getActivePublicDevice(req.query.deviceToken as string | undefined);
+  if (!device) {
+    res.status(401).json({ error: CLOCK_AUTH_DENIED });
+    return;
+  }
   const employees = await db
     .select({ id: employeesTable.id, name: employeesTable.name })
     .from(employeesTable)
@@ -60,11 +94,20 @@ router.get("/fichaje/public/clock-status", async (_req, res): Promise<void> => {
     .select({ mobileClockEnabled: fichajeSettingsTable.mobileClockEnabled })
     .from(fichajeSettingsTable)
     .limit(1);
-  res.json({ mobileClockEnabled: settings[0]?.mobileClockEnabled ?? false });
+  res.json({
+    mobileClockEnabled: false,
+    configuredMobileClockEnabled: settings[0]?.mobileClockEnabled ?? false,
+    reason: "El fichaje requiere un dispositivo registrado",
+  });
 });
 
 // GET /api/fichaje/public/my-status/:employeeId — current clock state for employee
 router.get("/fichaje/public/my-status/:employeeId", async (req, res): Promise<void> => {
+  const device = await getActivePublicDevice(req.query.deviceToken as string | undefined);
+  if (!device) {
+    res.status(401).json({ error: CLOCK_AUTH_DENIED });
+    return;
+  }
   const employeeId = req.params.employeeId as string;
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -108,149 +151,43 @@ router.get("/fichaje/public/my-status/:employeeId", async (req, res): Promise<vo
 const PublicClockBody = z.object({
   employeeId: z.string().uuid(),
   action: z.enum(["clock_in", "clock_out", "break_start", "break_end"]),
-  source: z.enum(["pin", "nfc", "manual"]).default("pin"),
+  deviceToken: z.string().min(1),
+  proof: z.string().min(32),
 });
 
-router.post("/fichaje/public/clock", idempotency, async (req, res): Promise<void> => {
-  const settings = await db.select().from(fichajeSettingsTable).limit(1);
-  if (!settings[0]?.mobileClockEnabled) {
-    res.status(403).json({ error: "El fichaje móvil no está habilitado" });
-    return;
-  }
-
+router.post("/fichaje/public/clock", publicClockLimiter, idempotency, async (req, res): Promise<void> => {
   const parsed = PublicClockBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "Datos inválidos" });
     return;
   }
 
-  const { employeeId, action, source } = parsed.data;
-  const now = new Date();
-
-  const employee = await db
-    .select()
-    .from(employeesTable)
-    .where(and(eq(employeesTable.id, employeeId), eq(employeesTable.active, true)))
-    .limit(1);
-
-  if (!employee[0]) {
-    res.status(404).json({ error: "Empleado no encontrado" });
+  const { employeeId, action, deviceToken, proof } = parsed.data;
+  const device = await getActivePublicDevice(deviceToken);
+  if (!device) {
+    res.status(401).json({ error: CLOCK_AUTH_DENIED });
     return;
   }
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  if (action === "clock_in") {
-    const existing = await db
-      .select()
-      .from(timeRecordsTable)
-      .where(
-        and(
-          eq(timeRecordsTable.employeeId, employeeId),
-          isNull(timeRecordsTable.clockOut),
-          gte(timeRecordsTable.clockIn, today)
-        )
-      )
-      .limit(1);
-
-    if (existing[0]) {
-      res.status(409).json({ error: "Ya hay una entrada abierta" });
-      return;
-    }
-
-    const [record] = await db
-      .insert(timeRecordsTable)
-      .values({ employeeId, clockIn: now, source })
-      .returning();
-
-    await logAudit("clock_in", employeeId, employeeId, "time_record", record.id);
-    res.json({ success: true, record });
-    return;
+  try {
+    res.json(await consumeClockProof({
+      proof,
+      employeeId,
+      deviceId: device.id,
+      action,
+    }));
+  } catch (error) {
+    const authError = error instanceof ClockAuthorizationError
+      ? error
+      : new ClockAuthorizationError(503, "clock_transaction_failed", "Fichaje no disponible");
+    await auditClockAuthorizationFailure({
+      employeeId,
+      deviceId: device.id,
+      action,
+      reason: authError.reason,
+    });
+    res.status(authError.status).json({ error: authError.externalMessage });
   }
-
-  // For the rest, find the open record
-  const openRecord = await db
-    .select()
-    .from(timeRecordsTable)
-    .where(
-      and(
-        eq(timeRecordsTable.employeeId, employeeId),
-        isNull(timeRecordsTable.clockOut),
-        gte(timeRecordsTable.clockIn, today)
-      )
-    )
-    .limit(1);
-
-  if (!openRecord[0]) {
-    res.status(404).json({ error: "No hay entrada abierta" });
-    return;
-  }
-
-  if (action === "clock_out") {
-    // Close open break first if any
-    await db
-      .update(breaksTable)
-      .set({ breakEnd: now })
-      .where(and(eq(breaksTable.recordId, openRecord[0].id), isNull(breaksTable.breakEnd)));
-
-    const [updated] = await db
-      .update(timeRecordsTable)
-      .set({ clockOut: now, updatedAt: now })
-      .where(eq(timeRecordsTable.id, openRecord[0].id))
-      .returning();
-
-    await logAudit("clock_out", employeeId, employeeId, "time_record", updated.id);
-    res.json({ success: true, record: updated });
-    return;
-  }
-
-  if (action === "break_start") {
-    const existingBreak = await db
-      .select()
-      .from(breaksTable)
-      .where(and(eq(breaksTable.recordId, openRecord[0].id), isNull(breaksTable.breakEnd)))
-      .limit(1);
-
-    if (existingBreak[0]) {
-      res.status(409).json({ error: "Ya hay un descanso en curso" });
-      return;
-    }
-
-    const [brk] = await db
-      .insert(breaksTable)
-      .values({ recordId: openRecord[0].id, breakStart: now })
-      .returning();
-
-    await logAudit("break_start", employeeId, employeeId, "break", brk.id);
-    res.json({ success: true, break: brk });
-    return;
-  }
-
-  if (action === "break_end") {
-    const openBreak = await db
-      .select()
-      .from(breaksTable)
-      .where(and(eq(breaksTable.recordId, openRecord[0].id), isNull(breaksTable.breakEnd)))
-      .limit(1);
-
-    if (!openBreak[0]) {
-      res.status(404).json({ error: "No hay descanso abierto" });
-      return;
-    }
-
-    const [updated] = await db
-      .update(breaksTable)
-      .set({ breakEnd: now })
-      .where(eq(breaksTable.id, openBreak[0].id))
-      .returning();
-
-    await logAudit("break_end", employeeId, employeeId, "break", updated.id);
-    res.json({ success: true, break: updated });
-    return;
-  }
-
-  res.status(400).json({ error: "Acción no válida" });
 });
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -955,7 +892,7 @@ router.post(
 // ════════════════════════════════════════════════════════════════════════════
 
 // POST /api/fichaje/public/nfc/identify — identify employee by NFC card token
-router.post("/fichaje/public/nfc/identify", async (req, res): Promise<void> => {
+router.post("/fichaje/public/nfc/identify", publicClockLimiter, async (req, res): Promise<void> => {
   const { rawToken, deviceToken } = req.body as { rawToken?: string; deviceToken?: string };
 
   if (!rawToken || !deviceToken) {
@@ -971,7 +908,7 @@ router.post("/fichaje/public/nfc/identify", async (req, res): Promise<void> => {
     .limit(1);
 
   if (!devices[0] || devices[0].status === "revoked") {
-    res.status(403).json({ error: "Dispositivo no autorizado" });
+    res.status(401).json({ error: CLOCK_AUTH_DENIED });
     return;
   }
 
@@ -1009,7 +946,7 @@ router.post("/fichaje/public/nfc/identify", async (req, res): Promise<void> => {
       deviceName: devices[0].name,
       tokenPrefix: hash.slice(0, 8),
     });
-    res.status(404).json({ error: "Tarjeta no reconocida" });
+    res.status(401).json({ error: CLOCK_AUTH_DENIED });
     return;
   }
 
@@ -1019,7 +956,7 @@ router.post("/fichaje/public/nfc/identify", async (req, res): Promise<void> => {
       deviceName: devices[0].name,
       deviceId: devices[0].id,
     });
-    res.status(403).json({ error: "Tarjeta revocada — contacte con el administrador" });
+    res.status(401).json({ error: CLOCK_AUTH_DENIED });
     return;
   }
 
@@ -1031,7 +968,7 @@ router.post("/fichaje/public/nfc/identify", async (req, res): Promise<void> => {
     .limit(1);
 
   if (!emp[0] || !emp[0].active) {
-    res.status(404).json({ error: "Empleado no encontrado o inactivo" });
+    res.status(401).json({ error: CLOCK_AUTH_DENIED });
     return;
   }
 
@@ -1078,6 +1015,11 @@ router.post("/fichaje/public/nfc/identify", async (req, res): Promise<void> => {
     employeeName: emp[0].name,
     currentStatus,
   });
+  const authorization = await issueClockProofs({
+    employeeId: emp[0].id,
+    deviceId: devices[0].id,
+    method: "nfc",
+  });
 
   res.json({
     employeeId: emp[0].id,
@@ -1085,6 +1027,7 @@ router.post("/fichaje/public/nfc/identify", async (req, res): Promise<void> => {
     currentStatus,
     record: openRecord[0] ?? null,
     activeBreak: openBreak[0] ?? null,
+    ...authorization,
     serverTime: new Date().toISOString(),
   });
 });

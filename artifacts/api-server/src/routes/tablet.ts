@@ -13,19 +13,42 @@ import { db } from "@workspace/db";
 import {
   employeesTable,
   employeePinsTable,
-  timeRecordsTable,
-  breaksTable,
   fichajeAuditTable,
   tabletDevicesTable,
 } from "@workspace/db";
-import { eq, and, isNull, gte } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { idempotency } from "../middlewares/idempotency";
 import * as bcrypt from "bcryptjs";
 import * as crypto from "node:crypto";
 import { z } from "zod";
+import rateLimit from "express-rate-limit";
+import {
+  auditClockAuthorizationFailure,
+  CLOCK_AUTH_DENIED,
+  ClockAuthorizationError,
+  consumeClockProof,
+  issueClockProofs,
+} from "../lib/clock-authorization";
 
 const router: IRouter = Router();
+const DUMMY_PIN_HASH = bcrypt.hashSync(crypto.randomBytes(32).toString("hex"), 10);
+
+const pinAuthorizationLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: CLOCK_AUTH_DENIED },
+});
+
+const clockConsumptionLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: CLOCK_AUTH_DENIED },
+});
 
 // ─── Pairing codes (in-memory, admin-generated, single-use) ──────────────────
 interface PairingCode {
@@ -282,7 +305,7 @@ const VerifyPinBody = z.object({
   deviceToken: z.string().min(1),
 });
 
-router.post("/tablet/verify-pin", async (req, res): Promise<void> => {
+router.post("/tablet/verify-pin", pinAuthorizationLimiter, async (req, res): Promise<void> => {
   const parsed = VerifyPinBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "Datos inválidos" });
@@ -294,7 +317,7 @@ router.post("/tablet/verify-pin", async (req, res): Promise<void> => {
   // Validate device (revoked devices cannot verify PINs)
   const device = await getDevice(deviceToken);
   if (!device || device.status === "revoked") {
-    res.status(403).json({ error: "Dispositivo no autorizado" });
+    res.status(401).json({ error: CLOCK_AUTH_DENIED });
     return;
   }
 
@@ -305,24 +328,28 @@ router.post("/tablet/verify-pin", async (req, res): Promise<void> => {
       deviceName: device.name,
       retryAfterSeconds: lockState.retryAfterSeconds,
     });
-    res.status(429).json({ locked: true, retryAfterSeconds: lockState.retryAfterSeconds });
+    res.status(429).json({
+      error: CLOCK_AUTH_DENIED,
+      locked: true,
+      retryAfterSeconds: lockState.retryAfterSeconds,
+    });
     return;
   }
 
-  // Get PIN hash
-  const pinRecord = await db
-    .select()
+  // Resolve active employee + PIN together; external errors never reveal which
+  // part of the authorization failed.
+  const [pinRecord] = await db
+    .select({ pinHash: employeePinsTable.pinHash })
     .from(employeePinsTable)
-    .where(eq(employeePinsTable.employeeId, employeeId))
+    .innerJoin(employeesTable, eq(employeesTable.id, employeePinsTable.employeeId))
+    .where(and(
+      eq(employeePinsTable.employeeId, employeeId),
+      eq(employeesTable.active, true),
+    ))
     .limit(1);
 
-  if (!pinRecord[0]) {
-    res.status(404).json({ error: "Este empleado no tiene PIN configurado. Contacte con el administrador." });
-    return;
-  }
-
-  const valid = await bcrypt.compare(pin, pinRecord[0].pinHash);
-  if (!valid) {
+  const valid = await bcrypt.compare(pin, pinRecord?.pinHash ?? DUMMY_PIN_HASH);
+  if (!pinRecord || !valid) {
     const attemptsLeft = recordPinFailure(employeeId);
     await logAudit("pin_failed", employeeId, "tablet_device", device.id, {
       deviceName: device.name,
@@ -332,13 +359,13 @@ router.post("/tablet/verify-pin", async (req, res): Promise<void> => {
     if (attemptsLeft === 0) {
       const lockNew = checkPinLock(employeeId);
       res.status(401).json({
-        error: "PIN incorrecto",
+        error: CLOCK_AUTH_DENIED,
         attemptsLeft: 0,
         locked: true,
         retryAfterSeconds: lockNew.retryAfterSeconds,
       });
     } else {
-      res.status(401).json({ error: "PIN incorrecto", attemptsLeft });
+      res.status(401).json({ error: CLOCK_AUTH_DENIED, attemptsLeft });
     }
     return;
   }
@@ -346,7 +373,12 @@ router.post("/tablet/verify-pin", async (req, res): Promise<void> => {
   // Success — reset failure counter
   resetPinAttempts(employeeId);
   await logAudit("pin_verified", employeeId, "tablet_device", device.id, { deviceName: device.name });
-  res.json({ ok: true, serverTime: new Date().toISOString() });
+  const authorization = await issueClockProofs({
+    employeeId,
+    deviceId: device.id,
+    method: "pin",
+  });
+  res.json({ ok: true, ...authorization, serverTime: new Date().toISOString() });
 });
 
 // POST /api/tablet/clock — clock action from tablet (bypasses mobileClockEnabled)
@@ -354,121 +386,45 @@ const TabletClockBody = z.object({
   employeeId: z.string().uuid(),
   action: z.enum(["clock_in", "clock_out", "break_start", "break_end"]),
   deviceToken: z.string().min(1),
+  proof: z.string().min(32),
 });
 
-router.post("/tablet/clock", idempotency, async (req, res): Promise<void> => {
+router.post("/tablet/clock", clockConsumptionLimiter, idempotency, async (req, res): Promise<void> => {
   const parsed = TabletClockBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "Datos inválidos" });
     return;
   }
 
-  const { employeeId, action, deviceToken } = parsed.data;
+  const { employeeId, action, deviceToken, proof } = parsed.data;
 
   // Validate device — revoked devices cannot submit clock actions
   const device = await getDevice(deviceToken);
   if (!device || device.status === "revoked") {
-    res.status(403).json({ error: "Dispositivo revocado o no autorizado" });
+    res.status(401).json({ error: CLOCK_AUTH_DENIED });
     return;
   }
 
-  // Update lastSeen
-  await db.update(tabletDevicesTable).set({ lastSeenAt: new Date() }).where(eq(tabletDevicesTable.id, device.id));
-
-  // Validate employee
-  const employee = await db
-    .select()
-    .from(employeesTable)
-    .where(and(eq(employeesTable.id, employeeId), eq(employeesTable.active, true)))
-    .limit(1);
-
-  if (!employee[0]) {
-    res.status(404).json({ error: "Empleado no encontrado o inactivo" });
-    return;
+  try {
+    const result = await consumeClockProof({
+      proof,
+      employeeId,
+      deviceId: device.id,
+      action,
+    });
+    res.json(result);
+  } catch (error) {
+    const authError = error instanceof ClockAuthorizationError
+      ? error
+      : new ClockAuthorizationError(503, "clock_transaction_failed", "Fichaje no disponible");
+    await auditClockAuthorizationFailure({
+      employeeId,
+      deviceId: device.id,
+      action,
+      reason: authError.reason,
+    });
+    res.status(authError.status).json({ error: authError.externalMessage });
   }
-
-  const now = new Date();
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-
-  if (action === "clock_in") {
-    const existing = await db.select().from(timeRecordsTable).where(
-      and(eq(timeRecordsTable.employeeId, employeeId), isNull(timeRecordsTable.clockOut), gte(timeRecordsTable.clockIn, today))
-    ).limit(1);
-
-    if (existing[0]) {
-      res.status(409).json({ error: "Ya hay una entrada abierta" });
-      return;
-    }
-
-    const [record] = await db.insert(timeRecordsTable).values({
-      employeeId, clockIn: now, source: "pin", deviceId: device.id,
-    }).returning();
-
-    await logAudit("clock_in", employeeId, "time_record", record.id, { deviceName: device.name, method: "pin" });
-    res.json({ success: true, record, serverTime: now.toISOString() });
-    return;
-  }
-
-  // Find open record
-  const openRecord = await db.select().from(timeRecordsTable).where(
-    and(eq(timeRecordsTable.employeeId, employeeId), isNull(timeRecordsTable.clockOut), gte(timeRecordsTable.clockIn, today))
-  ).limit(1);
-
-  if (!openRecord[0]) {
-    res.status(404).json({ error: "No hay entrada abierta hoy" });
-    return;
-  }
-
-  if (action === "clock_out") {
-    await db.update(breaksTable).set({ breakEnd: now })
-      .where(and(eq(breaksTable.recordId, openRecord[0].id), isNull(breaksTable.breakEnd)));
-
-    const [updated] = await db.update(timeRecordsTable)
-      .set({ clockOut: now, updatedAt: now })
-      .where(eq(timeRecordsTable.id, openRecord[0].id))
-      .returning();
-
-    await logAudit("clock_out", employeeId, "time_record", updated.id, { deviceName: device.name, method: "pin" });
-    res.json({ success: true, record: updated, serverTime: now.toISOString() });
-    return;
-  }
-
-  if (action === "break_start") {
-    const existingBreak = await db.select().from(breaksTable)
-      .where(and(eq(breaksTable.recordId, openRecord[0].id), isNull(breaksTable.breakEnd))).limit(1);
-
-    if (existingBreak[0]) {
-      res.status(409).json({ error: "Ya hay un descanso en curso" });
-      return;
-    }
-
-    const [brk] = await db.insert(breaksTable).values({
-      recordId: openRecord[0].id, breakStart: now,
-    }).returning();
-
-    await logAudit("break_start", employeeId, "break", brk.id, { deviceName: device.name, method: "pin" });
-    res.json({ success: true, break: brk, serverTime: now.toISOString() });
-    return;
-  }
-
-  if (action === "break_end") {
-    const openBreak = await db.select().from(breaksTable)
-      .where(and(eq(breaksTable.recordId, openRecord[0].id), isNull(breaksTable.breakEnd))).limit(1);
-
-    if (!openBreak[0]) {
-      res.status(404).json({ error: "No hay descanso abierto" });
-      return;
-    }
-
-    const [updated] = await db.update(breaksTable)
-      .set({ breakEnd: now }).where(eq(breaksTable.id, openBreak[0].id)).returning();
-
-    await logAudit("break_end", employeeId, "break", updated.id, { deviceName: device.name, method: "pin" });
-    res.json({ success: true, break: updated, serverTime: now.toISOString() });
-    return;
-  }
-
-  res.status(400).json({ error: "Acción no válida" });
 });
 
 export default router;
