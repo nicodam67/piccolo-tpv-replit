@@ -474,9 +474,12 @@ export default function OrderPage() {
   const dismissAlert = () => { if (activeAlert?.id) handleMarkRead(activeAlert.id); setActiveAlert(null); };
 
   // Mutations
+  const [sendIdempotencyKey, setSendIdempotencyKey] = useState(() => crypto.randomUUID());
   const addOrderItem = useAddOrderItem();
   const deleteOrderItem = useDeleteOrderItem();
-  const sendOrder = useSendOrder();
+  const sendOrder = useSendOrder({
+    request: { headers: { 'Idempotency-Key': sendIdempotencyKey } },
+  });
   const updateOrder = useUpdateOrder();
   const updateOrderItem = useUpdateOrderItem();
   const duplicateOrderItem = useDuplicateOrderItem();
@@ -586,6 +589,7 @@ export default function OrderPage() {
     suppressNextRefresh.current = true;
     sendOrder.mutate({ orderId: actualOrderId }, {
       onSuccess: () => {
+        setSendIdempotencyKey(crypto.randomUUID());
         invalidateOrder();
         queryClient.invalidateQueries({ queryKey: getGetAllTablesQueryKey() });
         queryClient.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() });

@@ -72,9 +72,13 @@ const mockDb = vi.hoisted(() => ({
  * Fake pg Pool — used by requireAuth (revocation check) and idempotency middleware.
  * Default: returns no rows (= no revoked jti, no cached idempotency result).
  */
-const mockPool = vi.hoisted(() => ({
-  query: vi.fn().mockResolvedValue({ rows: [] }),
-}));
+const mockPool = vi.hoisted(() => {
+  const query = vi.fn().mockResolvedValue({ rows: [] });
+  return {
+    query,
+    connect: vi.fn(async () => ({ query, release: vi.fn() })),
+  };
+});
 
 // ── Module mocks ──────────────────────────────────────────────────────────────
 

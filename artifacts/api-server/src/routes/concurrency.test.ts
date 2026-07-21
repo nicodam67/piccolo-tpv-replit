@@ -38,7 +38,7 @@ function makeChain(value: unknown) {
     "select", "from", "where", "orderBy", "leftJoin", "innerJoin",
     "insert", "update", "delete", "set", "values", "returning",
     "limit", "offset", "groupBy", "having", "execute",
-    "onConflictDoUpdate", "onConflictDoNothing", "selectDistinct",
+    "onConflictDoUpdate", "onConflictDoNothing", "selectDistinct", "for",
   ]) {
     chain[m] = () => chain;
   }
@@ -56,7 +56,13 @@ const mockDb = vi.hoisted(() => ({
   selectDistinct: vi.fn(),
 }));
 
-const mockPool = vi.hoisted(() => ({ query: vi.fn() }));
+const mockPool = vi.hoisted(() => {
+  const query = vi.fn();
+  return {
+    query,
+    connect: vi.fn(async () => ({ query, release: vi.fn() })),
+  };
+});
 const mockSocketEmit = vi.hoisted(() => vi.fn());
 
 // ─── Module mocks ─────────────────────────────────────────────────────────────

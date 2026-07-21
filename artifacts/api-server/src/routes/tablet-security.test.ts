@@ -24,9 +24,13 @@ const mockDb = vi.hoisted(() => ({
   update: vi.fn(),
   transaction: vi.fn(),
 }));
-const mockPool = vi.hoisted(() => ({
-  query: vi.fn().mockResolvedValue({ rows: [] }),
-}));
+const mockPool = vi.hoisted(() => {
+  const query = vi.fn().mockResolvedValue({ rows: [] });
+  return {
+    query,
+    connect: vi.fn(async () => ({ query, release: vi.fn() })),
+  };
+});
 
 vi.mock("@workspace/db", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@workspace/db")>();
