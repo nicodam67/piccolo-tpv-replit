@@ -3,7 +3,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { PoolClient } from "pg";
-import { pool } from "./client.ts";
+import { pool } from "./pool.ts";
 
 const MIGRATION_LOCK_ID = 26002;
 const here = path.dirname(fileURLToPath(import.meta.url));
