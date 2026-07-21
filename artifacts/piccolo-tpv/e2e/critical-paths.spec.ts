@@ -221,8 +221,12 @@ test.describe("6. Caja — close session and Z report", () => {
     const summaryRes = await api.get(`/cash-sessions/${cashSessionId}/summary`);
     expect(summaryRes.status()).toBe(200);
     const summary = await summaryRes.json();
+    const cashSales = summary.salesByMethod
+      .filter((method: { methodCode: string }) => method.methodCode === "cash")
+      .reduce((total: number, method: { total: string }) => total + Number(method.total), 0);
+    const expectedCash = Number(summary.session.openingFloat) + cashSales;
     const res = await api.post(`/cash-sessions/${cashSessionId}/close`, {
-      countedCash: String(summary.expectedCash),
+      countedCash: expectedCash.toFixed(2),
     });
     expect(res.status()).toBeLessThan(300);
     const session = await res.json();
