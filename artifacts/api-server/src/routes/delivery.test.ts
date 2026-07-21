@@ -22,14 +22,20 @@ import {
   deliveryZonesTable,
   deliveryOrderStatusHistoryTable,
   courierSettlementsTable,
+  categoriesTable,
+  employeesTable,
+  employeePinsTable,
   productsTable,
 } from "@workspace/db";
 import { eq, like } from "drizzle-orm";
+import bcrypt from "bcryptjs";
 import app from "../app";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 async function getToken(): Promise<string> {
-  const res = await request(app).post("/api/auth/login").send({ pin: "0000" });
+  const res = await request(app)
+    .post("/api/auth/pin")
+    .send({ employeeId: TEST_ADMIN_ID, pin: "4826" });
   return res.body?.token ?? "";
 }
 
@@ -38,6 +44,9 @@ function authHeaders(tok: string) {
 }
 
 const TEST_PFX = "TEST-DEL-";
+const TEST_ADMIN_ID = "26000000-0000-4000-8000-000000000001";
+const TEST_CATEGORY_ID = "26000000-0000-4000-8000-000000000002";
+const TEST_PRODUCT_ID = "26000000-0000-4000-8000-000000000003";
 const RUN_DB_INTEGRATION_TESTS = process.env["RUN_DB_INTEGRATION_TESTS"] === "1";
 const describeWithDatabase = RUN_DB_INTEGRATION_TESTS ? describe : describe.skip;
 
@@ -48,12 +57,37 @@ let testProductId = "";
 
 beforeAll(async () => {
   if (!RUN_DB_INTEGRATION_TESTS) return;
-  token = await getToken();
+  await db.insert(employeesTable).values({
+    id: TEST_ADMIN_ID,
+    name: "TEST Delivery Admin",
+    role: "admin",
+    active: true,
+  }).onConflictDoNothing();
+  await db.insert(employeePinsTable).values({
+    employeeId: TEST_ADMIN_ID,
+    pinHash: await bcrypt.hash("4826", 10),
+  }).onConflictDoUpdate({
+    target: employeePinsTable.employeeId,
+    set: { pinHash: await bcrypt.hash("4826", 10) },
+  });
+  await db.insert(categoriesTable).values({
+    id: TEST_CATEGORY_ID,
+    name: "TEST Delivery Category",
+  }).onConflictDoNothing();
+  await db.insert(productsTable).values({
+    id: TEST_PRODUCT_ID,
+    categoryId: TEST_CATEGORY_ID,
+    name: "TEST Delivery Product",
+    price: "10.00",
+    prepZone: "cocina",
+    active: true,
+    deliveryVisible: true,
+  }).onConflictDoNothing();
 
-  // Get a real product id
-  const prods = await db.select({ id: productsTable.id }).from(productsTable)
-    .where(eq(productsTable.active, true)).limit(1);
-  if (prods.length) testProductId = prods[0].id;
+  token = await getToken();
+  if (!token) throw new Error("Integration login failed");
+
+  testProductId = TEST_PRODUCT_ID;
 
   // Create test courier with pending amounts
   const [c] = await db.insert(couriersTable).values({
@@ -82,6 +116,9 @@ afterAll(async () => {
     .where(eq(courierSettlementsTable.courierId, testCourierId)).catch(() => {});
   await db.delete(couriersTable)
     .where(eq(couriersTable.id, testCourierId)).catch(() => {});
+  await db.delete(productsTable).where(eq(productsTable.id, TEST_PRODUCT_ID)).catch(() => {});
+  await db.delete(categoriesTable).where(eq(categoriesTable.id, TEST_CATEGORY_ID)).catch(() => {});
+  await db.delete(employeesTable).where(eq(employeesTable.id, TEST_ADMIN_ID)).catch(() => {});
 }, 30_000);
 
 // ── 1. Manual delivery order creation ────────────────────────────────────────
