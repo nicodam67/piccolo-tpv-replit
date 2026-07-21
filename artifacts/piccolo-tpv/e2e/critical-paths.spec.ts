@@ -20,7 +20,7 @@ const API = process.env.API_BASE_URL ?? "http://localhost:3000/api";
 // ─── Shared state across tests ────────────────────────────────────────────────
 // Tests are serial (workers:1) so we can share IDs between them.
 let adminToken = "";
-let caieroToken = "";
+let waiterToken = "";
 let tableId = "";
 let orderId = "";
 let cashSessionId = "";
@@ -35,11 +35,11 @@ test.describe("1. Authentication", () => {
     adminToken = auth.token;
   });
 
-  test("camarero login returns token and correct role", async ({ request }) => {
-    const auth = await loginAs(request, "camarero");
+  test("waiter login returns token and correct role", async ({ request }) => {
+    const auth = await loginAs(request, "waiter");
     expect(auth.token).toBeTruthy();
-    expect(auth.employee.role).toBe("camarero");
-    caieroToken = auth.token;
+    expect(auth.employee.role).toBe("waiter");
+    waiterToken = auth.token;
   });
 
   test("invalid PIN returns 401", async ({ request }) => {
@@ -88,11 +88,11 @@ test.describe("2. Caja — open session", () => {
 // ─── 3. Mesa + comanda + cobro ────────────────────────────────────────────
 test.describe("3. Order lifecycle: open mesa → comanda → cobro", () => {
   test("get available tables", async ({ request }) => {
-    if (!caieroToken) {
-      const auth = await loginAs(request, "camarero");
-      caieroToken = auth.token;
+    if (!waiterToken) {
+      const auth = await loginAs(request, "waiter");
+      waiterToken = auth.token;
     }
-    const api = apiWithAuth(request, caieroToken);
+    const api = apiWithAuth(request, waiterToken);
     const res = await api.get("/zones");
     expect(res.status()).toBe(200);
     const zones = await res.json();
@@ -112,7 +112,7 @@ test.describe("3. Order lifecycle: open mesa → comanda → cobro", () => {
       console.warn("[E2E] No table available — skipping order creation");
       return;
     }
-    const api = apiWithAuth(request, caieroToken);
+    const api = apiWithAuth(request, waiterToken);
     const res = await api.post(`/tables/${tableId}/order`, {
       guestCount: 2,
       isDemo: true,
@@ -126,7 +126,7 @@ test.describe("3. Order lifecycle: open mesa → comanda → cobro", () => {
 
   test("add item to order", async ({ request }) => {
     if (!orderId) { return; }
-    const api = apiWithAuth(request, caieroToken);
+    const api = apiWithAuth(request, waiterToken);
 
     // Find a product to add
     const productsRes = await api.get("/products?limit=1");
@@ -150,7 +150,7 @@ test.describe("3. Order lifecycle: open mesa → comanda → cobro", () => {
 
   test("send comanda to kitchen", async ({ request }) => {
     if (!orderId) { return; }
-    const api = apiWithAuth(request, caieroToken);
+    const api = apiWithAuth(request, waiterToken);
     const res = await api.post(`/orders/${orderId}/send`, {});
     expect(res.status()).toBeLessThan(300);
     const order = await res.json();
@@ -159,7 +159,7 @@ test.describe("3. Order lifecycle: open mesa → comanda → cobro", () => {
 
   test("cobrar — complete payment", async ({ request }) => {
     if (!orderId) { return; }
-    const api = apiWithAuth(request, caieroToken);
+    const api = apiWithAuth(request, waiterToken);
 
     // Get order total
     const orderRes = await api.get(`/orders/${orderId}`);
@@ -180,7 +180,7 @@ test.describe("3. Order lifecycle: open mesa → comanda → cobro", () => {
 
   test("table is free after payment", async ({ request }) => {
     if (!tableId || !orderId) { return; }
-    const api = apiWithAuth(request, caieroToken);
+    const api = apiWithAuth(request, waiterToken);
     const res = await api.get(`/tables/${tableId}`);
     expect(res.status()).toBe(200);
     const table = await res.json();
