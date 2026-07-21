@@ -88,7 +88,7 @@ vi.mock("express-rate-limit", () => ({
 vi.mock("drizzle-orm", async (importOriginal) => importOriginal());
 
 vi.mock("../lib/socket", () => ({
-  getIO:      vi.fn(() => ({ emit: mockSocketEmit, to: vi.fn(() => ({ emit: vi.fn() })) })),
+  getIO:      vi.fn(() => ({ emit: mockSocketEmit, to: vi.fn(() => ({ emit: mockSocketEmit })) })),
   initSocket: vi.fn(),
 }));
 
