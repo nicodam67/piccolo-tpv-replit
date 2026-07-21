@@ -6,8 +6,10 @@ import {
   pgTable,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { productsTable, productFormatsTable } from "./categories";
 import { employeesTable } from "./employees";
 import { orderItemsTable } from "./order-items";
@@ -157,7 +159,11 @@ export const stockMovementsTable = pgTable("stock_movements", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   /** True for simulation/demo data; safe to purge without touching real records */
   isDemo: boolean("is_demo").notNull().default(false),
-});
+}, (table) => [
+  uniqueIndex("stock_sale_order_item_ingredient_unique")
+    .on(table.orderItemId, table.ingredientId, table.movementType)
+    .where(sql`${table.movementType} = 'sale' AND ${table.orderItemId} IS NOT NULL`),
+]);
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 export type IngredientCategory = typeof ingredientCategoriesTable.$inferSelect;

@@ -11,7 +11,6 @@ import {
   orderItemModifiersTable,
   waiterNotificationsTable,
   auditLogTable,
-  auditFindingsTable,
   prefacturaPrintsTable,
   businessConfigTable,
 } from "@workspace/db";
@@ -580,7 +579,7 @@ router.post("/orders/:orderId/send", requireAuth, idempotency, async (req, res):
     .where(eq(ordersTable.id, orderId));
   const wasAlreadySent = preUpdateOrder?.sentAt !== null;
 
-  const draftItems = await db
+  let draftItems = await db
     .select()
     .from(orderItemsTable)
     .innerJoin(productsTable, eq(orderItemsTable.productId, productsTable.id))
@@ -606,7 +605,40 @@ router.post("/orders/:orderId/send", requireAuth, idempotency, async (req, res):
     modsByItem.get(m.orderItemId)!.push(m);
   }
 
-  await db.transaction(async (tx) => {
+  try {
+    await db.transaction(async (tx) => {
+    // Serialize every send for this order, including requests with different
+    // idempotency keys or no key at all.
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${"order-send:" + orderId}))`);
+
+    const [lockedOrder] = await tx
+      .select({ status: ordersTable.status })
+      .from(ordersTable)
+      .where(eq(ordersTable.id, orderId))
+      .for("update");
+    if (!lockedOrder) throw new Error("ORDER_NOT_FOUND");
+    if (lockedOrder.status === "bill_requested") throw new Error("BILL_REQUESTED");
+
+    // Re-read drafts only after acquiring the lock. A concurrent request that
+    // already sent them will observe an empty set and cannot duplicate effects.
+    draftItems = await tx
+      .select()
+      .from(orderItemsTable)
+      .innerJoin(productsTable, eq(orderItemsTable.productId, productsTable.id))
+      .where(and(eq(orderItemsTable.orderId, orderId), eq(orderItemsTable.status, "draft")));
+    if (draftItems.length === 0) throw new Error("NO_DRAFT_ITEMS");
+
+    const lockedDraftItemIds = draftItems.map((row) => row.order_items.id);
+    const lockedMods = await tx
+      .select()
+      .from(orderItemModifiersTable)
+      .where(inArray(orderItemModifiersTable.orderItemId, lockedDraftItemIds));
+    modsByItem.clear();
+    for (const modifier of lockedMods) {
+      if (!modsByItem.has(modifier.orderItemId)) modsByItem.set(modifier.orderItemId, []);
+      modsByItem.get(modifier.orderItemId)!.push(modifier);
+    }
+
     // Only create KDS tasks when the mode includes KDS (kds_only or both).
     // printers_only mode routes entirely through physical printers — no KDS tasks.
     if (sendToKds) {
@@ -636,27 +668,29 @@ router.post("/orders/:orderId/send", requireAuth, idempotency, async (req, res):
     await tx
       .update(orderItemsTable)
       .set({ status: "sent" })
-      .where(inArray(orderItemsTable.id, draftItemIds));
+      .where(inArray(orderItemsTable.id, lockedDraftItemIds));
 
     await tx
       .update(ordersTable)
       .set({ status: "sent", sentAt: new Date() })
       .where(eq(ordersTable.id, orderId));
-  });
 
-  // ── Stock decrement at send time ───────────────────────────────────────────
-  // Items were in draft (no stock consumed). Now that they're sent to kitchen,
-  // consume the recipe ingredients. Fire-and-forget — stock failure does NOT
-  // block the send response.
-  try {
-    // Build consumption map across all draft items being sent
-    const consumptionMap = new Map<string, { consumed: number; avgCost: string; productName: string; formatName: string | null; itemId: string }>();
+    // Stock movement creation and decrement are part of the SAME transaction as
+    // KDS task creation. A failure rolls back the whole send.
+    const consumptionMap = new Map<string, {
+      ingredientId: string;
+      consumed: number;
+      avgCost: string;
+      productName: string;
+      formatName: string | null;
+      itemId: string;
+    }>();
     for (const row of draftItems) {
       const item = row.order_items;
       const product = row.products;
 
       // Try format-specific recipe first, fall back to base recipe
-      let recipeLines = await db
+      let recipeLines = await tx
         .select({
           ingredientId: recipeItemsTable.ingredientId,
           quantity: recipeItemsTable.quantity,
@@ -675,7 +709,7 @@ router.post("/orders/:orderId/send", requireAuth, idempotency, async (req, res):
 
       // If format-specific returned nothing AND we have a formatId, try base recipe
       if (recipeLines.length === 0 && item.formatId) {
-        recipeLines = await db
+        recipeLines = await tx
           .select({
             ingredientId: recipeItemsTable.ingredientId,
             quantity: recipeItemsTable.quantity,
@@ -697,12 +731,14 @@ router.post("/orders/:orderId/send", requireAuth, idempotency, async (req, res):
           parseFloat(line.quantity) *
           (1 + parseFloat(line.wastePercent) / 100) *
           item.quantity;
-        const existing = consumptionMap.get(line.ingredientId);
+        const movementKey = `${item.id}:${line.ingredientId}`;
+        const existing = consumptionMap.get(movementKey);
         const avgCost = String(line.averageCost ?? line.purchaseCost ?? "0");
         if (existing) {
           existing.consumed += consumed;
         } else {
-          consumptionMap.set(line.ingredientId, {
+          consumptionMap.set(movementKey, {
+            ingredientId: line.ingredientId,
             consumed,
             avgCost,
             productName: product.name,
@@ -713,18 +749,17 @@ router.post("/orders/:orderId/send", requireAuth, idempotency, async (req, res):
       }
     }
 
-    if (consumptionMap.size > 0) {
-      await db.transaction(async (tx) => {
-        for (const [ingredientId, { consumed, avgCost, productName, formatName, itemId }] of consumptionMap) {
-          await tx
-            .update(ingredientsTable)
-            .set({
-              currentStock: sql`GREATEST(0, (${ingredientsTable.currentStock})::numeric - ${consumed}::numeric)`,
-              updatedAt: new Date(),
-            })
-            .where(eq(ingredientsTable.id, ingredientId));
-
-          await tx.insert(stockMovementsTable).values({
+    for (const {
+      ingredientId,
+      consumed,
+      avgCost,
+      productName,
+      formatName,
+      itemId,
+    } of consumptionMap.values()) {
+      const [movement] = await tx
+        .insert(stockMovementsTable)
+        .values({
             ingredientId,
             movementType: "sale",
             quantity: String(-consumed),
@@ -732,33 +767,37 @@ router.post("/orders/:orderId/send", requireAuth, idempotency, async (req, res):
             reason: `Venta: ${productName}${formatName ? ` [${formatName}]` : ""}`,
             employeeId: req.user?.id ?? null,
             orderItemId: itemId,
-          });
-        }
-      });
+          })
+        .onConflictDoNothing()
+        .returning({ id: stockMovementsTable.id });
+      if (!movement) continue;
+
+      await tx
+        .update(ingredientsTable)
+        .set({
+          currentStock: sql`GREATEST(0, (${ingredientsTable.currentStock})::numeric - ${consumed}::numeric)`,
+          updatedAt: new Date(),
+        })
+        .where(eq(ingredientsTable.id, ingredientId));
     }
-  } catch (err) {
-    logger.error({
-      msg: "Stock decrement at send failed — non-fatal",
-      orderId,
-      err: err instanceof Error ? { message: err.message, stack: err.stack } : String(err),
     });
-    // Record a high-severity audit finding so the issue surfaces in the audit panel
-    try {
-      await db.insert(auditFindingsTable).values({
-        module: "stock",
-        severity: "high",
-        title: `Deducción de stock fallida — pedido ${orderId}`,
-        description: `Error al descontar stock en el envío a cocina: ${err instanceof Error ? err.message : String(err)}`,
-        automated: true,
-      });
-    } catch { /* audit insert must never block the send response */ }
-    // Notify the order screen so staff can manually correct stock
-    try {
-      emitToFunction("inventory", "stock:deduction_failed", {
-        orderId,
-        error: err instanceof Error ? err.message : String(err),
-      });
-    } catch { /* socket not initialised */ }
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : "SEND_FAILED";
+    if (reason === "ORDER_NOT_FOUND") {
+      res.status(404).json({ error: "Pedido no encontrado" });
+      return;
+    }
+    if (reason === "BILL_REQUESTED") {
+      res.status(409).json({ error: "No se puede enviar a cocina: la cuenta ya ha sido solicitada" });
+      return;
+    }
+    if (reason === "NO_DRAFT_ITEMS") {
+      res.status(409).json({ error: "La comanda ya fue enviada" });
+      return;
+    }
+    logger.error({ orderId, err }, "Atomic order send failed");
+    res.status(503).json({ error: "No se pudo enviar la comanda de forma segura" });
+    return;
   }
 
   const [updated] = await db.select().from(ordersTable).where(eq(ordersTable.id, orderId));

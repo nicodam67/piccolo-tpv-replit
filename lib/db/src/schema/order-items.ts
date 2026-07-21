@@ -1,4 +1,4 @@
-import { boolean, numeric, pgTable, text, uuid, integer, timestamp } from "drizzle-orm/pg-core";
+import { boolean, numeric, pgTable, text, uuid, integer, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import { ordersTable } from "./orders";
 import { productsTable, productFormatsTable } from "./categories";
 
@@ -48,7 +48,9 @@ export const kitchenTasksTable = pgTable("kitchen_tasks", {
   collectedAt: timestamp("collected_at", { withTimezone: true }),
   servedAt: timestamp("served_at", { withTimezone: true }),
   cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
-});
+}, (table) => [
+  uniqueIndex("kitchen_tasks_order_item_unique").on(table.orderItemId),
+]);
 
 export type OrderItem = typeof orderItemsTable.$inferSelect;
 export type KitchenTask = typeof kitchenTasksTable.$inferSelect;
