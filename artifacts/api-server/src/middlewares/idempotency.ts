@@ -18,6 +18,7 @@
 
 import { type Request, type Response, type NextFunction } from "express";
 import { pool } from "@workspace/db";
+import type { PoolClient } from "pg";
 
 // ── In-memory LRU cache ────────────────────────────────────────────────────────
 
@@ -89,7 +90,7 @@ export async function idempotency(
   // ── 2. Cross-process serialization + durable lookup ────────────────────────
   // A session advisory lock remains held until the successful response is
   // persisted. Parallel requests with the same key cannot both run the handler.
-  let client: Awaited<ReturnType<typeof pool.connect>> | undefined;
+  let client: PoolClient | undefined;
   try {
     client = await pool.connect();
     await client.query("SELECT pg_advisory_lock(hashtext($1))", [cacheKey]);

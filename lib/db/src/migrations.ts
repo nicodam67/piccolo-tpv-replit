@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import type { PoolClient } from "pg";
 import { pool } from "./client";
 
 const MIGRATION_LOCK_ID = 26002;
@@ -43,7 +44,7 @@ export async function discoverMigrations(): Promise<MigrationFile[]> {
   ];
 }
 
-async function ensureLedger(client: Awaited<ReturnType<typeof pool.connect>>): Promise<void> {
+async function ensureLedger(client: PoolClient): Promise<void> {
   await client.query(`
     CREATE TABLE IF NOT EXISTS schema_migrations (
       version     text        PRIMARY KEY,
@@ -54,7 +55,7 @@ async function ensureLedger(client: Awaited<ReturnType<typeof pool.connect>>): P
 }
 
 async function withMigrationLock<T>(
-  callback: (client: Awaited<ReturnType<typeof pool.connect>>) => Promise<T>,
+  callback: (client: PoolClient) => Promise<T>,
 ): Promise<T> {
   const client = await pool.connect();
   try {
