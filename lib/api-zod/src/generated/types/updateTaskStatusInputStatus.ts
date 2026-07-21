@@ -12,6 +12,7 @@ export type UpdateTaskStatusInputStatus = typeof UpdateTaskStatusInputStatus[key
 export const UpdateTaskStatusInputStatus = {
   new: 'new',
   preparing: 'preparing',
+  in_oven: 'in_oven',
   ready: 'ready',
   collected: 'collected',
   served: 'served',

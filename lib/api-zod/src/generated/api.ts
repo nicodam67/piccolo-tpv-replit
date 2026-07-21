@@ -744,6 +744,7 @@ export const GetKdsTasksResponseItem = zod.object({
   "tableName": zod.string(),
   "employeeName": zod.string(),
   "employeeId": zod.string().optional(),
+  "clientName": zod.string(),
   "createdAt": zod.string(),
   "updatedAt": zod.string(),
   "readyAt": zod.string().optional(),
@@ -761,7 +762,7 @@ export const UpdateKitchenTaskStatusParams = zod.object({
 })
 
 export const UpdateKitchenTaskStatusBody = zod.object({
-  "status": zod.enum(['new', 'preparing', 'ready', 'collected', 'served', 'cancelled'])
+  "status": zod.enum(['new', 'preparing', 'in_oven', 'ready', 'collected', 'served', 'cancelled'])
 })
 
 export const UpdateKitchenTaskStatusResponse = zod.object({
@@ -777,6 +778,7 @@ export const UpdateKitchenTaskStatusResponse = zod.object({
   "tableName": zod.string(),
   "employeeName": zod.string(),
   "employeeId": zod.string().optional(),
+  "clientName": zod.string(),
   "createdAt": zod.string(),
   "updatedAt": zod.string(),
   "readyAt": zod.string().optional(),

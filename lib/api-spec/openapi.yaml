@@ -2681,6 +2681,8 @@ components:
           type: string
         employeeId:
           type: string
+        clientName:
+          type: string
         createdAt:
           type: string
         updatedAt:
@@ -2691,7 +2693,7 @@ components:
           type: string
         servedAt:
           type: string
-      required: [id, orderId, orderItemId, prepZone, productName, quantity, status, allergyNote, hasAllergy, tableName, employeeName, createdAt, updatedAt]
+      required: [id, orderId, orderItemId, prepZone, productName, quantity, status, allergyNote, hasAllergy, tableName, employeeName, clientName, createdAt, updatedAt]
 
     AddOrderItemInput:
       type: object
@@ -2820,7 +2822,7 @@ components:
       properties:
         status:
           type: string
-          enum: [new, preparing, ready, collected, served, cancelled]
+          enum: [new, preparing, in_oven, ready, collected, served, cancelled]
       required: [status]
 
     PaseActionInput:

@@ -19,6 +19,7 @@ export interface KitchenTask {
   tableName: string;
   employeeName: string;
   employeeId?: string;
+  clientName: string;
   createdAt: string;
   updatedAt: string;
   readyAt?: string;
