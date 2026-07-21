@@ -218,8 +218,11 @@ test.describe("6. Caja — close session and Z report", () => {
   test("close cash session with arqueo", async ({ request }) => {
     expect(cashSessionId).toBeTruthy();
     const api = apiWithAuth(request, adminToken);
+    const summaryRes = await api.get(`/cash-sessions/${cashSessionId}/summary`);
+    expect(summaryRes.status()).toBe(200);
+    const summary = await summaryRes.json();
     const res = await api.post(`/cash-sessions/${cashSessionId}/close`, {
-      countedCash: "200.00",
+      countedCash: String(summary.expectedCash),
     });
     expect(res.status()).toBeLessThan(300);
     const session = await res.json();
