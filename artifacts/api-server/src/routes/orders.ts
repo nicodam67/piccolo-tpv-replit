@@ -13,6 +13,7 @@ import {
   auditLogTable,
   prefacturaPrintsTable,
   businessConfigTable,
+  idempotencyKeysTable,
 } from "@workspace/db";
 import { eq, and, inArray, desc, asc, sql } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
@@ -605,8 +606,9 @@ router.post("/orders/:orderId/send", requireAuth, idempotency, async (req, res):
     modsByItem.get(m.orderItemId)!.push(m);
   }
 
+  let updated: typeof ordersTable.$inferSelect | undefined;
   try {
-    await db.transaction(async (tx) => {
+    updated = await db.transaction(async (tx) => {
     // Serialize every send for this order, including requests with different
     // idempotency keys or no key at all.
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${"order-send:" + orderId}))`);
@@ -780,6 +782,29 @@ router.post("/orders/:orderId/send", requireAuth, idempotency, async (req, res):
         })
         .where(eq(ingredientsTable.id, ingredientId));
     }
+
+    const [updatedOrder] = await tx
+      .select()
+      .from(ordersTable)
+      .where(eq(ordersTable.id, orderId));
+    if (!updatedOrder) throw new Error("ORDER_NOT_FOUND");
+
+    // Persist the exact successful response in the SAME transaction as KDS and
+    // stock side effects. A process crash after COMMIT can still be replayed.
+    const requestKey = req.headers["idempotency-key"];
+    if (typeof requestKey === "string" && req.user?.id) {
+      await tx
+        .insert(idempotencyKeysTable)
+        .values({
+          cacheKey: `${req.user.id}:${requestKey}`,
+          userId: req.user.id,
+          statusCode: 200,
+          response: updatedOrder,
+          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        })
+        .onConflictDoNothing();
+    }
+    return updatedOrder;
     });
   } catch (err) {
     const reason = err instanceof Error ? err.message : "SEND_FAILED";
@@ -799,8 +824,6 @@ router.post("/orders/:orderId/send", requireAuth, idempotency, async (req, res):
     res.status(503).json({ error: "No se pudo enviar la comanda de forma segura" });
     return;
   }
-
-  const [updated] = await db.select().from(ordersTable).where(eq(ordersTable.id, orderId));
 
   await writeAudit(orderId, req.user?.id, req.user?.name ?? "", "send_kds",
     `${draftItems.length} línea(s) enviada(s) a preparación`);

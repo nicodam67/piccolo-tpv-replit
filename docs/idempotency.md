@@ -35,6 +35,7 @@ a leer las líneas draft. En una sola transacción:
 - calcula receta;
 - crea movimientos de venta;
 - descuenta stock.
+- persiste en `idempotency_keys` la respuesta exacta que devolverá la ruta.
 
 Restricciones:
 

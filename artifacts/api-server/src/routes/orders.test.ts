@@ -282,7 +282,8 @@ describe("POST /api/orders/:orderId/send — emits kds:refresh and orders:refres
         .mockReturnValueOnce(makeChain([{ status: "open" }]))
         .mockReturnValueOnce(makeChain([draftRow]))
         .mockReturnValueOnce(makeChain([]))
-        .mockReturnValueOnce(makeChain([]));
+        .mockReturnValueOnce(makeChain([]))
+        .mockReturnValueOnce(makeChain([UPDATED_ORDER]));
       await cb({
         execute: vi.fn().mockResolvedValue({ rows: [] }),
         select: txSelect,
@@ -351,7 +352,8 @@ describe("POST /api/orders/:orderId/send — emits kds:refresh and orders:refres
         .mockReturnValueOnce(makeChain([{ status: "open" }]))
         .mockReturnValueOnce(makeChain([DRAFT_ROW]))
         .mockReturnValueOnce(makeChain([]))
-        .mockReturnValueOnce(makeChain([]));
+        .mockReturnValueOnce(makeChain([]))
+        .mockReturnValueOnce(makeChain([UPDATED_ORDER]));
       await cb({
         execute: vi.fn().mockResolvedValue({ rows: [] }),
         select: txSelect,
@@ -397,7 +399,8 @@ describe("POST /api/orders/:orderId/send — emits kds:refresh and orders:refres
         .mockReturnValueOnce(makeChain([{ status: "open" }]))
         .mockReturnValueOnce(makeChain([DRAFT_ROW]))
         .mockReturnValueOnce(makeChain([]))
-        .mockReturnValueOnce(makeChain([]));
+        .mockReturnValueOnce(makeChain([]))
+        .mockReturnValueOnce(makeChain([UPDATED_ORDER]));
       await cb({
         execute: vi.fn().mockResolvedValue({ rows: [] }),
         select: txSelect,
