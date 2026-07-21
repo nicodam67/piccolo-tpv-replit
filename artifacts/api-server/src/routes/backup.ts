@@ -509,7 +509,7 @@ router.put("/backup/schedules/:id", ...adminOnly, async (req, res) => {
   const id = req.params.id as string;
   const body = req.body as Record<string, unknown>;
   const [row] = await db.update(backupSchedulesTable)
-    .set({ ...body as Parameters<typeof db.update>[0], updatedAt: new Date() })
+    .set({ ...body, updatedAt: new Date() } as Partial<typeof backupSchedulesTable.$inferInsert>)
     .where(eq(backupSchedulesTable.id, id))
     .returning();
   if (!row) return res.status(404).json({ error: "No encontrado" });

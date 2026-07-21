@@ -72,16 +72,15 @@ const CHANGELOG: Array<{
 
 // ─── GET /admin/system/version ────────────────────────────────────────────────
 router.get("/admin/system/version", ...guard, async (_req, res): Promise<void> => {
-  // Count migrations in the DB (using drizzle_migrations if present, else fallback)
+  // Count migrations from the authoritative checksum ledger.
   let migrationsApplied: number | null = null;
   try {
-    const [row] = await db.execute<{ count: string }>(
-      sql`SELECT COUNT(*)::int AS count FROM drizzle.__drizzle_migrations`
+    const result = await db.execute<{ count: string }>(
+      sql`SELECT COUNT(*)::int AS count FROM schema_migrations`
     );
-    migrationsApplied = Number((row as { count: string }).count);
+    migrationsApplied = Number(result.rows[0]?.count ?? 0);
   } catch {
-    // drizzle migrations table may not be accessible — use known count
-    migrationsApplied = 18;
+    migrationsApplied = null;
   }
 
   // DB connectivity check

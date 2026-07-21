@@ -17,8 +17,7 @@
  */
 
 import { type Request, type Response, type NextFunction } from "express";
-import { pool } from "@workspace/db";
-import type { PoolClient } from "pg";
+import { pool, type PoolClient } from "@workspace/db";
 
 // ── In-memory LRU cache ────────────────────────────────────────────────────────
 

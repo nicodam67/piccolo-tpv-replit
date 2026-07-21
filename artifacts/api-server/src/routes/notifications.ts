@@ -27,7 +27,7 @@ router.get("/notifications/unread", requireAuth, async (req, res): Promise<void>
 
 // PATCH /notifications/:notificationId/read — mark a notification as read
 router.patch("/notifications/:notificationId/read", requireAuth, async (req, res): Promise<void> => {
-  const { notificationId } = req.params;
+  const notificationId = req.params.notificationId as string;
   const employeeId = (req as any).user?.id as string;
 
   const [notification] = await db

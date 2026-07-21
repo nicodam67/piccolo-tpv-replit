@@ -18,7 +18,7 @@ const router: IRouter = Router();
 // ─────────────────────────────────────────────────────────────────────────────
 
 router.get("/products/:productId/modifiers", requireAuth, async (req, res): Promise<void> => {
-  const { productId } = req.params;
+  const productId = req.params.productId as string;
 
   const rows = await db
     .select({
@@ -55,7 +55,7 @@ router.get("/products/:productId/modifiers", requireAuth, async (req, res): Prom
 });
 
 router.patch("/order-items/:itemId/details", requireAuth, async (req, res): Promise<void> => {
-  const { itemId } = req.params;
+  const itemId = req.params.itemId as string;
   const { notes, allergyNote, hasAllergy, modifiers } = req.body as {
     notes?: string; allergyNote?: string; hasAllergy?: boolean;
     modifiers?: { modifierId?: string; modifierName: string; priceDelta: string }[];

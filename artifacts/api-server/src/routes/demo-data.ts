@@ -45,7 +45,7 @@ router.get("/admin/demo-data/counts", ...adminOnly, async (_req, res) => {
       SELECT COUNT(*) AS n FROM payments
       WHERE is_demo = true
          OR order_id IN (SELECT id FROM orders WHERE is_demo = true)
-    `).then((r) => [{ n: Number((r as { rows: Array<{ n: string }> }).rows[0]?.n ?? 0) }]),
+    `).then((r) => [{ n: Number((r as unknown as { rows: Array<{ n: string }> }).rows[0]?.n ?? 0) }]),
     db.select({ n: count() }).from(cashSessionsTable).where(eq(cashSessionsTable.isDemo, true)),
     db.select({ n: count() }).from(reservationsTable).where(eq(reservationsTable.isDemo, true)),
     db.select({ n: count() }).from(stockMovementsTable).where(eq(stockMovementsTable.isDemo, true)),
