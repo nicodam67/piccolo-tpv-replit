@@ -171,7 +171,11 @@ export async function verifyMigrations(): Promise<void> {
   });
 }
 
-if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) {
+if (
+  process.argv[1] &&
+  path.basename(process.argv[1]) === "migrations.ts" &&
+  pathToFileURL(process.argv[1]).href === import.meta.url
+) {
   const mode = process.argv[2] ?? "check";
   const operation = mode === "apply" ? applyMigrations() : verifyMigrations();
   operation
