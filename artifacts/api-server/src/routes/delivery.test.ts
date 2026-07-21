@@ -8,6 +8,9 @@
  *  4. Courier settlement resets pending amounts
  *  5. Out-of-zone addresses are created anyway (TPV override, no 422)
  *  6. Courier token endpoint accepts incident + note and persists to history
+ *
+ * Requires a migrated PostgreSQL test database and RUN_DB_INTEGRATION_TESTS=1.
+ * The default unit-test run skips this file without opening a database connection.
  */
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
@@ -35,6 +38,8 @@ function authHeaders(tok: string) {
 }
 
 const TEST_PFX = "TEST-DEL-";
+const RUN_DB_INTEGRATION_TESTS = process.env["RUN_DB_INTEGRATION_TESTS"] === "1";
+const describeWithDatabase = RUN_DB_INTEGRATION_TESTS ? describe : describe.skip;
 
 // ── State ─────────────────────────────────────────────────────────────────────
 let token = "";
@@ -42,6 +47,7 @@ let testCourierId = "";
 let testProductId = "";
 
 beforeAll(async () => {
+  if (!RUN_DB_INTEGRATION_TESTS) return;
   token = await getToken();
 
   // Get a real product id
@@ -62,6 +68,7 @@ beforeAll(async () => {
 }, 30_000);
 
 afterAll(async () => {
+  if (!RUN_DB_INTEGRATION_TESTS) return;
   // Clean up orders created by these tests
   const testOrders = await db.select({ id: ordersTable.id })
     .from(ordersTable).where(like((ordersTable as any).orderNumber, `${TEST_PFX}%`));
@@ -78,7 +85,7 @@ afterAll(async () => {
 }, 30_000);
 
 // ── 1. Manual delivery order creation ────────────────────────────────────────
-describe("POST /api/delivery-orders — delivery", () => {
+describeWithDatabase("POST /api/delivery-orders — delivery", () => {
   it("creates a delivery order in confirmed status and returns 201", async () => {
     if (!testProductId) { console.warn("Skip: no products"); return; }
 
@@ -110,7 +117,7 @@ describe("POST /api/delivery-orders — delivery", () => {
 });
 
 // ── 2. Takeaway order creation ────────────────────────────────────────────────
-describe("POST /api/delivery-orders — takeaway", () => {
+describeWithDatabase("POST /api/delivery-orders — takeaway", () => {
   it("creates a takeaway order without address and deliveryFee=0", async () => {
     if (!testProductId) return;
 
@@ -135,7 +142,7 @@ describe("POST /api/delivery-orders — takeaway", () => {
 });
 
 // ── 3. Status change writes to history ───────────────────────────────────────
-describe("PATCH /api/delivery-orders/:id — status history", () => {
+describeWithDatabase("PATCH /api/delivery-orders/:id — status history", () => {
   let orderId = "";
 
   beforeAll(async () => {
@@ -197,7 +204,7 @@ describe("PATCH /api/delivery-orders/:id — status history", () => {
 });
 
 // ── 4. Courier settlement resets pending amounts ──────────────────────────────
-describe("POST /api/admin/couriers/:id/settle", () => {
+describeWithDatabase("POST /api/admin/couriers/:id/settle", () => {
   it("creates a settlement row and resets earnedCashPending + earnedCardPending to 0", async () => {
     const res = await request(app)
       .post(`/api/admin/couriers/${testCourierId}/settle`)
@@ -219,7 +226,7 @@ describe("POST /api/admin/couriers/:id/settle", () => {
 });
 
 // ── 5. Out-of-zone delivery is always created (TPV override) ──────────────────
-describe("POST /api/delivery-orders — out-of-zone", () => {
+describeWithDatabase("POST /api/delivery-orders — out-of-zone", () => {
   it("creates a delivery order even for addresses outside all defined zones", async () => {
     if (!testProductId) return;
 
@@ -247,7 +254,7 @@ describe("POST /api/delivery-orders — out-of-zone", () => {
 });
 
 // ── 6. Courier token endpoint: incident + note ────────────────────────────────
-describe("PATCH /courier/:courierId/orders/:orderId/status — incident via courier token", () => {
+describeWithDatabase("PATCH /courier/:courierId/orders/:orderId/status — incident via courier token", () => {
   let incidentOrderId = "";
 
   beforeAll(async () => {
@@ -346,7 +353,7 @@ describe("PATCH /courier/:courierId/orders/:orderId/status — incident via cour
 });
 
 // ── 7. Double-delivered idempotency — courier stats not inflated on replay ────
-describe("Double-delivered idempotency via courier token endpoint", () => {
+describeWithDatabase("Double-delivered idempotency via courier token endpoint", () => {
   let dblOrderId = "";
 
   beforeAll(async () => {
@@ -409,7 +416,7 @@ describe("Double-delivered idempotency via courier token endpoint", () => {
 });
 
 // ── 8. Regression: courier stats update when staff marks delivered (no courierId in body) ──
-describe("PATCH /api/delivery-orders/:id — staff marks delivered without courierId in body", () => {
+describeWithDatabase("PATCH /api/delivery-orders/:id — staff marks delivered without courierId in body", () => {
   let regressionOrderId = "";
   let regressionCourierId = "";
 
