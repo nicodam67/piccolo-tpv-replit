@@ -63,8 +63,8 @@ test.describe("2. Caja — open session", () => {
     }
     const api = apiWithAuth(request, adminToken);
 
-    const res = await api.post("/cash-sessions", {
-      openingFloat: 200,
+    const res = await api.post("/cash-sessions/open", {
+      openingFloat: "200",
       terminalName: "E2E Test Terminal",
       isDemo: true,
     });
@@ -77,11 +77,10 @@ test.describe("2. Caja — open session", () => {
 
   test("open session shows up in active sessions list", async ({ request }) => {
     const api = apiWithAuth(request, adminToken);
-    const res = await api.get("/cash-sessions/active");
+    const res = await api.get("/cash-sessions/current");
     expect(res.status()).toBeLessThan(300);
-    const sessions = await res.json();
-    const found = sessions.find((s: { id: string }) => s.id === cashSessionId);
-    expect(found).toBeTruthy();
+    const session = await res.json();
+    expect(session?.id).toBe(cashSessionId);
   });
 });
 
@@ -98,44 +97,39 @@ test.describe("3. Order lifecycle: open mesa → comanda → cobro", () => {
     const zones = await res.json();
     expect(Array.isArray(zones)).toBe(true);
 
-    // Pick first available table from first zone
-    if (zones.length > 0 && zones[0].tables?.length > 0) {
-      tableId = zones[0].tables[0].id;
-    } else {
-      // No zones configured — skip the rest of the flow
-      console.warn("[E2E] No zones/tables configured — skipping mesa tests");
-    }
+    expect(zones.length).toBeGreaterThan(0);
+    const tablesRes = await api.get(`/zones/${zones[0].id}/tables`);
+    expect(tablesRes.status()).toBe(200);
+    const tables = await tablesRes.json();
+    const available = tables.find((table: { status: string }) =>
+      ["free", "reserved", "pendiente_limpieza"].includes(table.status),
+    );
+    expect(available).toBeTruthy();
+    tableId = available.id;
   });
 
   test("create an order on a table", async ({ request }) => {
-    if (!tableId) {
-      console.warn("[E2E] No table available — skipping order creation");
-      return;
-    }
+    expect(tableId).toBeTruthy();
     const api = apiWithAuth(request, waiterToken);
-    const res = await api.post(`/tables/${tableId}/order`, {
+    const res = await api.post(`/tables/${tableId}/open`, {
       guestCount: 2,
-      isDemo: true,
     });
     expect(res.status()).toBeLessThan(300);
     const order = await res.json();
-    expect(order.id).toBeTruthy();
-    expect(order.status).toBe("open");
-    orderId = order.id;
+    expect(order.order.id).toBeTruthy();
+    expect(order.order.status).toBe("open");
+    orderId = order.order.id;
   });
 
   test("add item to order", async ({ request }) => {
-    if (!orderId) { return; }
+    expect(orderId).toBeTruthy();
     const api = apiWithAuth(request, waiterToken);
 
     // Find a product to add
     const productsRes = await api.get("/products?limit=1");
     const products = await productsRes.json();
-    if (!products?.data?.length && !Array.isArray(products)) {
-      console.warn("[E2E] No products in DB — skipping add-item test");
-      return;
-    }
     const product = Array.isArray(products) ? products[0] : products.data[0];
+    expect(product).toBeTruthy();
 
     const res = await api.post(`/orders/${orderId}/items`, {
       productId: product.id,
@@ -149,7 +143,7 @@ test.describe("3. Order lifecycle: open mesa → comanda → cobro", () => {
   });
 
   test("send comanda to kitchen", async ({ request }) => {
-    if (!orderId) { return; }
+    expect(orderId).toBeTruthy();
     const api = apiWithAuth(request, waiterToken);
     const res = await api.post(`/orders/${orderId}/send`, {});
     expect(res.status()).toBeLessThan(300);
@@ -158,19 +152,18 @@ test.describe("3. Order lifecycle: open mesa → comanda → cobro", () => {
   });
 
   test("cobrar — complete payment", async ({ request }) => {
-    if (!orderId) { return; }
+    expect(orderId).toBeTruthy();
     const api = apiWithAuth(request, waiterToken);
 
     // Get order total
-    const orderRes = await api.get(`/orders/${orderId}`);
+    const orderRes = await api.get(`/orders/${orderId}/payment-summary`);
     const order = await orderRes.json();
-    const total = Number(order.total ?? 20);
+    const total = Number(order.total);
+    expect(total).toBeGreaterThan(0);
 
     const res = await api.post(`/orders/${orderId}/payments`, {
-      method: "cash",
-      amount: total,
-      cashReceived: total + 5,
-      isDemo: true,
+      methodCode: "cash",
+      amount: total.toFixed(2),
     });
     expect(res.status()).toBeLessThan(300);
     const result = await res.json();
@@ -179,7 +172,7 @@ test.describe("3. Order lifecycle: open mesa → comanda → cobro", () => {
   });
 
   test("table is free after payment", async ({ request }) => {
-    if (!tableId || !orderId) { return; }
+    expect(tableId).toBeTruthy();
     const api = apiWithAuth(request, waiterToken);
     const res = await api.get(`/tables/${tableId}`);
     expect(res.status()).toBe(200);
@@ -193,31 +186,22 @@ test.describe("3. Order lifecycle: open mesa → comanda → cobro", () => {
 test.describe("4. KDS — receive and mark task done", () => {
   test("kitchen tasks list is accessible", async ({ request }) => {
     const api = apiWithAuth(request, adminToken);
-    const res = await api.get("/kitchen-tasks?status=pending");
-    // If endpoint returns 404 the route may be named differently — mark as skip
-    if (res.status() === 404) {
-      console.warn("[E2E] /kitchen-tasks not found — check route name");
-      return;
-    }
+    const res = await api.get("/kds/cocina");
     expect(res.status()).toBeLessThan(300);
+    expect(Array.isArray(await res.json())).toBe(true);
   });
 });
 
 // ─── 5. Factura generation ─────────────────────────────────────────────────
 test.describe("5. Factura generation", () => {
   test("generate factura from ticket", async ({ request }) => {
-    if (!ticketId) { return; }
+    expect(orderId).toBeTruthy();
     const api = apiWithAuth(request, adminToken);
-    const res = await api.post(`/tickets/${ticketId}/factura`, {
-      nifCliente: "B12345678",
-      razonSocialCliente: "E2E Test S.L.",
-      isDemo: true,
+    const res = await api.post("/documents/invoices", {
+      orderId,
+      clientNif: "B12345678",
+      clientName: "E2E Test S.L.",
     });
-    // Some configs may not have fiscal data — 422 is acceptable here
-    if (res.status() === 422) {
-      console.warn("[E2E] Factura generation needs fiscal config — 422 expected");
-      return;
-    }
     expect(res.status()).toBeLessThan(300);
     const factura = await res.json();
     expect(factura.id ?? factura.facturaId).toBeTruthy();
@@ -227,10 +211,10 @@ test.describe("5. Factura generation", () => {
 // ─── 6. Cash session close + arqueo ───────────────────────────────────────
 test.describe("6. Caja — close session and Z report", () => {
   test("close cash session with arqueo", async ({ request }) => {
-    if (!cashSessionId) { return; }
+    expect(cashSessionId).toBeTruthy();
     const api = apiWithAuth(request, adminToken);
     const res = await api.post(`/cash-sessions/${cashSessionId}/close`, {
-      countedCash: 200,
+      countedCash: "200.00",
     });
     expect(res.status()).toBeLessThan(300);
     const session = await res.json();
@@ -239,14 +223,9 @@ test.describe("6. Caja — close session and Z report", () => {
   });
 
   test("Z report is available for closed session", async ({ request }) => {
-    if (!cashSessionId) { return; }
+    expect(cashSessionId).toBeTruthy();
     const api = apiWithAuth(request, adminToken);
-    const res = await api.get(`/cash-sessions/${cashSessionId}/z-report`);
-    if (res.status() === 404) {
-      // Endpoint may be at different path
-      console.warn("[E2E] Z-report endpoint not found at expected path");
-      return;
-    }
+    const res = await api.get(`/cash-sessions/${cashSessionId}/report`);
     expect(res.status()).toBeLessThan(300);
     const report = await res.json();
     expect(report.sessionId ?? report.id).toBeTruthy();
@@ -256,6 +235,7 @@ test.describe("6. Caja — close session and Z report", () => {
 // ─── 7. VeriFactu record creation in simulator mode ─────────────────────
 test.describe("7. VeriFactu — record created in simulator mode", () => {
   test("verifactu config endpoint is accessible", async ({ request }) => {
+    if (!adminToken) adminToken = (await loginAs(request, "admin")).token;
     const api = apiWithAuth(request, adminToken);
     const res = await api.get("/admin/verifactu/status");
     expect(res.status()).toBeLessThan(300);
@@ -265,6 +245,7 @@ test.describe("7. VeriFactu — record created in simulator mode", () => {
   });
 
   test("verifactu is NOT set to produccion in dev", async ({ request }) => {
+    if (!adminToken) adminToken = (await loginAs(request, "admin")).token;
     const api = apiWithAuth(request, adminToken);
     const res = await api.get("/admin/verifactu/status");
     expect(res.status()).toBeLessThan(300);
@@ -274,7 +255,7 @@ test.describe("7. VeriFactu — record created in simulator mode", () => {
   });
 
   test("paid order has a verifactu_records entry", async ({ request }) => {
-    if (!ticketId) { return; }
+    if (!adminToken) adminToken = (await loginAs(request, "admin")).token;
     const api = apiWithAuth(request, adminToken);
     const res = await api.get(`/admin/verifactu/records?limit=5`);
     expect(res.status()).toBeLessThan(300);
@@ -289,6 +270,7 @@ test.describe("7. VeriFactu — record created in simulator mode", () => {
 // ─── 8. Cleanup ───────────────────────────────────────────────────────────
 test.describe("8. Cleanup demo data", () => {
   test("purge all demo data created by this run", async ({ request }) => {
+    if (!adminToken) adminToken = (await loginAs(request, "admin")).token;
     await purgeDemo(request, adminToken);
   });
 });
