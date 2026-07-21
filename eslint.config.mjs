@@ -19,6 +19,7 @@ export default [
       "**/coverage/**",
       "**/generated/**",
       "**/_generated/**",
+      "artifacts/qr-menu/convex/_generated/**",
       "**/import-data/**",
       "**/import_piccolo_qr/**",
       "docs/backup-qr-menu-replit/**",
