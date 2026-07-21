@@ -91,7 +91,11 @@ vi.mock("jsonwebtoken", () => ({
 }));
 
 vi.mock("bcryptjs", () => ({
-  default: { compare: mockBcryptCompare },
+  default: {
+    compare: mockBcryptCompare,
+    hash: vi.fn().mockResolvedValue("$2a$12$bootstrap-hash"),
+    hashSync: vi.fn(() => "$2a$10$dummy-hash"),
+  },
 }));
 
 vi.mock("drizzle-orm", async (importOriginal) => importOriginal());
@@ -154,7 +158,15 @@ beforeEach(() => {
   mockDb.select.mockReturnValue(makeChain([]));
   mockDb.insert.mockReturnValue(makeChain([]));
   mockDb.delete.mockReturnValue(makeChain([]));
+  mockDb.transaction.mockImplementation(async (callback) =>
+    callback({
+      select: mockDb.select,
+      insert: mockDb.insert,
+      execute: vi.fn().mockResolvedValue({ rows: [] }),
+    }),
+  );
   mockBcryptCompare.mockResolvedValue(true);
+  process.env["BOOTSTRAP_SECRET"] = "bootstrap-secret-for-tests-32-characters";
 
   // Default pool: no cached idempotency entry
   mockPool.query.mockResolvedValue({ rows: [] });
@@ -417,5 +429,53 @@ describe("Rate limiting", () => {
       .send({ employeeId: "emp-admin", pin: "1234" });
 
     expect(blocked.status).toBe(429);
+  });
+});
+
+describe("POST /api/setup/seed-employees", () => {
+  it("rejects a missing or incorrect bootstrap secret without touching the DB", async () => {
+    const res = await request(app)
+      .post("/api/setup/seed-employees")
+      .send({ bootstrapSecret: "incorrect", name: "Owner", pin: "4826" });
+
+    expect(res.status).toBe(401);
+    expect(res.body).toEqual({ error: "Bootstrap no autorizado" });
+    expect(mockDb.transaction).not.toHaveBeenCalled();
+  });
+
+  it("creates only the supplied administrator under an advisory transaction lock", async () => {
+    const admin = { id: "generated-admin-id", name: "Owner", role: "admin" };
+    mockDb.select.mockReturnValue(makeChain([{ value: 0 }]));
+    mockDb.insert.mockReturnValue(makeChain([admin]));
+
+    const res = await request(app)
+      .post("/api/setup/seed-employees")
+      .send({
+        bootstrapSecret: process.env["BOOTSTRAP_SECRET"],
+        name: "Owner",
+        pin: "4826",
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body).toEqual({
+      created: true,
+      admin: { id: "generated-admin-id", name: "Owner" },
+    });
+    expect(mockDb.transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it("stays closed after any employee exists", async () => {
+    mockDb.select.mockReturnValue(makeChain([{ value: 1 }]));
+
+    const res = await request(app)
+      .post("/api/setup/seed-employees")
+      .send({
+        bootstrapSecret: process.env["BOOTSTRAP_SECRET"],
+        name: "Owner",
+        pin: "4826",
+      });
+
+    expect(res.status).toBe(409);
+    expect(res.body).toEqual({ error: "Bootstrap cerrado" });
   });
 });
