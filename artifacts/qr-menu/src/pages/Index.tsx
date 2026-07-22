@@ -1,6 +1,4 @@
-import { useQuery, useMutation } from "convex/react";
-import { api } from "@/convex/_generated/api.js";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { motion } from "motion/react";
 import { ChevronRight, Clock, Phone } from "lucide-react";
 import { ALLERGENS } from "@/lib/allergens.ts";
@@ -14,6 +12,7 @@ import LocaleSwitcher from "@/components/ui/locale-switcher.tsx";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog.tsx";
 import ScheduleDisplay from "./_components/ScheduleDisplay.tsx";
 import InstallBanner from "@/components/InstallBanner.tsx";
+import { useTpvMenuSnapshot } from "@/lib/tpv-menu-integration.ts";
 
 export default function Index() {
   const { lng } = useParams<{ lng: string }>();
@@ -21,17 +20,12 @@ export default function Index() {
   const locale = isSupportedLocale(lng) ? lng : "es";
   const navigate = useNavigate();
 
-  // ── Convex data ───────────────────────────────────────────────────────────
-  const categories = useQuery(api.menu.listCategories, {});
-  const branding   = useQuery(api.branding.get, {});
-  const seed       = useMutation(api.seed.publicSeedIfEmpty);
+  // TPV is the single catalog authority for the public QR Menu.
+  const { categories, branding } = useTpvMenuSnapshot();
 
   // Apply branding theme (fonts + colors) from Convex
   useThemeColors(branding?.themeColors ? { ...branding.themeColors } : null);
   useThemeFonts(branding?.themeFonts ?? null);
-
-  // Seed demo data only when the DB is empty
-  useEffect(() => { seed({ secret: "init" }).catch(() => {}); }, [seed]);
 
   // ── Derived branding values (with safe fallbacks) ─────────────────────────
   const restaurantName  = branding?.restaurantName  ?? "Piccolo La Ràpita";
