@@ -102,8 +102,7 @@ export default function DiagnosticsPage() {
   useEffect(() => { void loadEvents(); }, [loadEvents]);
 
   async function downloadReport() {
-    const token = localStorage.getItem('token') ?? '';
-    const r = await fetch(`${BASE}/api/diagnostics/report`, { headers: { Authorization: `Bearer ${token}` } });
+    const r = await fetch(`${BASE}/api/diagnostics/report`, { credentials: 'include' });
     if (!r.ok) { toast.error('Error al descargar'); return; }
     const blob = await r.blob();
     const url = URL.createObjectURL(blob);

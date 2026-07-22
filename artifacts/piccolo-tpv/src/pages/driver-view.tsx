@@ -15,9 +15,17 @@ import { toast } from 'sonner';
 import { customFetch, ApiError } from '@workspace/api-client-react';
 
 // Use root-relative paths — setBaseUrl(BASE) is called globally by api-client.ts
-const api = (path: string) => customFetch(path);
-const apiJSON = (path: string, method: string, body?: object) =>
-  customFetch(path, { method, headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
+const api = (path: string, token: string) =>
+  customFetch(path, { headers: { Authorization: `Bearer ${token}` } });
+const apiJSON = (path: string, token: string, method: string, body?: object) =>
+  customFetch(path, {
+    method,
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
 
 interface Address {
   street: string; number: string; floor?: string; city: string; postalCode: string; notes?: string;
@@ -45,7 +53,16 @@ const INCIDENT_CATEGORIES = [
 export default function DriverView() {
   const params = useParams<{ courierId: string }>();
   const courierId = params.courierId;
-  const token = new URLSearchParams(window.location.search).get('token') ?? '';
+  const [token] = useState(() => {
+    const storageKey = `piccolo_courier_token:${courierId}`;
+    const fragmentToken = new URLSearchParams(window.location.hash.slice(1)).get('token');
+    if (fragmentToken) {
+      sessionStorage.setItem(storageKey, fragmentToken);
+      window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
+      return fragmentToken;
+    }
+    return sessionStorage.getItem(storageKey) ?? '';
+  });
   const [orders, setOrders] = useState<DeliveryOrder[]>([]);
   const [courierSummary, setCourierSummary] = useState<{ earnedCashPending: number; earnedCardPending: number; totalDeliveries: number } | null>(null);
   const [loading, setLoading] = useState(true);
@@ -65,8 +82,8 @@ export default function DriverView() {
   const load = useCallback(async () => {
     try {
       const [data, summary] = await Promise.all([
-        api(`/api/courier/${courierId}/deliveries?token=${encodeURIComponent(token)}`) as Promise<DeliveryOrder[]>,
-        api(`/api/courier/${courierId}/summary?token=${encodeURIComponent(token)}`).catch(() => null),
+        api(`/api/courier/${courierId}/deliveries`, token) as Promise<DeliveryOrder[]>,
+        api(`/api/courier/${courierId}/summary`, token).catch(() => null),
       ]);
       setOrders(Array.isArray(data) ? data : []);
       if (summary && typeof summary === 'object') {
@@ -93,8 +110,8 @@ export default function DriverView() {
     setActioning(orderId);
     try {
       await apiJSON(
-        `/api/courier/${courierId}/orders/${orderId}/status?token=${encodeURIComponent(token)}`,
-        'PATCH', { status, ...extra },
+        `/api/courier/${courierId}/orders/${orderId}/status`,
+        token, 'PATCH', { status, ...extra },
       );
       if (status === 'delivered') toast.success('¡Entregado! ✓');
       else if (status === 'in_delivery') toast.success('¡En camino! 🛵');

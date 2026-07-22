@@ -326,6 +326,7 @@ export interface KitchenTask {
   tableName: string;
   employeeName: string;
   employeeId?: string;
+  clientName: string;
   createdAt: string;
   updatedAt: string;
   readyAt?: string;
@@ -642,6 +643,7 @@ export type UpdateTaskStatusInputStatus = typeof UpdateTaskStatusInputStatus[key
 export const UpdateTaskStatusInputStatus = {
   new: 'new',
   preparing: 'preparing',
+  in_oven: 'in_oven',
   ready: 'ready',
   collected: 'collected',
   served: 'served',

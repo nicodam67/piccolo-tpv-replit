@@ -430,7 +430,7 @@ router.get("/admin/installation/manuals", requireAuth, requireRole(...MANAGER_RO
 
 // PATCH /admin/installation/manuals/:type
 router.patch("/admin/installation/manuals/:type", requireAuth, requireRole(...ADMIN_ROLES), async (req, res): Promise<void> => {
-  const { type } = req.params;
+  const type = req.params.type as string;
   const { steps, supportPhone, title } = req.body as { steps?: unknown[]; supportPhone?: string; title?: string };
 
   const patch: Record<string, unknown> = { updatedAt: new Date() };
@@ -538,7 +538,7 @@ router.post("/admin/installation-simulation/run", requireAuth, requireRole(...AD
           taskIds.push(task.id);
         }
         // Mark order as sent
-        await db.update(ordersTable).set({ status: "sent", updatedAt: new Date() }).where(eq(ordersTable.id, orderId!));
+        await db.update(ordersTable).set({ status: "sent" }).where(eq(ordersTable.id, orderId!));
         steps.push({ step: "Enviar a cocina (KDS)", ok: taskIds.length > 0 });
       } catch (e: any) {
         steps.push({ step: "Enviar a cocina (KDS)", ok: false, error: e?.message });
@@ -595,7 +595,7 @@ router.post("/admin/installation-simulation/run", requireAuth, requireRole(...AD
       // Always close the order, even if payment insert failed
       try {
         await db.update(ordersTable)
-          .set({ status: "closed", updatedAt: new Date() })
+          .set({ status: "closed" })
           .where(eq(ordersTable.id, orderId!));
         closeOk = true;
       } catch (e: any) {

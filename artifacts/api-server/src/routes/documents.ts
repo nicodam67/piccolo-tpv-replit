@@ -361,7 +361,7 @@ router.delete(
 router.post(
   "/documents/invoices",
   requireAuth,
-  requireRole("admin", "manager", "waiter"),
+  requireRole("admin", "manager", "encargado"),
   async (req, res): Promise<void> => {
     const user = (req as any).user;
     const {

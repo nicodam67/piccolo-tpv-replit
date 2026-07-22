@@ -29,7 +29,7 @@ function makeChain(value: unknown) {
   for (const m of [
     "select", "from", "where", "orderBy",
     "insert", "update", "delete", "set", "values", "returning",
-    "innerJoin", "limit",
+    "innerJoin", "limit", "for", "onConflictDoNothing", "execute",
   ]) {
     chain[m] = () => chain;
   }
@@ -278,7 +278,18 @@ describe("POST /api/orders/:orderId/send — emits kds:refresh and orders:refres
     mockDb.transaction.mockImplementationOnce(async (cb: (tx: Record<string, unknown>) => Promise<void>) => {
       const txInsert = vi.fn(() => makeChain([]));
       const txUpdate = vi.fn(() => makeChain([]));
-      await cb({ insert: txInsert, update: txUpdate });
+      const txSelect = vi.fn()
+        .mockReturnValueOnce(makeChain([{ status: "open" }]))
+        .mockReturnValueOnce(makeChain([draftRow]))
+        .mockReturnValueOnce(makeChain([]))
+        .mockReturnValueOnce(makeChain([]))
+        .mockReturnValueOnce(makeChain([UPDATED_ORDER]));
+      await cb({
+        execute: vi.fn().mockResolvedValue({ rows: [] }),
+        select: txSelect,
+        insert: txInsert,
+        update: txUpdate,
+      });
       return { txInsert, txUpdate };
     });
     mockDb.select.mockReturnValueOnce(makeChain([UPDATED_ORDER]));                // 6. updated order
@@ -337,7 +348,18 @@ describe("POST /api/orders/:orderId/send — emits kds:refresh and orders:refres
     mockDb.transaction.mockImplementationOnce(async (cb: (tx: Record<string, unknown>) => Promise<void>) => {
       const txInsert = vi.fn(() => { txInsertCalls++; return makeChain([]); });
       const txUpdate = vi.fn(() => makeChain([]));
-      await cb({ insert: txInsert, update: txUpdate });
+      const txSelect = vi.fn()
+        .mockReturnValueOnce(makeChain([{ status: "open" }]))
+        .mockReturnValueOnce(makeChain([DRAFT_ROW]))
+        .mockReturnValueOnce(makeChain([]))
+        .mockReturnValueOnce(makeChain([]))
+        .mockReturnValueOnce(makeChain([UPDATED_ORDER]));
+      await cb({
+        execute: vi.fn().mockResolvedValue({ rows: [] }),
+        select: txSelect,
+        insert: txInsert,
+        update: txUpdate,
+      });
     });
     mockDb.select.mockReturnValueOnce(makeChain([UPDATED_ORDER]));
 
@@ -373,7 +395,18 @@ describe("POST /api/orders/:orderId/send — emits kds:refresh and orders:refres
     mockDb.transaction.mockImplementationOnce(async (cb: (tx: Record<string, unknown>) => Promise<void>) => {
       const txInsert = vi.fn(() => { txInsertCalls++; return makeChain([]); });
       const txUpdate = vi.fn(() => makeChain([]));
-      await cb({ insert: txInsert, update: txUpdate });
+      const txSelect = vi.fn()
+        .mockReturnValueOnce(makeChain([{ status: "open" }]))
+        .mockReturnValueOnce(makeChain([DRAFT_ROW]))
+        .mockReturnValueOnce(makeChain([]))
+        .mockReturnValueOnce(makeChain([]))
+        .mockReturnValueOnce(makeChain([UPDATED_ORDER]));
+      await cb({
+        execute: vi.fn().mockResolvedValue({ rows: [] }),
+        select: txSelect,
+        insert: txInsert,
+        update: txUpdate,
+      });
     });
     mockDb.select.mockReturnValueOnce(makeChain([UPDATED_ORDER]));
 

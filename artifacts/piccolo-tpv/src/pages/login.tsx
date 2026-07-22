@@ -51,7 +51,6 @@ export default function Login() {
   const [isPending, setIsPending] = useState(false);
 
   useEffect(() => {
-    localStorage.removeItem("token");
     localStorage.removeItem("employee");
   }, []);
 

@@ -21,7 +21,7 @@ import {
 } from "@workspace/db";
 import { eq, and, inArray } from "drizzle-orm";
 import { sendToPrinter } from "./print-connector-sim";
-import { getIO } from "./socket";
+import { emitToFunction } from "./socket-events";
 
 const POLL_INTERVAL_MS = 5_000;
 const MAX_ATTEMPTS     = 3;
@@ -102,7 +102,7 @@ async function tick(): Promise<void> {
 
       await audit(job.id, "sent", "sistema", { printer: printer.name, attempt: fullJob.attempts + 1 });
 
-      try { getIO().emit("print:status", { jobId: job.id, status: "printed", printerName: printer.name }); } catch {}
+      try { emitToFunction("admin", "print:status", { jobId: job.id, status: "printed", printerName: printer.name }); } catch {}
 
     } else {
       const newAttempts = fullJob.attempts + 1;
@@ -130,7 +130,7 @@ async function tick(): Promise<void> {
               }).where(eq(printQueueTable.id, job.id));
 
               await audit(job.id, "fallback", "sistema", { primary: printer.name, fallback: fallback.name });
-              try { getIO().emit("print:status", {
+              try { emitToFunction("admin", "print:status", {
                 jobId: job.id,
                 status: "printed_via_fallback",
                 printerName: fallback.name,
@@ -148,7 +148,7 @@ async function tick(): Promise<void> {
           lastError: result.error ?? "Error desconocido",
         }).where(eq(printQueueTable.id, job.id));
 
-        try { getIO().emit("print:status", {
+        try { emitToFunction("admin", "print:status", {
           jobId: job.id,
           status: "error",
           printerName: printer.name,
@@ -163,7 +163,7 @@ async function tick(): Promise<void> {
           lastError: result.error ?? "Error desconocido",
         }).where(eq(printQueueTable.id, job.id));
 
-        try { getIO().emit("print:status", {
+        try { emitToFunction("admin", "print:status", {
           jobId: job.id,
           status: "retrying",
           printerName: printer.name,

@@ -13,7 +13,7 @@ import { eq, and, desc, sum, inArray } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { adapterRegistry } from "../lib/cash-machine/registry";
 import { settleOrderIfFullyPaid } from "../lib/settle-order";
-import { getIO } from "../lib/socket";
+import { emitToFunction } from "../lib/socket-events";
 
 const ADMIN_ROLES   = ["admin"];
 const MANAGER_ROLES = ["manager", "admin"];
@@ -385,7 +385,7 @@ router.get(
 
         // Notify floor plan clients
         if (settlementResult.settled) {
-          try { getIO().emit("tables:refresh"); } catch { /* socket not init */ }
+          try { emitToFunction("floor", "tables:refresh"); } catch { /* socket not init */ }
         }
       } catch (settleErr: any) {
         // Settlement failure is surfaced to the caller so the frontend can show

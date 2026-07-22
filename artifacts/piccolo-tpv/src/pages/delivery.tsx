@@ -317,7 +317,7 @@ function CourierPanel({ couriers, activeOrders, onRefresh }: {
                   className="px-2 py-1 bg-secondary rounded-lg text-[10px] text-muted-foreground hover:text-foreground transition-colors border border-border">
                   Liquidar
                 </button>
-                <a href={`/driver/${c.id}?token=${c.token}`} target="_blank"
+                <a href={`/driver/${c.id}#token=${encodeURIComponent(c.token)}`} target="_blank" rel="noreferrer"
                   className="px-2 py-1 bg-primary/10 text-primary rounded-lg text-[10px] hover:bg-primary/20 transition-colors border border-primary/30">
                   Ver vista
                 </a>

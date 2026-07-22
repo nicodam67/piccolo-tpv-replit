@@ -364,7 +364,7 @@ router.post("/admin/stock/inventory-count", requireAuth, requireRole("admin"), a
 });
 
 // ── GET /admin/stock/product-availability ─────────────────────────────────────
-router.get("/admin/stock/product-availability", requireAuth, async (req, res): Promise<void> => {
+router.get("/admin/stock/product-availability", requireAuth, requireRole("admin", "manager", "encargado"), async (req, res): Promise<void> => {
   const recipeRows = await db
     .select({
       productId: recipeItemsTable.productId,

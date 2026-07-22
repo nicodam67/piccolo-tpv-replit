@@ -1,17 +1,42 @@
 import { Router, type IRouter } from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import { randomUUID } from "crypto";
+import { randomUUID, timingSafeEqual } from "crypto";
 import rateLimit from "express-rate-limit";
 import { db } from "@workspace/db";
 import {
   employeesTable, employeePinsTable, revokedTokensTable, auditLogTable,
 } from "@workspace/db";
-import { eq, and, count, lt } from "drizzle-orm";
+import { eq, and, count, lt, sql } from "drizzle-orm";
 import { AuthWithPinBody } from "@workspace/api-zod";
 import { requireAuth } from "../middlewares/auth";
 
 const router: IRouter = Router();
+const DUMMY_PIN_HASH = bcrypt.hashSync(randomUUID(), 10);
+const SESSION_COOKIE = "piccolo_session";
+const SESSION_COOKIE_OPTIONS = {
+  httpOnly: true,
+  secure: process.env["NODE_ENV"] === "production",
+  sameSite: "strict" as const,
+  path: "/api",
+  maxAge: 12 * 60 * 60 * 1000,
+};
+const SESSION_COOKIE_CLEAR_OPTIONS = {
+  httpOnly: SESSION_COOKIE_OPTIONS.httpOnly,
+  secure: SESSION_COOKIE_OPTIONS.secure,
+  sameSite: SESSION_COOKIE_OPTIONS.sameSite,
+  path: SESSION_COOKIE_OPTIONS.path,
+};
+
+function safeSecretEqual(actual: string, expected: string): boolean {
+  const actualBuffer = Buffer.from(actual);
+  const expectedBuffer = Buffer.from(expected);
+  if (actualBuffer.length !== expectedBuffer.length) {
+    timingSafeEqual(expectedBuffer, expectedBuffer);
+    return false;
+  }
+  return timingSafeEqual(actualBuffer, expectedBuffer);
+}
 
 // ── Rate limiters ─────────────────────────────────────────────────────────────
 
@@ -58,6 +83,14 @@ const managerTargetLimiter = rateLimit({
   message: { error: "Demasiados intentos para este encargado. Inténtelo más tarde." },
 });
 
+const bootstrapLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Bootstrap no autorizado" },
+});
+
 // ── Employee login list ───────────────────────────────────────────────────────
 router.get("/employees/login-list", loginListLimiter, async (_req, res): Promise<void> => {
   // role intentionally omitted — leaking it lets attackers target admin accounts
@@ -92,7 +125,8 @@ router.post("/auth/pin", pinLoginLimiter, async (req, res): Promise<void> => {
     .where(and(eq(employeesTable.id, employeeId), eq(employeesTable.active, true)));
 
   const employee = rows[0];
-  if (!employee || !(await bcrypt.compare(pin, employee.pinHash))) {
+  const pinOk = await bcrypt.compare(pin, employee?.pinHash ?? DUMMY_PIN_HASH);
+  if (!employee || !pinOk) {
     res.status(401).json({ error: "PIN incorrecto" });
     return;
   }
@@ -110,6 +144,7 @@ router.post("/auth/pin", pinLoginLimiter, async (req, res): Promise<void> => {
     secret,
     { expiresIn: "12h" }
   );
+  res.cookie(SESSION_COOKIE, token, SESSION_COOKIE_OPTIONS);
 
   res.json({
     token,
@@ -134,6 +169,7 @@ router.post("/auth/logout", requireAuth, async (req, res): Promise<void> => {
 
   // Tokens without jti cannot be individually revoked — treat as logged out.
   if (!user.jti || !user.exp) {
+    res.clearCookie(SESSION_COOKIE, SESSION_COOKIE_CLEAR_OPTIONS);
     res.json({ ok: true });
     return;
   }
@@ -156,6 +192,7 @@ router.post("/auth/logout", requireAuth, async (req, res): Promise<void> => {
     .where(lt(revokedTokensTable.expiresAt, new Date()))
     .catch(() => {/* ignore cleanup errors */});
 
+  res.clearCookie(SESSION_COOKIE, SESSION_COOKIE_CLEAR_OPTIONS);
   res.json({ ok: true });
 });
 
@@ -253,34 +290,67 @@ router.post(
   res.json({ authorized: true, token: authToken, managerName: manager.name });
 });
 
-// ── Bootstrap seed ────────────────────────────────────────────────────────────
-router.post("/setup/seed-employees", async (_req, res): Promise<void> => {
-  const [{ value: existing }] = await db.select({ value: count() }).from(employeesTable);
-  if (Number(existing) > 0) {
-    res.status(409).json({ error: "Ya existen empleados. Seed no aplicado." });
+// ── One-time bootstrap ────────────────────────────────────────────────────────
+router.post("/setup/seed-employees", bootstrapLimiter, async (req, res): Promise<void> => {
+  const configuredSecret = process.env["BOOTSTRAP_SECRET"] ?? "";
+  const { bootstrapSecret, name, pin } = req.body as {
+    bootstrapSecret?: string;
+    name?: string;
+    pin?: string;
+  };
+
+  if (
+    configuredSecret.length < 32 ||
+    !bootstrapSecret ||
+    !safeSecretEqual(bootstrapSecret, configuredSecret)
+  ) {
+    res.status(401).json({ error: "Bootstrap no autorizado" });
     return;
   }
 
-  const [admin] = await db.insert(employeesTable).values({
-    id: "5f78bf82-842d-4b42-b0e0-eb26c9687437",
-    name: "Admin",
-    role: "admin",
-    active: true,
-  }).returning();
+  const adminName = name?.trim() ?? "";
+  if (adminName.length < 2 || adminName.length > 100 || !/^\d{4,12}$/.test(pin ?? "")) {
+    res.status(400).json({ error: "Datos de bootstrap no válidos" });
+    return;
+  }
 
-  const [carmen] = await db.insert(employeesTable).values({
-    id: "5ac8e169-90ed-4e6f-aa02-89d1cb4b19a2",
-    name: "Carmen",
-    role: "waiter",
-    active: true,
-  }).returning();
+  try {
+    const admin = await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(26001)`);
+      const [{ value: existing }] = await tx
+        .select({ value: count() })
+        .from(employeesTable);
 
-  await db.insert(employeePinsTable).values([
-    { employeeId: admin.id,  pinHash: "$2a$06$wsZ.tTKkYlDQIDlJpo31BuRKhQYyTNu9c8b5x.74iu7LERWohilcG" },
-    { employeeId: carmen.id, pinHash: "$2a$06$rD9WJftFkpppIo3nrkUQ4OSvAMX33Ao9628DR4OTuWQetpEbOKGju" },
-  ]);
+      if (Number(existing) > 0) {
+        throw new Error("BOOTSTRAP_CLOSED");
+      }
 
-  res.json({ seeded: [admin.name, carmen.name] });
+      const [created] = await tx
+        .insert(employeesTable)
+        .values({ name: adminName, role: "admin", active: true })
+        .returning();
+
+      await tx.insert(employeePinsTable).values({
+        employeeId: created.id,
+        pinHash: await bcrypt.hash(pin!, 12),
+      });
+      await tx.insert(auditLogTable).values({
+        employeeId: created.id,
+        employeeName: created.name,
+        action: "bootstrap_admin_created",
+        details: "Primer administrador creado mediante bootstrap de un solo uso",
+      });
+      return created;
+    });
+
+    res.status(201).json({ created: true, admin: { id: admin.id, name: admin.name } });
+  } catch (error) {
+    if (error instanceof Error && error.message === "BOOTSTRAP_CLOSED") {
+      res.status(409).json({ error: "Bootstrap cerrado" });
+      return;
+    }
+    res.status(503).json({ error: "Bootstrap no disponible" });
+  }
 });
 
 export default router;

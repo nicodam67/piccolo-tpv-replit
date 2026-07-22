@@ -109,11 +109,9 @@ export default function BackupPage() {
   }
 
   async function downloadBackup(id: string) {
-    const token = localStorage.getItem('token') ?? '';
     const a = document.createElement('a');
     a.href = `${BASE}/api/backup/${id}/download`;
-    // Add auth header via fetch + blob
-    const r = await fetch(a.href, { headers: { Authorization: `Bearer ${token}` } });
+    const r = await fetch(a.href, { credentials: 'include' });
     if (!r.ok) { toast.error('Error al descargar'); return; }
     const blob = await r.blob();
     const url = URL.createObjectURL(blob);
@@ -150,10 +148,10 @@ export default function BackupPage() {
   }
 
   async function emergencyExport() {
-    const token = localStorage.getItem('token') ?? '';
     const r = await fetch(`${BASE}/api/backup/emergency-export`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
       body: JSON.stringify({ modules: exportModules, format: exportFormat }),
     });
     if (!r.ok) { toast.error('Error en exportación'); return; }
@@ -475,8 +473,7 @@ export default function BackupPage() {
               <h4 className="text-xs font-black text-muted-foreground uppercase tracking-wider">Informe de soporte</h4>
               <p className="text-xs text-muted-foreground">Paquete JSON con diagnóstico técnico, sin datos personales ni credenciales.</p>
               <button onClick={async () => {
-                const token = localStorage.getItem('token') ?? '';
-                const r = await fetch(`${BASE}/api/diagnostics/report`, { headers: { Authorization: `Bearer ${token}` } });
+                const r = await fetch(`${BASE}/api/diagnostics/report`, { credentials: 'include' });
                 if (!r.ok) { toast.error('Error'); return; }
                 const blob = await r.blob();
                 const url = URL.createObjectURL(blob);

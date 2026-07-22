@@ -280,7 +280,7 @@ export default function AdminRepartidores() {
                         <option value="pause">Pausa</option>
                         <option value="off">No disp.</option>
                       </select>
-                      <a href={`/driver/${c.id}?token=${c.token}`} target="_blank"
+                      <a href={`/driver/${c.id}#token=${encodeURIComponent(c.token)}`} target="_blank" rel="noreferrer"
                         className="px-2 py-1 bg-primary/10 text-primary rounded-lg text-[10px] border border-primary/20 hover:bg-primary/20 transition-colors">
                         Vista móvil
                       </a>

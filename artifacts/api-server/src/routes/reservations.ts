@@ -156,7 +156,7 @@ router.get("/reservations/suggest-table", requireAuth, async (req, res): Promise
   const allTables = await db
     .select({
       id: restaurantTablesTable.id,
-      tableNumber: restaurantTablesTable.tableNumber,
+      tableNumber: restaurantTablesTable.name,
       capacity: restaurantTablesTable.capacity,
       status: restaurantTablesTable.status,
       zoneId: restaurantTablesTable.zoneId,
@@ -215,7 +215,7 @@ router.get("/reservations/:id", requireAuth, async (req, res): Promise<void> => 
       clientApellidos: crmClientsTable.apellidos,
       clientEmail: crmClientsTable.email,
       clientTelefono: crmClientsTable.telefono,
-      mesaNumero: restaurantTablesTable.tableNumber,
+      mesaNumero: restaurantTablesTable.name,
     })
     .from(reservationsTable)
     .leftJoin(crmClientsTable, eq(reservationsTable.clientId, crmClientsTable.id))

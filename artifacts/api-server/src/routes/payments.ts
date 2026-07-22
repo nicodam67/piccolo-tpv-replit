@@ -17,7 +17,7 @@ import {
 import { eq, and, sum, inArray, gte } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { idempotency } from "../middlewares/idempotency";
-import { getIO } from "../lib/socket";
+import { emitToFunction } from "../lib/socket-events";
 import { logDocumentAction } from "../lib/document-audit";
 import { calcMultiRateBreakdown } from "../lib/tax";
 import { issuePoints } from "./crm.js";
@@ -413,7 +413,7 @@ router.post("/orders/:id/payments", requireAuth, requireRole(...PAYMENT_ROLES), 
 
   // Emit table refresh so floor plan updates
   try {
-    getIO().emit("tables:refresh");
+    emitToFunction("floor", "tables:refresh");
   } catch { /* socket not init */ }
 
   res.status(201).json(result);

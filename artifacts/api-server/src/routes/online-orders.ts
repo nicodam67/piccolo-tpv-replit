@@ -37,7 +37,8 @@
  *   GET   /admin/online-reports             — Informes de pedidos online
  */
 
-import { Router, type IRouter } from "express";
+import { Router, type IRouter, type Request } from "express";
+import { timingSafeEqual } from "node:crypto";
 import { db } from "@workspace/db";
 import {
   ordersTable,
@@ -60,11 +61,28 @@ import {
 } from "@workspace/db";
 import { eq, and, inArray, desc, asc, gte, lte, count, avg, sum, sql } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
-import { getIO } from "../lib/socket";
+import { emitToFunction } from "../lib/socket-events";
 import { calcMultiRateBreakdown } from "../lib/tax";
 import { issuePoints } from "./crm.js";
 
 const router: IRouter = Router();
+
+export function courierTokenFromHeader(req: Request): string {
+  const authorization = req.headers.authorization ?? "";
+  if (authorization.startsWith("Bearer ")) return authorization.slice(7);
+  const alternate = req.headers["x-courier-token"];
+  return typeof alternate === "string" ? alternate : "";
+}
+
+export function courierTokenMatches(actual: string, expected: string): boolean {
+  const actualBuffer = Buffer.from(actual);
+  const expectedBuffer = Buffer.from(expected);
+  if (actualBuffer.length !== expectedBuffer.length) {
+    timingSafeEqual(expectedBuffer, expectedBuffer);
+    return false;
+  }
+  return timingSafeEqual(actualBuffer, expectedBuffer);
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -115,7 +133,7 @@ async function simulateNotification(
 
 /** Emit a WebSocket event to refresh the online orders inbox */
 function emitOnlineOrdersRefresh(extra?: object) {
-  try { getIO().emit("online-orders:refresh", extra ?? {}); } catch { /* ignore */ }
+  try { emitToFunction("floor", "online-orders:refresh", extra ?? {}); } catch { /* ignore */ }
 }
 
 /** Check if a given time is within the configured service hours */
@@ -434,7 +452,7 @@ router.post("/online-orders/:id/confirm", requireAuth, requireRole("manager", "a
     message: `Tu pedido ${orderNumber} ha sido confirmado. Estará listo aproximadamente a las ${readyAt.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}.`,
   });
 
-  try { getIO().emit("kds:refresh"); } catch { /* ignore */ }
+  try { emitToFunction("kds", "kds:refresh"); } catch { /* ignore */ }
   emitOnlineOrdersRefresh({ orderId: id });
 
   res.json({ ok: true, status: "sent_to_kitchen", estimatedReadyAt: readyAt.toISOString() });
@@ -689,12 +707,12 @@ router.delete("/admin/couriers/:id", requireAuth, requireRole("manager", "admin"
 });
 
 // ── COURIER: GET /api/courier/:courierId/deliveries ──────────────────────────
-// Protected by per-courier token (query param ?token=...).  The token is a
-// UUID stored in couriers.token and shown to staff when assigning the courier.
+// Protected by a bearer token in the Authorization header. Tokens are never
+// accepted in query strings, so proxies, referers and access logs cannot leak them.
 
 router.get("/courier/:courierId/deliveries", async (req, res): Promise<void> => {
   const courierId = req.params.courierId as string;
-  const token = (req.query.token as string | undefined) ?? "";
+  const token = courierTokenFromHeader(req);
 
   // Reject clearly invalid UUIDs before hitting the DB (avoids PostgreSQL cast errors)
   const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -709,7 +727,7 @@ router.get("/courier/:courierId/deliveries", async (req, res): Promise<void> => 
     .from(couriersTable)
     .where(eq(couriersTable.id, courierId));
 
-  if (!courier || !courier.token || courier.token !== token) {
+  if (!courier || !courier.token || !courierTokenMatches(token, courier.token)) {
     res.status(401).json({ error: "Token no válido." });
     return;
   }
@@ -764,7 +782,7 @@ router.get("/courier/:courierId/deliveries", async (req, res): Promise<void> => 
 
 router.get("/courier/:courierId/summary", async (req, res): Promise<void> => {
   const courierId = req.params.courierId as string;
-  const token = (req.query.token as string | undefined) ?? "";
+  const token = courierTokenFromHeader(req);
 
   const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   if (!token || !UUID_RE.test(courierId)) {
@@ -783,7 +801,7 @@ router.get("/courier/:courierId/summary", async (req, res): Promise<void> => {
     .from(couriersTable)
     .where(eq(couriersTable.id, courierId));
 
-  if (!courier || !courier.token || courier.token !== token) {
+  if (!courier || !courier.token || !courierTokenMatches(token, courier.token)) {
     res.status(401).json({ error: "Token no válido." });
     return;
   }
@@ -799,14 +817,14 @@ router.get("/courier/:courierId/summary", async (req, res): Promise<void> => {
 });
 
 // ── COURIER: PATCH /courier/:courierId/orders/:orderId/status ─────────────────
-// Token-authenticated (same ?token= as the deliveries endpoint).
+// Token-authenticated via Authorization: Bearer, like the deliveries endpoint.
 // Allows transitions to 'in_delivery', 'delivered', or 'incident'.
 // Accepts an optional 'note' for delivery receipts and incident details.
 
 router.patch("/courier/:courierId/orders/:orderId/status", async (req, res): Promise<void> => {
   const courierId = req.params.courierId as string;
   const orderId = req.params.orderId as string;
-  const token = (req.query.token as string | undefined) ?? "";
+  const token = courierTokenFromHeader(req);
   const { status, note = "" } = req.body as { status?: string; note?: string };
 
   const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -827,7 +845,7 @@ router.patch("/courier/:courierId/orders/:orderId/status", async (req, res): Pro
     .from(couriersTable)
     .where(eq(couriersTable.id, courierId));
 
-  if (!courier || !courier.token || courier.token !== token) {
+  if (!courier || !courier.token || !courierTokenMatches(token, courier.token)) {
     res.status(401).json({ error: "Token no válido." });
     return;
   }
@@ -914,7 +932,7 @@ router.patch("/courier/:courierId/orders/:orderId/status", async (req, res): Pro
   }
 
   // Emit WebSocket refresh so the board updates
-  try { getIO().emit("online-orders:refresh", {}); } catch { /* ignore */ }
+  try { emitToFunction("floor", "online-orders:refresh", {}); } catch { /* ignore */ }
 
   res.json({ ok: true, status, note });
 });

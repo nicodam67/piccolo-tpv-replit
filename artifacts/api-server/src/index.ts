@@ -11,25 +11,7 @@ import { seedOnlineDemo } from "./lib/seed-online-demo";
 import { startPrintWorker } from "./lib/print-worker";
 import { startBackupWorker } from "./lib/backup-worker";
 import { startVerifactuWorker } from "./lib/verifactu-worker";
-import { pool } from "@workspace/db";
-import { ensureIdempotencyTable } from "./middlewares/idempotency";
-
-// Ensure the revoked_tokens table exists at startup — hard requirement.
-// If this fails the process exits: without the table, token revocation is
-// impossible and requireAuth would fail-closed (503) on every authenticated
-// request, making the server unusable. Crashing here is the correct behavior.
-async function ensureAuthTables(): Promise<void> {
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS revoked_tokens (
-      jti         TEXT        PRIMARY KEY,
-      revoked_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-      expires_at  TIMESTAMPTZ NOT NULL
-    )
-  `);
-  // Verify the table is actually accessible (catches permission issues that
-  // CREATE TABLE IF NOT EXISTS may silently succeed on).
-  await pool.query("SELECT 1 FROM revoked_tokens LIMIT 0");
-}
+import { verifyMigrations } from "@workspace/db";
 
 const rawPort = process.env["PORT"];
 
@@ -46,12 +28,15 @@ if (Number.isNaN(port) || port <= 0) {
 const server = createServer(app);
 initSocket(server);
 
-server.listen(port, async () => {
+async function start(): Promise<void> {
+  // Fail before opening the HTTP port if the authoritative migration ledger is
+  // missing, pending, or has a checksum mismatch.
+  await verifyMigrations();
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(port, resolve);
+  });
   logger.info({ port }, "Server listening");
-  // Guarantee auth tables exist before handling any requests
-  await ensureAuthTables();
-  // Guarantee idempotency table exists
-  await ensureIdempotencyTable();
   try {
     await seedDocuments();
     await seedCash();
@@ -68,9 +53,13 @@ server.listen(port, async () => {
   startPrintWorker();
   startBackupWorker();
   startVerifactuWorker();
-});
+}
 
 server.on("error", (err) => {
   logger.error({ err }, "Server error");
+});
+
+void start().catch((err) => {
+  logger.fatal({ err }, "Startup aborted");
   process.exit(1);
 });

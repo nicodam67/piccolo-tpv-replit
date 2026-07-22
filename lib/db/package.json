@@ -8,8 +8,8 @@
     "./schema": "./src/schema/index.ts"
   },
   "scripts": {
-    "push": "drizzle-kit push --config ./drizzle.config.ts",
-    "push-force": "drizzle-kit push --force --config ./drizzle.config.ts"
+    "migrate": "node --no-warnings --experimental-strip-types ./src/migrations.ts apply",
+    "migrate:check": "node --no-warnings --experimental-strip-types ./src/migrations.ts check"
   },
   "dependencies": {
     "drizzle-orm": "catalog:",

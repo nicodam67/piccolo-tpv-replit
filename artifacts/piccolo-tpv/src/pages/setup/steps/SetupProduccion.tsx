@@ -57,10 +57,8 @@ export default function SetupProduccion({ sessionId, onNext, onBack }: StepProps
 
   async function exportCsv() {
     try {
-      const token = localStorage.getItem('token') ?? '';
       const BASE_URL = import.meta.env.BASE_URL.replace(/\/$/, '');
       const res = await fetch(`${BASE_URL}/api/setup/checklist?format=csv`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
         credentials: 'include',
       });
       if (!res.ok) throw new Error('Error al exportar');

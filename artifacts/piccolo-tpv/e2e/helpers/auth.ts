@@ -47,7 +47,7 @@ export function authHeader(token: string) {
 export async function getLoginList(request: APIRequestContext) {
   const res = await request.get(`${API_BASE}/employees/login-list`);
   expect(res.status()).toBe(200);
-  return res.json() as Promise<Array<{ id: string; name: string; role: string }>>;
+  return res.json() as Promise<Array<{ id: string; name: string }>>;
 }
 
 /**
@@ -58,8 +58,11 @@ export async function loginAs(
   role: string,
   pin = "1234",
 ): Promise<AuthToken> {
-  const employees = await getLoginList(request);
-  const emp = employees.find((e) => e.role === role);
-  if (!emp) throw new Error(`No employee with role '${role}' found in DB`);
-  return loginWithPin(request, emp.id, pin);
+  const employeeIds: Record<string, string | undefined> = {
+    admin: process.env.E2E_ADMIN_ID ?? "26000000-0000-4000-8000-000000000011",
+    waiter: process.env.E2E_WAITER_ID ?? "26000000-0000-4000-8000-000000000012",
+  };
+  const employeeId = employeeIds[role];
+  if (!employeeId) throw new Error(`No E2E employee configured for role '${role}'`);
+  return loginWithPin(request, employeeId, pin);
 }

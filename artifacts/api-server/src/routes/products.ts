@@ -465,7 +465,7 @@ router.post("/admin/products/import", requireAuth, requireRole("admin"), upload.
   const raw: Record<string, unknown>[] = [];
   const xlsxWb = new ExcelJS.Workbook();
   try {
-    await xlsxWb.xlsx.load(file.buffer);
+    await xlsxWb.xlsx.load(file.buffer as unknown as Parameters<typeof xlsxWb.xlsx.load>[0]);
   } catch {
     res.status(400).json({ error: "Archivo no válido. Use XLSX." }); return;
   }

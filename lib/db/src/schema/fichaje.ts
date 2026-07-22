@@ -130,6 +130,24 @@ export const tabletDevicesTable = pgTable("tablet_devices", {
   revokedAt: timestamp("revoked_at", { withTimezone: true }),
 });
 
+// ─── Autorizaciones efímeras para acciones de fichaje ───────────────────────
+// El proof en claro solo se devuelve una vez. La base de datos conserva SHA-256.
+export const clockAuthorizationsTable = pgTable("clock_authorizations", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  proofHash: text("proof_hash").notNull().unique(),
+  employeeId: uuid("employee_id")
+    .notNull()
+    .references(() => employeesTable.id, { onDelete: "cascade" }),
+  deviceId: uuid("device_id")
+    .notNull()
+    .references(() => tabletDevicesTable.id, { onDelete: "cascade" }),
+  allowedAction: text("allowed_action").notNull(),
+  method: text("method").notNull().default("pin"),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  consumedAt: timestamp("consumed_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 // ─── Tarjetas NFC asignadas a empleados ─────────────────────────────────────
 // Solo se almacena el hash SHA-256 del UID de la tarjeta, nunca el UID en claro.
 export const nfcCardsTable = pgTable("nfc_cards", {

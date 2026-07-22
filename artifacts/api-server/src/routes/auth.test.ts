@@ -72,9 +72,13 @@ const mockDb = vi.hoisted(() => ({
  * Fake pg Pool — used by requireAuth (revocation check) and idempotency middleware.
  * Default: returns no rows (= no revoked jti, no cached idempotency result).
  */
-const mockPool = vi.hoisted(() => ({
-  query: vi.fn().mockResolvedValue({ rows: [] }),
-}));
+const mockPool = vi.hoisted(() => {
+  const query = vi.fn().mockResolvedValue({ rows: [] });
+  return {
+    query,
+    connect: vi.fn(async () => ({ query, release: vi.fn() })),
+  };
+});
 
 // ── Module mocks ──────────────────────────────────────────────────────────────
 
@@ -91,7 +95,14 @@ vi.mock("jsonwebtoken", () => ({
 }));
 
 vi.mock("bcryptjs", () => ({
-  default: { compare: mockBcryptCompare },
+  compare: mockBcryptCompare,
+  hash: vi.fn().mockResolvedValue("$2a$12$bootstrap-hash"),
+  hashSync: vi.fn(() => "$2a$10$dummy-hash"),
+  default: {
+    compare: mockBcryptCompare,
+    hash: vi.fn().mockResolvedValue("$2a$12$bootstrap-hash"),
+    hashSync: vi.fn(() => "$2a$10$dummy-hash"),
+  },
 }));
 
 vi.mock("drizzle-orm", async (importOriginal) => importOriginal());
@@ -154,7 +165,15 @@ beforeEach(() => {
   mockDb.select.mockReturnValue(makeChain([]));
   mockDb.insert.mockReturnValue(makeChain([]));
   mockDb.delete.mockReturnValue(makeChain([]));
+  mockDb.transaction.mockImplementation(async (callback) =>
+    callback({
+      select: mockDb.select,
+      insert: mockDb.insert,
+      execute: vi.fn().mockResolvedValue({ rows: [] }),
+    }),
+  );
   mockBcryptCompare.mockResolvedValue(true);
+  process.env["BOOTSTRAP_SECRET"] = "bootstrap-secret-for-tests-32-characters";
 
   // Default pool: no cached idempotency entry
   mockPool.query.mockResolvedValue({ rows: [] });
@@ -177,6 +196,10 @@ describe("POST /api/auth/pin", () => {
     expect(res.body).toHaveProperty("token");
     expect(res.body).toHaveProperty("employee");
     expect(res.body.employee).toMatchObject({ id: "emp-admin", name: "Admin", role: "admin" });
+    const cookie = res.headers["set-cookie"]?.[0] ?? "";
+    expect(cookie).toContain("piccolo_session=");
+    expect(cookie).toContain("HttpOnly");
+    expect(cookie).toContain("SameSite=Strict");
   });
 
   it("2. wrong PIN → 401", async () => {
@@ -248,6 +271,18 @@ describe("GET /api/auth/me", () => {
     expect(res.status).toBe(401);
     expect(res.body.error).toMatch(/Sesión cerrada/i);
   });
+
+  it("accepts the HttpOnly session cookie without a bearer header", async () => {
+    const res = await request(app)
+      .get("/api/auth/me")
+      .set("Cookie", "piccolo_session=cookie-session-token");
+
+    expect(res.status).toBe(200);
+    expect(mockJwtVerify).toHaveBeenCalledWith(
+      "cookie-session-token",
+      expect.any(String),
+    );
+  });
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -266,6 +301,7 @@ describe("POST /api/auth/logout", () => {
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ ok: true });
+    expect(res.headers["set-cookie"]?.[0] ?? "").toContain("piccolo_session=;");
     // The insert was called to persist the revoked jti
     expect(mockDb.insert).toHaveBeenCalled();
   });
@@ -417,5 +453,53 @@ describe("Rate limiting", () => {
       .send({ employeeId: "emp-admin", pin: "1234" });
 
     expect(blocked.status).toBe(429);
+  });
+});
+
+describe("POST /api/setup/seed-employees", () => {
+  it("rejects a missing or incorrect bootstrap secret without touching the DB", async () => {
+    const res = await request(app)
+      .post("/api/setup/seed-employees")
+      .send({ bootstrapSecret: "incorrect", name: "Owner", pin: "4826" });
+
+    expect(res.status).toBe(401);
+    expect(res.body).toEqual({ error: "Bootstrap no autorizado" });
+    expect(mockDb.transaction).not.toHaveBeenCalled();
+  });
+
+  it("creates only the supplied administrator under an advisory transaction lock", async () => {
+    const admin = { id: "generated-admin-id", name: "Owner", role: "admin" };
+    mockDb.select.mockReturnValue(makeChain([{ value: 0 }]));
+    mockDb.insert.mockReturnValue(makeChain([admin]));
+
+    const res = await request(app)
+      .post("/api/setup/seed-employees")
+      .send({
+        bootstrapSecret: process.env["BOOTSTRAP_SECRET"],
+        name: "Owner",
+        pin: "4826",
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body).toEqual({
+      created: true,
+      admin: { id: "generated-admin-id", name: "Owner" },
+    });
+    expect(mockDb.transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it("stays closed after any employee exists", async () => {
+    mockDb.select.mockReturnValue(makeChain([{ value: 1 }]));
+
+    const res = await request(app)
+      .post("/api/setup/seed-employees")
+      .send({
+        bootstrapSecret: process.env["BOOTSTRAP_SECRET"],
+        name: "Owner",
+        pin: "4826",
+      });
+
+    expect(res.status).toBe(409);
+    expect(res.body).toEqual({ error: "Bootstrap cerrado" });
   });
 });

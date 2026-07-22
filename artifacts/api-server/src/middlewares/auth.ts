@@ -1,8 +1,8 @@
 import { type Request, type Response, type NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import { db } from "@workspace/db";
-import { revokedTokensTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { revokedTokensTable, rolePermissionsTable } from "@workspace/db";
+import { and, eq } from "drizzle-orm";
 import { hasPermission } from "../lib/permissions";
 
 export interface AuthenticatedUser {
@@ -17,6 +17,42 @@ export interface AuthenticatedUser {
   exp?: number;
 }
 
+export class SessionAuthError extends Error {
+  constructor(
+    public readonly unavailable = false,
+    public readonly reason: "invalid" | "revoked" = "invalid",
+  ) {
+    super(unavailable ? "session_verification_unavailable" : reason);
+  }
+}
+
+export async function authenticateSessionToken(token: string): Promise<AuthenticatedUser> {
+  let decoded: AuthenticatedUser;
+  try {
+    const secret = process.env["SESSION_SECRET"];
+    if (!secret) throw new Error("SESSION_SECRET not configured");
+    decoded = jwt.verify(token, secret) as AuthenticatedUser;
+  } catch {
+    throw new SessionAuthError(false);
+  }
+
+  if (decoded.jti) {
+    try {
+      const [revoked] = await db
+        .select({ jti: revokedTokensTable.jti })
+        .from(revokedTokensTable)
+        .where(eq(revokedTokensTable.jti, decoded.jti))
+        .limit(1);
+      if (revoked) throw new SessionAuthError(false, "revoked");
+    } catch (error) {
+      if (error instanceof SessionAuthError) throw error;
+      throw new SessionAuthError(true);
+    }
+  }
+
+  return decoded;
+}
+
 declare global {
   namespace Express {
     interface Request {
@@ -27,52 +63,31 @@ declare global {
 
 export async function requireAuth(req: Request, res: Response, next: NextFunction): Promise<void> {
   const header = req.headers.authorization || "";
-  const token = header.startsWith("Bearer ") ? header.slice(7) : null;
+  const bearerToken = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
+  const cookieToken = typeof req.cookies?.piccolo_session === "string"
+    ? req.cookies.piccolo_session
+    : "";
+  const token = bearerToken || cookieToken;
 
   if (!token) {
     res.status(401).json({ error: "No autorizado" });
     return;
   }
 
-  let decoded: AuthenticatedUser;
   try {
-    const secret = process.env["SESSION_SECRET"];
-    if (!secret) throw new Error("SESSION_SECRET not configured");
-    decoded = jwt.verify(token, secret) as AuthenticatedUser;
-  } catch {
-    res.status(401).json({ error: "Sesión no válida" });
-    return;
-  }
-
-  // ── Revocation check (fail-closed) ──────────────────────────────────────────
-  // If the token carries a jti claim, verify it has not been revoked on logout.
-  // We fail CLOSED: if the revocation table cannot be reached, we reject the
-  // request with 503 rather than silently accepting a potentially revoked token.
-  if (decoded.jti) {
-    try {
-      const [revoked] = await db
-        .select({ jti: revokedTokensTable.jti })
-        .from(revokedTokensTable)
-        .where(eq(revokedTokensTable.jti, decoded.jti))
-        .limit(1);
-
-      if (revoked) {
-        res.status(401).json({ error: "Sesión cerrada. Por favor inicia sesión de nuevo." });
-        return;
-      }
-    } catch {
-      // Any DB error during revocation check — fail CLOSED (503).
-      // This includes the case where the revoked_tokens table is missing (42P01):
-      // if revocation state cannot be verified for any reason, the request is
-      // denied rather than silently accepted. The table is guaranteed at startup
-      // by ensureAuthTables(); if it fails there, the process exits.
+    req.user = await authenticateSessionToken(token);
+    next();
+  } catch (error) {
+    if (error instanceof SessionAuthError && error.unavailable) {
       res.status(503).json({ error: "Servicio temporalmente no disponible. Inténtalo de nuevo." });
       return;
     }
+    if (error instanceof SessionAuthError && error.reason === "revoked") {
+      res.status(401).json({ error: "Sesión cerrada. Por favor inicia sesión de nuevo." });
+      return;
+    }
+    res.status(401).json({ error: "Sesión no válida" });
   }
-
-  req.user = decoded;
-  next();
 }
 
 /**
@@ -99,13 +114,32 @@ export function requireRole(...allowedRoles: string[]) {
  * @param permission - a permission string in the format "module.action"
  */
 export function requirePermission(permission: string) {
-  return function (req: Request, res: Response, next: NextFunction): void {
+  return async function (req: Request, res: Response, next: NextFunction): Promise<void> {
     const role = req.user?.role;
-    if (!hasPermission(role, permission)) {
+    if (!role) {
       res.status(403).json({ error: `Permiso requerido: ${permission}` });
       return;
     }
-    next();
+
+    const [module, action] = permission.split(".", 2);
+    try {
+      const [override] = await db
+        .select({ allowed: rolePermissionsTable.allowed })
+        .from(rolePermissionsTable)
+        .where(and(
+          eq(rolePermissionsTable.role, role),
+          eq(rolePermissionsTable.module, module),
+          eq(rolePermissionsTable.action, action),
+        ))
+        .limit(1);
+      if (override ? !override.allowed : !hasPermission(role, permission)) {
+        res.status(403).json({ error: `Permiso requerido: ${permission}` });
+        return;
+      }
+      next();
+    } catch {
+      res.status(503).json({ error: "No se pudo verificar el permiso" });
+    }
   };
 }
 

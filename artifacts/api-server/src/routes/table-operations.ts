@@ -92,7 +92,7 @@ router.post("/tables/:tableId/transfer", requireAuth, async (req, res): Promise<
     return { order: updatedOrder, targetName: target.name };
   });
 
-  if ("error" in result) { res.status(result.status).json({ error: result.error }); return; }
+  if ("error" in result) { res.status(result.status ?? 409).json({ error: result.error }); return; }
 
   void addEvent({ tableId: sourceTableId, employeeId: user?.id, employeeName: user?.name, action: "table_transfer", details: `Trasladada a ${result.targetName}`, metadata: { targetTableId } });
   void addEvent({ tableId: targetTableId, orderId: result.order.id, employeeId: user?.id, employeeName: user?.name, action: "table_transfer", details: `Recibida de traslado`, metadata: { sourceTableId } });
@@ -179,7 +179,7 @@ router.post("/tables/merge", requireAuth, requireRole("manager", "admin"), async
     return { mergeGroupId, hostOrderId: hostOrder.id };
   });
 
-  if ("error" in result) { res.status(result.status).json({ error: result.error }); return; }
+  if ("error" in result) { res.status(result.status ?? 409).json({ error: result.error }); return; }
 
   for (const tableId of tableIds) {
     void addEvent({ tableId: tableId as string, orderId: result.hostOrderId, employeeId: user?.id, employeeName: user?.name, action: "merge_table", details: `Unida en grupo ${result.mergeGroupId}`, metadata: { mergeGroupId: result.mergeGroupId, tableIds } });
@@ -268,7 +268,7 @@ router.post("/tables/:tableId/separate", requireAuth, requireRole("manager", "ad
     return { success: true, groupTableCount: groupTables.length };
   });
 
-  if ("error" in result) { res.status(result.status).json({ error: result.error }); return; }
+  if ("error" in result) { res.status(result.status ?? 409).json({ error: result.error }); return; }
 
   void addEvent({ tableId, employeeId: user?.id, employeeName: user?.name, action: "separate_table", details: `Grupo separado — ${result.groupTableCount} mesas` });
 
@@ -338,7 +338,7 @@ router.post("/orders/:orderId/move-items", requireAuth, async (req, res): Promis
     return { targetOrderId };
   });
 
-  if ("error" in result) { res.status(result.status).json({ error: result.error }); return; }
+  if ("error" in result) { res.status(result.status ?? 409).json({ error: result.error }); return; }
 
   void addEvent({ tableId: targetTableId, orderId: result.targetOrderId, employeeId: user?.id, employeeName: user?.name, action: "move_items", details: `${itemIds.length} producto(s) movidos`, metadata: { itemIds, sourceOrderId: orderId } });
 

@@ -11,15 +11,15 @@ import {
   orderItemModifiersTable,
   waiterNotificationsTable,
   auditLogTable,
-  auditFindingsTable,
   prefacturaPrintsTable,
   businessConfigTable,
+  idempotencyKeysTable,
 } from "@workspace/db";
 import { eq, and, inArray, desc, asc, sql } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import { idempotency } from "../middlewares/idempotency";
 import { recipeItemsTable, ingredientsTable, stockMovementsTable } from "@workspace/db";
-import { getIO } from "../lib/socket";
+import { emitToEmployee, emitToFunction } from "../lib/socket-events";
 import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
@@ -89,7 +89,7 @@ async function writeAudit(
 
 function emitRefresh(orderId: string, employeeName?: string) {
   try {
-    getIO().emit("orders:refresh", { orderId, employeeName });
+    emitToFunction("floor", "orders:refresh", { orderId, employeeName });
   } catch { /* socket not initialised */ }
 }
 
@@ -150,7 +150,7 @@ router.patch("/orders/:orderId", requireAuth, async (req, res): Promise<void> =>
         .update(restaurantTablesTable)
         .set({ status: "bill_requested" })
         .where(eq(restaurantTablesTable.id, order.tableId));
-      try { getIO().emit("tables:refresh"); } catch { /* ignore */ }
+      try { emitToFunction("floor", "tables:refresh"); } catch { /* ignore */ }
     }
     await writeAudit(orderId, req.user?.id, req.user?.name ?? "", "bill_request", "Cuenta solicitada");
   }
@@ -513,7 +513,7 @@ router.delete("/order-items/:itemId", requireAuth, async (req, res): Promise<voi
       `Anulado tras envío a cocina: ${item.products.name}`);
 
     // Notify KDS displays immediately
-    try { getIO().emit("kds:refresh", { employeeName: req.user?.name ?? null }); } catch { /* ignore */ }
+    try { emitToFunction("kds", "kds:refresh", { employeeName: req.user?.name ?? null }); } catch { /* ignore */ }
     emitRefresh(item.order_items.orderId, req.user?.name);
     res.status(204).send();
     return;
@@ -580,7 +580,7 @@ router.post("/orders/:orderId/send", requireAuth, idempotency, async (req, res):
     .where(eq(ordersTable.id, orderId));
   const wasAlreadySent = preUpdateOrder?.sentAt !== null;
 
-  const draftItems = await db
+  let draftItems = await db
     .select()
     .from(orderItemsTable)
     .innerJoin(productsTable, eq(orderItemsTable.productId, productsTable.id))
@@ -606,7 +606,41 @@ router.post("/orders/:orderId/send", requireAuth, idempotency, async (req, res):
     modsByItem.get(m.orderItemId)!.push(m);
   }
 
-  await db.transaction(async (tx) => {
+  let updated: typeof ordersTable.$inferSelect | undefined;
+  try {
+    updated = await db.transaction(async (tx) => {
+    // Serialize every send for this order, including requests with different
+    // idempotency keys or no key at all.
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${"order-send:" + orderId}))`);
+
+    const [lockedOrder] = await tx
+      .select({ status: ordersTable.status })
+      .from(ordersTable)
+      .where(eq(ordersTable.id, orderId))
+      .for("update");
+    if (!lockedOrder) throw new Error("ORDER_NOT_FOUND");
+    if (lockedOrder.status === "bill_requested") throw new Error("BILL_REQUESTED");
+
+    // Re-read drafts only after acquiring the lock. A concurrent request that
+    // already sent them will observe an empty set and cannot duplicate effects.
+    draftItems = await tx
+      .select()
+      .from(orderItemsTable)
+      .innerJoin(productsTable, eq(orderItemsTable.productId, productsTable.id))
+      .where(and(eq(orderItemsTable.orderId, orderId), eq(orderItemsTable.status, "draft")));
+    if (draftItems.length === 0) throw new Error("NO_DRAFT_ITEMS");
+
+    const lockedDraftItemIds = draftItems.map((row) => row.order_items.id);
+    const lockedMods = await tx
+      .select()
+      .from(orderItemModifiersTable)
+      .where(inArray(orderItemModifiersTable.orderItemId, lockedDraftItemIds));
+    modsByItem.clear();
+    for (const modifier of lockedMods) {
+      if (!modsByItem.has(modifier.orderItemId)) modsByItem.set(modifier.orderItemId, []);
+      modsByItem.get(modifier.orderItemId)!.push(modifier);
+    }
+
     // Only create KDS tasks when the mode includes KDS (kds_only or both).
     // printers_only mode routes entirely through physical printers — no KDS tasks.
     if (sendToKds) {
@@ -636,27 +670,29 @@ router.post("/orders/:orderId/send", requireAuth, idempotency, async (req, res):
     await tx
       .update(orderItemsTable)
       .set({ status: "sent" })
-      .where(inArray(orderItemsTable.id, draftItemIds));
+      .where(inArray(orderItemsTable.id, lockedDraftItemIds));
 
     await tx
       .update(ordersTable)
       .set({ status: "sent", sentAt: new Date() })
       .where(eq(ordersTable.id, orderId));
-  });
 
-  // ── Stock decrement at send time ───────────────────────────────────────────
-  // Items were in draft (no stock consumed). Now that they're sent to kitchen,
-  // consume the recipe ingredients. Fire-and-forget — stock failure does NOT
-  // block the send response.
-  try {
-    // Build consumption map across all draft items being sent
-    const consumptionMap = new Map<string, { consumed: number; avgCost: string; productName: string; formatName: string | null; itemId: string }>();
+    // Stock movement creation and decrement are part of the SAME transaction as
+    // KDS task creation. A failure rolls back the whole send.
+    const consumptionMap = new Map<string, {
+      ingredientId: string;
+      consumed: number;
+      avgCost: string;
+      productName: string;
+      formatName: string | null;
+      itemId: string;
+    }>();
     for (const row of draftItems) {
       const item = row.order_items;
       const product = row.products;
 
       // Try format-specific recipe first, fall back to base recipe
-      let recipeLines = await db
+      let recipeLines = await tx
         .select({
           ingredientId: recipeItemsTable.ingredientId,
           quantity: recipeItemsTable.quantity,
@@ -675,7 +711,7 @@ router.post("/orders/:orderId/send", requireAuth, idempotency, async (req, res):
 
       // If format-specific returned nothing AND we have a formatId, try base recipe
       if (recipeLines.length === 0 && item.formatId) {
-        recipeLines = await db
+        recipeLines = await tx
           .select({
             ingredientId: recipeItemsTable.ingredientId,
             quantity: recipeItemsTable.quantity,
@@ -697,12 +733,14 @@ router.post("/orders/:orderId/send", requireAuth, idempotency, async (req, res):
           parseFloat(line.quantity) *
           (1 + parseFloat(line.wastePercent) / 100) *
           item.quantity;
-        const existing = consumptionMap.get(line.ingredientId);
+        const movementKey = `${item.id}:${line.ingredientId}`;
+        const existing = consumptionMap.get(movementKey);
         const avgCost = String(line.averageCost ?? line.purchaseCost ?? "0");
         if (existing) {
           existing.consumed += consumed;
         } else {
-          consumptionMap.set(line.ingredientId, {
+          consumptionMap.set(movementKey, {
+            ingredientId: line.ingredientId,
             consumed,
             avgCost,
             productName: product.name,
@@ -713,18 +751,17 @@ router.post("/orders/:orderId/send", requireAuth, idempotency, async (req, res):
       }
     }
 
-    if (consumptionMap.size > 0) {
-      await db.transaction(async (tx) => {
-        for (const [ingredientId, { consumed, avgCost, productName, formatName, itemId }] of consumptionMap) {
-          await tx
-            .update(ingredientsTable)
-            .set({
-              currentStock: sql`GREATEST(0, (${ingredientsTable.currentStock})::numeric - ${consumed}::numeric)`,
-              updatedAt: new Date(),
-            })
-            .where(eq(ingredientsTable.id, ingredientId));
-
-          await tx.insert(stockMovementsTable).values({
+    for (const {
+      ingredientId,
+      consumed,
+      avgCost,
+      productName,
+      formatName,
+      itemId,
+    } of consumptionMap.values()) {
+      const [movement] = await tx
+        .insert(stockMovementsTable)
+        .values({
             ingredientId,
             movementType: "sale",
             quantity: String(-consumed),
@@ -732,46 +769,70 @@ router.post("/orders/:orderId/send", requireAuth, idempotency, async (req, res):
             reason: `Venta: ${productName}${formatName ? ` [${formatName}]` : ""}`,
             employeeId: req.user?.id ?? null,
             orderItemId: itemId,
-          });
-        }
-      });
-    }
-  } catch (err) {
-    logger.error({
-      msg: "Stock decrement at send failed — non-fatal",
-      orderId,
-      err: err instanceof Error ? { message: err.message, stack: err.stack } : String(err),
-    });
-    // Record a high-severity audit finding so the issue surfaces in the audit panel
-    try {
-      await db.insert(auditFindingsTable).values({
-        module: "stock",
-        severity: "high",
-        title: `Deducción de stock fallida — pedido ${orderId}`,
-        description: `Error al descontar stock en el envío a cocina: ${err instanceof Error ? err.message : String(err)}`,
-        automated: true,
-      });
-    } catch { /* audit insert must never block the send response */ }
-    // Notify the order screen so staff can manually correct stock
-    try {
-      getIO().emit("stock:deduction_failed", {
-        orderId,
-        error: err instanceof Error ? err.message : String(err),
-      });
-    } catch { /* socket not initialised */ }
-  }
+          })
+        .onConflictDoNothing()
+        .returning({ id: stockMovementsTable.id });
+      if (!movement) continue;
 
-  const [updated] = await db.select().from(ordersTable).where(eq(ordersTable.id, orderId));
+      await tx
+        .update(ingredientsTable)
+        .set({
+          currentStock: sql`GREATEST(0, (${ingredientsTable.currentStock})::numeric - ${consumed}::numeric)`,
+          updatedAt: new Date(),
+        })
+        .where(eq(ingredientsTable.id, ingredientId));
+    }
+
+    const [updatedOrder] = await tx
+      .select()
+      .from(ordersTable)
+      .where(eq(ordersTable.id, orderId));
+    if (!updatedOrder) throw new Error("ORDER_NOT_FOUND");
+
+    // Persist the exact successful response in the SAME transaction as KDS and
+    // stock side effects. A process crash after COMMIT can still be replayed.
+    const requestKey = req.headers["idempotency-key"];
+    if (typeof requestKey === "string" && req.user?.id) {
+      await tx
+        .insert(idempotencyKeysTable)
+        .values({
+          cacheKey: `${req.user.id}:${requestKey}`,
+          userId: req.user.id,
+          statusCode: 200,
+          response: updatedOrder,
+          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        })
+        .onConflictDoNothing();
+    }
+    return updatedOrder;
+    });
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : "SEND_FAILED";
+    if (reason === "ORDER_NOT_FOUND") {
+      res.status(404).json({ error: "Pedido no encontrado" });
+      return;
+    }
+    if (reason === "BILL_REQUESTED") {
+      res.status(409).json({ error: "No se puede enviar a cocina: la cuenta ya ha sido solicitada" });
+      return;
+    }
+    if (reason === "NO_DRAFT_ITEMS") {
+      res.status(409).json({ error: "La comanda ya fue enviada" });
+      return;
+    }
+    logger.error({ orderId, err }, "Atomic order send failed");
+    res.status(503).json({ error: "No se pudo enviar la comanda de forma segura" });
+    return;
+  }
 
   await writeAudit(orderId, req.user?.id, req.user?.name ?? "", "send_kds",
     `${draftItems.length} línea(s) enviada(s) a preparación`);
 
   try {
-    const io = getIO();
     // kds:refresh is only meaningful when KDS is active (kds_only or both).
     // printers_only mode skips KDS socket event to avoid confusing KDS screens.
     if (sendToKds) {
-      io.emit("kds:refresh", { employeeName: req.user?.name ?? null });
+      emitToFunction("kds", "kds:refresh", { employeeName: req.user?.name ?? null });
     }
     emitRefresh(orderId, req.user?.name);
   } catch { /* ignore */ }
@@ -989,19 +1050,20 @@ router.post("/orders/:orderId/pase", requireAuth, async (req, res): Promise<void
     });
 
     try {
-      const io = getIO();
       if (order.tableId) {
         const [tableRow] = await db
           .select({ name: restaurantTablesTable.name })
           .from(restaurantTablesTable)
           .where(eq(restaurantTablesTable.id, order.tableId));
-        io.emit("tables:refresh");
-        io.emit("waiter:order-served", {
+        emitToFunction("floor", "tables:refresh");
+        const payload = {
           orderId,
           tableId: order.tableId,
           tableName: tableRow?.name,
           employeeId: order.employeeId,
-        });
+        };
+        emitToFunction("floor", "waiter:order-served", payload);
+        if (order.employeeId) emitToEmployee(order.employeeId, "waiter:order-served", payload);
       }
     } catch { /* ignore */ }
   }

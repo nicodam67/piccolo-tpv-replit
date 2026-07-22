@@ -40,7 +40,7 @@ function makeChain(value: unknown) {
     "select", "from", "where", "orderBy", "leftJoin", "innerJoin",
     "insert", "update", "delete", "set", "values", "returning",
     "limit", "offset", "groupBy", "having", "execute",
-    "onConflictDoUpdate", "onConflictDoNothing", "selectDistinct",
+    "onConflictDoUpdate", "onConflictDoNothing", "selectDistinct", "for",
   ]) {
     chain[m] = () => chain;
   }
@@ -74,9 +74,13 @@ vi.mock("jsonwebtoken", () => ({
 }));
 
 vi.mock("bcryptjs", () => ({
+  compare: vi.fn(),
+  hash: vi.fn(),
+  hashSync: vi.fn(() => "$2a$10$dummy-hash"),
   default: {
     compare: vi.fn(),
     hash:    vi.fn(),
+    hashSync: vi.fn(() => "$2a$10$dummy-hash"),
   },
 }));
 
@@ -88,7 +92,7 @@ vi.mock("express-rate-limit", () => ({
 vi.mock("drizzle-orm", async (importOriginal) => importOriginal());
 
 vi.mock("../lib/socket", () => ({
-  getIO:      vi.fn(() => ({ emit: mockSocketEmit, to: vi.fn(() => ({ emit: vi.fn() })) })),
+  getIO:      vi.fn(() => ({ emit: mockSocketEmit, to: vi.fn(() => ({ emit: mockSocketEmit })) })),
   initSocket: vi.fn(),
 }));
 
@@ -575,8 +579,11 @@ describe("Paso 5 — Enviar comanda al KDS (POST /api/orders/:orderId/send)", ()
       .mockReturnValueOnce(makeChain([{ sentAt: null }]))            // 3. preUpdateOrder
       .mockReturnValueOnce(makeChain([F_DRAFT_JOIN]))                 // 4. draft items (join)
       .mockReturnValueOnce(makeChain([]))                             // 5. modifiers
-      .mockReturnValueOnce(makeChain([]))                             // 6. recipe items (stock) → empty
-      .mockReturnValue(makeChain([sentOrder]));                       // 7. updated order + fallback
+      .mockReturnValueOnce(makeChain([{ status: "open" }]))           // 6. locked order
+      .mockReturnValueOnce(makeChain([F_DRAFT_JOIN]))                 // 7. locked draft items
+      .mockReturnValueOnce(makeChain([]))                             // 8. locked modifiers
+      .mockReturnValueOnce(makeChain([]))                             // 9. recipe items (stock) → empty
+      .mockReturnValue(makeChain([sentOrder]));                       // 10. updated order + fallback
 
     mockDb.insert.mockReturnValue(makeChain([F.kdsTask]));
     mockDb.update.mockReturnValue(makeChain([]));
@@ -600,6 +607,9 @@ describe("Paso 5 — Enviar comanda al KDS (POST /api/orders/:orderId/send)", ()
       .mockReturnValueOnce(makeChain([{ status: "open" }]))
       .mockReturnValueOnce(makeChain([{ printMode: "kds_only" }]))
       .mockReturnValueOnce(makeChain([{ sentAt: null }]))
+      .mockReturnValueOnce(makeChain([F_DRAFT_JOIN]))
+      .mockReturnValueOnce(makeChain([]))
+      .mockReturnValueOnce(makeChain([{ status: "open" }]))
       .mockReturnValueOnce(makeChain([F_DRAFT_JOIN]))
       .mockReturnValueOnce(makeChain([]))
       .mockReturnValueOnce(makeChain([]))

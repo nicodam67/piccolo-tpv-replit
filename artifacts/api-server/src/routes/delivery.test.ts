@@ -8,6 +8,9 @@
  *  4. Courier settlement resets pending amounts
  *  5. Out-of-zone addresses are created anyway (TPV override, no 422)
  *  6. Courier token endpoint accepts incident + note and persists to history
+ *
+ * Requires a migrated PostgreSQL test database and RUN_DB_INTEGRATION_TESTS=1.
+ * The default unit-test run skips this file without opening a database connection.
  */
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
@@ -19,14 +22,20 @@ import {
   deliveryZonesTable,
   deliveryOrderStatusHistoryTable,
   courierSettlementsTable,
+  categoriesTable,
+  employeesTable,
+  employeePinsTable,
   productsTable,
 } from "@workspace/db";
 import { eq, like } from "drizzle-orm";
+import bcrypt from "bcryptjs";
 import app from "../app";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 async function getToken(): Promise<string> {
-  const res = await request(app).post("/api/auth/login").send({ pin: "0000" });
+  const res = await request(app)
+    .post("/api/auth/pin")
+    .send({ employeeId: TEST_ADMIN_ID, pin: "4826" });
   return res.body?.token ?? "";
 }
 
@@ -35,6 +44,11 @@ function authHeaders(tok: string) {
 }
 
 const TEST_PFX = "TEST-DEL-";
+const TEST_ADMIN_ID = "26000000-0000-4000-8000-000000000001";
+const TEST_CATEGORY_ID = "26000000-0000-4000-8000-000000000002";
+const TEST_PRODUCT_ID = "26000000-0000-4000-8000-000000000003";
+const RUN_DB_INTEGRATION_TESTS = process.env["RUN_DB_INTEGRATION_TESTS"] === "1";
+const describeWithDatabase = RUN_DB_INTEGRATION_TESTS ? describe : describe.skip;
 
 // ── State ─────────────────────────────────────────────────────────────────────
 let token = "";
@@ -42,12 +56,38 @@ let testCourierId = "";
 let testProductId = "";
 
 beforeAll(async () => {
-  token = await getToken();
+  if (!RUN_DB_INTEGRATION_TESTS) return;
+  await db.insert(employeesTable).values({
+    id: TEST_ADMIN_ID,
+    name: "TEST Delivery Admin",
+    role: "admin",
+    active: true,
+  }).onConflictDoNothing();
+  await db.insert(employeePinsTable).values({
+    employeeId: TEST_ADMIN_ID,
+    pinHash: await bcrypt.hash("4826", 10),
+  }).onConflictDoUpdate({
+    target: employeePinsTable.employeeId,
+    set: { pinHash: await bcrypt.hash("4826", 10) },
+  });
+  await db.insert(categoriesTable).values({
+    id: TEST_CATEGORY_ID,
+    name: "TEST Delivery Category",
+  }).onConflictDoNothing();
+  await db.insert(productsTable).values({
+    id: TEST_PRODUCT_ID,
+    categoryId: TEST_CATEGORY_ID,
+    name: "TEST Delivery Product",
+    price: "10.00",
+    prepZone: "cocina",
+    active: true,
+    deliveryVisible: true,
+  }).onConflictDoNothing();
 
-  // Get a real product id
-  const prods = await db.select({ id: productsTable.id }).from(productsTable)
-    .where(eq(productsTable.active, true)).limit(1);
-  if (prods.length) testProductId = prods[0].id;
+  token = await getToken();
+  if (!token) throw new Error("Integration login failed");
+
+  testProductId = TEST_PRODUCT_ID;
 
   // Create test courier with pending amounts
   const [c] = await db.insert(couriersTable).values({
@@ -62,6 +102,7 @@ beforeAll(async () => {
 }, 30_000);
 
 afterAll(async () => {
+  if (!RUN_DB_INTEGRATION_TESTS) return;
   // Clean up orders created by these tests
   const testOrders = await db.select({ id: ordersTable.id })
     .from(ordersTable).where(like((ordersTable as any).orderNumber, `${TEST_PFX}%`));
@@ -75,10 +116,13 @@ afterAll(async () => {
     .where(eq(courierSettlementsTable.courierId, testCourierId)).catch(() => {});
   await db.delete(couriersTable)
     .where(eq(couriersTable.id, testCourierId)).catch(() => {});
+  await db.delete(productsTable).where(eq(productsTable.id, TEST_PRODUCT_ID)).catch(() => {});
+  await db.delete(categoriesTable).where(eq(categoriesTable.id, TEST_CATEGORY_ID)).catch(() => {});
+  await db.delete(employeesTable).where(eq(employeesTable.id, TEST_ADMIN_ID)).catch(() => {});
 }, 30_000);
 
 // ── 1. Manual delivery order creation ────────────────────────────────────────
-describe("POST /api/delivery-orders — delivery", () => {
+describeWithDatabase("POST /api/delivery-orders — delivery", () => {
   it("creates a delivery order in confirmed status and returns 201", async () => {
     if (!testProductId) { console.warn("Skip: no products"); return; }
 
@@ -110,7 +154,7 @@ describe("POST /api/delivery-orders — delivery", () => {
 });
 
 // ── 2. Takeaway order creation ────────────────────────────────────────────────
-describe("POST /api/delivery-orders — takeaway", () => {
+describeWithDatabase("POST /api/delivery-orders — takeaway", () => {
   it("creates a takeaway order without address and deliveryFee=0", async () => {
     if (!testProductId) return;
 
@@ -135,7 +179,7 @@ describe("POST /api/delivery-orders — takeaway", () => {
 });
 
 // ── 3. Status change writes to history ───────────────────────────────────────
-describe("PATCH /api/delivery-orders/:id — status history", () => {
+describeWithDatabase("PATCH /api/delivery-orders/:id — status history", () => {
   let orderId = "";
 
   beforeAll(async () => {
@@ -197,7 +241,7 @@ describe("PATCH /api/delivery-orders/:id — status history", () => {
 });
 
 // ── 4. Courier settlement resets pending amounts ──────────────────────────────
-describe("POST /api/admin/couriers/:id/settle", () => {
+describeWithDatabase("POST /api/admin/couriers/:id/settle", () => {
   it("creates a settlement row and resets earnedCashPending + earnedCardPending to 0", async () => {
     const res = await request(app)
       .post(`/api/admin/couriers/${testCourierId}/settle`)
@@ -219,7 +263,7 @@ describe("POST /api/admin/couriers/:id/settle", () => {
 });
 
 // ── 5. Out-of-zone delivery is always created (TPV override) ──────────────────
-describe("POST /api/delivery-orders — out-of-zone", () => {
+describeWithDatabase("POST /api/delivery-orders — out-of-zone", () => {
   it("creates a delivery order even for addresses outside all defined zones", async () => {
     if (!testProductId) return;
 
@@ -247,7 +291,7 @@ describe("POST /api/delivery-orders — out-of-zone", () => {
 });
 
 // ── 6. Courier token endpoint: incident + note ────────────────────────────────
-describe("PATCH /courier/:courierId/orders/:orderId/status — incident via courier token", () => {
+describeWithDatabase("PATCH /courier/:courierId/orders/:orderId/status — incident via courier token", () => {
   let incidentOrderId = "";
 
   beforeAll(async () => {
@@ -285,7 +329,7 @@ describe("PATCH /courier/:courierId/orders/:orderId/status — incident via cour
     const noteText = "Cliente no localizado: no atendió el portero";
     const res = await request(app)
       .patch(`/api/courier/${testCourierId}/orders/${incidentOrderId}/status`)
-      .query({ token: "test-courier-token-uuid-0001" })
+      .set("Authorization", "Bearer test-courier-token-uuid-0001")
       .send({ status: "incident", note: noteText })
       .expect(200);
 
@@ -318,7 +362,7 @@ describe("PATCH /courier/:courierId/orders/:orderId/status — incident via cour
 
     const res = await request(app)
       .patch(`/api/courier/${testCourierId}/orders/${incidentOrderId}/status`)
-      .query({ token: "test-courier-token-uuid-0001" })
+      .set("Authorization", "Bearer test-courier-token-uuid-0001")
       .send({ status: "delivered", note: "Recibido por: Juan García" })
       .expect(200);
 
@@ -337,7 +381,7 @@ describe("PATCH /courier/:courierId/orders/:orderId/status — incident via cour
     if (!incidentOrderId) return;
     const res = await request(app)
       .patch(`/api/courier/${testCourierId}/orders/${incidentOrderId}/status`)
-      .query({ token: "test-courier-token-uuid-0001" })
+      .set("Authorization", "Bearer test-courier-token-uuid-0001")
       .send({ status: "rejected" })  // not allowed from driver app
       .expect(400);
 
@@ -346,7 +390,7 @@ describe("PATCH /courier/:courierId/orders/:orderId/status — incident via cour
 });
 
 // ── 7. Double-delivered idempotency — courier stats not inflated on replay ────
-describe("Double-delivered idempotency via courier token endpoint", () => {
+describeWithDatabase("Double-delivered idempotency via courier token endpoint", () => {
   let dblOrderId = "";
 
   beforeAll(async () => {
@@ -377,7 +421,7 @@ describe("Double-delivered idempotency via courier token endpoint", () => {
     if (!dblOrderId) return;
     const res = await request(app)
       .patch(`/api/courier/${testCourierId}/orders/${dblOrderId}/status`)
-      .query({ token: "test-courier-token-uuid-0001" })
+      .set("Authorization", "Bearer test-courier-token-uuid-0001")
       .send({ status: "delivered" })
       .expect(200);
     expect(res.body.ok).toBe(true);
@@ -393,7 +437,7 @@ describe("Double-delivered idempotency via courier token endpoint", () => {
     // Replay the same transition
     const res = await request(app)
       .patch(`/api/courier/${testCourierId}/orders/${dblOrderId}/status`)
-      .query({ token: "test-courier-token-uuid-0001" })
+      .set("Authorization", "Bearer test-courier-token-uuid-0001")
       .send({ status: "delivered" });
 
     // Either idempotent 200 or 409 conflict — both are acceptable; what must NOT happen is a 200 that inflates stats
@@ -409,7 +453,7 @@ describe("Double-delivered idempotency via courier token endpoint", () => {
 });
 
 // ── 8. Regression: courier stats update when staff marks delivered (no courierId in body) ──
-describe("PATCH /api/delivery-orders/:id — staff marks delivered without courierId in body", () => {
+describeWithDatabase("PATCH /api/delivery-orders/:id — staff marks delivered without courierId in body", () => {
   let regressionOrderId = "";
   let regressionCourierId = "";
 

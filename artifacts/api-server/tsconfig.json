@@ -5,9 +5,11 @@
     "tsBuildInfoFile": ".tsbuildinfo",
     "outDir": "dist",
     "rootDir": "src",
-    "types": ["node"]
+    "types": ["node"],
+    "noImplicitReturns": false
   },
   "include": ["src"],
+  "exclude": ["src/**/*.test.ts"],
   "references": [
     {
       "path": "../../lib/db"

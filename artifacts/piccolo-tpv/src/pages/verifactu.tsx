@@ -320,9 +320,8 @@ function RegistrosTab() {
   });
 
   const downloadXml = (id: string, numSerie: string) => {
-    const token = localStorage.getItem('token') ?? '';
     fetch(`/api/admin/verifactu/records/${id}/xml`, {
-      headers: { Authorization: `Bearer ${token}` },
+      credentials: 'include',
     }).then(r => r.blob()).then(blob => {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');

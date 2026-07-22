@@ -102,7 +102,7 @@ async function parseFile(buf: Buffer, format: string, separator?: string): Promi
   }
   if (format === "xlsx") {
     const wb = new ExcelJS.Workbook();
-    await wb.xlsx.load(buf);
+    await wb.xlsx.load(buf as unknown as Parameters<typeof wb.xlsx.load>[0]);
     const ws = wb.worksheets[0];
     if (!ws) return [];
     const headers: string[] = [];

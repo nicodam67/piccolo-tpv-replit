@@ -17,7 +17,7 @@
  */
 
 import { type Request, type Response, type NextFunction } from "express";
-import { pool } from "@workspace/db";
+import { pool, type PoolClient } from "@workspace/db";
 
 // ── In-memory LRU cache ────────────────────────────────────────────────────────
 
@@ -52,27 +52,6 @@ setInterval(() => {
   }
 }, 60 * 60 * 1_000).unref();
 
-// ── DB table bootstrap ─────────────────────────────────────────────────────────
-
-/**
- * Creates the `idempotency_keys` table if it doesn't exist.
- * Called at server startup alongside `ensureAuthTables()`.
- */
-export async function ensureIdempotencyTable(): Promise<void> {
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS idempotency_keys (
-      cache_key   TEXT        PRIMARY KEY,
-      user_id     TEXT        NOT NULL,
-      status_code INTEGER     NOT NULL,
-      response    JSONB       NOT NULL,
-      created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-      expires_at  TIMESTAMPTZ NOT NULL
-    )
-  `);
-  // Verify accessibility
-  await pool.query("SELECT 1 FROM idempotency_keys LIMIT 0");
-}
-
 // ── Middleware factory ─────────────────────────────────────────────────────────
 
 /**
@@ -91,6 +70,10 @@ export async function idempotency(
   if (!key || !["POST", "PATCH", "DELETE"].includes(req.method)) {
     return next();
   }
+  if (key.length < 8 || key.length > 200) {
+    res.status(400).json({ error: "Idempotency-Key no válida" });
+    return;
+  }
 
   // Scope the key per-user so cross-user replay is impossible
   const userId = req.user?.id ?? "anon";
@@ -103,9 +86,14 @@ export async function idempotency(
     return;
   }
 
-  // ── 2. DB lookup ────────────────────────────────────────────────────────────
+  // ── 2. Cross-process serialization + durable lookup ────────────────────────
+  // A session advisory lock remains held until the successful response is
+  // persisted. Parallel requests with the same key cannot both run the handler.
+  let client: PoolClient | undefined;
   try {
-    const result = await pool.query<{ status_code: number; response: unknown }>(
+    client = await pool.connect();
+    await client.query("SELECT pg_advisory_lock(hashtext($1))", [cacheKey]);
+    const result = await client.query<{ status_code: number; response: unknown }>(
       `SELECT status_code, response
          FROM idempotency_keys
         WHERE cache_key = $1
@@ -118,36 +106,61 @@ export async function idempotency(
       const { status_code, response } = result.rows[0];
       memCache.set(cacheKey, { status: status_code, body: response, ts: Date.now() });
       evictIfNeeded();
+      await client.query("SELECT pg_advisory_unlock(hashtext($1))", [cacheKey]);
+      client.release();
       res.status(status_code).setHeader("Idempotency-Replayed", "true").json(response);
       return;
     }
   } catch {
-    // DB unavailable — skip idempotency and process normally (safe degradation)
-    return next();
+    client?.release();
+    res.status(503).json({ error: "No se puede garantizar la idempotencia" });
+    return;
   }
 
   // ── 3. Intercept response to store it ───────────────────────────────────────
   const originalJson = res.json.bind(res) as typeof res.json;
+  let released = false;
+  const releaseLock = async () => {
+    if (released || !client) return;
+    released = true;
+    try {
+      await client.query("SELECT pg_advisory_unlock(hashtext($1))", [cacheKey]);
+    } finally {
+      client.release();
+    }
+  };
+
   (res as unknown as Record<string, unknown>)["json"] = (body: unknown) => {
     const status = res.statusCode;
     if (status >= 200 && status < 300) {
       const expiresAt = new Date(Date.now() + TTL_MS);
-      memCache.set(cacheKey, { status, body, ts: Date.now() });
-      evictIfNeeded();
-      // Persist to DB asynchronously — failure is non-fatal (just means a
-      // future identical request will be processed again instead of replayed)
-      pool
-        .query(
+      void (async () => {
+        try {
+          await client.query(
           `INSERT INTO idempotency_keys
              (cache_key, user_id, status_code, response, expires_at)
            VALUES ($1, $2, $3, $4::jsonb, $5)
            ON CONFLICT (cache_key) DO NOTHING`,
           [cacheKey, userId, status, JSON.stringify(body), expiresAt],
-        )
-        .catch(() => {/* non-critical */});
+          );
+          memCache.set(cacheKey, { status, body, ts: Date.now() });
+          evictIfNeeded();
+          await releaseLock();
+          originalJson(body);
+        } catch {
+          await releaseLock();
+          if (!res.headersSent) {
+            res.status(503);
+            originalJson({ error: "No se pudo persistir la respuesta idempotente" });
+          }
+        }
+      })();
+      return res;
     }
+    void releaseLock();
     return originalJson(body);
   };
 
+  res.once("close", () => { void releaseLock(); });
   next();
 }

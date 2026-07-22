@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { api } from '../lib/api-client';
 import { useParams, Link } from 'wouter';
 import { useQueryClient } from '@tanstack/react-query';
-import { io } from 'socket.io-client';
+import { connectAuthenticatedSocket } from '../lib/socket-client';
 import { toast } from 'sonner';
 import { History, RefreshCw, AlertTriangle, X, Clock, CheckCircle, ShieldCheck, Search, Flame } from 'lucide-react';
 import {
@@ -202,7 +202,7 @@ export default function KdsPage() {
   }, [tasks]);
 
   useEffect(() => {
-    const socket = io({ path: '/api/socket.io' });
+    const socket = connectAuthenticatedSocket();
     const invalidate = () => {
       queryClient.invalidateQueries({ queryKey: getGetKdsTasksQueryKey(zone as any) });
       queryClient.invalidateQueries({ queryKey: getGetKdsHistoryQueryKey() });

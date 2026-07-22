@@ -11,7 +11,7 @@ import {
 } from "@workspace/db";
 import { eq, and, inArray, desc, sql } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
-import { getIO } from "../lib/socket";
+import { emitToEmployee, emitToFunction } from "../lib/socket-events";
 
 const router: IRouter = Router();
 
@@ -20,7 +20,7 @@ const router: IRouter = Router();
 const VALID_ZONES = ["cocina", "pizza", "ensalada", "barra", "pase", "sin_partida"];
 
 // Active statuses shown per zone
-const ZONE_STATUSES = ["new", "preparing", "in_oven", "ready", "cancelled"];
+const ZONE_STATUSES = ["new", "preparing", "in_oven", "ready"];
 const PASE_STATUSES = ["new", "preparing", "in_oven", "ready"];
 
 // Per-zone allowed transitions: { fromStatus → allowedToStatuses[] }
@@ -98,7 +98,7 @@ const TASK_FIELDS = {
 };
 
 // ── GET /kds/history ──────────────────────────────────────────────────────────
-router.get("/kds/history", requireAuth, async (req, res): Promise<void> => {
+router.get("/kds/history", requireAuth, requireRole("admin", "manager", "encargado", "waiter", "kitchen"), async (req, res): Promise<void> => {
   const cutoff = new Date(Date.now() - 8 * 60 * 60 * 1000);
 
   const tasks = await db
@@ -116,8 +116,8 @@ router.get("/kds/history", requireAuth, async (req, res): Promise<void> => {
 });
 
 // ── GET /kds/:zone ─────────────────────────────────────────────────────────────
-router.get("/kds/:zone", requireAuth, async (req, res): Promise<void> => {
-  const { zone } = req.params;
+router.get("/kds/:zone", requireAuth, requireRole("admin", "manager", "encargado", "waiter", "kitchen"), async (req, res): Promise<void> => {
+  const zone = req.params.zone as string;
 
   if (!VALID_ZONES.includes(zone)) {
     res.status(400).json({ error: "Zona no válida" });
@@ -176,8 +176,8 @@ router.get("/kds/:zone", requireAuth, async (req, res): Promise<void> => {
 });
 
 // ── PATCH /kitchen-tasks/:taskId/status ───────────────────────────────────────
-router.patch("/kitchen-tasks/:taskId/status", requireAuth, async (req, res): Promise<void> => {
-  const { taskId } = req.params;
+router.patch("/kitchen-tasks/:taskId/status", requireAuth, requireRole("admin", "manager", "encargado", "waiter", "kitchen"), async (req, res): Promise<void> => {
+  const taskId = req.params.taskId as string;
   const { status } = req.body as { status: string };
 
   const allValidStatuses = ["new", "preparing", "in_oven", "ready", "collected", "served", "cancelled"];
@@ -232,7 +232,7 @@ router.patch("/kitchen-tasks/:taskId/status", requireAuth, async (req, res): Pro
     return;
   }
 
-  try { getIO().emit("kds:refresh"); } catch { /* socket not initialised */ }
+  try { emitToFunction("kds", "kds:refresh"); } catch { /* socket not initialised */ }
 
   // Notify waiter when all tasks for an order are ready
   if (status === "ready") {
@@ -265,10 +265,9 @@ router.patch("/kitchen-tasks/:taskId/status", requireAuth, async (req, res): Pro
         });
 
         try {
-          const io = getIO();
           const payload = { orderId: order.id, tableId: order.tableId, tableName, employeeId: order.employeeId };
-          io.emit("waiter:order-ready", payload);
-          io.emit(`waiter:${order.employeeId}:notification`, {
+          emitToFunction("floor", "waiter:order-ready", payload);
+          emitToEmployee(order.employeeId, "waiter:notification", {
             type: "order_ready",
             title: `${tableName} lista para recoger`,
             message: `El pedido de ${tableName} está listo en el pase.`,
@@ -283,8 +282,8 @@ router.patch("/kitchen-tasks/:taskId/status", requireAuth, async (req, res): Pro
 });
 
 // ── POST /kitchen-tasks/:taskId/resend ────────────────────────────────────────
-router.post("/kitchen-tasks/:taskId/resend", requireAuth, async (req, res): Promise<void> => {
-  const { taskId } = req.params;
+router.post("/kitchen-tasks/:taskId/resend", requireAuth, requireRole("admin", "manager", "encargado", "waiter", "kitchen"), async (req, res): Promise<void> => {
+  const taskId = req.params.taskId as string;
 
   const [existing] = await db
     .select({ id: kitchenTasksTable.id, orderId: kitchenTasksTable.orderId, productName: kitchenTasksTable.productName })
@@ -312,7 +311,7 @@ router.post("/kitchen-tasks/:taskId/resend", requireAuth, async (req, res): Prom
     details:      `Reenviado a cocina: ${existing.productName}`,
   });
 
-  try { getIO().emit("kds:refresh", { employeeName: req.user?.name ?? null }); } catch { /* ignore */ }
+  try { emitToFunction("kds", "kds:refresh", { employeeName: req.user?.name ?? null }); } catch { /* ignore */ }
 
   res.json(updated);
 });

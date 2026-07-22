@@ -31,11 +31,21 @@ node_modules
 /.sass-cache
 /connect.lock
 /coverage
+**/playwright-report/
+**/test-results/
 /libpeerconnection.log
 npm-debug.log
 yarn-error.log
 testem.log
 /typings
+
+# Local environment files and credentials
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
 
 # System Files
 .DS_Store

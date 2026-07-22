@@ -32,6 +32,7 @@ export interface NfcClockStatus {
   status: "out" | "in" | "break";
   record: { id: string; clockIn: string } | null;
   activeBreak: { id: string; breakStart: string } | null;
+  proofs: Record<"clock_in" | "clock_out" | "break_start" | "break_end", string>;
 }
 
 function toInitials(name: string) {
@@ -73,7 +74,7 @@ export default function TabletHome({ onSelectEmployee, onNfcIdentified, deviceTo
   useEffect(() => {
     function load() {
       setLoading(true);
-      fetch(`${BASE}/api/fichaje/public/employees`)
+      fetch(`${BASE}/api/fichaje/public/employees?deviceToken=${encodeURIComponent(deviceToken)}`)
         .then(r => r.ok ? r.json() : [])
         .then((data: { id: string; name: string }[]) =>
           setEmployees(data.map(e => ({ ...e, initials: toInitials(e.name) })))
@@ -84,7 +85,7 @@ export default function TabletHome({ onSelectEmployee, onNfcIdentified, deviceTo
     load();
     const t = setInterval(load, 5 * 60 * 1000);
     return () => clearInterval(t);
-  }, []);
+  }, [deviceToken]);
 
   // Start NFC scanning when supported
   useEffect(() => {
@@ -120,6 +121,7 @@ export default function TabletHome({ onSelectEmployee, onNfcIdentified, deviceTo
         status: data.currentStatus,
         record: data.record,
         activeBreak: data.activeBreak,
+        proofs: data.proofs,
       };
       onNfcIdentified(emp, clockStatus);
     } catch {

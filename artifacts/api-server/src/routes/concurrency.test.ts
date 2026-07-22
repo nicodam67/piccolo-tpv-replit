@@ -38,7 +38,7 @@ function makeChain(value: unknown) {
     "select", "from", "where", "orderBy", "leftJoin", "innerJoin",
     "insert", "update", "delete", "set", "values", "returning",
     "limit", "offset", "groupBy", "having", "execute",
-    "onConflictDoUpdate", "onConflictDoNothing", "selectDistinct",
+    "onConflictDoUpdate", "onConflictDoNothing", "selectDistinct", "for",
   ]) {
     chain[m] = () => chain;
   }
@@ -56,7 +56,13 @@ const mockDb = vi.hoisted(() => ({
   selectDistinct: vi.fn(),
 }));
 
-const mockPool = vi.hoisted(() => ({ query: vi.fn() }));
+const mockPool = vi.hoisted(() => {
+  const query = vi.fn();
+  return {
+    query,
+    connect: vi.fn(async () => ({ query, release: vi.fn() })),
+  };
+});
 const mockSocketEmit = vi.hoisted(() => vi.fn());
 
 // ─── Module mocks ─────────────────────────────────────────────────────────────
@@ -73,9 +79,13 @@ vi.mock("jsonwebtoken", () => ({
 }));
 
 vi.mock("bcryptjs", () => ({
+  compare: vi.fn(),
+  hash: vi.fn(),
+  hashSync: vi.fn(() => "$2a$10$dummy-hash"),
   default: {
     compare: vi.fn(),
     hash:    vi.fn(),
+    hashSync: vi.fn(() => "$2a$10$dummy-hash"),
   },
 }));
 
@@ -86,7 +96,7 @@ vi.mock("express-rate-limit", () => ({
 vi.mock("drizzle-orm", async (importOriginal) => importOriginal());
 
 vi.mock("../lib/socket", () => ({
-  getIO:      vi.fn(() => ({ emit: mockSocketEmit, to: vi.fn(() => ({ emit: vi.fn() })) })),
+  getIO:      vi.fn(() => ({ emit: mockSocketEmit, to: vi.fn(() => ({ emit: mockSocketEmit })) })),
   initSocket: vi.fn(),
 }));
 
@@ -488,7 +498,12 @@ describe("5. Idempotencia — doble clic y reintentos de red", () => {
       .mockReturnValueOnce(makeChain([{ printMode: "kds_only" }]))                       // 2. bizConfig
       .mockReturnValueOnce(makeChain([{ sentAt: null }]))                                // 3. sentAt
       .mockReturnValueOnce(makeChain([{ order_items: F.orderItem, products: F.product }])) // 4. draft items
-      .mockReturnValueOnce(makeChain([]));                                               // 5. modifiers (empty)
+      .mockReturnValueOnce(makeChain([]))                                                // 5. modifiers (empty)
+      .mockReturnValueOnce(makeChain([{ status: "open" }]))                              // 6. locked order
+      .mockReturnValueOnce(makeChain([{ order_items: F.orderItem, products: F.product }])) // 7. locked drafts
+      .mockReturnValueOnce(makeChain([]))                                                // 8. locked modifiers
+      .mockReturnValueOnce(makeChain([]))                                                // 9. recipe
+      .mockReturnValueOnce(makeChain([F.order]));                                        // 10. response order
     mockDb.insert.mockReturnValue(makeChain([F.kdsTask]));
     mockDb.update.mockReturnValue(makeChain([]));
 
@@ -787,7 +802,12 @@ describe("9. Verificación de eventos WebSocket", () => {
       .mockReturnValueOnce(makeChain([{ printMode: "kds_only" }]))
       .mockReturnValueOnce(makeChain([{ sentAt: null }]))
       .mockReturnValueOnce(makeChain([{ order_items: F.orderItem, products: F.product }]))
-      .mockReturnValueOnce(makeChain([]));  // modifiers vacíos
+      .mockReturnValueOnce(makeChain([])) // initial modifiers
+      .mockReturnValueOnce(makeChain([{ status: "open" }]))
+      .mockReturnValueOnce(makeChain([{ order_items: F.orderItem, products: F.product }]))
+      .mockReturnValueOnce(makeChain([])) // locked modifiers
+      .mockReturnValueOnce(makeChain([])) // recipe
+      .mockReturnValueOnce(makeChain([F.order])); // response order
     mockDb.insert.mockReturnValue(makeChain([F.kdsTask]));
     mockDb.update.mockReturnValue(makeChain([]));
 

@@ -59,6 +59,7 @@ vi.mock("@workspace/db", async (importOriginal) => {
     ...actual,
     db: {
       select:  () => makeChain(() => mockState.selectRows),
+      selectDistinct: () => makeChain(() => mockState.selectRows),
       update:  () => makeChain(() => mockState.updateRows),
       delete:  () => makeChain(() => []),
       insert:  () => makeInsert(() => mockState.insertRows),
@@ -132,6 +133,7 @@ const TASK_NEW: MockRow = {
 
 const TASK_READY: MockRow   = { ...TASK_NEW, status: "ready",    readyAt: NOW };
 const TASK_PREP: MockRow    = { ...TASK_NEW, status: "preparing" };
+const TASK_OVEN: MockRow    = { ...TASK_NEW, prepZone: "pizza", status: "in_oven" };
 
 const ORDER: MockRow = { id: "order-1", status: "open", tableId: "table-1", employeeId: "emp-waiter" };
 const TABLE: MockRow = { id: "table-1", name: "Mesa 3" };
@@ -203,6 +205,33 @@ describe("Test 1 — GET /kds/:zone filters by prep zone", () => {
     expect(res.body[0].notes).toBe("[Media] | Sin cebolla");
     expect(res.body[0].hasAllergy).toBe(true);
     expect(res.body[0].allergyNote).toBe("Frutos secos");
+  });
+
+  it("never returns finished or cancelled tasks from a production zone", async () => {
+    mockState.selectRows = [
+      TASK_NEW,
+      { ...TASK_NEW, id: "task-collected", status: "collected" },
+      { ...TASK_NEW, id: "task-served", status: "served" },
+      { ...TASK_NEW, id: "task-cancelled", status: "cancelled" },
+    ];
+
+    const res = await request(app).get("/api/kds/cocina").set("Authorization", WAITER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.map((task: { id: string }) => task.id)).toEqual(["task-1"]);
+  });
+
+  it("never returns collected or served tasks from pase", async () => {
+    mockState.selectRows = [
+      TASK_READY,
+      { ...TASK_NEW, id: "task-collected", status: "collected" },
+      { ...TASK_NEW, id: "task-served", status: "served" },
+    ];
+
+    const res = await request(app).get("/api/kds/pase").set("Authorization", WAITER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.map((task: { id: string }) => task.id)).toEqual(["task-1"]);
   });
 });
 
@@ -315,6 +344,30 @@ describe("Test 4 — Status flow: new → preparing → ready → served", () =>
     expect(res.body.status).toBe("ready");
     // At minimum, kds:refresh must fire
     expect(mockState.socketEmit).toHaveBeenCalledWith("kds:refresh");
+  });
+
+  it("pizza preparing → in_oven → ready follows the zone state machine", async () => {
+    mockState.selectRows = [{ ...TASK_PREP, prepZone: "pizza" }];
+    mockState.updateRows = [TASK_OVEN];
+
+    const ovenRes = await request(app)
+      .patch("/api/kitchen-tasks/task-1/status")
+      .set("Authorization", WAITER)
+      .send({ status: "in_oven" });
+
+    expect(ovenRes.status).toBe(200);
+    expect(ovenRes.body.status).toBe("in_oven");
+
+    mockState.selectRows = [TASK_OVEN];
+    mockState.updateRows = [{ ...TASK_OVEN, status: "ready", readyAt: NOW }];
+
+    const readyRes = await request(app)
+      .patch("/api/kitchen-tasks/task-1/status")
+      .set("Authorization", WAITER)
+      .send({ status: "ready" });
+
+    expect(readyRes.status).toBe(200);
+    expect(readyRes.body.status).toBe("ready");
   });
 
   it("ready → collected (pase action): marks tasks collected", async () => {

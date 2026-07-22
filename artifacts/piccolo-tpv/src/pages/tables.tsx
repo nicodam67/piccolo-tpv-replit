@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useScrollGuard } from "../hooks/use-scroll-guard";
 import { useLocation } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
-import { io } from "socket.io-client";
+import { connectAuthenticatedSocket } from "../lib/socket-client";
 import {
   useGetDashboardSummary,
   useGetZones,
@@ -826,9 +826,8 @@ export default function Tables() {
   }, []);
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
     const empStr = localStorage.getItem("employee");
-    if (!token) { setLocation("/"); } else if (empStr) {
+    if (empStr) {
       try { const emp = JSON.parse(empStr); setEmployeeName(emp.name); setEmployeeRole(emp.role ?? ""); setEmployeeId(emp.id ?? ""); } catch { /* */ }
     }
   }, [setLocation]);
@@ -934,7 +933,7 @@ export default function Tables() {
   useEffect(() => { pinchRef.current = null; panRef.current = null; }, [activeZone]);
 
   useEffect(() => {
-    const socket = io({ path: "/api/socket.io" });
+    const socket = connectAuthenticatedSocket();
     const refreshAll = () => {
       const zone = activeZoneRef.current;
       if (zone) queryClient.invalidateQueries({ queryKey: getGetZoneTablesQueryKey(zone) });
@@ -1111,7 +1110,7 @@ export default function Tables() {
   // Legend panel state
   const [showLegend, setShowLegend] = useState(false);
 
-  const handleLogout = () => { localStorage.removeItem("token"); localStorage.removeItem("employee"); setLocation("/"); };
+  const handleLogout = () => { localStorage.removeItem("employee"); setLocation("/"); };
 
   // Merge group bounding boxes
   const mergeGroups: Record<string, Table[]> = {};
