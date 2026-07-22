@@ -35,3 +35,6 @@ PICCOLO_QR_MENU_URL=https://menu.example.com
 ```
 
 Si no se configura, el TPV no muestra enlaces rotos. Consulta `docs/external-qr-configuration.md`.
+
+Contrato futuro M2M: `docs/integrations/qr-menu-api-v1.md`. La integracion
+productiva permanece desactivada hasta configurar `PICCOLO_QR_MENU_API_TOKEN`.
