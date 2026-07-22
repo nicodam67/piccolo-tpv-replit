@@ -61,6 +61,7 @@ import demoDataRouter from "./demo-data";
 import tabletRouter from "./tablet";
 import systemInfoRouter from "./system-info";
 import rolePermissionsRouter from "./role-permissions";
+import qrMenuV1Router from "./qr-menu-v1";
 
 const router: IRouter = Router();
 
@@ -126,6 +127,7 @@ router.use(demoDataRouter);
 router.use(systemInfoRouter);
 router.use(rolePermissionsRouter);
 router.use(tabletRouter);
+router.use(qrMenuV1Router);
 
 import reportsRouter from "./reports";
 router.use(reportsRouter);

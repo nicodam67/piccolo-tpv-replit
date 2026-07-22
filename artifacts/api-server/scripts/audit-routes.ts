@@ -38,6 +38,7 @@ const PUBLIC_ALLOWLIST: RegExp[] = [
   /^\/order-status\//,                // online order status for customer
   /^\/driver\//,                      // delivery driver view (token-based)
   /^\/courier\//,                     // courier summary (token-based)
+  /^\/v1\/qr-menu\//,                 // dedicated M2M bearer token + rate limit
   /^\/menu/,                          // public menu redirect
   /^\/config\/business$/,             // used by public setup wizard & QR carta
   /^\/setup\/detect$/,                // pre-auth module detection for setup wizard

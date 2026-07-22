@@ -1,0 +1,196 @@
+openapi: 3.1.0
+info:
+  title: Piccolo QR Menu Integration API
+  version: 1.0.0
+  description: >
+    Contrato M2M de solo lectura. La integracion productiva permanece desactivada
+    hasta configurar PICCOLO_QR_MENU_API_TOKEN.
+servers:
+  - url: /api/v1/qr-menu
+security:
+  - qrMenuApiToken: []
+paths:
+  /status:
+    get:
+      operationId: getQrMenuApiStatusV1
+      summary: Estado del contrato QR Menu
+      responses:
+        "200":
+          description: Servicio habilitado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Status"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/Disabled"
+  /catalog:
+    get:
+      operationId: getQrMenuCatalogV1
+      summary: Snapshot publico del catalogo
+      responses:
+        "200":
+          description: Catalogo filtrado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Catalog"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/Disabled"
+  /catalog/changes:
+    get:
+      operationId: getQrMenuCatalogChangesV1
+      summary: Cambios incrementales futuros
+      description: No operativo; el modelo actual no dispone de historial incremental fiable.
+      x-implementation-status: planned-not-implemented
+      parameters:
+        - name: since
+          in: query
+          schema: { type: string, format: date-time }
+        - name: cursor
+          in: query
+          schema: { type: string }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 500, default: 100 }
+      responses:
+        "501":
+          description: Endpoint planificado, no implementado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Changes"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/Disabled"
+components:
+  securitySchemes:
+    qrMenuApiToken:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque
+      description: Token M2M dedicado; no es un JWT de empleado.
+  responses:
+    Unauthorized:
+      description: Token ausente o incorrecto
+    RateLimited:
+      description: Limite de solicitudes excedido
+    Disabled:
+      description: Integracion no configurada
+  schemas:
+    Status:
+      type: object
+      additionalProperties: false
+      required: [contractVersion, status, serverTime, restaurantId, catalogVersion, catalogUpdatedAt]
+      properties:
+        contractVersion: { type: string, const: v1 }
+        status: { type: string, const: ready }
+        serverTime: { type: string, format: date-time }
+        restaurantId: { type: string }
+        catalogVersion: { type: string, pattern: "^[a-f0-9]{64}$" }
+        catalogUpdatedAt: { type: [string, "null"], format: date-time }
+    Catalog:
+      type: object
+      additionalProperties: false
+      required: [contractVersion, catalogVersion, generatedAt, catalogUpdatedAt, defaultLocale, availableLocales, currency, categories]
+      properties:
+        contractVersion: { type: string, const: v1 }
+        catalogVersion: { type: string, pattern: "^[a-f0-9]{64}$" }
+        generatedAt: { type: string, format: date-time }
+        catalogUpdatedAt: { type: [string, "null"], format: date-time }
+        defaultLocale: { type: string, const: es }
+        availableLocales:
+          type: array
+          items: { type: string }
+        currency: { type: string, pattern: "^[A-Z]{3}$" }
+        categories:
+          type: array
+          items: { $ref: "#/components/schemas/Category" }
+    LocalizedText:
+      type: object
+      additionalProperties: false
+      required: [default, translations]
+      properties:
+        default: { type: string }
+        translations:
+          type: object
+          additionalProperties: { type: string }
+    Category:
+      type: object
+      additionalProperties: false
+      required: [id, name, sortOrder, subcategories, products]
+      properties:
+        id: { type: string, format: uuid }
+        name: { $ref: "#/components/schemas/LocalizedText" }
+        sortOrder: { type: integer }
+        icon: { type: [string, "null"] }
+        color: { type: [string, "null"] }
+        subcategories:
+          type: array
+          items: { $ref: "#/components/schemas/Subcategory" }
+        products:
+          type: array
+          items: { $ref: "#/components/schemas/Product" }
+    Subcategory:
+      type: object
+      additionalProperties: false
+      required: [id, categoryId, name, sortOrder]
+      properties:
+        id: { type: string, format: uuid }
+        categoryId: { type: string, format: uuid }
+        name: { $ref: "#/components/schemas/LocalizedText" }
+        sortOrder: { type: integer }
+    Product:
+      type: object
+      additionalProperties: false
+      required: [id, categoryId, subcategoryId, name, description, priceCents, halfPortionPriceCents, currency, visible, outOfStock, tags, allergens, imageUrl, updatedAt, formats]
+      properties:
+        id: { type: string, format: uuid }
+        categoryId: { type: string, format: uuid }
+        subcategoryId: { type: [string, "null"], format: uuid }
+        name: { $ref: "#/components/schemas/LocalizedText" }
+        description: { $ref: "#/components/schemas/LocalizedText" }
+        priceCents: { type: integer, format: int64, minimum: 0 }
+        halfPortionPriceCents: { type: [integer, "null"], format: int64, minimum: 0 }
+        currency: { type: string, pattern: "^[A-Z]{3}$" }
+        visible: { type: boolean, const: true }
+        outOfStock: { type: boolean }
+        tags:
+          type: array
+          items: { type: string, enum: [vegetarian, vegan, gluten_free, spicy] }
+        allergens:
+          type: array
+          items: { type: string }
+        imageUrl: { type: [string, "null"], format: uri }
+        updatedAt: { type: [string, "null"], format: date-time }
+        formats:
+          type: array
+          items: { $ref: "#/components/schemas/Format" }
+    Format:
+      type: object
+      additionalProperties: false
+      required: [id, name, priceCents]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        priceCents: { type: integer, format: int64, minimum: 0 }
+    Changes:
+      type: object
+      additionalProperties: false
+      required: [created, modified, removed, nextCursor, hasMore]
+      properties:
+        created: { type: array, items: {} }
+        modified: { type: array, items: {} }
+        removed: { type: array, items: {} }
+        nextCursor: { type: [string, "null"] }
+        hasMore: { type: boolean }

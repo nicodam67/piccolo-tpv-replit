@@ -17,3 +17,7 @@ Reglas:
 - nunca se usa `/qr-menu/` como fallback.
 
 La comunicacion futura entre repositorios se realizara mediante APIs versionadas. Hasta entonces no se copian codigo ni datos entre ambos.
+
+`PICCOLO_QR_MENU_API_TOKEN` protege la futura API M2M y no sustituye a
+`PICCOLO_QR_MENU_URL`: la primera es un secreto exclusivo de servidor y la
+segunda es el enlace publico al proyecto externo.
