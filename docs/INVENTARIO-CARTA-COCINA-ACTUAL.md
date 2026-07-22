@@ -119,8 +119,8 @@
 
 | Integración | Estado |
 |-------------|--------|
-| Convex | Solo en `artifacts/qr-menu/` — separado del TPV |
-| Hercules CDN | Solo en `artifacts/qr-menu/` — separado del TPV |
+| Convex | Retirado del repositorio activo; solo permanece en documentación histórica |
+| Hercules CDN | Retirado del código activo; las fuentes necesarias se sirven desde el TPV |
 | Autenticación OIDC | No se añadió al TPV |
 | iframes | Eliminado en tarea anterior |
 | Microfrontend | No se implementó |
