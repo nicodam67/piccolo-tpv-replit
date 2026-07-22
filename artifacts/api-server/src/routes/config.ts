@@ -4,6 +4,7 @@ import { businessConfigTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { logDocumentAction } from "../lib/document-audit";
+import { getExternalQrMenuUrl } from "../lib/external-qr-url";
 
 const router: IRouter = Router();
 
@@ -136,6 +137,7 @@ router.get("/public/branding", async (_req, res): Promise<void> => {
       themeColors: null, themeFonts: null, cardSettings: null, schedule: null,
       // Legacy fields kept for backward-compat (menu.tsx, ticket.tsx, prefactura.tsx, order-status.tsx)
       nombreComercial: "", foundedYear: null,
+      externalQrMenuUrl: getExternalQrMenuUrl(),
     });
     return;
   }
@@ -164,6 +166,7 @@ router.get("/public/branding", async (_req, res): Promise<void> => {
     // Legacy fields kept for backward-compat (menu.tsx, ticket.tsx, prefactura.tsx, order-status.tsx)
     nombreComercial: r.nombreComercial,
     foundedYear: r.foundedYear ?? null,
+    externalQrMenuUrl: getExternalQrMenuUrl(),
   });
 });
 
