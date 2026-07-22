@@ -6,13 +6,18 @@
  */
 import { useLocation } from 'wouter';
 import { ChevronLeft, QrCode, ExternalLink } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { customFetch } from '@workspace/api-client-react';
 
 export default function CartaCocinaHub() {
   const [, nav] = useLocation();
+  const [qrMenuHref, setQrMenuHref] = useState<string | null>(null);
 
-  // El QR Menú es un artefacto independiente montado en /qr-menu (raíz del workspace),
-  // no un sub-path del TPV — no usar BASE_URL aquí.
-  const qrMenuHref = `${window.location.origin}/qr-menu/`;
+  useEffect(() => {
+    customFetch<{ externalQrMenuUrl?: string | null }>('/api/public/branding')
+      .then((data) => setQrMenuHref(data.externalQrMenuUrl ?? null))
+      .catch(() => setQrMenuHref(null));
+  }, []);
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -48,22 +53,28 @@ export default function CartaCocinaHub() {
           </div>
 
           {/* Botón principal — abre en nueva pestaña */}
-          <a
-            href={qrMenuHref}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 transition-opacity w-full justify-center"
-          >
-            <QrCode size={16} />
-            Ver carta pública
-            <ExternalLink size={14} className="ml-1 opacity-70" />
-          </a>
-
-          {/* URL directa para copiar */}
-          <div className="bg-muted/50 rounded-lg p-3 text-left">
-            <p className="text-xs text-muted-foreground mb-1 font-medium">Enlace directo</p>
-            <p className="text-xs font-mono text-foreground break-all select-all">{qrMenuHref}</p>
-          </div>
+          {qrMenuHref ? (
+            <>
+              <a
+                href={qrMenuHref}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 transition-opacity w-full justify-center"
+              >
+                <QrCode size={16} />
+                Ver carta pública
+                <ExternalLink size={14} className="ml-1 opacity-70" />
+              </a>
+              <div className="bg-muted/50 rounded-lg p-3 text-left">
+                <p className="text-xs text-muted-foreground mb-1 font-medium">Enlace externo configurado</p>
+                <p className="text-xs font-mono text-foreground break-all select-all">{qrMenuHref}</p>
+              </div>
+            </>
+          ) : (
+            <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 text-sm text-amber-500">
+              El QR oficial no está configurado. Define PICCOLO_QR_MENU_URL en el servidor.
+            </div>
+          )}
 
           <p className="text-xs text-muted-foreground/60">
             Fase 1 — diseño en validación

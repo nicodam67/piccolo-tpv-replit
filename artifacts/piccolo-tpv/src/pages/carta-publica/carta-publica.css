@@ -4,41 +4,40 @@
  * Estilos aislados del QR Menú público.
  * Todos los selectores están bajo .qr-pub para no contaminar el TPV.
  *
- * Fuentes: se intentan las mismas que la versión de producción en Hercules.
- * Si la CDN de Hercules no está disponible, Cormorant Garamond actúa de fallback.
+ * Fuentes personalizadas servidas localmente por el TPV.
  */
 
 /* ── Google Fonts (fallback) ──────────────────────────────────────────────── */
 @import url("https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400;1,500&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500&display=swap");
 
-/* ── Fuentes personalizadas (Hercules CDN — mismas que producción) ────────── */
+/* ── Fuentes personalizadas locales ───────────────────────────────────────── */
 @font-face {
   font-family: "ZapfChan Md";
-  src: url("https://hercules-cdn.com/file_m7I6BY3ReSetMGf7AFZss0PC") format("truetype");
+  src: url("/fonts/ZapfChanMd__custom.woff2") format("woff2");
   font-weight: 500;
   font-display: swap;
 }
 @font-face {
   font-family: "ZapfChan Dm";
-  src: url("https://hercules-cdn.com/file_wcGGxdhmcY2DhGJwliFkA2Zk") format("truetype");
+  src: url("/fonts/ZapfChanDm__custom.woff2") format("woff2");
   font-weight: 600;
   font-display: swap;
 }
 @font-face {
   font-family: "AvantGarde Bk";
-  src: url("https://hercules-cdn.com/file_uqU2VMlywYy4NMAsQ7WtxSwQ") format("truetype");
+  src: url("/fonts/AvantGardeBk__custom.woff2") format("woff2");
   font-weight: 600;
   font-display: swap;
 }
 @font-face {
   font-family: "American Text BT";
-  src: url("https://hercules-cdn.com/file_gbeYYgRhfigXSrnw8dJ0hCA3") format("truetype");
+  src: url("/fonts/AmericanTextBT__custom.woff2") format("woff2");
   font-weight: 400;
   font-display: swap;
 }
 @font-face {
   font-family: "Algerian";
-  src: url("https://hercules-cdn.com/file_XRcUszIICfe5N0l0B0EiHqeN") format("truetype");
+  src: url("/fonts/Algerian__custom.woff2") format("woff2");
   font-weight: 400;
   font-display: swap;
 }
