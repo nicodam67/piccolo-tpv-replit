@@ -118,6 +118,7 @@ const { default: app } = await import("../app");
 
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
+import { dispatchKitchenPrint } from "../lib/print-dispatch";
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
 const EMP_A     = "emp-waiter-a-uuid";
@@ -486,7 +487,7 @@ describe("4. Dos usuarios imprimiendo la misma prefactura", () => {
 // 5. IDEMPOTENCIA — DOBLE CLIC / REINTENTO DE RED
 // ═══════════════════════════════════════════════════════════════════════════════
 describe("5. Idempotencia — doble clic y reintentos de red", () => {
-  it("envío de comanda con misma Idempotency-Key → respuesta idéntica en segundo intento", async () => {
+  it("envío de comanda con misma Idempotency-Key → un único trabajo lógico de impresión", async () => {
     const key = `idem-send-${Date.now()}`;
 
     // Primera llamada: pool sin cache en DB → procede normalmente.
@@ -512,6 +513,8 @@ describe("5. Idempotencia — doble clic y reintentos de red", () => {
       .set("Authorization", AUTH)
       .set("Idempotency-Key", key)
       .send({});
+    expect(r1.status).toBe(200);
+    expect(dispatchKitchenPrint).toHaveBeenCalledTimes(1);
 
     // Segunda llamada: respuesta viene del cache en memoria (sin tocar DB)
     const r2 = await request(app)
@@ -520,11 +523,10 @@ describe("5. Idempotencia — doble clic y reintentos de red", () => {
       .set("Idempotency-Key", key)
       .send({});
 
-    expect(r1.status).toBe(r2.status);
-    if (r1.status === 200 || r1.status === 201) {
-      expect(r2.headers["idempotency-replayed"]).toBe("true");
-      expect(r2.body).toEqual(r1.body);
-    }
+    expect(r2.status).toBe(200);
+    expect(r2.headers["idempotency-replayed"]).toBe("true");
+    expect(r2.body).toEqual(r1.body);
+    expect(dispatchKitchenPrint).toHaveBeenCalledTimes(1);
   });
 
   it("cobro con misma Idempotency-Key → no genera segundo pago", async () => {
