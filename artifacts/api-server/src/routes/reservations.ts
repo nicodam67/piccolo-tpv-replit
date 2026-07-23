@@ -120,6 +120,9 @@ router.get("/reservations", requireAuth, async (req, res): Promise<void> => {
       clientApellidos: crmClientsTable.apellidos,
       clientEmail:  crmClientsTable.email,
       clientTelefono: crmClientsTable.telefono,
+      clientTotalVisitas: crmClientsTable.totalVisitas,
+      clientPuntosSaldo: crmClientsTable.puntosSaldo,
+      clientNivelNombre: crmClientsTable.nivelNombre,
       mesaNumero:   restaurantTablesTable.name,
     })
     .from(reservationsTable)
@@ -134,6 +137,9 @@ router.get("/reservations", requireAuth, async (req, res): Promise<void> => {
     clientApellidos: r.clientApellidos,
     clientEmail:  r.clientEmail,
     clientTelefono: r.clientTelefono,
+    clientTotalVisitas: r.clientTotalVisitas,
+    clientPuntosSaldo: r.clientPuntosSaldo,
+    clientNivelNombre: r.clientNivelNombre,
     mesaNumero:   r.mesaNumero,
   })));
 });
@@ -215,6 +221,9 @@ router.get("/reservations/:id", requireAuth, async (req, res): Promise<void> => 
       clientApellidos: crmClientsTable.apellidos,
       clientEmail: crmClientsTable.email,
       clientTelefono: crmClientsTable.telefono,
+      clientTotalVisitas: crmClientsTable.totalVisitas,
+      clientPuntosSaldo: crmClientsTable.puntosSaldo,
+      clientNivelNombre: crmClientsTable.nivelNombre,
       mesaNumero: restaurantTablesTable.name,
     })
     .from(reservationsTable)
@@ -231,7 +240,18 @@ router.get("/reservations/:id", requireAuth, async (req, res): Promise<void> => 
     .where(eq(reservationStatusHistoryTable.reservationId, id))
     .orderBy(asc(reservationStatusHistoryTable.changedAt));
 
-  res.json({ ...row.reservation, clientNombre: row.clientNombre, mesaNumero: row.mesaNumero, history });
+  res.json({
+    ...row.reservation,
+    clientNombre: row.clientNombre,
+    clientApellidos: row.clientApellidos,
+    clientEmail: row.clientEmail,
+    clientTelefono: row.clientTelefono,
+    clientTotalVisitas: row.clientTotalVisitas,
+    clientPuntosSaldo: row.clientPuntosSaldo,
+    clientNivelNombre: row.clientNivelNombre,
+    mesaNumero: row.mesaNumero,
+    history,
+  });
 });
 
 // ── POST /reservations ────────────────────────────────────────────────────────
@@ -359,12 +379,8 @@ router.patch("/reservations/:id", requireAuth, async (req, res): Promise<void> =
         .set({ cancelaciones: sql`cancelaciones + 1`, updatedAt: new Date() } as any)
         .where(eq(crmClientsTable.id, existing.clientId));
     }
-    // If finalizada, update ultima_visita and total_visitas on CRM client
-    if (newStatus === "finalizada" && existing.clientId) {
-      await db.update(crmClientsTable)
-        .set({ ultimaVisita: new Date(), totalVisitas: sql`total_visitas + 1`, updatedAt: new Date() } as any)
-        .where(eq(crmClientsTable.id, existing.clientId));
-    }
+    // A visit is counted only by the fully-paid order loyalty flow.
+    // Finalizing the linked reservation must not count the same visit twice.
   }
 
   res.json(row);

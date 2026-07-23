@@ -63,7 +63,6 @@ import { eq, and, inArray, desc, asc, gte, lte, count, avg, sum, sql } from "dri
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { emitToFunction } from "../lib/socket-events";
 import { calcMultiRateBreakdown } from "../lib/tax";
-import { issuePoints } from "./crm.js";
 
 const router: IRouter = Router();
 
@@ -507,28 +506,6 @@ router.patch("/online-orders/:id/status", requireAuth, async (req, res): Promise
 
   const updates: Record<string, unknown> = { status };
   if (estimatedReadyAt) updates.estimatedReadyAt = new Date(estimatedReadyAt);
-
-  // When delivered, issue CRM points
-  if (status === "delivered" && order.clientId) {
-    try {
-      const items = await db.select({
-        unitPrice: orderItemsTable.unitPrice,
-        quantity: orderItemsTable.quantity,
-        taxRate: orderItemsTable.taxRate,
-      }).from(orderItemsTable).where(eq(orderItemsTable.orderId, id));
-
-      const lineTotals = items.map((it) => ({ lineTotal: parseFloat(it.unitPrice) * it.quantity, taxRate: it.taxRate ?? 10 }));
-      const { total } = calcMultiRateBreakdown(lineTotals, 0);
-
-      await issuePoints({
-        clientId: order.clientId,
-        orderId: id,
-        importeTotal: parseFloat(total),
-        empleadoId: req.user?.id ?? null,
-        empleadoNombre: req.user?.name ?? "sistema",
-      });
-    } catch { /* non-fatal */ }
-  }
 
   await db.update(ordersTable).set(updates as any).where(eq(ordersTable.id, id));
   await auditOnlineOrder(id, `status_changed:${status}`, req.user?.id, req.user?.name);
