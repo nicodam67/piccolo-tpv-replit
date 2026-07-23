@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { parseAllergens } from "../../../piccolo-tpv/src/lib/allergens.ts";
 
 export type MenuTranslations = Record<
   string,
@@ -111,57 +112,27 @@ export type TpvMenuSnapshot = {
   branding: TpvBranding;
 };
 
-const ALLERGEN_TO_QR_ID: Record<string, string> = {
+const TPV_TO_QR_ALLERGEN_ID: Record<string, string> = {
   gluten: "gluten",
   crustaceos: "crustaceans",
-  crustaceans: "crustaceans",
   huevos: "eggs",
-  eggs: "eggs",
   pescado: "fish",
-  fish: "fish",
   cacahuetes: "peanuts",
-  peanuts: "peanuts",
   soja: "soy",
-  soya: "soy",
-  soy: "soy",
   leche: "milk",
-  milk: "milk",
   frutos_cascara: "nuts",
-  frutos_secos: "nuts",
-  nuts: "nuts",
   apio: "celery",
-  celery: "celery",
   mostaza: "mustard",
-  mustard: "mustard",
   sesamo: "sesame",
-  sesame: "sesame",
   sulfitos: "sulphites",
-  sulphites: "sulphites",
   altramuces: "lupin",
-  lupin: "lupin",
   moluscos: "molluscs",
-  molluscs: "molluscs",
 };
 
-function normalizeToken(value: string): string {
-  return value
-    .trim()
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[\s-]+/g, "_");
-}
-
 export function normalizeTpvAllergens(raw?: string | null): string[] {
-  if (!raw) return [];
-  return [
-    ...new Set(
-      raw
-        .split(",")
-        .map((value) => ALLERGEN_TO_QR_ID[normalizeToken(value)])
-        .filter((value): value is string => Boolean(value)),
-    ),
-  ];
+  return parseAllergens(raw)
+    .map((id) => TPV_TO_QR_ALLERGEN_ID[id])
+    .filter((id): id is string => Boolean(id));
 }
 
 function optionalString(value?: string | null): string | undefined {
