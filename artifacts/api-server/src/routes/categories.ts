@@ -91,11 +91,25 @@ router.get("/categories/:categoryId/products", requireAuth, async (req, res): Pr
 // ── Public QR menu — no auth required ────────────────────────────────────────
 
 router.get("/public/menu", async (_req, res): Promise<void> => {
+  if (process.env["NODE_ENV"] === "production") {
+    const [config] = await db.select({
+      nombreComercial: businessConfigTable.nombreComercial,
+      active: businessConfigTable.active,
+    }).from(businessConfigTable).limit(1);
+    if (!config?.active || !config.nombreComercial.trim()) {
+      res.status(503).json({ error: "Carta no configurada", code: "QR_NOT_CONFIGURED" });
+      return;
+    }
+  }
   const categories = await db
     .select({ id: categoriesTable.id, name: categoriesTable.name, icon: categoriesTable.icon, color: categoriesTable.color, sortOrder: categoriesTable.sortOrder, translations: categoriesTable.translations })
     .from(categoriesTable)
     .where(eq(categoriesTable.active, true))
     .orderBy(asc(categoriesTable.sortOrder));
+  if (process.env["NODE_ENV"] === "production" && categories.length === 0) {
+    res.status(503).json({ error: "Carta no configurada", code: "QR_NOT_CONFIGURED" });
+    return;
+  }
 
   const categoryIds = categories.map((c) => c.id);
 

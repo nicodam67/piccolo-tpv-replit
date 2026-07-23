@@ -26,6 +26,13 @@ import {
   backupSchedulesTable,
   backupDestinationsTable,
   techEventsTable,
+  ticketsTable,
+  cashSessionsTable,
+  crmClientsTable,
+  employeesTable,
+  productsTable,
+  ingredientsTable,
+  reservationsTable,
 } from "@workspace/db";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
@@ -33,6 +40,15 @@ import crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import ExcelJS from "exceljs";
+import {
+  backupChecksum,
+  createDatabaseSnapshot,
+  decryptBackup,
+  encryptBackup,
+  restoreDatabaseSnapshot,
+  validateBackupForCurrentDatabase,
+  validateBackupPayload,
+} from "../lib/backup-core";
 
 const router = Router();
 const guard = [requireAuth, requireRole("admin", "manager")];
@@ -50,68 +66,10 @@ const backupLimiter = rateLimit({
 });
 
 const BACKUP_DIR = "/tmp/piccolo-backups";
-const APP_VERSION = "1.0.0";
+const APP_VERSION = "1.2.0";
 
 // Ensure backup directory exists
 try { fs.mkdirSync(BACKUP_DIR, { recursive: true }); } catch {}
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-function deriveKey(): Buffer {
-  const secret = process.env["SESSION_SECRET"];
-  if (!secret) {
-    throw new Error("SESSION_SECRET no está configurado — las copias de seguridad cifradas no están disponibles");
-  }
-  return crypto.scryptSync(secret, "piccolo-backup-salt-v1", 32);
-}
-
-function encrypt(plaintext: string): { iv: string; ciphertext: string } {
-  const key = deriveKey();
-  const iv = crypto.randomBytes(16);
-  const cipher = crypto.createCipheriv("aes-256-cbc", key, iv);
-  const encrypted = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
-  return { iv: iv.toString("hex"), ciphertext: encrypted.toString("base64") };
-}
-
-function decrypt(iv: string, ciphertext: string): string {
-  const key = deriveKey();
-  const ivBuf = Buffer.from(iv, "hex");
-  const decipher = crypto.createDecipheriv("aes-256-cbc", key, ivBuf);
-  const decrypted = Buffer.concat([
-    decipher.update(Buffer.from(ciphertext, "base64")),
-    decipher.final(),
-  ]);
-  return decrypted.toString("utf8");
-}
-
-function sha256(data: string): string {
-  return crypto.createHash("sha256").update(data).digest("hex");
-}
-
-/** Dump all rows from every registered table into a JSON object */
-async function dumpAllTables(): Promise<{ tables: Record<string, unknown[]>; rowCounts: Record<string, number> }> {
-  const tableNames = [
-    "employees", "zones", "tables_", "orders", "order_items", "payments",
-    "tickets", "cash_sessions", "cash_movements", "reservations",
-    "categories", "products", "modifiers", "ingredients", "stock_levels",
-    "suppliers", "crm_clients", "crm_loyalty_points", "crm_gift_cards",
-    "kitchen_tasks", "printers", "print_queue",
-  ];
-
-  const tables: Record<string, unknown[]> = {};
-  const rowCounts: Record<string, number> = {};
-
-  for (const name of tableNames) {
-    try {
-      const result = await db.execute(sql.raw(`SELECT * FROM "${name}" LIMIT 50000`)) as { rows: unknown[] };
-      const rows = result.rows ?? [];
-      tables[name] = rows;
-      rowCounts[name] = rows.length;
-    } catch {
-      // Table may not exist — skip silently
-    }
-  }
-  return { tables, rowCounts };
-}
 
 async function logAudit(
   backupId: string | null,
@@ -152,10 +110,9 @@ router.post("/backup/create", ...guard, backupLimiter, async (req, res) => {
   // Run backup async
   (async () => {
     try {
-      const { tables, rowCounts } = await dumpAllTables();
-      const payload = JSON.stringify({ version: APP_VERSION, createdAt: new Date().toISOString(), tables });
-      const { iv, ciphertext } = encrypt(payload);
-      const hash = sha256(ciphertext);
+      const { payload, rowCounts } = await createDatabaseSnapshot(APP_VERSION);
+      const { iv, ciphertext } = encryptBackup(JSON.stringify(payload));
+      const hash = backupChecksum(ciphertext);
       const sizeBytes = Buffer.byteLength(ciphertext, "base64");
 
       // Save to disk
@@ -168,7 +125,7 @@ router.post("/backup/create", ...guard, backupLimiter, async (req, res) => {
         encryptionIv: iv,
         integrityHash: hash,
         sizeBytes,
-        tablesIncluded: Object.keys(rowCounts),
+        tablesIncluded: payload.manifest,
         recordCounts: rowCounts,
       }).where(eq(backupRecordsTable.id, record.id));
 
@@ -194,7 +151,7 @@ router.post("/backup/:id/verify", ...guard, async (req, res) => {
     return res.status(422).json({ error: "Copia sin payload — no se puede verificar" });
   }
 
-  const hash = sha256(record.encryptedPayload);
+  const hash = backupChecksum(record.encryptedPayload);
   const valid = hash === record.integrityHash;
 
   await db.update(backupRecordsTable).set({
@@ -214,7 +171,23 @@ router.get("/backup/list", ...guard, async (req, res) => {
   const type = req.query["type"] as string | undefined;
 
   const conditions = type ? [eq(backupRecordsTable.backupType, type)] : [];
-  const rows = await db.select().from(backupRecordsTable)
+  const rows = await db.select({
+    id: backupRecordsTable.id,
+    type: backupRecordsTable.type,
+    backupType: backupRecordsTable.backupType,
+    appVersion: backupRecordsTable.appVersion,
+    status: backupRecordsTable.status,
+    sizeBytes: backupRecordsTable.sizeBytes,
+    tablesIncluded: backupRecordsTable.tablesIncluded,
+    recordCounts: backupRecordsTable.recordCounts,
+    integrityHash: backupRecordsTable.integrityHash,
+    verified: backupRecordsTable.verified,
+    verifiedAt: backupRecordsTable.verifiedAt,
+    protected: backupRecordsTable.protected,
+    notes: backupRecordsTable.notes,
+    createdByName: backupRecordsTable.createdByName,
+    createdAt: backupRecordsTable.createdAt,
+  }).from(backupRecordsTable)
     .where(conditions.length ? and(...conditions) : undefined)
     .orderBy(desc(backupRecordsTable.createdAt))
     .limit(limit)
@@ -271,12 +244,20 @@ router.post("/backup/:id/dry-run", ...guard, async (req, res) => {
   if (!record.encryptedPayload || !record.encryptionIv) {
     return res.status(422).json({ error: "Copia sin payload cifrado" });
   }
+  if (!record.integrityHash || backupChecksum(record.encryptedPayload) !== record.integrityHash) {
+    await logAudit(id, "test_restored", "error", { reason: "checksum_mismatch" }, req);
+    return res.status(422).json({ ok: false, error: "Checksum incorrecto" });
+  }
+  if (record.appVersion !== APP_VERSION) {
+    return res.status(422).json({ ok: false, error: "Versión de backup incompatible" });
+  }
 
   try {
-    const plaintext = decrypt(record.encryptionIv, record.encryptedPayload);
-    const data = JSON.parse(plaintext) as { version: string; createdAt: string; tables: Record<string, unknown[]> };
+    const plaintext = decryptBackup(record.encryptionIv, record.encryptedPayload);
+    const data = await validateBackupForCurrentDatabase(JSON.parse(plaintext));
     const summary = {
-      version: data.version,
+      version: data.formatVersion,
+      appVersion: data.appVersion,
       createdAt: data.createdAt,
       tables: Object.entries(data.tables).map(([name, rows]) => ({ name, rowCount: rows.length })),
       totalRows: Object.values(data.tables).reduce((s, r) => s + r.length, 0),
@@ -300,23 +281,29 @@ router.post("/backup/:id/restore", ...adminOnly, backupLimiter, async (req, res)
     return res.status(422).json({ error: "Copia sin payload cifrado" });
   }
 
-  // Step 1: Decrypt and parse the backup payload
-  let tables: Record<string, unknown[]>;
-  try {
-    const plaintext = decrypt(record.encryptionIv, record.encryptedPayload);
-    const parsed = JSON.parse(plaintext) as { version: string; createdAt: string; tables: Record<string, unknown[]> };
-    tables = parsed.tables;
-  } catch (err) {
-    return res.status(422).json({ error: `No se pudo desencriptar la copia: ${String(err)}` });
+  if (!record.integrityHash || backupChecksum(record.encryptedPayload) !== record.integrityHash) {
+    await logAudit(id, "restore_rejected", "error", { reason: "checksum_mismatch" }, req);
+    return res.status(422).json({ error: "Checksum incorrecto" });
+  }
+  if (record.appVersion !== APP_VERSION) {
+    return res.status(422).json({ error: "Versión de backup incompatible" });
   }
 
-  // Step 2: Take a pre-restore safety backup
+  let payload;
+  try {
+    payload = validateBackupPayload(
+      JSON.parse(decryptBackup(record.encryptionIv, record.encryptedPayload)),
+    );
+  } catch (err) {
+    await logAudit(id, "restore_rejected", "error", { reason: String(err) }, req);
+    return res.status(422).json({ error: "La copia no es válida o está incompleta" });
+  }
+
   const preRestoreId = crypto.randomUUID();
   try {
-    const { tables: currentTables, rowCounts } = await dumpAllTables();
-    const prePayload = JSON.stringify({ version: APP_VERSION, createdAt: new Date().toISOString(), tables: currentTables });
-    const { iv, ciphertext } = encrypt(prePayload);
-    const hash = sha256(ciphertext);
+    const { payload: currentPayload, rowCounts } = await createDatabaseSnapshot(APP_VERSION);
+    const { iv, ciphertext } = encryptBackup(JSON.stringify(currentPayload));
+    const hash = backupChecksum(ciphertext);
     await db.insert(backupRecordsTable).values({
       id: preRestoreId,
       type: "pre-restore",
@@ -327,7 +314,7 @@ router.post("/backup/:id/restore", ...adminOnly, backupLimiter, async (req, res)
       encryptionIv: iv,
       integrityHash: hash,
       sizeBytes: Buffer.byteLength(ciphertext, "base64"),
-      tablesIncluded: Object.keys(rowCounts),
+      tablesIncluded: currentPayload.manifest,
       recordCounts: rowCounts,
       verified: true,
       verifiedAt: new Date(),
@@ -339,82 +326,36 @@ router.post("/backup/:id/restore", ...adminOnly, backupLimiter, async (req, res)
     return res.status(500).json({ error: `Fallo al crear copia de seguridad previa: ${String(err)}` });
   }
 
-  // Step 3: Restore tables — disable FK checks, truncate, insert, re-enable
-  //
-  // Strategy: json_populate_recordset delegates column-type casting to
-  // PostgreSQL, handles jsonb natively, and works in one statement per chunk
-  // regardless of row shape. Empty tables are still truncated so production
-  // state after restore exactly mirrors the backup (no stale rows remain).
-  const restored: Record<string, number> = {};
-  const failed: Record<string, string> = {};
-
+  let restored: Record<string, number>;
   try {
-    await db.execute(sql`SET session_replication_role = 'replica'`);
-
-    for (const [tableName, rows] of Object.entries(tables)) {
-      if (!Array.isArray(rows)) continue; // malformed entry — skip
-
-      // Sanitise table name to prevent SQL injection (only alnum + _ + -)
-      if (!/^[a-zA-Z0-9_-]+$/.test(tableName)) {
-        failed[tableName] = "Invalid table name — skipped for safety";
-        continue;
-      }
-
-      try {
-        // Always truncate — empty backup rows means "table was empty at backup time"
-        await db.execute(
-          sql.raw(`TRUNCATE TABLE "${tableName}" RESTART IDENTITY CASCADE`)
-        );
-
-        if (rows.length === 0) {
-          restored[tableName] = 0;
-          continue;
-        }
-
-        // Insert in 10 000-row chunks via json_populate_recordset.
-        // Single-quote escaping: replace each ' with '' (SQL standard).
-        const CHUNK = 10_000;
-        let insertedTotal = 0;
-        for (let i = 0; i < rows.length; i += CHUNK) {
-          const chunk = rows.slice(i, i + CHUNK);
-          // Escape single quotes inside the serialised JSON
-          const escapedJson = JSON.stringify(chunk).replace(/'/g, "''");
-          await db.execute(
-            sql.raw(
-              `INSERT INTO "${tableName}" SELECT * FROM json_populate_recordset(null::"${tableName}", '${escapedJson}'::json)`
-            )
-          );
-          insertedTotal += chunk.length;
-        }
-
-        restored[tableName] = insertedTotal;
-      } catch (err) {
-        failed[tableName] = String(err);
-      }
-    }
-  } finally {
-    // Always re-enable FK checks regardless of errors
-    await db.execute(sql`SET session_replication_role = 'DEFAULT'`).catch(() => {});
+    restored = await restoreDatabaseSnapshot(payload);
+  } catch (err) {
+    await logAudit(id, "restored", "error", {
+      error: String(err),
+      preRestoreBackupId: preRestoreId,
+    }, req);
+    return res.status(500).json({
+      ok: false,
+      error: "La restauración falló y fue revertida completamente",
+      preRestoreBackupId: preRestoreId,
+    });
   }
 
-  await logAudit(id, "restored", Object.keys(failed).length === 0 ? "ok" : "error", {
+  await logAudit(id, "restored", "ok", {
     restored,
-    failed,
     preRestoreBackupId: preRestoreId,
     restoredBy: (req.user as { name?: string } | undefined)?.name ?? "admin",
   }, req);
   await logTechEvent("warning", "backup", `Restauración completada por ${(req.user as { name?: string } | undefined)?.name ?? "admin"}`, {
-    backupId: id, preRestoreBackupId: preRestoreId, restored, failed,
+    backupId: id, preRestoreBackupId: preRestoreId, restored,
   });
 
   res.json({
-    ok: Object.keys(failed).length === 0,
+    ok: true,
     preRestoreBackupId: preRestoreId,
     restored,
-    failed,
-    message: Object.keys(failed).length === 0
-      ? `Restauración completada — ${Object.values(restored).reduce((s, n) => s + n, 0).toLocaleString()} filas restauradas en ${Object.keys(restored).length} tablas`
-      : `Restauración parcial — ${Object.keys(failed).length} tabla(s) fallaron`,
+    failed: {},
+    message: `Restauración completada — ${Object.values(restored).reduce((s, n) => s + n, 0).toLocaleString()} filas restauradas en ${Object.keys(restored).length} tablas`,
   });
 });
 
@@ -545,29 +486,64 @@ router.delete("/backup/destinations/:id", ...adminOnly, async (req, res) => {
   res.json({ ok: true });
 });
 
+const EMERGENCY_EXPORTERS = {
+  ventas: () => db.select().from(ticketsTable),
+  caja: () => db.select().from(cashSessionsTable),
+  clientes: () => db.select().from(crmClientsTable),
+  empleados: () => db.select({
+    id: employeesTable.id,
+    name: employeesTable.name,
+    role: employeesTable.role,
+    active: employeesTable.active,
+    employeeNumber: employeesTable.employeeNumber,
+    createdAt: employeesTable.createdAt,
+  }).from(employeesTable),
+  productos: () => db.select().from(productsTable),
+  stock: () => db.select().from(ingredientsTable),
+  reservas: () => db.select().from(reservationsTable),
+} as const;
+
+type EmergencyModule = keyof typeof EMERGENCY_EXPORTERS;
+
 // ─── POST /backup/emergency-export ────────────────────────────────────────────
-router.post("/backup/emergency-export", ...guard, backupLimiter, async (req, res) => {
+router.post("/backup/emergency-export", requireAuth, backupLimiter, async (req, res) => {
+  if (req.user?.role !== "admin") {
+    await logAudit(null, "emergency_export_denied", "error", {
+      role: req.user?.role ?? "unknown",
+      requestedModules: req.body?.modules ?? null,
+    }, req);
+    return res.status(403).json({ error: "Solo un administrador puede realizar esta exportación" });
+  }
   const { modules = ["all"], format = "json" } = req.body as { modules?: string[]; format?: string };
+  if (!Array.isArray(modules) || modules.length === 0 || !modules.every((value) => typeof value === "string")) {
+    await logAudit(null, "emergency_export_rejected", "error", { reason: "invalid_modules" }, req);
+    return res.status(422).json({ error: "modules debe ser una lista no vacía" });
+  }
+  if (!["json", "csv", "xlsx"].includes(format)) {
+    await logAudit(null, "emergency_export_rejected", "error", { reason: "invalid_format" }, req);
+    return res.status(422).json({ error: "Formato no soportado" });
+  }
 
   const tables: Record<string, unknown[]> = {};
-  const tableMap: Record<string, string> = {
-    ventas: "tickets",
-    caja: "cash_sessions",
-    clientes: "crm_clients",
-    empleados: "employees",
-    productos: "products",
-    stock: "stock_levels",
-    reservas: "reservations",
-  };
-
-  const toExport = modules.includes("all") ? Object.values(tableMap) : modules.map((m) => tableMap[m] ?? m);
-
-  for (const tableName of toExport) {
-    try {
-      const result = await db.execute(sql.raw(`SELECT * FROM "${tableName}" LIMIT 100000`)) as { rows: unknown[] };
-      tables[tableName] = result.rows ?? [];
-    } catch { /* skip */ }
+  const allowedModules = Object.keys(EMERGENCY_EXPORTERS) as EmergencyModule[];
+  const requested = modules.includes("all") ? allowedModules : modules;
+  const invalid = requested.filter((module) => !allowedModules.includes(module as EmergencyModule));
+  if (invalid.length > 0 || (modules.includes("all") && modules.length !== 1)) {
+    await logAudit(null, "emergency_export_rejected", "error", {
+      reason: "forbidden_modules",
+      modules: invalid,
+    }, req);
+    return res.status(422).json({ error: "Módulo inexistente o prohibido", modules: invalid });
   }
+
+  for (const module of requested as EmergencyModule[]) {
+    tables[module] = await EMERGENCY_EXPORTERS[module]();
+  }
+  await logAudit(null, "emergency_export", "ok", {
+    modules: requested,
+    format,
+    rowCounts: Object.fromEntries(Object.entries(tables).map(([name, rows]) => [name, rows.length])),
+  }, req);
 
   if (format === "xlsx") {
     const wb = new ExcelJS.Workbook();
@@ -616,7 +592,7 @@ router.post("/backup/demo-data", ...adminOnly, async (_req, res) => {
     status: "valid", verified: true, verifiedAt: yesterday,
     sizeBytes: 2_450_000, tablesIncluded: ["tickets", "orders", "employees"],
     recordCounts: { tickets: 1200, orders: 3500, employees: 8 },
-    integrityHash: sha256("demo-hash-1"), notes: "Demo copia completa verificada",
+    integrityHash: backupChecksum("demo-hash-1"), notes: "Demo copia completa verificada",
     createdByName: "Sistema", isDemo: true,
   }).returning();
 
