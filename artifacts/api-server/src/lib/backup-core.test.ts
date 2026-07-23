@@ -5,6 +5,7 @@ vi.mock("@workspace/db", () => ({ pool: mockPool }));
 
 const {
   BACKUP_FORMAT_VERSION,
+  backupArtifactChecksum,
   backupChecksum,
   createDatabaseSnapshot,
   decryptBackup,
@@ -21,6 +22,7 @@ function payload(tables: Record<string, unknown[]>) {
     createdAt: new Date().toISOString(),
     manifest: Object.keys(tables).sort(),
     tables,
+    sequences: {},
   };
 }
 
@@ -38,6 +40,18 @@ describe("backup cryptography and validation", () => {
     const corrupted = `${encrypted.ciphertext.slice(0, -2)}AA`;
     expect(() => decryptBackup(encrypted.iv, corrupted)).toThrow();
     expect(backupChecksum(encrypted.ciphertext)).not.toBe(backupChecksum(corrupted));
+    const checksum = backupArtifactChecksum({
+      formatVersion: BACKUP_FORMAT_VERSION,
+      appVersion: "1.2.0",
+      iv: encrypted.iv,
+      ciphertext: encrypted.ciphertext,
+    });
+    expect(checksum).not.toBe(backupArtifactChecksum({
+      formatVersion: BACKUP_FORMAT_VERSION,
+      appVersion: "1.2.0",
+      iv: "00".repeat(12),
+      ciphertext: encrypted.ciphertext,
+    }));
   });
 
   it("rejects wrong versions and incomplete manifests", () => {
@@ -68,6 +82,7 @@ describe("database snapshot and restore", () => {
   it("restores atomically on one reserved connection and is repeatable", async () => {
     const query = vi.fn(async (statement: string) => {
       if (statement.includes("pg_catalog.pg_tables")) return { rows: [{ tablename: "orders" }] };
+      if (statement.includes("pg_catalog.pg_sequences")) return { rows: [{ sequencename: "orders_number_seq" }] };
       if (statement === "SHOW session_replication_role") {
         return { rows: [{ session_replication_role: "origin" }] };
       }
@@ -75,12 +90,21 @@ describe("database snapshot and restore", () => {
     });
     const release = vi.fn();
     mockPool.connect.mockResolvedValue({ query, release });
-    const backup = payload({ orders: [{ id: "1" }] });
+    const backup = {
+      ...payload({ orders: [{ id: "1" }] }),
+      sequences: { orders_number_seq: { lastValue: "42", isCalled: true } },
+    };
 
     await restoreDatabaseSnapshot(backup);
     await restoreDatabaseSnapshot(backup);
 
     expect(query).toHaveBeenCalledWith("SET LOCAL session_replication_role = 'replica'");
+    expect(query.mock.calls.some(([statement]) => String(statement).includes("TRUNCATE"))).toBe(false);
+    expect(query.mock.calls.some(([statement]) => String(statement).startsWith("DELETE FROM"))).toBe(true);
+    expect(query).toHaveBeenCalledWith(
+      "SELECT setval($1::regclass, $2::bigint, $3::boolean)",
+      ["public.orders_number_seq", "42", true],
+    );
     expect(query.mock.calls.filter(([statement]) => statement === "COMMIT")).toHaveLength(2);
     expect(query.mock.calls.some(([statement]) => statement === "SET session_replication_role = 'replica'")).toBe(false);
     expect(release).toHaveBeenCalledTimes(2);

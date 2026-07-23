@@ -67,7 +67,7 @@ export default function Index() {
     navigate(`/${locale}/categoria/${catId}${qs ? `?${qs}` : ""}`);
   }
 
-  if (categories !== undefined && (!branding || categories.length === 0)) {
+  if (categories !== undefined && (!branding || sortedCategories.length === 0)) {
     return (
       <main style={{
         minHeight: "100vh", display: "grid", placeItems: "center",

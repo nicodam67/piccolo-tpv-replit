@@ -144,7 +144,6 @@ router.get("/public/menu", async (_req, res): Promise<void> => {
     .from(productsTable)
     .where(and(eq(productsTable.active, true), eq(productsTable.qrVisible, true)))
     .orderBy(asc(productsTable.sortOrder), asc(productsTable.name));
-
   const productIds = allProducts.map((p) => p.id);
   const formats = productIds.length
     ? await db
@@ -172,18 +171,21 @@ router.get("/public/menu", async (_req, res): Promise<void> => {
     subcatsByCategory.get(s.categoryId)!.push(s);
   }
 
-  res.json(
-    categories
-      .filter((c) => (productsByCategory.get(c.id) ?? []).length > 0)
-      .map((c) => ({
+  const publicCategories = categories
+    .filter((c) => (productsByCategory.get(c.id) ?? []).length > 0)
+    .map((c) => ({
         ...c,
         subcategories: subcatsByCategory.get(c.id) ?? [],
         products: (productsByCategory.get(c.id) ?? []).map((p) => ({
           ...p,
           formats: formatsByProduct.get(p.id) ?? [],
         })),
-      }))
-  );
+      }));
+  if (process.env["NODE_ENV"] === "production" && publicCategories.length === 0) {
+    res.status(503).json({ error: "Carta no configurada", code: "QR_NOT_CONFIGURED" });
+    return;
+  }
+  res.json(publicCategories);
 });
 
 // ── Admin category routes ─────────────────────────────────────────────────────

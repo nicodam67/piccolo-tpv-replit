@@ -81,6 +81,13 @@ describe("HR privilege escalation protection", () => {
     expect(response.status).toBe(201);
   });
 
+  it("denies a manager creating another manager", async () => {
+    const response = await request(app()).post("/api/hr/employees")
+      .set("Authorization", "Bearer manager")
+      .send({ name: "Second manager", role: "manager", pin: "1234" });
+    expect(response.status).toBe(403);
+  });
+
   it("denies a manager modifying an admin or promoting itself", async () => {
     mockDb.select.mockReturnValueOnce(chain([ADMIN]));
     const adminResponse = await request(app()).patch(`/api/hr/employees/${ADMIN.id}`)
@@ -118,6 +125,14 @@ describe("HR privilege escalation protection", () => {
     const deleteResponse = await request(app()).delete(`/api/hr/employees/${ADMIN.id}`)
       .set("Authorization", "Bearer admin");
     expect(deleteResponse.status).toBe(409);
+  });
+
+  it("rejects string values that could bypass the last-admin boolean check", async () => {
+    const response = await request(app()).patch(`/api/hr/employees/${ADMIN.id}`)
+      .set("Authorization", "Bearer admin")
+      .send({ active: "false" });
+    expect(response.status).toBe(400);
+    expect(mockDb.update).not.toHaveBeenCalled();
   });
 
   it("allows deleting an admin when another active admin remains", async () => {
