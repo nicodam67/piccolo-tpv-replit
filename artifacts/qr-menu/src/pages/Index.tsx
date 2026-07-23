@@ -1,6 +1,6 @@
-import { useQuery, useMutation } from "convex/react";
+import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api.js";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { motion } from "motion/react";
 import { ChevronRight, Clock, Phone } from "lucide-react";
 import { ALLERGENS } from "@/lib/allergens.ts";
@@ -24,14 +24,10 @@ export default function Index() {
   // ── Convex data ───────────────────────────────────────────────────────────
   const categories = useQuery(api.menu.listCategories, {});
   const branding   = useQuery(api.branding.get, {});
-  const seed       = useMutation(api.seed.publicSeedIfEmpty);
 
   // Apply branding theme (fonts + colors) from Convex
   useThemeColors(branding?.themeColors ? { ...branding.themeColors } : null);
   useThemeFonts(branding?.themeFonts ?? null);
-
-  // Seed demo data only when the DB is empty
-  useEffect(() => { seed({ secret: "init" }).catch(() => {}); }, [seed]);
 
   // ── Derived branding values (with safe fallbacks) ─────────────────────────
   const restaurantName  = branding?.restaurantName  ?? "Piccolo La Ràpita";

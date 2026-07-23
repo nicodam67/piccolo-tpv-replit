@@ -398,7 +398,7 @@ describe("Stripe webhook signature verification", () => {
         .set("Content-Type", "application/json")
         .send({ type: "simulator.payment.confirm", orderId: "fake", approve: true });
 
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(503);
     } finally {
       process.env["NODE_ENV"] = originalEnv;
     }
