@@ -44,6 +44,7 @@ const phaseExports = phaseFile.statements.flatMap(declarations).filter(belongsTo
 const phaseTypeExports = new Set(
   phaseFile.statements.filter(isTypeOnly).flatMap(declarations).filter(belongsToPhase),
 );
+const compatibilityAdapters = new Set(["useBlockTable"]);
 if (!phaseExports.length) throw new Error("No phase-one exports were generated");
 
 const legacySource = fs.readFileSync(legacyPath, "utf8");
@@ -65,7 +66,22 @@ fs.writeFileSync(legacyPath, migrated.replace(/\n{4,}/g, "\n\n\n"));
 fs.writeFileSync(
   compatPath,
   `// Generated compatibility exports. Do not edit manually.\n`
-  + `export {\n${phaseExports.filter((name) => !phaseTypeExports.has(name)).map((name) => `  ${name},`).join("\n")}\n} from "./phase1-generated/api";\n`
-  + `export type {\n${phaseExports.filter((name) => phaseTypeExports.has(name)).map((name) => `  ${name},`).join("\n")}\n} from "./phase1-generated/api";\n`,
+  + `export {\n${phaseExports.filter((name) => !phaseTypeExports.has(name) && !compatibilityAdapters.has(name)).map((name) => `  ${name},`).join("\n")}\n} from "./phase1-generated/api";\n`
+  + `export type {\n${phaseExports.filter((name) => phaseTypeExports.has(name)).map((name) => `  ${name},`).join("\n")}\n} from "./phase1-generated/api";\n`
+  + `import { useBlockTable as useGeneratedBlockTable } from "./phase1-generated/api";\n`
+  + `type GeneratedBlockMutation = ReturnType<typeof useGeneratedBlockTable>;\n`
+  + `export interface LegacyBlockTableVariables { tableId: string; reason?: string }\n`
+  + `export function useBlockTable(options?: Parameters<typeof useGeneratedBlockTable>[0]): Omit<GeneratedBlockMutation, "mutate" | "mutateAsync"> & {\n`
+  + `  mutate: (variables: LegacyBlockTableVariables, options?: Parameters<GeneratedBlockMutation["mutate"]>[1]) => void;\n`
+  + `  mutateAsync: (variables: LegacyBlockTableVariables, options?: Parameters<GeneratedBlockMutation["mutateAsync"]>[1]) => ReturnType<GeneratedBlockMutation["mutateAsync"]>;\n`
+  + `} {\n`
+  + `  const generated = useGeneratedBlockTable(options);\n`
+  + `  const map = ({ tableId, reason }: LegacyBlockTableVariables) => ({ tableId, data: reason === undefined ? undefined : { reason } });\n`
+  + `  return {\n`
+  + `    ...generated,\n`
+  + `    mutate: (variables, mutationOptions) => generated.mutate(map(variables), mutationOptions),\n`
+  + `    mutateAsync: (variables, mutationOptions) => generated.mutateAsync(map(variables), mutationOptions),\n`
+  + `  };\n`
+  + `}\n`,
 );
 console.log(`Removed ${removable.length} duplicate declarations; exported ${phaseExports.length} generated symbols.`);

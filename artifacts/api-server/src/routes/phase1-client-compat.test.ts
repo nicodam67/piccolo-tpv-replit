@@ -19,7 +19,9 @@ describe("phase-one generated client compatibility", () => {
     for (const hook of migratedHooks) {
       expect(legacy).not.toMatch(new RegExp(`export (?:const|function) ${hook}\\b`));
       expect(generated).toMatch(new RegExp(`export (?:const|function) ${hook}\\b`));
-      expect(compatibility).toMatch(new RegExp(`\\b${hook},`));
+      expect(compatibility).toMatch(
+        hook === "useBlockTable" ? /export function useBlockTable\b/ : new RegExp(`\\b${hook},`),
+      );
     }
   });
 

@@ -30,7 +30,8 @@ Orders, Tables y KDS. Los seis consumidores del repositorio ya usan
 ### Pequeña adaptación
 
 - `useBlockTable`: el cliente generado coloca `reason` dentro de `data`. El consumidor actual
-  todavía no invoca la mutación, por lo que no cambia el comportamiento visible.
+  todavía no invoca la mutación. El export raíz conserva la firma histórica
+  `{ tableId, reason? }` mediante un adaptador tipado que delega en el cliente generado.
 
 ### Bloqueados
 

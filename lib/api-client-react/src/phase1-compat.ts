@@ -86,7 +86,6 @@ export {
   updateKitchenTaskStatus,
   updateOrder,
   updateOrderItem,
-  useBlockTable,
   useCleanTable,
   useCreateKdsStation,
   useCreatePrefacturaPrint,
@@ -178,3 +177,18 @@ export type {
   UpdateOrderMutationError,
   UpdateOrderMutationResult,
 } from "./phase1-generated/api";
+import { useBlockTable as useGeneratedBlockTable } from "./phase1-generated/api";
+type GeneratedBlockMutation = ReturnType<typeof useGeneratedBlockTable>;
+export interface LegacyBlockTableVariables { tableId: string; reason?: string }
+export function useBlockTable(options?: Parameters<typeof useGeneratedBlockTable>[0]): Omit<GeneratedBlockMutation, "mutate" | "mutateAsync"> & {
+  mutate: (variables: LegacyBlockTableVariables, options?: Parameters<GeneratedBlockMutation["mutate"]>[1]) => void;
+  mutateAsync: (variables: LegacyBlockTableVariables, options?: Parameters<GeneratedBlockMutation["mutateAsync"]>[1]) => ReturnType<GeneratedBlockMutation["mutateAsync"]>;
+} {
+  const generated = useGeneratedBlockTable(options);
+  const map = ({ tableId, reason }: LegacyBlockTableVariables) => ({ tableId, data: reason === undefined ? undefined : { reason } });
+  return {
+    ...generated,
+    mutate: (variables, mutationOptions) => generated.mutate(map(variables), mutationOptions),
+    mutateAsync: (variables, mutationOptions) => generated.mutateAsync(map(variables), mutationOptions),
+  };
+}
