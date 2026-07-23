@@ -33,6 +33,7 @@ import crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import ExcelJS from "exceljs";
+import { maskSecrets } from "../lib/mask-secrets";
 
 const router = Router();
 const guard = [requireAuth, requireRole("admin", "manager")];
@@ -214,7 +215,23 @@ router.get("/backup/list", ...guard, async (req, res) => {
   const type = req.query["type"] as string | undefined;
 
   const conditions = type ? [eq(backupRecordsTable.backupType, type)] : [];
-  const rows = await db.select().from(backupRecordsTable)
+  const rows = await db.select({
+    id: backupRecordsTable.id,
+    type: backupRecordsTable.type,
+    backupType: backupRecordsTable.backupType,
+    appVersion: backupRecordsTable.appVersion,
+    status: backupRecordsTable.status,
+    sizeBytes: backupRecordsTable.sizeBytes,
+    tablesIncluded: backupRecordsTable.tablesIncluded,
+    recordCounts: backupRecordsTable.recordCounts,
+    integrityHash: backupRecordsTable.integrityHash,
+    verified: backupRecordsTable.verified,
+    verifiedAt: backupRecordsTable.verifiedAt,
+    protected: backupRecordsTable.protected,
+    notes: backupRecordsTable.notes,
+    createdByName: backupRecordsTable.createdByName,
+    createdAt: backupRecordsTable.createdAt,
+  }).from(backupRecordsTable)
     .where(conditions.length ? and(...conditions) : undefined)
     .orderBy(desc(backupRecordsTable.createdAt))
     .limit(limit)
@@ -525,7 +542,7 @@ router.delete("/backup/schedules/:id", ...adminOnly, async (req, res) => {
 // ─── Destinations CRUD ────────────────────────────────────────────────────────
 router.get("/backup/destinations", ...guard, async (_req, res) => {
   const rows = await db.select().from(backupDestinationsTable);
-  res.json(rows);
+  res.json(rows.map(maskSecrets));
 });
 
 router.post("/backup/destinations", ...adminOnly, async (req, res) => {
@@ -536,7 +553,7 @@ router.post("/backup/destinations", ...adminOnly, async (req, res) => {
     config: (body.config as Record<string, unknown>) ?? {},
     active: body.active !== false,
   }).returning();
-  res.status(201).json(row);
+  res.status(201).json(maskSecrets(row));
 });
 
 router.delete("/backup/destinations/:id", ...adminOnly, async (req, res) => {

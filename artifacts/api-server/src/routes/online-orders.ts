@@ -64,6 +64,8 @@ import { requireAuth, requireRole } from "../middlewares/auth";
 import { emitToFunction } from "../lib/socket-events";
 import { calcMultiRateBreakdown } from "../lib/tax";
 import { issuePoints } from "./crm.js";
+import { maskSecrets, withoutBearerToken } from "../lib/mask-secrets";
+import { logDocumentAction } from "../lib/document-audit";
 
 const router: IRouter = Router();
 
@@ -550,6 +552,10 @@ router.patch("/online-orders/:id/status", requireAuth, async (req, res): Promise
 // ── STAFF: POST /api/online-orders/:id/payment-simulate ──────────────────────
 
 router.post("/online-orders/:id/payment-simulate", requireAuth, async (req, res): Promise<void> => {
+  if (process.env["NODE_ENV"] === "production") {
+    res.status(403).json({ error: "Simulación de pagos desactivada en producción" });
+    return;
+  }
   const id = req.params.id as string;
   const { approve = true } = req.body as { approve?: boolean };
 
@@ -621,13 +627,30 @@ router.get("/admin/online-config", requireAuth, requireRole("manager", "admin"),
   const zones = await db.select().from(deliveryZonesTable).orderBy(asc(deliveryZonesTable.sortOrder));
   const couriers = await db.select().from(couriersTable).where(eq(couriersTable.active, true)).orderBy(asc(couriersTable.name));
 
-  res.json({ config: cfg ?? null, zones, couriers });
+  res.json({
+    config: cfg ? maskSecrets(cfg) : null,
+    zones,
+    couriers: couriers.map((courier) => withoutBearerToken(courier as unknown as Record<string, unknown>)),
+  });
 });
 
 // ── ADMIN: PATCH /admin/online-config ────────────────────────────────────────
 
-router.patch("/admin/online-config", requireAuth, requireRole("manager", "admin"), async (req, res): Promise<void> => {
-  const fields = req.body as Partial<typeof onlineOrdersConfigTable.$inferInsert>;
+router.patch("/admin/online-config", requireAuth, requireRole("admin"), async (req, res): Promise<void> => {
+  const requested = req.body as Record<string, unknown>;
+  if (["stripeSecretKey", "stripeWebhookSecret"].some((key) => key in requested)) {
+    res.status(400).json({ error: "Las credenciales de pago no se gestionan desde la API" });
+    return;
+  }
+  const allowed = [
+    "takeawayEnabled", "deliveryEnabled", "schedule", "prepTimeMinutes", "minOrder",
+    "minOrderDelivery", "deliveryFee", "freeDeliveryFrom", "maxAdvanceHours",
+    "maxOrdersPerSlot", "paused", "pauseReason", "tipEnabled", "tipPercentages",
+    "tableOrderingEnabled", "stripePublishableKey",
+  ];
+  const fields = Object.fromEntries(
+    Object.entries(requested).filter(([key]) => allowed.includes(key)),
+  ) as Partial<typeof onlineOrdersConfigTable.$inferInsert>;
 
   const [existing] = await db.select().from(onlineOrdersConfigTable).limit(1);
 
@@ -644,7 +667,15 @@ router.patch("/admin/online-config", requireAuth, requireRole("manager", "admin"
       .returning();
   }
 
-  res.json(result);
+  await logDocumentAction({
+    action: "update_online_config",
+    documentType: "config",
+    documentId: result.id,
+    employeeId: req.user?.id,
+    employeeName: req.user?.name ?? "",
+    details: `Campos actualizados: ${Object.keys(fields).join(", ")}`,
+  });
+  res.json(maskSecrets(result));
 });
 
 // ── ADMIN: Delivery Zones CRUD ────────────────────────────────────────────────
@@ -682,14 +713,14 @@ router.delete("/admin/delivery-zones/:id", requireAuth, requireRole("manager", "
 
 router.get("/admin/couriers", requireAuth, requireRole("manager", "admin"), async (_req, res): Promise<void> => {
   const list = await db.select().from(couriersTable).where(eq(couriersTable.active, true)).orderBy(asc(couriersTable.name));
-  res.json(list);
+  res.json(list.map((courier) => withoutBearerToken(courier as unknown as Record<string, unknown>)));
 });
 
 router.post("/admin/couriers", requireAuth, requireRole("manager", "admin"), async (req, res): Promise<void> => {
   const { name, phone = "" } = req.body as { name: string; phone?: string };
   if (!name?.trim()) { res.status(400).json({ error: "El nombre es obligatorio." }); return; }
   const [c] = await db.insert(couriersTable).values({ name: name.trim(), phone }).returning();
-  res.status(201).json(c);
+  res.status(201).json(withoutBearerToken(c as unknown as Record<string, unknown>));
 });
 
 router.patch("/admin/couriers/:id", requireAuth, requireRole("manager", "admin"), async (req, res): Promise<void> => {
@@ -697,7 +728,7 @@ router.patch("/admin/couriers/:id", requireAuth, requireRole("manager", "admin")
   const updates = req.body as Partial<typeof couriersTable.$inferInsert>;
   const [c] = await db.update(couriersTable).set(updates as any).where(eq(couriersTable.id, id)).returning();
   if (!c) { res.status(404).json({ error: "Repartidor no encontrado." }); return; }
-  res.json(c);
+  res.json(withoutBearerToken(c as unknown as Record<string, unknown>));
 });
 
 router.delete("/admin/couriers/:id", requireAuth, requireRole("manager", "admin"), async (req, res): Promise<void> => {

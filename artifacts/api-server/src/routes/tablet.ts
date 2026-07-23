@@ -19,6 +19,7 @@ import {
 import { eq, and } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { idempotency } from "../middlewares/idempotency";
+import { withoutBearerToken } from "../lib/mask-secrets";
 import * as bcrypt from "bcryptjs";
 import * as crypto from "node:crypto";
 import { z } from "zod";
@@ -166,7 +167,7 @@ router.get(
   requireRole("admin", "manager"),
   async (_req, res): Promise<void> => {
     const devices = await db.select().from(tabletDevicesTable);
-    res.json(devices);
+    res.json(devices.map((device) => withoutBearerToken(device as unknown as Record<string, unknown>)));
   }
 );
 
@@ -193,7 +194,7 @@ router.patch(
       .returning();
     if (!updated) { res.status(404).json({ error: "Dispositivo no encontrado" }); return; }
     await logAudit("tablet_updated", null, "tablet_device", id, updates);
-    res.json(updated);
+    res.json(withoutBearerToken(updated as unknown as Record<string, unknown>));
   }
 );
 

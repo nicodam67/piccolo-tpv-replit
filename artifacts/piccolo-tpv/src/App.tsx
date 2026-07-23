@@ -136,6 +136,13 @@ const ROLES_CASH        = ['admin', 'manager', 'encargado'];
 const ROLES_MANAGER_UP  = ['admin', 'manager'];
 const ROLES_ADMIN_ONLY  = ['admin'];
 
+function QrFixturesRoute() {
+  const enabled = import.meta.env.DEV && import.meta.env.VITE_QR_FIXTURES === 'true';
+  return enabled
+    ? <CartaPublicaApp />
+    : <main className="min-h-screen grid place-items-center"><p>Carta no disponible</p></main>;
+}
+
 function Router() {
   return (
     <Switch>
@@ -207,7 +214,7 @@ function Router() {
         <RequireRole roles={ROLES_MANAGER_UP}><OperacionesHub /></RequireRole>
       </Route>
       {/* ── QR Menú público — ruta pública, sin autenticación ───────────── */}
-      <Route path="/carta-cocina/qr-menu" component={CartaPublicaApp} />
+      <Route path="/carta-cocina/qr-menu" component={QrFixturesRoute} />
 
       {/* ── Carta y Cocina hub — en reconstrucción ───────────────────────── */}
       {/* Catch-all: /carta-cocina y cualquier otra subruta → placeholder */}

@@ -1,8 +1,9 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { restaurantTablesTable, roomZonesTable, ordersTable, tableEventsTable, alertConfigTable, reservationsTable } from "@workspace/db";
+import { restaurantTablesTable, roomZonesTable, ordersTable, tableEventsTable, alertConfigTable, reservationsTable, auditLogTable } from "@workspace/db";
 import { sql, eq, and, asc, inArray } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
+import { checkPermission } from "./role-permissions";
 
 const router: IRouter = Router();
 
@@ -132,7 +133,7 @@ router.get("/zones/:zoneId/tables", requireAuth, async (req, res): Promise<void>
       e.name           AS employee_name,
       COALESCE(SUM(CAST(oi.unit_price AS numeric) * oi.quantity), 0)::float AS current_total
     FROM restaurant_tables t
-    LEFT JOIN orders o        ON o.table_id = t.id AND o.status = 'open'
+    LEFT JOIN orders o        ON o.table_id = t.id AND o.status IN ('open','sent','ready','served','bill_requested')
     LEFT JOIN employees e     ON e.id = o.employee_id
     LEFT JOIN order_items oi  ON oi.order_id = o.id
     WHERE t.zone_id = ${zoneId} AND t.active = true${layoutClause}
@@ -452,27 +453,65 @@ router.post("/tables/:tableId/open", requireAuth, async (req, res): Promise<void
 router.post("/tables/:tableId/close", requireAuth, async (req, res): Promise<void> => {
   const tableId  = req.params.tableId as string;
   const user     = (req as any).user as { id?: string; name?: string } | undefined;
+  const { force = false, reason = "" } = req.body as { force?: boolean; reason?: string };
 
-  const [table] = await db
-    .update(restaurantTablesTable)
+  const [activeOrder] = await db.select({ id: ordersTable.id, status: ordersTable.status })
+    .from(ordersTable)
+    .where(and(
+      eq(ordersTable.tableId, tableId),
+      inArray(ordersTable.status, ["open", "sent", "ready", "served", "bill_requested"]),
+    ))
+    .limit(1);
+
+  if (activeOrder) {
+    if (!force) {
+      res.status(409).json({ error: "La mesa tiene un pedido pendiente de cobro" });
+      return;
+    }
+    const allowed = await checkPermission(req.user?.role ?? "", "config", "force_close_unpaid");
+    if (!allowed) {
+      res.status(403).json({ error: "Permiso requerido: cierre excepcional sin cobro" });
+      return;
+    }
+    if (reason.trim().length < 3) {
+      res.status(422).json({ error: "El motivo del cierre excepcional es obligatorio" });
+      return;
+    }
+    const table = await db.transaction(async (tx) => {
+      await tx.update(ordersTable).set({ status: "completed" }).where(eq(ordersTable.id, activeOrder.id));
+      const [updated] = await tx.update(restaurantTablesTable)
+        .set({ status: "pendiente_limpieza" })
+        .where(eq(restaurantTablesTable.id, tableId))
+        .returning();
+      await tx.insert(auditLogTable).values({
+        orderId: activeOrder.id,
+        employeeId: req.user?.id ?? null,
+        employeeName: req.user?.name ?? "",
+        action: "force_close_unpaid",
+        details: reason.trim(),
+      });
+      return updated;
+    });
+    void addTableEvent({
+      tableId,
+      orderId: activeOrder.id,
+      employeeId: user?.id,
+      employeeName: user?.name ?? "",
+      action: "force_close_unpaid",
+      details: reason.trim(),
+    });
+    res.json(tableShape(table));
+    return;
+  }
+
+  const [table] = await db.update(restaurantTablesTable)
     .set({ status: "pendiente_limpieza" })
     .where(and(
       eq(restaurantTablesTable.id, tableId),
       sql`status NOT IN ('free', 'pendiente_limpieza', 'bloqueada', 'out_of_service', 'reserved')`,
     ))
     .returning();
-
-  if (!table) {
-    // Fallback: try exact "occupied" match (legacy caller)
-    const [t2] = await db
-      .update(restaurantTablesTable)
-      .set({ status: "free" })
-      .where(and(eq(restaurantTablesTable.id, tableId), eq(restaurantTablesTable.status, "occupied")))
-      .returning();
-    if (!t2) { res.status(409).json({ error: "La mesa no puede cerrarse desde su estado actual" }); return; }
-    res.json(tableShape(t2));
-    return;
-  }
+  if (!table) { res.status(409).json({ error: "La mesa no puede cerrarse desde su estado actual" }); return; }
 
   void addTableEvent({
     tableId,

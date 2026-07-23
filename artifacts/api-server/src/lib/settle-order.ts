@@ -138,11 +138,11 @@ export async function settleOrderIfFullyPaid({
     // Mark order paid
     await tx.update(ordersTable).set({ status: "paid" }).where(eq(ordersTable.id, orderId));
 
-    // Release table
+    // Payment never makes a table immediately reusable; staff must clean it.
     if (order.tableId) {
       await tx
         .update(restaurantTablesTable)
-        .set({ status: "free" })
+        .set({ status: "pendiente_limpieza" })
         .where(eq(restaurantTablesTable.id, order.tableId));
     }
 

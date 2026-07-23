@@ -8,16 +8,23 @@ import {
   cashSessionsTable,
   paymentsTable,
   employeesTable,
+  idempotencyKeysTable,
+  restaurantTablesTable,
 } from "@workspace/db";
-import { eq, and, desc, sum, inArray } from "drizzle-orm";
+import { eq, and, desc, sum, inArray, or, sql } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { adapterRegistry } from "../lib/cash-machine/registry";
 import { settleOrderIfFullyPaid } from "../lib/settle-order";
 import { emitToFunction } from "../lib/socket-events";
+import { idempotency } from "../middlewares/idempotency";
 
 const ADMIN_ROLES   = ["admin"];
 const MANAGER_ROLES = ["manager", "admin"];
-const PAYMENT_ROLES = ["waiter", "cashier", "manager", "admin"];
+const PAYMENT_ROLES = ["waiter", "cashier", "encargado", "manager", "admin"];
+const CASH_MACHINE_IN_FLIGHT = [
+  "pending", "iniciando", "esperando_efectivo", "efectivo_parcial",
+  "devolviendo_cambio", "conciliacion_pendiente",
+] as const;
 
 const router: IRouter = Router();
 
@@ -142,10 +149,9 @@ router.post(
   requireAuth,
   requireRole(...ADMIN_ROLES),
   async (req, res): Promise<void> => {
-    const scenario = req.headers["x-simulator-scenario"] as string | undefined;
-    if (scenario) adapterRegistry.setScenario(scenario);
-
     try {
+      const scenario = req.headers["x-simulator-scenario"] as string | undefined;
+      if (scenario) adapterRegistry.setScenario(scenario);
       const latency = await adapterRegistry.getAdapter().connect();
       res.json({ ok: true, latencyMs: latency });
     } catch (err: any) {
@@ -190,6 +196,7 @@ router.post(
   "/cash-machine/payments",
   requireAuth,
   requireRole(...PAYMENT_ROLES),
+  idempotency,
   async (req, res): Promise<void> => {
     const employeeId = (req as any).user?.id as string;
     const { orderId, amount, splitRef, terminalName } = req.body as {
@@ -203,6 +210,11 @@ router.post(
       res.status(400).json({ error: "Importe inválido" });
       return;
     }
+    const requestKey = req.headers["idempotency-key"];
+    if (typeof requestKey !== "string") {
+      res.status(400).json({ error: "Idempotency-Key es obligatoria" });
+      return;
+    }
 
     const cfg = await getConfig();
     if (!cfg?.enabled) {
@@ -213,7 +225,7 @@ router.post(
     // Validate order — must exist and not already be paid
     if (orderId) {
       const [order] = await db
-        .select({ id: ordersTable.id, status: ordersTable.status })
+        .select({ id: ordersTable.id, status: ordersTable.status, tableId: ordersTable.tableId })
         .from(ordersTable)
         .where(eq(ordersTable.id, orderId))
         .limit(1);
@@ -227,67 +239,102 @@ router.post(
       }
     }
 
-    // Double-tap guard: reject if there's already an in-flight transaction for this order
-    const IN_FLIGHT_STATUSES = ["pending", "iniciando", "esperando_efectivo", "efectivo_parcial", "devolviendo_cambio"] as const;
-    if (orderId) {
-      const [inflight] = await db
-        .select({
-          id:              cashMachineTransactionsTable.id,
-          transactionType: cashMachineTransactionsTable.transactionType,
-          status:          cashMachineTransactionsTable.status,
-        })
-        .from(cashMachineTransactionsTable)
-        .where(
-          and(
-            eq(cashMachineTransactionsTable.orderId, orderId),
-            eq(cashMachineTransactionsTable.transactionType, "payment"),
-            inArray(cashMachineTransactionsTable.status, [...IN_FLIGHT_STATUSES]),
-          ),
-        )
-        .limit(1);
-
-      // All three columns are now selected — runtime check mirrors the SQL predicate
-      if (
-        inflight &&
-        inflight.transactionType === "payment" &&
-        (IN_FLIGHT_STATUSES as readonly string[]).includes(inflight.status)
-      ) {
-        res.status(409).json({ error: "Ya hay una transacción en curso para este pedido" });
-        return;
-      }
-    }
-
-    // Set simulator scenario from test header
-    const scenario = req.headers["x-simulator-scenario"] as string | undefined;
-    if (scenario) adapterRegistry.setScenario(scenario);
-
-    let deviceResult;
+    let adapter;
     try {
-      deviceResult = await adapterRegistry.getAdapter().startPayment(
-        parseFloat(amount).toFixed(2),
-        orderId ?? `manual-${Date.now()}`,
-      );
+      adapter = adapterRegistry.getAdapter();
+      const scenario = req.headers["x-simulator-scenario"] as string | undefined;
+      if (scenario) adapterRegistry.setScenario(scenario);
     } catch (err: any) {
-      res.status(503).json({ error: err?.message ?? "Device unreachable" });
+      res.status(503).json({ error: err?.message ?? "Conector no configurado" });
       return;
     }
 
-    const [txRow] = await db
-      .insert(cashMachineTransactionsTable)
-      .values({
+    const terminal = terminalName ?? "Caja principal";
+    const [orderForLock] = orderId
+      ? await db.select({ tableId: ordersTable.tableId }).from(ordersTable).where(eq(ordersTable.id, orderId)).limit(1)
+      : [{ tableId: null }];
+
+    let txRow;
+    try {
+      txRow = await db.transaction(async (tx) => {
+        const lockKeys = [
+          `cash-machine:device:${cfg.deviceId}`,
+          `cash-machine:reference:${requestKey}`,
+          `cash-machine:terminal:${terminal}`,
+          ...(orderId ? [`cash-machine:order:${orderId}`] : []),
+          ...(orderForLock?.tableId ? [`cash-machine:table:${orderForLock.tableId}`] : []),
+          ...(splitRef ? [`cash-machine:split:${splitRef}`] : []),
+        ].sort();
+        for (const key of lockKeys) {
+          await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${key}))`);
+        }
+        const [inflight] = await tx.select({ id: cashMachineTransactionsTable.id })
+          .from(cashMachineTransactionsTable)
+          .where(and(
+            eq(cashMachineTransactionsTable.transactionType, "payment"),
+            inArray(cashMachineTransactionsTable.status, [...CASH_MACHINE_IN_FLIGHT]),
+            or(
+              eq(cashMachineTransactionsTable.deviceId, cfg.deviceId),
+              eq(cashMachineTransactionsTable.terminalName, terminal),
+              ...(orderId ? [eq(cashMachineTransactionsTable.orderId, orderId)] : []),
+              ...(splitRef ? [eq(cashMachineTransactionsTable.splitRef, splitRef)] : []),
+            ),
+          ))
+          .limit(1);
+        if (inflight) throw new Error("CASH_MACHINE_IN_FLIGHT");
+        const [pending] = await tx.insert(cashMachineTransactionsTable).values({
         orderId: orderId ?? null,
         splitRef: splitRef ?? null,
         transactionType: "payment",
         amountRequested: parseFloat(amount).toFixed(2),
+        status: "pending",
+        deviceTransactionId: null,
+        employeeId,
+        terminalName: terminal,
+        deviceId: cfg.deviceId,
+        }).returning();
+        await tx.insert(idempotencyKeysTable).values({
+          cacheKey: `${req.user!.id}:${requestKey}`,
+          userId: req.user!.id,
+          statusCode: 202,
+          response: { transaction: pending },
+          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1_000),
+        }).onConflictDoNothing();
+        return pending;
+      });
+    } catch (error) {
+      if (error instanceof Error && error.message === "CASH_MACHINE_IN_FLIGHT") {
+        res.status(409).json({ error: "Ya existe un cobro físico pendiente de conciliación" });
+        return;
+      }
+      throw error;
+    }
+
+    try {
+      const deviceResult = await adapter.startPayment(
+        parseFloat(amount).toFixed(2),
+        txRow.id,
+      );
+      const [started] = await db.update(cashMachineTransactionsTable).set({
         status: deviceResult.status,
         deviceTransactionId: deviceResult.deviceTransactionId,
-        employeeId,
-        terminalName: terminalName ?? "Caja principal",
-        deviceId: cfg.deviceId,
-      })
-      .returning();
-
-    res.status(201).json({ transaction: txRow });
+      }).where(eq(cashMachineTransactionsTable.id, txRow.id)).returning();
+      await db.update(idempotencyKeysTable).set({
+        statusCode: 201,
+        response: { transaction: started },
+      }).where(eq(idempotencyKeysTable.cacheKey, `${req.user!.id}:${requestKey}`));
+      res.status(201).json({ transaction: started });
+    } catch (err: any) {
+      const [unknown] = await db.update(cashMachineTransactionsTable).set({
+        status: "conciliacion_pendiente",
+        deviceError: "Resultado físico desconocido; requiere conciliación",
+      }).where(eq(cashMachineTransactionsTable.id, txRow.id)).returning();
+      await db.update(idempotencyKeysTable).set({
+        statusCode: 202,
+        response: { transaction: unknown, reconciliationRequired: true },
+      }).where(eq(idempotencyKeysTable.cacheKey, `${req.user!.id}:${requestKey}`));
+      res.status(202).json({ transaction: unknown, reconciliationRequired: true });
+    }
   },
 );
 
@@ -311,40 +358,68 @@ router.get(
     }
 
     const TERMINAL_STATUSES = ["completada", "cancelada", "tiempo_agotado", "error", "intervencion_manual"];
-    if (TERMINAL_STATUSES.includes(txRow.status)) {
+    if (txRow.status === "conciliacion_pendiente") {
+      res.status(202).json({ transaction: txRow, reconciliationRequired: true });
+      return;
+    }
+    if (TERMINAL_STATUSES.includes(txRow.status) && txRow.status !== "completada") {
       res.json({ transaction: txRow });
       return;
     }
 
     if (!txRow.deviceTransactionId) {
-      res.json({ transaction: txRow });
+      try {
+        const restarted = await adapterRegistry.getAdapter().startPayment(
+          txRow.amountRequested,
+          txRow.id,
+        );
+        const [resumed] = await db.update(cashMachineTransactionsTable).set({
+          status: restarted.status,
+          deviceTransactionId: restarted.deviceTransactionId,
+          deviceError: null,
+        }).where(eq(cashMachineTransactionsTable.id, id)).returning();
+        res.status(202).json({ transaction: resumed, recovering: true });
+      } catch {
+        const [unknown] = await db.update(cashMachineTransactionsTable).set({
+          status: "conciliacion_pendiente",
+          deviceError: "No se pudo confirmar si el dispositivo inició el cobro",
+        }).where(eq(cashMachineTransactionsTable.id, id)).returning();
+        res.status(202).json({ transaction: unknown, reconciliationRequired: true });
+      }
       return;
     }
 
-    // Poll adapter for live status
     let deviceStatus;
-    try {
-      deviceStatus = await adapterRegistry.getAdapter().getPaymentStatus(txRow.deviceTransactionId);
-    } catch (err: any) {
-      res.status(503).json({ error: err?.message ?? "Device unreachable" });
-      return;
-    }
-
-    const isNowTerminal = TERMINAL_STATUSES.includes(deviceStatus.status);
-    const wasNotTerminal = !TERMINAL_STATUSES.includes(txRow.status);
-    const justCompleted  = isNowTerminal && wasNotTerminal && deviceStatus.status === "completada";
-
-    const [updated] = await db
-      .update(cashMachineTransactionsTable)
-      .set({
+    let updated = txRow;
+    let justCompleted = txRow.status === "completada";
+    if (txRow.status === "completada") {
+      deviceStatus = {
+        status: txRow.status,
+        amountReceived: txRow.amountReceived,
+        changeDispensed: txRow.changeDispensed,
+        deviceError: txRow.deviceError,
+      };
+    } else {
+      try {
+        deviceStatus = await adapterRegistry.getAdapter().getPaymentStatus(txRow.deviceTransactionId);
+      } catch {
+        const [unknown] = await db.update(cashMachineTransactionsTable).set({
+          status: "conciliacion_pendiente",
+          deviceError: "Desconexión durante confirmación física",
+        }).where(eq(cashMachineTransactionsTable.id, id)).returning();
+        res.status(202).json({ transaction: unknown, reconciliationRequired: true });
+        return;
+      }
+      const isNowTerminal = TERMINAL_STATUSES.includes(deviceStatus.status);
+      justCompleted = isNowTerminal && deviceStatus.status === "completada";
+      [updated] = await db.update(cashMachineTransactionsTable).set({
         status: deviceStatus.status,
         amountReceived: deviceStatus.amountReceived,
         changeDispensed: deviceStatus.changeDispensed,
         deviceError: deviceStatus.deviceError ?? null,
         ...(isNowTerminal ? { completedAt: new Date() } : {}),
-      })
-      .where(eq(cashMachineTransactionsTable.id, id))
-      .returning();
+      }).where(eq(cashMachineTransactionsTable.id, id)).returning();
+    }
 
     // If just completed and we have an order, record the payment then settle.
     // Payment insert is idempotent via `reference` unique index + ON CONFLICT DO NOTHING.
@@ -396,13 +471,17 @@ router.get(
           settleErr?.message ?? settleErr,
         );
         // Update the cash-machine tx to a special status so admin panel can identify it
-        await db
+        const [unknown] = await db
           .update(cashMachineTransactionsTable)
-          .set({ deviceError: `Settlement error: ${settleErr?.message ?? "unknown"}` })
-          .where(eq(cashMachineTransactionsTable.id, txRow.id));
-        res.status(500).json({
-          error: "El cobro fue registrado por la máquina pero no se pudo liquidar el pedido. Contacta con soporte.",
-          transaction: updated,
+          .set({
+            status: "conciliacion_pendiente",
+            deviceError: `Settlement error: ${settleErr?.message ?? "unknown"}`,
+          })
+          .where(eq(cashMachineTransactionsTable.id, txRow.id))
+          .returning();
+        res.status(202).json({
+          error: "Resultado físico pendiente de conciliación.",
+          transaction: unknown,
           needsReconciliation: true,
         });
         return;
@@ -432,7 +511,7 @@ router.post(
       return;
     }
 
-    const NON_CANCELLABLE = ["completada", "cancelada", "tiempo_agotado", "error"];
+    const NON_CANCELLABLE = ["completada", "cancelada", "tiempo_agotado", "error", "conciliacion_pendiente"];
     if (NON_CANCELLABLE.includes(txRow.status)) {
       res.status(409).json({ error: "La transacción ya no se puede cancelar" });
       return;
@@ -452,7 +531,11 @@ router.post(
     try {
       deviceResult = await adapterRegistry.getAdapter().cancelPayment(txRow.deviceTransactionId);
     } catch (err: any) {
-      res.status(503).json({ error: err?.message ?? "Device unreachable" });
+      const [unknown] = await db.update(cashMachineTransactionsTable).set({
+        status: "conciliacion_pendiente",
+        deviceError: "Cancelación física sin confirmación",
+      }).where(eq(cashMachineTransactionsTable.id, id)).returning();
+      res.status(202).json({ transaction: unknown, reconciliationRequired: true });
       return;
     }
 
@@ -505,9 +588,6 @@ router.post(
       return;
     }
 
-    const scenario = req.headers["x-simulator-scenario"] as string | undefined;
-    if (scenario) adapterRegistry.setScenario(scenario);
-
     // Create pending transaction record
     const [txRow] = await db
       .insert(cashMachineTransactionsTable)
@@ -525,6 +605,8 @@ router.post(
 
     let deviceResult;
     try {
+      const scenario = req.headers["x-simulator-scenario"] as string | undefined;
+      if (scenario) adapterRegistry.setScenario(scenario);
       deviceResult = await adapterRegistry.getAdapter().refund(
         parseFloat(amount).toFixed(2),
         orderId ?? `refund-${txRow.id}`,
