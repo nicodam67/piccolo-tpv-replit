@@ -450,6 +450,7 @@ export default function CashSession() {
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
   const openAttemptId = useRef(crypto.randomUUID());
+  const movementAttemptId = useRef(crypto.randomUUID());
 
   const [tab, setTab] = useState<'session' | 'history'>('session');
   const [employeeName, setEmployeeName] = useState('');
@@ -493,7 +494,9 @@ export default function CashSession() {
   const openSession    = useOpenCashSession({
     request: { headers: { 'Idempotency-Key': openAttemptId.current } },
   });
-  const addMovement    = useAddCashMovement();
+  const addMovement    = useAddCashMovement({
+    request: { headers: { 'Idempotency-Key': movementAttemptId.current } },
+  });
   const reopenSession  = useReopenCashSession();
 
   // Open form state
@@ -707,6 +710,7 @@ export default function CashSession() {
       { id: session.id, data: { movementType: movType as AddCashMovementInputMovementType, amount: movAmount, reason: movReason } },
       {
         onSuccess: () => {
+          movementAttemptId.current = crypto.randomUUID();
           setMovAmount(''); setMovReason('');
           queryClient.invalidateQueries({ queryKey: getGetCashSessionSummaryQueryKey(session.id) });
           toast.success('Movimiento registrado');

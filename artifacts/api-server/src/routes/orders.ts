@@ -1,11 +1,10 @@
-import { Router, type IRouter } from "express";
-import { db } from "@workspace/db";
+import { Router, type IRouter, type Response } from "express";
+import { db, pool } from "@workspace/db";
 import {
   ordersTable,
   orderItemsTable,
   kitchenTasksTable,
   productsTable,
-  productFormatsTable,
   restaurantTablesTable,
   employeesTable,
   orderItemModifiersTable,
@@ -21,10 +20,27 @@ import { idempotency } from "../middlewares/idempotency";
 import { recipeItemsTable, ingredientsTable, stockMovementsTable } from "@workspace/db";
 import { emitToEmployee, emitToFunction } from "../lib/socket-events";
 import { logger } from "../lib/logger";
+import { createOrderItem, OrderItemServiceError } from "../lib/order-item-service";
+import { dispatchKitchenPrint } from "../lib/print-dispatch";
 
 const router: IRouter = Router();
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+async function holdOrderCriticalLock(orderId: string, res: Response): Promise<void> {
+  const client = await pool.connect();
+  const lockKey = `order-critical:${orderId}`;
+  await client.query("SELECT pg_advisory_lock(hashtext($1))", [lockKey]);
+  let released = false;
+  const release = () => {
+    if (released) return;
+    released = true;
+    void client.query("SELECT pg_advisory_unlock(hashtext($1))", [lockKey])
+      .finally(() => client.release());
+  };
+  res.once("finish", release);
+  res.once("close", release);
+}
 
 async function loadOrderItems(orderId: string) {
   const rows = await db
@@ -166,7 +182,7 @@ router.patch("/orders/:orderId", requireAuth, async (req, res): Promise<void> =>
 
 // ── POST /orders/:orderId/items ────────────────────────────────────────────────
 
-router.post("/orders/:orderId/items", requireAuth, async (req, res): Promise<void> => {
+router.post("/orders/:orderId/items", requireAuth, idempotency, async (req, res): Promise<void> => {
   const orderId = req.params.orderId as string;
   const {
     productId,
@@ -186,83 +202,61 @@ router.post("/orders/:orderId/items", requireAuth, async (req, res): Promise<voi
 
   if (!productId) { res.status(400).json({ error: "productId es requerido" }); return; }
 
-  // Guard: only add items to open or sent orders
-  const [currentOrder] = await db
-    .select({ status: ordersTable.status })
-    .from(ordersTable)
-    .where(eq(ordersTable.id, orderId));
-  if (!currentOrder) { res.status(404).json({ error: "Pedido no encontrado" }); return; }
-  if (currentOrder.status === "bill_requested" || currentOrder.status === "paid" || currentOrder.status === "completed") {
-    res.status(409).json({ error: "No se pueden añadir productos: el pedido no está abierto" }); return;
-  }
-
-  const [product] = await db
-    .select()
-    .from(productsTable)
-    .where(eq(productsTable.id, productId));
-
-  if (!product) { res.status(404).json({ error: "Producto no encontrado" }); return; }
-
-  // Resolve unit price and taxRate: format overrides product
-  let unitPrice = product.price;
-  let resolvedFormatId: string | null = null;
-  let resolvedFormatName: string | null = null;
-  // taxRate: format.taxRate (if set) overrides product.taxRate; default 10
-  let taxRate: number = product.taxRate ?? 10;
-
-  if (formatId) {
-    const [fmt] = await db
-      .select()
-      .from(productFormatsTable)
-      .where(and(eq(productFormatsTable.id, formatId), eq(productFormatsTable.productId, productId)));
-    if (fmt) {
-      unitPrice = fmt.price;
-      resolvedFormatId = fmt.id;
-      resolvedFormatName = fmt.name;
-      // Format taxRate overrides product taxRate when explicitly set
-      if (fmt.taxRate != null) taxRate = fmt.taxRate;
+  let created;
+  let response;
+  try {
+    const result = await db.transaction(async (tx) => {
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock(hashtext(${"order-critical:" + orderId}))`,
+      );
+      const itemResult = await createOrderItem(tx, orderId, {
+        productId,
+        quantity,
+        notes,
+        formatId,
+        isInvitation,
+        modifiers,
+      });
+      const { item, product, itemModifiers } = itemResult;
+      const responsePayload = {
+        id: item.id,
+        orderId: item.orderId,
+        productId: item.productId,
+        productName: product.name,
+        formatId: item.formatId,
+        formatName: item.formatName,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        status: item.status,
+        notes: item.notes,
+        allergyNote: item.allergyNote,
+        hasAllergy: item.hasAllergy,
+        isInvitation: item.isInvitation,
+        modifiers: itemModifiers,
+        createdAt: item.createdAt,
+      };
+      const requestKey = req.headers["idempotency-key"];
+      if (typeof requestKey === "string" && req.user?.id) {
+        await tx.insert(idempotencyKeysTable).values({
+          cacheKey: `${req.user.id}:${requestKey}`,
+          userId: req.user.id,
+          statusCode: 201,
+          response: responsePayload,
+          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1_000),
+        }).onConflictDoNothing();
+      }
+      return { itemResult, responsePayload };
+    });
+    created = result.itemResult;
+    response = result.responsePayload;
+  } catch (error) {
+    if (error instanceof OrderItemServiceError) {
+      res.status(error.status).json({ error: error.message });
+      return;
     }
+    throw error;
   }
-
-  // Add modifier price deltas
-  if (modifiers?.length) {
-    const delta = modifiers.reduce((sum, m) => sum + parseFloat(m.priceDelta || "0"), 0);
-    unitPrice = String(parseFloat(unitPrice) + delta);
-  }
-
-  const [item] = await db
-    .insert(orderItemsTable)
-    .values({
-      orderId,
-      productId,
-      formatId: resolvedFormatId,
-      formatName: resolvedFormatName,
-      quantity,
-      unitPrice,
-      taxRate,
-      status: "draft",
-      notes: notes ?? "",
-      allergyNote: "",
-      hasAllergy: false,
-      isInvitation,
-    })
-    .returning();
-
-  // Insert modifiers inline
-  if (modifiers?.length) {
-    await db.insert(orderItemModifiersTable).values(
-      modifiers.map((m) => ({
-        orderItemId: item.id,
-        modifierId: m.modifierId ?? null,
-        modifierName: m.modifierName,
-        priceDelta: m.priceDelta,
-      })),
-    );
-  }
-
-  const itemModifiers = modifiers?.length
-    ? await db.select().from(orderItemModifiersTable).where(eq(orderItemModifiersTable.orderItemId, item.id))
-    : [];
+  const { product, resolvedFormatName } = created;
 
   // NOTE: Stock is decremented at send time (POST /orders/:orderId/send), not here.
   // This keeps draft items from prematurely locking inventory.
@@ -283,23 +277,7 @@ router.post("/orders/:orderId/items", requireAuth, async (req, res): Promise<voi
 
   emitRefresh(orderId, req.user?.name);
 
-  res.status(201).json({
-    id: item.id,
-    orderId: item.orderId,
-    productId: item.productId,
-    productName: product.name,
-    formatId: item.formatId,
-    formatName: item.formatName,
-    quantity: item.quantity,
-    unitPrice: item.unitPrice,
-    status: item.status,
-    notes: item.notes,
-    allergyNote: item.allergyNote,
-    hasAllergy: item.hasAllergy,
-    isInvitation: item.isInvitation,
-    modifiers: itemModifiers,
-    createdAt: item.createdAt,
-  });
+  res.status(201).json(response);
 });
 
 // ── PATCH /order-items/:itemId — update quantity / notes / flags ──────────────
@@ -335,11 +313,33 @@ router.patch("/order-items/:itemId", requireAuth, async (req, res): Promise<void
 
   if (!Object.keys(updates).length) { res.status(400).json({ error: "Sin cambios" }); return; }
 
-  const [updated] = await db
-    .update(orderItemsTable)
-    .set(updates as Partial<typeof orderItemsTable.$inferInsert>)
-    .where(eq(orderItemsTable.id, itemId))
-    .returning();
+  let updated;
+  try {
+    updated = await db.transaction(async (tx) => {
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock(hashtext(${"order-critical:" + item.orderId}))`,
+      );
+      const [order] = await tx.select({ status: ordersTable.status })
+        .from(ordersTable)
+        .where(eq(ordersTable.id, item.orderId))
+        .for("update");
+      if (!order || ["bill_requested", "paid", "completed"].includes(order.status)) {
+        throw new OrderItemServiceError(409, "El pedido ya no admite modificaciones");
+      }
+      const [row] = await tx
+        .update(orderItemsTable)
+        .set(updates as Partial<typeof orderItemsTable.$inferInsert>)
+        .where(eq(orderItemsTable.id, itemId))
+        .returning();
+      return row;
+    });
+  } catch (error) {
+    if (error instanceof OrderItemServiceError) {
+      res.status(error.status).json({ error: error.message });
+      return;
+    }
+    throw error;
+  }
 
   const itemModifiers = await db
     .select()
@@ -379,44 +379,61 @@ router.post("/order-items/:itemId/duplicate", requireAuth, async (req, res): Pro
 
   if (!original) { res.status(404).json({ error: "Línea no encontrada" }); return; }
 
-  const srcItem = original.order_items;
-  const srcProduct = original.products;
-
-  const originalMods = await db
-    .select()
-    .from(orderItemModifiersTable)
-    .where(eq(orderItemModifiersTable.orderItemId, itemId));
-
-  const [copy] = await db
-    .insert(orderItemsTable)
-    .values({
-      orderId: srcItem.orderId,
-      productId: srcItem.productId,
-      formatId: srcItem.formatId,
-      formatName: srcItem.formatName,
-      quantity: 1,
-      unitPrice: srcItem.unitPrice,
-      taxRate: srcItem.taxRate,
-      status: "draft",
-      notes: srcItem.notes,
-      allergyNote: srcItem.allergyNote,
-      hasAllergy: srcItem.hasAllergy,
-      isInvitation: srcItem.isInvitation,
-    })
-    .returning();
-
-  let copyMods: typeof originalMods = [];
-  if (originalMods.length) {
-    await db.insert(orderItemModifiersTable).values(
-      originalMods.map((m) => ({
-        orderItemId: copy.id,
-        modifierId: m.modifierId,
-        modifierName: m.modifierName,
-        priceDelta: m.priceDelta,
-      })),
-    );
-    copyMods = await db.select().from(orderItemModifiersTable).where(eq(orderItemModifiersTable.orderItemId, copy.id));
+  let duplicated;
+  try {
+    duplicated = await db.transaction(async (tx) => {
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock(hashtext(${"order-critical:" + original.order_items.orderId}))`,
+      );
+      const [lockedOriginal] = await tx.select().from(orderItemsTable)
+        .innerJoin(productsTable, eq(orderItemsTable.productId, productsTable.id))
+        .where(eq(orderItemsTable.id, itemId));
+      if (!lockedOriginal) throw new OrderItemServiceError(404, "Línea no encontrada");
+      const [order] = await tx.select({ status: ordersTable.status }).from(ordersTable)
+        .where(eq(ordersTable.id, lockedOriginal.order_items.orderId))
+        .for("update");
+      if (!order || ["bill_requested", "paid", "completed"].includes(order.status)) {
+        throw new OrderItemServiceError(409, "El pedido ya no admite modificaciones");
+      }
+      const originalMods = await tx.select().from(orderItemModifiersTable)
+        .where(eq(orderItemModifiersTable.orderItemId, itemId));
+      const srcItem = lockedOriginal.order_items;
+      const [copy] = await tx.insert(orderItemsTable).values({
+        orderId: srcItem.orderId,
+        productId: srcItem.productId,
+        formatId: srcItem.formatId,
+        formatName: srcItem.formatName,
+        quantity: 1,
+        unitPrice: srcItem.unitPrice,
+        taxRate: srcItem.taxRate,
+        status: "draft",
+        notes: srcItem.notes,
+        allergyNote: srcItem.allergyNote,
+        hasAllergy: srcItem.hasAllergy,
+        isInvitation: srcItem.isInvitation,
+      }).returning();
+      if (originalMods.length) {
+        await tx.insert(orderItemModifiersTable).values(originalMods.map((modifier) => ({
+          orderItemId: copy.id,
+          modifierId: modifier.modifierId,
+          modifierName: modifier.modifierName,
+          priceDelta: modifier.priceDelta,
+        })));
+      }
+      const copyMods = originalMods.length
+        ? await tx.select().from(orderItemModifiersTable)
+            .where(eq(orderItemModifiersTable.orderItemId, copy.id))
+        : [];
+      return { copy, copyMods, srcItem, srcProduct: lockedOriginal.products };
+    });
+  } catch (error) {
+    if (error instanceof OrderItemServiceError) {
+      res.status(error.status).json({ error: error.message });
+      return;
+    }
+    throw error;
   }
+  const { copy, copyMods, srcItem, srcProduct } = duplicated;
 
   await writeAudit(srcItem.orderId, req.user?.id, req.user?.name ?? "", "duplicate_item", `Duplicado: ${srcProduct.name}`);
   emitRefresh(srcItem.orderId, req.user?.name);
@@ -440,6 +457,14 @@ router.delete("/order-items/:itemId", requireAuth, async (req, res): Promise<voi
     .where(eq(orderItemsTable.id, itemId));
 
   if (!item) { res.status(404).json({ error: "Línea no encontrada" }); return; }
+  await holdOrderCriticalLock(item.order_items.orderId, res);
+  const [mutableOrder] = await db.select({ status: ordersTable.status })
+    .from(ordersTable)
+    .where(eq(ordersTable.id, item.order_items.orderId));
+  if (!mutableOrder || ["bill_requested", "paid", "completed"].includes(mutableOrder.status)) {
+    res.status(409).json({ error: "El pedido ya no admite modificaciones" });
+    return;
+  }
 
   const itemStatus = item.order_items.status;
 
@@ -571,8 +596,13 @@ router.post("/orders/:orderId/send", requireAuth, idempotency, async (req, res):
   const printMode = (businessCfg?.printMode ?? "kds_only") as "kds_only" | "printers_only" | "both";
   const sendToKds = printMode !== "printers_only";
 
-  // Derived again under the order lock so concurrent sends cannot disagree.
-  let wasAlreadySent = false;
+  // Optimistic snapshot keeps the fast path cheap; the value is overwritten
+  // under the order lock before any durable effect is created.
+  const [preUpdateOrder] = await db
+    .select({ sentAt: ordersTable.sentAt })
+    .from(ordersTable)
+    .where(eq(ordersTable.id, orderId));
+  let wasAlreadySent = preUpdateOrder?.sentAt !== null;
 
   let draftItems = await db
     .select()
@@ -605,6 +635,7 @@ router.post("/orders/:orderId/send", requireAuth, idempotency, async (req, res):
     updated = await db.transaction(async (tx) => {
     // Serialize every send for this order, including requests with different
     // idempotency keys or no key at all.
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${"order-critical:" + orderId}))`);
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${"order-send:" + orderId}))`);
 
     const [lockedOrder] = await tx
@@ -787,7 +818,6 @@ router.post("/orders/:orderId/send", requireAuth, idempotency, async (req, res):
     // Persist physical-print jobs in the SAME transaction as KDS, stock and the
     // order state. In printers_only mode, a missing printer/route aborts safely
     // instead of acknowledging a command that cannot reach the kitchen.
-    const { dispatchKitchenPrint } = await import("../lib/print-dispatch");
     const printItems = draftItems.map((row) => {
       const item = row.order_items;
       const product = row.products;

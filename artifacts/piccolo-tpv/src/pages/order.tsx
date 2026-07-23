@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useLocation, Link } from 'wouter';
-import { useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { connectAuthenticatedSocket } from '../lib/socket-client';
+import { enqueueOperation } from '../lib/offline-queue';
 import { toast } from 'sonner';
 import {
   ChevronLeft, Trash2, Send, Clock, CheckCircle2, CircleDashed, Loader2, PenLine,
@@ -13,7 +14,7 @@ import {
   useGetCategories,
   useGetCategoryProducts,
   useGetAdminProducts,
-  useAddOrderItem,
+  addOrderItem as submitOrderItem,
   useDeleteOrderItem,
   useSendOrder,
   useGetUnreadNotifications,
@@ -479,7 +480,20 @@ export default function OrderPage() {
 
   // Mutations
   const [sendIdempotencyKey, setSendIdempotencyKey] = useState(() => crypto.randomUUID());
-  const addOrderItem = useAddOrderItem();
+  const addOrderItem = useMutation({
+    mutationFn: (input: {
+      orderId: string;
+      data: {
+        productId: string;
+        quantity: number;
+        formatId?: string;
+        modifiers: { modifierId?: string; modifierName: string; priceDelta: string }[];
+      };
+      idempotencyKey: string;
+    }) => submitOrderItem(input.orderId, input.data, {
+      headers: { 'Idempotency-Key': input.idempotencyKey },
+    }),
+  });
   const deleteOrderItem = useDeleteOrderItem();
   const sendOrder = useSendOrder({
     request: { headers: { 'Idempotency-Key': sendIdempotencyKey } },
@@ -551,11 +565,32 @@ export default function OrderPage() {
   ) => {
     if (!actualOrderId) return;
     suppressNextRefresh.current = true;
+    const queuedPayload = {
+      orderId: actualOrderId,
+      productId,
+      quantity: 1,
+      formatId: formatId ?? undefined,
+      modifiers,
+    };
+    const idempotencyKey = crypto.randomUUID();
     addOrderItem.mutate(
-      { orderId: actualOrderId, data: { productId, quantity: 1, formatId: formatId ?? undefined, modifiers } },
+      { orderId: actualOrderId, data: queuedPayload, idempotencyKey },
       {
         onSuccess: invalidateOrder,
-        onError: () => { suppressNextRefresh.current = false; toast.error('No se pudo añadir el producto'); }
+        onError: async (error: unknown) => {
+          suppressNextRefresh.current = false;
+          const status = (error as { status?: number } | null)?.status;
+          if (
+            !navigator.onLine
+            || error instanceof TypeError
+            || (typeof status === 'number' && status >= 500)
+          ) {
+            await enqueueOperation('add_item', actualOrderId, queuedPayload, idempotencyKey);
+            toast.warning('Producto guardado localmente. Se enviará al recuperar la conexión.');
+            return;
+          }
+          toast.error('No se pudo añadir el producto');
+        }
       }
     );
   };

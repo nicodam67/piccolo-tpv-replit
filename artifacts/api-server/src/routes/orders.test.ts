@@ -44,10 +44,16 @@ const mockDb = vi.hoisted(() => ({
   update: vi.fn(),
   delete: vi.fn(),
   transaction: vi.fn(),
+  execute: vi.fn(),
 }));
 
 const mockEmit = vi.hoisted(() => vi.fn());
 const mockDispatchKitchenPrint = vi.hoisted(() => vi.fn().mockResolvedValue(0));
+const mockPoolQuery = vi.hoisted(() => vi.fn().mockResolvedValue({ rows: [] }));
+const mockPoolRelease = vi.hoisted(() => vi.fn());
+const mockPool = vi.hoisted(() => ({
+  connect: vi.fn(async () => ({ query: mockPoolQuery, release: mockPoolRelease })),
+}));
 
 /**
  * Controllable jwt.verify mock so individual tests can simulate a different
@@ -61,7 +67,7 @@ const mockJwtVerify = vi.hoisted(() =>
 
 vi.mock("@workspace/db", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@workspace/db")>();
-  return { ...actual, db: mockDb };
+  return { ...actual, db: mockDb, pool: mockPool };
 });
 
 vi.mock("jsonwebtoken", () => ({
@@ -130,6 +136,7 @@ function resetTestMocks() {
   mockDb.update.mockReset();
   mockDb.delete.mockReset();
   mockDb.transaction.mockReset();
+  mockDb.execute.mockReset().mockResolvedValue({ rows: [] });
   mockEmit.mockReset();
   mockJwtVerify.mockReset().mockReturnValue({
     id: "waiter-1",
@@ -137,6 +144,12 @@ function resetTestMocks() {
     role: "waiter",
   });
   mockDispatchKitchenPrint.mockReset().mockResolvedValue(0);
+  mockPoolQuery.mockReset().mockResolvedValue({ rows: [] });
+  mockPoolRelease.mockReset();
+  mockPool.connect.mockClear();
+  mockDb.transaction.mockImplementation(async (callback: (tx: typeof mockDb) => Promise<unknown>) =>
+    callback(mockDb)
+  );
 }
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
@@ -213,7 +226,9 @@ describe("DELETE /api/order-items/:itemId — remove item emits orders:refresh",
 
   it("emits orders:refresh with the correct orderId after deleting a draft item", async () => {
     // select → find the item with innerJoin shape { order_items, products }
-    mockDb.select.mockReturnValueOnce(makeChain([DELETE_ITEM_ROW]));
+    mockDb.select
+      .mockReturnValueOnce(makeChain([DELETE_ITEM_ROW]))
+      .mockReturnValueOnce(makeChain([{ status: "open" }]));
     // delete → resolves to empty (no return value needed)
     mockDb.delete.mockReturnValueOnce(makeChain([]));
 
@@ -242,7 +257,9 @@ describe("DELETE /api/order-items/:itemId — remove item emits orders:refresh",
   it("cancels the kitchen task and returns 204 when the item is already sent", async () => {
     // Sent items now propagate to KDS (cancel the kitchen task) instead of blocking deletion.
     const sentItemRow = { order_items: { ...ORDER_ITEM, status: "sent" }, products: PRODUCT };
-    mockDb.select.mockReturnValueOnce(makeChain([sentItemRow]));
+    mockDb.select
+      .mockReturnValueOnce(makeChain([sentItemRow]))
+      .mockReturnValueOnce(makeChain([{ status: "open" }]));
     mockDb.update.mockReturnValue(makeChain([]));   // cancel kitchen task
     mockDb.delete.mockReturnValue(makeChain([]));   // delete the item
     mockDb.insert.mockReturnValue(makeChain([]));   // audit log
@@ -522,7 +539,9 @@ describe("orders:refresh employeeName — name always comes from the JWT, never 
   it("carries the JWT name on the delete-item path too", async () => {
     mockJwtVerify.mockReturnValueOnce({ id: "waiter-3", name: "Carlos López", role: "waiter" });
 
-    mockDb.select.mockReturnValueOnce(makeChain([DELETE_ITEM_ROW]));
+    mockDb.select
+      .mockReturnValueOnce(makeChain([DELETE_ITEM_ROW]))
+      .mockReturnValueOnce(makeChain([{ status: "open" }]));
     mockDb.delete.mockReturnValueOnce(makeChain([]));
 
     const res = await request(app)
@@ -575,7 +594,9 @@ describe("Two-session live sync — end-to-end scenario", () => {
   });
 
   it("delete-item path: Device A removes an item, orders:refresh reaches Device B's listener", async () => {
-    mockDb.select.mockReturnValueOnce(makeChain([DELETE_ITEM_ROW]));
+    mockDb.select
+      .mockReturnValueOnce(makeChain([DELETE_ITEM_ROW]))
+      .mockReturnValueOnce(makeChain([{ status: "open" }]));
     mockDb.delete.mockReturnValueOnce(makeChain([]));
 
     await request(app)

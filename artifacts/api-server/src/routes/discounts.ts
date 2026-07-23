@@ -1,5 +1,5 @@
-import { Router, type IRouter } from "express";
-import { db } from "@workspace/db";
+import { Router, type IRouter, type Response } from "express";
+import { db, pool } from "@workspace/db";
 import {
   discountsTable,
   ordersTable,
@@ -10,6 +10,21 @@ import { requireAuth, requirePermission, verifyManagerToken } from "../middlewar
 import { logDocumentAction } from "../lib/document-audit";
 
 const router: IRouter = Router();
+
+async function holdDiscountOrderLock(orderId: string, res: Response): Promise<void> {
+  const client = await pool.connect();
+  const key = `order-critical:${orderId}`;
+  await client.query("SELECT pg_advisory_lock(hashtext($1))", [key]);
+  let released = false;
+  const release = () => {
+    if (released) return;
+    released = true;
+    void client.query("SELECT pg_advisory_unlock(hashtext($1))", [key])
+      .finally(() => client.release());
+  };
+  res.once("finish", release);
+  res.once("close", release);
+}
 
 // GET /orders/:id/discounts
 router.get("/orders/:id/discounts", requireAuth, async (req, res): Promise<void> => {
@@ -85,7 +100,8 @@ router.post(
       // managerAuth is valid — log it
     }
 
-    // Verify order exists and is not paid
+    await holdDiscountOrderLock(orderId, res);
+    // Verify order exists and is not paid under the same lock as payment.
     const [order] = await db.select().from(ordersTable).where(eq(ordersTable.id, orderId));
     if (!order) {
       res.status(404).json({ error: "Pedido no encontrado" });
@@ -169,6 +185,7 @@ router.delete(
       }
     }
 
+    await holdDiscountOrderLock(orderId, res);
     const [order] = await db.select().from(ordersTable).where(eq(ordersTable.id, orderId));
     if (order?.status === "paid") {
       res.status(409).json({ error: "No se puede eliminar descuentos de un pedido cobrado" });

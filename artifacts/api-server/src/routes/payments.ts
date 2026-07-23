@@ -13,6 +13,7 @@ import {
   ticketsTable,
   businessConfigTable,
   discountsTable,
+  idempotencyKeysTable,
 } from "@workspace/db";
 import { eq, and, sum, inArray, gte, sql } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
@@ -251,6 +252,21 @@ router.post("/orders/:id/payments", requireAuth, requireRole(...PAYMENT_ROLES), 
   }));
   const { total } = calcMultiRateBreakdown(lineTotals, discountForOrder);
   const totalNum = parseFloat(total);
+  // Optimistic validation for a fast, clear response. The balance is re-read
+  // under the order lock below before insertion, so this is not authoritative.
+  const [paidPreview] = await db
+    .select({ paid: sum(paymentsTable.amount) })
+    .from(paymentsTable)
+    .where(and(eq(paymentsTable.orderId, orderId), eq(paymentsTable.status, "completed")));
+  const previewRemaining = parseFloat(
+    (totalNum - parseFloat(paidPreview?.paid ?? "0")).toFixed(2),
+  );
+  if (methodCode !== "cash" && amountNum > previewRemaining + 0.001) {
+    res.status(400).json({
+      error: `El importe excede el pendiente de ${previewRemaining.toFixed(2)} €. Solo el efectivo puede superar el pendiente para dar cambio.`,
+    });
+    return;
+  }
 
   // Get open cash session for this terminal (prefer body.terminal, fallback to header)
   const terminalName = bodyTerminal ?? (req.headers["x-terminal-name"] as string | undefined);
@@ -296,15 +312,46 @@ router.post("/orders/:id/payments", requireAuth, requireRole(...PAYMENT_ROLES), 
   let result;
   try {
     result = await db.transaction(async (tx) => {
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${"order-pay:" + orderId}))`);
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${"order-critical:" + orderId}))`);
 
-    const [lockedOrder] = await tx
-      .select({ status: ordersTable.status })
-      .from(ordersTable)
-      .where(eq(ordersTable.id, orderId))
-      .for("update");
-    if (!lockedOrder) throw new Error("ORDER_NOT_FOUND");
-    if (lockedOrder.status === "paid") throw new Error("ORDER_ALREADY_PAID");
+    const lockResult = await tx.execute(
+      sql`SELECT status FROM orders WHERE id = ${orderId} FOR UPDATE`,
+    ) as unknown as { rows?: Array<{ status: string }> };
+    const lockedStatus = lockResult.rows?.[0]?.status ?? order.status;
+    if (lockedStatus === "paid") throw new Error("ORDER_ALREADY_PAID");
+    if (openSession?.id) {
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock(hashtext(${"cash-session:" + openSession.id}))`,
+      );
+      const sessionLock = await tx.execute(
+        sql`SELECT status FROM cash_sessions WHERE id = ${openSession.id} FOR UPDATE`,
+      ) as unknown as { rows?: Array<{ status: string }> };
+      const sessionStatus = sessionLock.rows?.[0]?.status ?? openSession.status;
+      if (sessionStatus !== "open") throw new Error("CASH_SESSION_CLOSED");
+    }
+
+    const [lockedItems, lockedDiscountRows] = await Promise.all([
+      tx.select({
+        unitPrice: orderItemsTable.unitPrice,
+        quantity: orderItemsTable.quantity,
+        taxRate: orderItemsTable.taxRate,
+      }).from(orderItemsTable).where(eq(orderItemsTable.orderId, orderId)),
+      tx.select({ total: sum(discountsTable.discountAmount) })
+        .from(discountsTable)
+        .where(eq(discountsTable.orderId, orderId)),
+    ]);
+    const lockedLineTotals = lockedItems.length > 0
+      && lockedItems.every((item) => item.unitPrice != null && item.quantity != null)
+      ? lockedItems.map((item) => ({
+          lineTotal: parseFloat(item.unitPrice) * item.quantity,
+          taxRate: item.taxRate ?? 10,
+        }))
+      : lineTotals;
+    const lockedDiscount = parseFloat(
+      lockedDiscountRows[0]?.total ?? String(discountForOrder),
+    );
+    const lockedTaxTotals = calcMultiRateBreakdown(lockedLineTotals, lockedDiscount);
+    const lockedTotalNum = parseFloat(lockedTaxTotals.total);
 
     // Re-read completed payments after acquiring the order lock. Concurrent
     // partial payments can no longer calculate from the same stale balance.
@@ -312,8 +359,8 @@ router.post("/orders/:id/payments", requireAuth, requireRole(...PAYMENT_ROLES), 
       .select({ paid: sum(paymentsTable.amount) })
       .from(paymentsTable)
       .where(and(eq(paymentsTable.orderId, orderId), eq(paymentsTable.status, "completed")));
-    const alreadyPaid = parseFloat(paidRow?.paid ?? "0");
-    const remaining = parseFloat((totalNum - alreadyPaid).toFixed(2));
+    const alreadyPaid = parseFloat(paidRow?.paid ?? paidPreview?.paid ?? "0");
+    const remaining = parseFloat((lockedTotalNum - alreadyPaid).toFixed(2));
     if (remaining <= 0.001) throw new Error("ORDER_ALREADY_PAID");
     if (methodCode !== "cash" && amountNum > remaining + 0.001) {
       throw new Error(`PAYMENT_EXCEEDS_REMAINING:${remaining.toFixed(2)}`);
@@ -341,12 +388,12 @@ router.post("/orders/:id/payments", requireAuth, requireRole(...PAYMENT_ROLES), 
 
     // Recalculate remaining after this payment
     const newPaid = alreadyPaid + parseFloat(effectiveAmount);
-    const newRemaining = parseFloat((totalNum - newPaid).toFixed(2));
+    const newRemaining = parseFloat((lockedTotalNum - newPaid).toFixed(2));
 
     let ticket = null;
     if (newRemaining <= 0.001) {
       // Issue ticket + close order + free table
-      const { taxBreakdown, subtotal, taxTotal } = calcMultiRateBreakdown(lineTotals, discountForOrder);
+      const { taxBreakdown, subtotal, taxTotal, total: lockedTotal } = lockedTaxTotals;
 
       // Copy emisor fields from business_config (snapshot at issuance time)
       const [bizConfig] = await tx.select().from(businessConfigTable).limit(1);
@@ -371,7 +418,7 @@ router.post("/orders/:id/payments", requireAuth, requireRole(...PAYMENT_ROLES), 
           verifactuStatus: "pending",
           subtotal,
           taxTotal,
-          total,
+          total: lockedTotal,
           taxBreakdown: taxBreakdown as any,
           employeeId,
         })
@@ -386,7 +433,7 @@ router.post("/orders/:id/payments", requireAuth, requireRole(...PAYMENT_ROLES), 
         employeeId,
         employeeName: (req as any).user?.name ?? "",
         terminal: (req.headers["x-forwarded-for"] as string) ?? req.socket?.remoteAddress ?? "",
-        amount: total,
+        amount: lockedTotal,
         details: `Ticket T-${t.ticketNumber} emitido para pedido ${orderId}`,
       });
 
@@ -400,7 +447,23 @@ router.post("/orders/:id/payments", requireAuth, requireRole(...PAYMENT_ROLES), 
       }
     }
 
-    return { payment, ticket, change: change.toFixed(2), newRemaining: Math.max(0, newRemaining) };
+    const response = {
+      payment,
+      ticket,
+      change: change.toFixed(2),
+      newRemaining: Math.max(0, newRemaining),
+    };
+    const requestKey = req.headers["idempotency-key"];
+    if (typeof requestKey === "string" && req.user?.id) {
+      await tx.insert(idempotencyKeysTable).values({
+        cacheKey: `${req.user.id}:${requestKey}`,
+        userId: req.user.id,
+        statusCode: 201,
+        response,
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1_000),
+      }).onConflictDoNothing();
+    }
+    return response;
     });
   } catch (error) {
     const reason = error instanceof Error ? error.message : "PAYMENT_FAILED";
@@ -410,6 +473,10 @@ router.post("/orders/:id/payments", requireAuth, requireRole(...PAYMENT_ROLES), 
     }
     if (reason === "ORDER_ALREADY_PAID") {
       res.status(409).json({ error: "El pedido ya está cobrado" });
+      return;
+    }
+    if (reason === "CASH_SESSION_CLOSED") {
+      res.status(409).json({ error: "La caja se cerró antes de completar el cobro. Revisa el estado del terminal." });
       return;
     }
     if (reason.startsWith("PAYMENT_EXCEEDS_REMAINING:")) {

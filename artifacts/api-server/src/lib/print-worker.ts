@@ -44,31 +44,52 @@ async function audit(
 
 export async function recoverStalePrintJobs(now = new Date()): Promise<number> {
   const cutoff = new Date(now.getTime() - STALE_SENDING_MS);
-  const recovered = await db
-    .update(printQueueTable)
-    .set({
-      status: "retrying",
-      lastError: "Recuperado automáticamente tras interrupción del worker",
-    })
+  const staleJobs = await db
+    .select({ id: printQueueTable.id })
+    .from(printQueueTable)
     .where(and(
       eq(printQueueTable.status, "sending"),
       lt(printQueueTable.sentAt, cutoff),
-    ))
-    .returning({ id: printQueueTable.id });
+    ));
 
-  for (const job of recovered) {
+  for (const job of staleJobs) {
+    const [connectorAck] = await db
+      .select({ createdAt: printAuditTable.createdAt })
+      .from(printAuditTable)
+      .where(and(
+        eq(printAuditTable.printQueueId, job.id),
+        eq(printAuditTable.action, "connector_ack"),
+      ))
+      .limit(1);
+    await db
+      .update(printQueueTable)
+      .set(connectorAck
+        ? {
+            status: "printed",
+            printedAt: connectorAck.createdAt,
+            lastError: "Confirmación recuperada tras reinicio",
+          }
+        : {
+            status: "retrying",
+            lastError: "Recuperado automáticamente tras interrupción del worker",
+          })
+      .where(and(
+        eq(printQueueTable.id, job.id),
+        eq(printQueueTable.status, "sending"),
+      ));
     await audit(job.id, "recovered", "sistema", {
       reason: "stale_sending",
+      connectorAcknowledged: Boolean(connectorAck),
       cutoff: cutoff.toISOString(),
     });
     try {
       emitToFunction("admin", "print:status", {
         jobId: job.id,
-        status: "recovering",
+        status: connectorAck ? "printed" : "recovering",
       });
     } catch {}
   }
-  return recovered.length;
+  return staleJobs.length;
 }
 
 export async function runPrintWorkerTick(): Promise<void> {
@@ -117,6 +138,7 @@ export async function runPrintWorkerTick(): Promise<void> {
     }
 
     const result = await sendToPrinter({
+      idempotencyKey: job.id,
       printerId:  printer.id,
       printerIp:  printer.ip,
       printerPort: printer.port,
@@ -125,6 +147,10 @@ export async function runPrintWorkerTick(): Promise<void> {
     });
 
     if (result.ok) {
+      await audit(job.id, "connector_ack", "sistema", {
+        printer: printer.name,
+        duplicate: result.duplicate === true,
+      });
       await db.update(printQueueTable).set({
         status: "printed",
         printedAt: new Date(),
@@ -145,6 +171,7 @@ export async function runPrintWorkerTick(): Promise<void> {
           const [fallback] = await db.select().from(printersTable).where(eq(printersTable.id, printer.fallbackPrinterId));
           if (fallback) {
             const fbResult = await sendToPrinter({
+              idempotencyKey: `${job.id}:fallback:${fallback.id}`,
               printerId:  fallback.id,
               printerIp:  fallback.ip,
               printerPort: fallback.port,
@@ -153,6 +180,11 @@ export async function runPrintWorkerTick(): Promise<void> {
             });
 
             if (fbResult.ok) {
+              await audit(job.id, "connector_ack", "sistema", {
+                printer: fallback.name,
+                fallbackFor: printer.name,
+                duplicate: fbResult.duplicate === true,
+              });
               await db.update(printQueueTable).set({
                 status: "printed",
                 printedAt: new Date(),

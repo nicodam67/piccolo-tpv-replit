@@ -288,7 +288,10 @@ interface TipModalProps {
 }
 
 function TipModal({ paymentId, onClose, onSaved }: TipModalProps) {
-  const addTip = useAddTip();
+  const tipAttemptId = useRef(crypto.randomUUID());
+  const addTip = useAddTip({
+    request: { headers: { 'Idempotency-Key': tipAttemptId.current } },
+  });
   const [amount, setAmount] = useState('');
   const [method, setMethod] = useState<'cash' | 'card'>('cash');
   const [saving, setSaving] = useState(false);
@@ -301,6 +304,7 @@ function TipModal({ paymentId, onClose, onSaved }: TipModalProps) {
     setSaving(true);
     try {
       await addTip.mutateAsync({ paymentId, data: { amount: fmt(n), method } });
+      tipAttemptId.current = crypto.randomUUID();
       toast.success(`Propina de ${fmt(n)}€ registrada`);
       onSaved();
     } catch {

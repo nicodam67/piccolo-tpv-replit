@@ -188,6 +188,7 @@ export async function dispatchKitchenPrint(params: {
 
   // Group items by target printer set so we send one ticket per printer
   const printerToItems = new Map<string, { printer: typeof allPrinters[0]; ticketItems: TicketItem[] }>();
+  const routedItems = new Set<string>();
 
   for (const item of items) {
     const printers = await resolvePrintersForItem(
@@ -197,6 +198,7 @@ export async function dispatchKitchenPrint(params: {
       allPrinters,
       routingMap,
     );
+    if (printers.length > 0) routedItems.add(item.productId);
     for (const printer of printers) {
       if (!printerToItems.has(printer.id)) {
         printerToItems.set(printer.id, { printer, ticketItems: [] });
@@ -205,7 +207,7 @@ export async function dispatchKitchenPrint(params: {
     }
   }
 
-  if (printerToItems.size === 0 && printMode === "printers_only") {
+  if (printMode === "printers_only" && routedItems.size !== new Set(items.map((item) => item.productId)).size) {
     throw new Error("NO_PRINT_ROUTE");
   }
 

@@ -6,6 +6,7 @@ import {
   clockAuthorizationsTable,
   employeesTable,
   fichajeAuditTable,
+  idempotencyKeysTable,
   tabletDevicesTable,
   timeRecordsTable,
 } from "@workspace/db";
@@ -137,6 +138,8 @@ export async function consumeClockProof(input: {
   employeeId: string;
   deviceId: string;
   action: ClockAction;
+  idempotencyKey?: string;
+  idempotencyUserId?: string;
 }): Promise<Record<string, unknown>> {
   const proofHash = hashClockProof(input.proof);
 
@@ -162,7 +165,8 @@ export async function consumeClockProof(input: {
       .select({ id: employeesTable.id, active: employeesTable.active })
       .from(employeesTable)
       .where(eq(employeesTable.id, input.employeeId))
-      .limit(1);
+      .limit(1)
+      .for("update");
 
     if (!device || device.status !== "active" || !employee?.active) {
       throw new ClockAuthorizationError(401, "subject_inactive");
@@ -285,6 +289,17 @@ export async function consumeClockProof(input: {
       .set({ lastSeenAt: now })
       .where(eq(tabletDevicesTable.id, input.deviceId));
 
-    return { success: true, ...payload, serverTime: now.toISOString() };
+    const response = { success: true, ...payload, serverTime: now.toISOString() };
+    if (input.idempotencyKey) {
+      const userId = input.idempotencyUserId ?? "anon";
+      await tx.insert(idempotencyKeysTable).values({
+        cacheKey: `${userId}:${input.idempotencyKey}`,
+        userId,
+        statusCode: 200,
+        response,
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1_000),
+      }).onConflictDoNothing();
+    }
+    return response;
   });
 }

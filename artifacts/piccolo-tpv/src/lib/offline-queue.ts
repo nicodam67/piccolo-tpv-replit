@@ -63,16 +63,17 @@ export function buildIdempotencyKey(
   entityId: string,
   clientTimestamp: number
 ): string {
-  return `${getDeviceId()}.${operationType}.${entityId}.${clientTimestamp}`;
+  return `${getDeviceId()}.${operationType}.${entityId}.${clientTimestamp}.${crypto.randomUUID()}`;
 }
 
 export async function enqueueOperation(
   operationType: string,
   entityId: string,
-  payload: Record<string, unknown>
+  payload: Record<string, unknown>,
+  idempotencyKey?: string,
 ): Promise<string> {
   const ts = Date.now();
-  const key = buildIdempotencyKey(operationType, entityId, ts);
+  const key = idempotencyKey ?? buildIdempotencyKey(operationType, entityId, ts);
   await offlineOps.enqueue({ idempotencyKey: key, operationType, payload });
   if ('serviceWorker' in navigator) {
     void navigator.serviceWorker.ready.then(async (registration) => {
@@ -156,7 +157,7 @@ export async function syncQueue(): Promise<{
       }
 
       if (!res.ok) {
-        const transient = [408, 425, 429, 500, 502, 503, 504].includes(res.status);
+        const transient = [401, 408, 425, 429, 500, 502, 503, 504].includes(res.status);
         for (const op of batch) {
           await offlineOps.update(op.idempotencyKey, {
             status: transient ? 'pending' : 'failed',
@@ -174,6 +175,7 @@ export async function syncQueue(): Promise<{
           idempotencyKey: string;
           status: 'synced' | 'conflict' | 'failed' | 'skipped';
           error?: string;
+          retryable?: boolean;
         }>;
       };
 
@@ -181,8 +183,12 @@ export async function syncQueue(): Promise<{
         const op = batch.find((b) => b.idempotencyKey === r.idempotencyKey);
         if (!op) continue;
         await offlineOps.update(r.idempotencyKey, {
-          status: r.status === 'skipped' ? 'synced' : r.status,
-          retryable: r.status === 'failed' ? false : undefined,
+          status: r.status === 'skipped'
+            ? 'synced'
+            : r.status === 'failed' && r.retryable
+              ? 'pending'
+              : r.status,
+          retryable: r.status === 'failed' ? r.retryable === true : undefined,
           lastError: r.error,
           attempts: op.attempts + 1,
         });

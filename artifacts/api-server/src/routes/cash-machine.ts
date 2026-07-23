@@ -9,7 +9,7 @@ import {
   paymentsTable,
   employeesTable,
 } from "@workspace/db";
-import { eq, and, desc, sum, inArray } from "drizzle-orm";
+import { eq, and, desc, sum, inArray, sql } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { adapterRegistry } from "../lib/cash-machine/registry";
 import { settleOrderIfFullyPaid } from "../lib/settle-order";
@@ -311,7 +311,7 @@ router.get(
     }
 
     const TERMINAL_STATUSES = ["completada", "cancelada", "tiempo_agotado", "error", "intervencion_manual"];
-    if (TERMINAL_STATUSES.includes(txRow.status)) {
+    if (TERMINAL_STATUSES.includes(txRow.status) && txRow.status !== "completada") {
       res.json({ transaction: txRow });
       return;
     }
@@ -321,38 +321,47 @@ router.get(
       return;
     }
 
-    // Poll adapter for live status
     let deviceStatus;
-    try {
-      deviceStatus = await adapterRegistry.getAdapter().getPaymentStatus(txRow.deviceTransactionId);
-    } catch (err: any) {
-      res.status(503).json({ error: err?.message ?? "Device unreachable" });
-      return;
+    let updated = txRow;
+    if (txRow.status === "completada") {
+      // A previous process may have persisted the terminal device state and
+      // crashed before reconciliation. Re-enter the idempotent payment flow.
+      deviceStatus = {
+        status: txRow.status,
+        amountReceived: txRow.amountReceived,
+        changeDispensed: txRow.changeDispensed,
+        deviceError: txRow.deviceError,
+      };
+    } else {
+      try {
+        deviceStatus = await adapterRegistry.getAdapter().getPaymentStatus(txRow.deviceTransactionId);
+      } catch (err: any) {
+        res.status(503).json({ error: err?.message ?? "Device unreachable" });
+        return;
+      }
+      const isNowTerminal = TERMINAL_STATUSES.includes(deviceStatus.status);
+      [updated] = await db
+        .update(cashMachineTransactionsTable)
+        .set({
+          status: deviceStatus.status,
+          amountReceived: deviceStatus.amountReceived,
+          changeDispensed: deviceStatus.changeDispensed,
+          deviceError: deviceStatus.deviceError ?? null,
+          ...(isNowTerminal ? { completedAt: new Date() } : {}),
+        })
+        .where(eq(cashMachineTransactionsTable.id, id))
+        .returning();
     }
-
-    const isNowTerminal = TERMINAL_STATUSES.includes(deviceStatus.status);
-    const wasNotTerminal = !TERMINAL_STATUSES.includes(txRow.status);
-    const justCompleted  = isNowTerminal && wasNotTerminal && deviceStatus.status === "completada";
-
-    const [updated] = await db
-      .update(cashMachineTransactionsTable)
-      .set({
-        status: deviceStatus.status,
-        amountReceived: deviceStatus.amountReceived,
-        changeDispensed: deviceStatus.changeDispensed,
-        deviceError: deviceStatus.deviceError ?? null,
-        ...(isNowTerminal ? { completedAt: new Date() } : {}),
-      })
-      .where(eq(cashMachineTransactionsTable.id, id))
-      .returning();
 
     // If just completed and we have an order, record the payment then settle.
     // Payment insert is idempotent via `reference` unique index + ON CONFLICT DO NOTHING.
     // Settlement (`settleOrderIfFullyPaid`) is idempotent via the order.status guard.
     // Both guards together make concurrent polls safe.
     let settlementResult = null;
-    if (justCompleted && txRow.orderId && txRow.employeeId) {
+    if (updated.status === "completada" && txRow.orderId && txRow.employeeId) {
       try {
+        const orderId = txRow.orderId;
+        const employeeId = txRow.employeeId;
         const methodId = await ensurePaymentMethod();
         const netAmount = (
           parseFloat(deviceStatus.amountReceived) - parseFloat(deviceStatus.changeDispensed)
@@ -363,23 +372,31 @@ router.get(
           .where(eq(cashSessionsTable.status, "open"))
           .limit(1);
 
-        // Insert payment (idempotent)
-        await db
-          .insert(paymentsTable)
-          .values({
-            orderId:         txRow.orderId,
+        // Serialize with manual/card payment flows before inserting the
+        // idempotent machine payment.
+        await db.transaction(async (tx) => {
+          await tx.execute(
+            sql`SELECT pg_advisory_xact_lock(hashtext(${"order-critical:" + orderId}))`,
+          );
+          if (openSession?.id) {
+            await tx.execute(
+              sql`SELECT pg_advisory_xact_lock(hashtext(${"cash-session:" + openSession.id}))`,
+            );
+          }
+          await tx.insert(paymentsTable).values({
+            orderId,
             paymentMethodId: methodId,
             amount:          netAmount,
-            employeeId:      txRow.employeeId,
+            employeeId,
             reference:       txRow.id,   // idempotency key — unique index enforces exactly-once
             ...(openSession ? { cashSessionId: openSession.id } : {}),
-          })
-          .onConflictDoNothing();
+          }).onConflictDoNothing();
+        });
 
         // Settle the order (ticket issuance + order→paid + table→free)
         settlementResult = await settleOrderIfFullyPaid({
-          orderId:       txRow.orderId,
-          employeeId:    txRow.employeeId,
+          orderId,
+          employeeId,
           cashSessionId: openSession?.id ?? null,
         });
 

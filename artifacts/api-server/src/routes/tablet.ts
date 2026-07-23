@@ -411,6 +411,10 @@ router.post("/tablet/clock", clockConsumptionLimiter, idempotency, async (req, r
       employeeId,
       deviceId: device.id,
       action,
+      idempotencyKey: typeof req.headers["idempotency-key"] === "string"
+        ? req.headers["idempotency-key"]
+        : undefined,
+      idempotencyUserId: req.user?.id ?? "anon",
     });
     res.json(result);
   } catch (error) {

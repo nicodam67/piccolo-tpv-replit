@@ -20,14 +20,19 @@ import {
   offlineQueueTable,
   techEventsTable,
   deviceAuditLogTable,
+  idempotencyKeysTable,
   ordersTable,
-  orderItemsTable,
   restaurantTablesTable,
 } from "@workspace/db";
 import { eq, and, desc, inArray, sql } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import crypto from "node:crypto";
 import net from "node:net";
+import {
+  createOrderItem,
+  OrderItemServiceError,
+  type AddOrderItemInput,
+} from "../lib/order-item-service";
 
 const router = Router();
 const guard = [requireAuth, requireRole("admin", "manager", "encargado")];
@@ -35,6 +40,7 @@ const adminGuard = [requireAuth, requireRole("admin")];
 const anyAuth = [requireAuth];
 
 class OfflineConflictError extends Error {}
+class PermanentOfflineError extends Error {}
 
 // ─── Probe helpers ────────────────────────────────────────────────────────────
 
@@ -128,7 +134,18 @@ router.post("/offline/devices", ...anyAuth, async (req, res) => {
 
   if (existing.length > 0) {
     const prev = existing[0];
-    const patch: Record<string, unknown> = { lastSeenAt: new Date(), status: "online", updatedAt: new Date() };
+    if (["blocked", "revoked"].includes(prev.status)) {
+      res.status(403).json({
+        error: prev.status === "revoked" ? "device_revoked" : "device_blocked",
+        message: "El dispositivo no puede volver a registrarse sin intervención administrativa.",
+      });
+      return;
+    }
+    const patch: Record<string, unknown> = {
+      lastSeenAt: new Date(),
+      status: prev.offlineAutorizado ? "online" : "pending",
+      updatedAt: new Date(),
+    };
     const performedBy = (req as any).user?.id ?? null;
 
     // Detect IP change
@@ -155,6 +172,8 @@ router.post("/offline/devices", ...anyAuth, async (req, res) => {
     return;
   }
 
+  const role = req.user?.role ?? "";
+  const trustedRegistration = ["admin", "manager"].includes(role);
   const [device] = await db.insert(offlineDevicesTable).values({
     name,
     deviceType,
@@ -164,8 +183,10 @@ router.post("/offline/devices", ...anyAuth, async (req, res) => {
     macAddress,
     os,
     browserVersion,
-    offlinePerms: ["open_table", "add_item", "cash_payment", "clock_in", "clock_out"],
-    status: "online",
+    offlinePerms: trustedRegistration ? ["open_table", "add_item"] : [],
+    offlineAutorizado: trustedRegistration,
+    cobroPermitido: false,
+    status: trustedRegistration ? "online" : "pending",
     lastSeenAt: new Date(),
   }).returning();
 
@@ -391,6 +412,7 @@ router.post("/offline/sync", ...anyAuth, async (req, res) => {
     idempotencyKey: string;
     status: "synced" | "conflict" | "failed" | "skipped";
     error?: string;
+    retryable?: boolean;
   }> = [];
 
   if (!deviceFingerprint) {
@@ -440,7 +462,7 @@ router.post("/offline/sync", ...anyAuth, async (req, res) => {
     .catch(() => {});
 
   for (const op of operations) {
-    if (foundDevice.offlinePerms.length > 0 && !foundDevice.offlinePerms.includes(op.operationType)) {
+    if (!foundDevice.offlinePerms.includes(op.operationType)) {
       results.push({
         idempotencyKey: op.idempotencyKey,
         status: "failed",
@@ -457,100 +479,125 @@ router.post("/offline/sync", ...anyAuth, async (req, res) => {
       continue;
     }
 
-    const [existing] = await db.select().from(offlineQueueTable)
-      .where(eq(offlineQueueTable.idempotencyKey, op.idempotencyKey));
-
-    if (existing?.status === "synced") {
-      results.push({ idempotencyKey: op.idempotencyKey, status: "skipped" });
-      continue;
-    }
-
     try {
-      let resultPayload: Record<string, unknown> = {};
-
-      switch (op.operationType) {
-        case "open_table": {
-          const tableId = op.payload["tableId"] as string;
-          if (tableId) {
-            const order = await db.transaction(async (tx) => {
-              const [table] = await tx.update(restaurantTablesTable)
-                .set({ status: "occupied" })
-                .where(and(
-                  eq(restaurantTablesTable.id, tableId),
-                  inArray(restaurantTablesTable.status, ["free", "reserved", "pendiente_limpieza"]),
-                ))
-                .returning({ id: restaurantTablesTable.id });
-              if (!table) throw new OfflineConflictError("La mesa ya no está disponible.");
-              const [created] = await tx.insert(ordersTable).values({
-                tableId,
-                status: "open",
-                guestCount: Number(op.payload["guestCount"] ?? 1),
-                employeeId: op.payload["employeeId"] as string ?? null,
-              }).returning();
-              return created;
-            });
-            resultPayload = { orderId: order?.id ?? null };
-          }
-          break;
+      const outcome = await db.transaction(async (tx) => {
+        await tx.execute(
+          sql`SELECT pg_advisory_xact_lock(hashtext(${"offline:" + op.idempotencyKey}))`,
+        );
+        const [onlineReplay] = await tx
+          .select({ cacheKey: idempotencyKeysTable.cacheKey })
+          .from(idempotencyKeysTable)
+          .where(sql`right(${idempotencyKeysTable.cacheKey}, ${op.idempotencyKey.length + 1}) = ${":" + op.idempotencyKey}`)
+          .limit(1);
+        if (onlineReplay) return { status: "skipped" as const };
+        const [existing] = await tx.select().from(offlineQueueTable)
+          .where(eq(offlineQueueTable.idempotencyKey, op.idempotencyKey))
+          .for("update");
+        if (existing?.status === "synced") {
+          return { status: "skipped" as const };
         }
-        case "add_item": {
-          const orderId = op.payload["orderId"] as string;
-          const productId = op.payload["productId"] as string;
-          if (orderId && productId) {
-            const [item] = await db.insert(orderItemsTable).values({
-              orderId,
-              productId,
-              quantity: Number(op.payload["quantity"] ?? 1),
-              unitPrice: String(op.payload["unitPrice"] ?? "0"),
-              notes: String(op.payload["notes"] ?? ""),
-            }).returning().catch(() => [null as any]);
-            resultPayload = { itemId: item?.id ?? null };
-          }
-          break;
-        }
-        case "cash_payment":
-        case "clock_in":
-        case "clock_out":
-          throw new Error(
-            `${op.operationType} requiere conexión y no puede marcarse como completada sin ejecutarse.`,
-          );
-        default:
-          throw new Error(`Tipo de operación no soportado: ${op.operationType}`);
-      }
 
-      await db.insert(offlineQueueTable).values({
-        deviceId: deviceRecord?.id ?? null,
-        employeeId: (req.user as { id?: string } | undefined)?.id ?? null,
-        operationType: op.operationType,
-        idempotencyKey: op.idempotencyKey,
-        payload: op.payload,
-        status: "synced",
-        resultPayload,
-        syncedAt: new Date(),
-      }).onConflictDoUpdate({
-        target: offlineQueueTable.idempotencyKey,
-        set: { status: "synced", syncedAt: new Date(), resultPayload },
+        let resultPayload: Record<string, unknown> = {};
+        switch (op.operationType) {
+          case "open_table": {
+            const tableId = op.payload["tableId"] as string;
+            if (!tableId) throw new PermanentOfflineError("tableId requerido");
+            const [table] = await tx.update(restaurantTablesTable)
+              .set({ status: "occupied" })
+              .where(and(
+                eq(restaurantTablesTable.id, tableId),
+                inArray(restaurantTablesTable.status, ["free", "reserved", "pendiente_limpieza"]),
+              ))
+              .returning({ id: restaurantTablesTable.id });
+            if (!table) throw new OfflineConflictError("La mesa ya no está disponible.");
+            const [created] = await tx.insert(ordersTable).values({
+              tableId,
+              status: "open",
+              guestCount: Math.max(1, Number(op.payload["guestCount"] ?? 1)),
+              employeeId: req.user?.id ?? null,
+            }).returning();
+            resultPayload = { orderId: created.id };
+            break;
+          }
+          case "add_item": {
+            const orderId = op.payload["orderId"] as string;
+            const productId = op.payload["productId"] as string;
+            if (!orderId || !productId) {
+              throw new PermanentOfflineError("orderId y productId requeridos");
+            }
+            await tx.execute(
+              sql`SELECT pg_advisory_xact_lock(hashtext(${"order-critical:" + orderId}))`,
+            );
+            try {
+              const created = await createOrderItem(tx, orderId, {
+                productId,
+                quantity: Number(op.payload["quantity"] ?? 1),
+                notes: String(op.payload["notes"] ?? ""),
+                formatId: typeof op.payload["formatId"] === "string"
+                  ? op.payload["formatId"]
+                  : undefined,
+                modifiers: Array.isArray(op.payload["modifiers"])
+                  ? op.payload["modifiers"] as AddOrderItemInput["modifiers"]
+                  : undefined,
+              });
+              resultPayload = { itemId: created.item.id };
+            } catch (error) {
+              if (error instanceof OrderItemServiceError) {
+                throw new OfflineConflictError(error.message);
+              }
+              throw error;
+            }
+            break;
+          }
+          case "cash_payment":
+          case "clock_in":
+          case "clock_out":
+            throw new PermanentOfflineError(
+              `${op.operationType} requiere conexión y no puede marcarse como completada sin ejecutarse.`,
+            );
+          default:
+            throw new PermanentOfflineError(`Tipo de operación no soportado: ${op.operationType}`);
+        }
+
+        await tx.insert(offlineQueueTable).values({
+          deviceId: deviceRecord.id,
+          employeeId: req.user?.id ?? null,
+          operationType: op.operationType,
+          idempotencyKey: op.idempotencyKey,
+          payload: op.payload,
+          status: "synced",
+          resultPayload,
+          syncedAt: new Date(),
+        }).onConflictDoUpdate({
+          target: offlineQueueTable.idempotencyKey,
+          set: { status: "synced", syncedAt: new Date(), resultPayload },
+        });
+        return { status: "synced" as const };
       });
-
-      results.push({ idempotencyKey: op.idempotencyKey, status: "synced" });
+      results.push({ idempotencyKey: op.idempotencyKey, status: outcome.status });
     } catch (err) {
       const conflict = err instanceof OfflineConflictError;
+      const retryable = !conflict && !(err instanceof PermanentOfflineError);
       await db.insert(offlineQueueTable).values({
         deviceId: deviceRecord?.id ?? null,
         operationType: op.operationType,
         idempotencyKey: op.idempotencyKey,
         payload: op.payload,
-        status: conflict ? "conflict" : "failed",
+        status: conflict ? "conflict" : retryable ? "pending" : "failed",
         lastError: String(err),
       }).onConflictDoUpdate({
         target: offlineQueueTable.idempotencyKey,
-        set: { status: conflict ? "conflict" : "failed", lastError: String(err) },
+        set: {
+          status: conflict ? "conflict" : retryable ? "pending" : "failed",
+          lastError: String(err),
+        },
       });
 
       results.push({
         idempotencyKey: op.idempotencyKey,
         status: conflict ? "conflict" : "failed",
         error: err instanceof Error ? err.message : String(err),
+        retryable,
       });
     }
   }
