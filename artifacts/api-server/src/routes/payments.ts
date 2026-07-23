@@ -14,7 +14,7 @@ import {
   businessConfigTable,
   discountsTable,
 } from "@workspace/db";
-import { eq, and, sum, inArray, gte } from "drizzle-orm";
+import { eq, and, sum, inArray, gte, sql } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { idempotency } from "../middlewares/idempotency";
 import { emitToFunction } from "../lib/socket-events";
@@ -252,22 +252,6 @@ router.post("/orders/:id/payments", requireAuth, requireRole(...PAYMENT_ROLES), 
   const { total } = calcMultiRateBreakdown(lineTotals, discountForOrder);
   const totalNum = parseFloat(total);
 
-  const paidResult = await db
-    .select({ paid: sum(paymentsTable.amount) })
-    .from(paymentsTable)
-    .where(and(eq(paymentsTable.orderId, orderId), eq(paymentsTable.status, "completed")));
-
-  const alreadyPaid = parseFloat(paidResult[0]?.paid ?? "0");
-  const remaining = parseFloat((totalNum - alreadyPaid).toFixed(2));
-
-  // Only cash can exceed remaining (for change)
-  if (methodCode !== "cash" && amountNum > remaining + 0.001) {
-    res.status(400).json({
-      error: `El importe excede el pendiente de ${remaining.toFixed(2)} €. Solo el efectivo puede superar el pendiente para dar cambio.`,
-    });
-    return;
-  }
-
   // Get open cash session for this terminal (prefer body.terminal, fallback to header)
   const terminalName = bodyTerminal ?? (req.headers["x-terminal-name"] as string | undefined);
 
@@ -309,16 +293,39 @@ router.post("/orders/:id/payments", requireAuth, requireRole(...PAYMENT_ROLES), 
     return;
   }
 
-  // Insert payment (cap at remaining for non-cash; for cash allow full amount for change calc)
-  const effectiveAmount = methodCode === "cash"
-    ? Math.min(amountNum, remaining + 0.001) <= remaining
-      ? amount
-      : remaining.toFixed(2)  // only charge remaining, return change to customer
-    : amount;
+  let result;
+  try {
+    result = await db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${"order-pay:" + orderId}))`);
 
-  const change = methodCode === "cash" ? Math.max(0, amountNum - remaining) : 0;
+    const [lockedOrder] = await tx
+      .select({ status: ordersTable.status })
+      .from(ordersTable)
+      .where(eq(ordersTable.id, orderId))
+      .for("update");
+    if (!lockedOrder) throw new Error("ORDER_NOT_FOUND");
+    if (lockedOrder.status === "paid") throw new Error("ORDER_ALREADY_PAID");
 
-  const result = await db.transaction(async (tx) => {
+    // Re-read completed payments after acquiring the order lock. Concurrent
+    // partial payments can no longer calculate from the same stale balance.
+    const [paidRow] = await tx
+      .select({ paid: sum(paymentsTable.amount) })
+      .from(paymentsTable)
+      .where(and(eq(paymentsTable.orderId, orderId), eq(paymentsTable.status, "completed")));
+    const alreadyPaid = parseFloat(paidRow?.paid ?? "0");
+    const remaining = parseFloat((totalNum - alreadyPaid).toFixed(2));
+    if (remaining <= 0.001) throw new Error("ORDER_ALREADY_PAID");
+    if (methodCode !== "cash" && amountNum > remaining + 0.001) {
+      throw new Error(`PAYMENT_EXCEEDS_REMAINING:${remaining.toFixed(2)}`);
+    }
+
+    // Cash may exceed the outstanding balance to calculate change, but only
+    // the amount actually owed is persisted.
+    const effectiveAmount = methodCode === "cash" && amountNum > remaining
+      ? remaining.toFixed(2)
+      : amount;
+    const change = methodCode === "cash" ? Math.max(0, amountNum - remaining) : 0;
+
     const [payment] = await tx
       .insert(paymentsTable)
       .values({
@@ -342,9 +349,9 @@ router.post("/orders/:id/payments", requireAuth, requireRole(...PAYMENT_ROLES), 
       const { taxBreakdown, subtotal, taxTotal } = calcMultiRateBreakdown(lineTotals, discountForOrder);
 
       // Copy emisor fields from business_config (snapshot at issuance time)
-      const [bizConfig] = await db.select().from(businessConfigTable).limit(1);
+      const [bizConfig] = await tx.select().from(businessConfigTable).limit(1);
       // Determine payment method name for forma_pago
-      const [pmRow] = await db
+      const [pmRow] = await tx
         .select({ name: paymentMethodsTable.name })
         .from(paymentsTable)
         .innerJoin(paymentMethodsTable, eq(paymentsTable.paymentMethodId, paymentMethodsTable.id))
@@ -394,7 +401,26 @@ router.post("/orders/:id/payments", requireAuth, requireRole(...PAYMENT_ROLES), 
     }
 
     return { payment, ticket, change: change.toFixed(2), newRemaining: Math.max(0, newRemaining) };
-  });
+    });
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : "PAYMENT_FAILED";
+    if (reason === "ORDER_NOT_FOUND") {
+      res.status(404).json({ error: "Pedido no encontrado" });
+      return;
+    }
+    if (reason === "ORDER_ALREADY_PAID") {
+      res.status(409).json({ error: "El pedido ya está cobrado" });
+      return;
+    }
+    if (reason.startsWith("PAYMENT_EXCEEDS_REMAINING:")) {
+      const remaining = reason.split(":")[1];
+      res.status(400).json({
+        error: `El importe excede el pendiente de ${remaining} €. Solo el efectivo puede superar el pendiente para dar cambio.`,
+      });
+      return;
+    }
+    throw error;
+  }
 
   // Auto-issue loyalty points when order is fully paid and has a client
   if (result.ticket && order.clientId) {

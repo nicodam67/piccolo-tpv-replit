@@ -10,6 +10,7 @@
  *   3. Fallback: match by prepZone → printers.type
  */
 
+import { createHash } from "node:crypto";
 import { db } from "@workspace/db";
 import {
   printersTable,
@@ -18,7 +19,7 @@ import {
   businessConfigTable,
   productsTable,
 } from "@workspace/db";
-import { eq, and, inArray } from "drizzle-orm";
+import { eq, and, inArray, sql } from "drizzle-orm";
 import {
   buildKitchenTicket,
   buildAddedTicket,
@@ -28,6 +29,8 @@ import {
   type TicketItem,
   type TemplateConfig,
 } from "./ticket-builder";
+
+type PrintDb = Pick<typeof db, "select" | "insert">;
 
 // Map KDS prepZone values to printer types
 const ZONE_TO_PRINTER_TYPE: Record<string, string> = {
@@ -40,11 +43,11 @@ const ZONE_TO_PRINTER_TYPE: Record<string, string> = {
 };
 
 // ── loadPrintConfig ────────────────────────────────────────────────────────────
-export async function loadPrintConfig(): Promise<{
+export async function loadPrintConfig(executor: PrintDb = db): Promise<{
   printMode: string;
   template: TemplateConfig;
 }> {
-  const [cfg] = await db
+  const [cfg] = await executor
     .select({
       printMode: (businessConfigTable as any).printMode,
       printTemplateConfig: (businessConfigTable as any).printTemplateConfig,
@@ -101,14 +104,28 @@ async function resolvePrintersForItem(
 
 // ── enqueuePrintJob ────────────────────────────────────────────────────────────
 async function enqueuePrintJob(
+  executor: PrintDb,
   printer: typeof printersTable.$inferSelect,
   orderId: string | null,
   documentType: string,
   content: string,
   actorId?: string | null,
   actorName?: string,
-): Promise<void> {
-  await db.insert(printQueueTable).values({
+): Promise<boolean> {
+  const dispatchKey = createHash("sha256")
+    .update([orderId ?? "", printer.id, documentType, content].join("\u001f"))
+    .digest("hex");
+  const [existing] = await executor
+    .select({ id: printQueueTable.id })
+    .from(printQueueTable)
+    .where(and(
+      eq(printQueueTable.printerId, printer.id),
+      sql`${printQueueTable.meta}->>'dispatchKey' = ${dispatchKey}`,
+    ))
+    .limit(1);
+  if (existing) return false;
+
+  await executor.insert(printQueueTable).values({
     printerId: printer.id,
     orderId,
     documentType,
@@ -116,7 +133,9 @@ async function enqueuePrintJob(
     status: "pending",
     actorId: actorId ?? null,
     actorName: actorName ?? "sistema",
+    meta: { dispatchKey },
   });
+  return true;
 }
 
 // ── dispatchKitchenPrint ───────────────────────────────────────────────────────
@@ -132,28 +151,32 @@ export async function dispatchKitchenPrint(params: {
   isAdded?: boolean; // true = print only new items with AÑADIDO header
   actorId?: string;
   actorName?: string;
-}): Promise<void> {
-  const { order, items, isAdded = false, actorId, actorName } = params;
+  executor?: PrintDb;
+}): Promise<number> {
+  const { order, items, isAdded = false, actorId, actorName, executor = db } = params;
 
-  const { printMode, template } = await loadPrintConfig();
-  if (printMode === "kds_only") return;
+  const { printMode, template } = await loadPrintConfig(executor);
+  if (printMode === "kds_only") return 0;
 
-  if (!items.length) return;
+  if (!items.length) return 0;
 
   // Load all active printers
-  const allPrinters = await db
+  const allPrinters = await executor
     .select()
     .from(printersTable)
     .where(eq(printersTable.active, true));
 
-  if (!allPrinters.length) return;
+  if (!allPrinters.length) {
+    if (printMode === "printers_only") throw new Error("NO_ACTIVE_PRINTERS");
+    return 0;
+  }
 
   // Load all routing rules for the products/categories in this order
   const productIds = items.map(i => i.productId);
   const categoryIds = [...new Set(items.map(i => i.categoryId))];
   const allEntityIds = [...productIds, ...categoryIds];
 
-  const routingRows = await db
+  const routingRows = await executor
     .select()
     .from(printRoutingTable)
     .where(inArray(printRoutingTable.entityId, allEntityIds));
@@ -182,22 +205,29 @@ export async function dispatchKitchenPrint(params: {
     }
   }
 
+  if (printerToItems.size === 0 && printMode === "printers_only") {
+    throw new Error("NO_PRINT_ROUTE");
+  }
+
   // Enqueue one print job per printer
+  let enqueued = 0;
   for (const { printer, ticketItems } of printerToItems.values()) {
     const wide = printer.paperWidth === 80;
     const content = isAdded
       ? buildAddedTicket(order, ticketItems, template, wide)
       : buildKitchenTicket(order, ticketItems, template, wide);
 
-    await enqueuePrintJob(
+    if (await enqueuePrintJob(
+      executor,
       printer,
       order.id,
       isAdded ? "added_ticket" : "kitchen_ticket",
       content,
       actorId,
       actorName,
-    );
+    )) enqueued += 1;
   }
+  return enqueued;
 }
 
 // ── dispatchCancellationPrint ──────────────────────────────────────────────────
@@ -227,7 +257,7 @@ export async function dispatchCancellationPrint(params: {
   for (const printer of printers) {
     const wide = printer.paperWidth === 80;
     const content = buildCancellationTicket(order, item, reason, actorName ?? "sistema", template, wide);
-    await enqueuePrintJob(printer, order.id, "cancellation_ticket", content, actorId, actorName);
+    await enqueuePrintJob(db, printer, order.id, "cancellation_ticket", content, actorId, actorName);
   }
 }
 
@@ -259,6 +289,6 @@ export async function dispatchModificationPrint(params: {
   for (const printer of printers) {
     const wide = printer.paperWidth === 80;
     const content = buildModificationTicket(order, before, after, reason, actorName ?? "sistema", template, wide);
-    await enqueuePrintJob(printer, order.id, "modification_ticket", content, actorId, actorName);
+    await enqueuePrintJob(db, printer, order.id, "modification_ticket", content, actorId, actorName);
   }
 }

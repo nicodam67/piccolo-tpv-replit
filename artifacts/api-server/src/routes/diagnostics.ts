@@ -78,10 +78,13 @@ router.get("/diagnostics/status", ...guard, async (_req, res) => {
 
     const fifteenMinAgo = new Date(now.getTime() - 15 * 60000);
     const down = printers.filter(
-      (p) => p.lastStatus !== "ok" || !p.lastStatusAt || new Date(p.lastStatusAt) < fifteenMinAgo
+      (p) => !["ok", "online"].includes(p.lastStatus)
+        || !p.lastStatusAt
+        || new Date(p.lastStatusAt) < fifteenMinAgo
     );
     status["printers"] = {
       ok: down.length === 0,
+      state: down.length === 0 ? "operational" : printers.length > down.length ? "degraded" : "disconnected",
       total: printers.length,
       down: down.length,
       devices: printers.map((p) => ({
@@ -97,13 +100,32 @@ router.get("/diagnostics/status", ...guard, async (_req, res) => {
 
   // Print queue blocked
   try {
-    const [{ count }] = await db.select({ count: sql<number>`count(*)::int` })
-      .from(printQueueTable)
-      .where(eq(printQueueTable.status, "error"));
+    const [[{ count }], [{ recovering }], [{ staleSending }]] = await Promise.all([
+      db.select({ count: sql<number>`count(*)::int` })
+        .from(printQueueTable)
+        .where(eq(printQueueTable.status, "error")),
+      db.select({ recovering: sql<number>`count(*)::int` })
+        .from(printQueueTable)
+        .where(eq(printQueueTable.status, "retrying")),
+      db.select({ staleSending: sql<number>`count(*)::int` })
+        .from(printQueueTable)
+        .where(and(
+          eq(printQueueTable.status, "sending"),
+          lte(printQueueTable.sentAt, new Date(now.getTime() - 2 * 60_000)),
+        )),
+    ]);
+    const errorJobs = Number(count);
+    const recoveringJobs = Number(recovering) + Number(staleSending);
     status["print_queue"] = {
-      ok: Number(count) === 0,
-      errorJobs: Number(count),
-      message: Number(count) === 0 ? "Sin errores" : `${count} trabajos en error`,
+      ok: errorJobs === 0,
+      state: errorJobs > 0 ? "degraded" : recoveringJobs > 0 ? "recovering" : "operational",
+      errorJobs,
+      recoveringJobs,
+      message: errorJobs > 0
+        ? `${errorJobs} trabajos en error`
+        : recoveringJobs > 0
+          ? `${recoveringJobs} trabajos recuperándose`
+          : "Sin errores",
     };
   } catch {
     status["print_queue"] = { ok: true, message: "No disponible" };
@@ -305,7 +327,14 @@ router.post("/diagnostics/maintenance", ...adminOnly, async (req, res) => {
     // Reset stuck 'sending' operations back to 'pending'
     await db.update(offlineQueueTable).set({ status: "pending" })
       .where(eq(offlineQueueTable.status, "sending"));
-    results["repair_queue"] = "Cola de operaciones reparada";
+    await db.update(printQueueTable).set({
+      status: "retrying",
+      lastError: "Recuperado por mantenimiento",
+    }).where(and(
+      eq(printQueueTable.status, "sending"),
+      lte(printQueueTable.sentAt, new Date(Date.now() - 2 * 60_000)),
+    ));
+    results["repair_queue"] = "Colas de operaciones e impresión reparadas";
   }
 
   if (action === "reindex" || action === "all") {

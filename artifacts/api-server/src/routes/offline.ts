@@ -22,8 +22,9 @@ import {
   deviceAuditLogTable,
   ordersTable,
   orderItemsTable,
+  restaurantTablesTable,
 } from "@workspace/db";
-import { eq, and, desc, sql } from "drizzle-orm";
+import { eq, and, desc, inArray, sql } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import crypto from "node:crypto";
 import net from "node:net";
@@ -32,6 +33,8 @@ const router = Router();
 const guard = [requireAuth, requireRole("admin", "manager", "encargado")];
 const adminGuard = [requireAuth, requireRole("admin")];
 const anyAuth = [requireAuth];
+
+class OfflineConflictError extends Error {}
 
 // ─── Probe helpers ────────────────────────────────────────────────────────────
 
@@ -422,14 +425,38 @@ router.post("/offline/sync", ...anyAuth, async (req, res) => {
     });
     return;
   }
+  if (!foundDevice.offlineAutorizado) {
+    res.status(403).json({
+      error: "offline_not_authorized",
+      message: "Este dispositivo no está autorizado para trabajar sin conexión.",
+    });
+    return;
+  }
 
   const deviceRecord = foundDevice;
   await db.update(offlineDevicesTable)
-    .set({ lastSeenAt: new Date(), lastSyncAt: new Date(), status: "online" })
+    .set({ lastSeenAt: new Date(), lastSyncAt: new Date(), status: "syncing" })
     .where(eq(offlineDevicesTable.id, foundDevice.id))
     .catch(() => {});
 
   for (const op of operations) {
+    if (foundDevice.offlinePerms.length > 0 && !foundDevice.offlinePerms.includes(op.operationType)) {
+      results.push({
+        idempotencyKey: op.idempotencyKey,
+        status: "failed",
+        error: "Operación no autorizada para este dispositivo.",
+      });
+      continue;
+    }
+    if (op.operationType === "cash_payment" && !foundDevice.cobroPermitido) {
+      results.push({
+        idempotencyKey: op.idempotencyKey,
+        status: "failed",
+        error: "El dispositivo no tiene permitido realizar cobros.",
+      });
+      continue;
+    }
+
     const [existing] = await db.select().from(offlineQueueTable)
       .where(eq(offlineQueueTable.idempotencyKey, op.idempotencyKey));
 
@@ -445,12 +472,23 @@ router.post("/offline/sync", ...anyAuth, async (req, res) => {
         case "open_table": {
           const tableId = op.payload["tableId"] as string;
           if (tableId) {
-            const [order] = await db.insert(ordersTable).values({
-              tableId,
-              status: "open",
-              guestCount: Number(op.payload["guestCount"] ?? 1),
-              employeeId: op.payload["employeeId"] as string ?? null,
-            }).returning().catch(() => [null]);
+            const order = await db.transaction(async (tx) => {
+              const [table] = await tx.update(restaurantTablesTable)
+                .set({ status: "occupied" })
+                .where(and(
+                  eq(restaurantTablesTable.id, tableId),
+                  inArray(restaurantTablesTable.status, ["free", "reserved", "pendiente_limpieza"]),
+                ))
+                .returning({ id: restaurantTablesTable.id });
+              if (!table) throw new OfflineConflictError("La mesa ya no está disponible.");
+              const [created] = await tx.insert(ordersTable).values({
+                tableId,
+                status: "open",
+                guestCount: Number(op.payload["guestCount"] ?? 1),
+                employeeId: op.payload["employeeId"] as string ?? null,
+              }).returning();
+              return created;
+            });
             resultPayload = { orderId: order?.id ?? null };
           }
           break;
@@ -473,10 +511,11 @@ router.post("/offline/sync", ...anyAuth, async (req, res) => {
         case "cash_payment":
         case "clock_in":
         case "clock_out":
-          resultPayload = { acknowledged: true, note: "Operación registrada para procesamiento" };
-          break;
+          throw new Error(
+            `${op.operationType} requiere conexión y no puede marcarse como completada sin ejecutarse.`,
+          );
         default:
-          resultPayload = { note: "Tipo de operación desconocido" };
+          throw new Error(`Tipo de operación no soportado: ${op.operationType}`);
       }
 
       await db.insert(offlineQueueTable).values({
@@ -495,19 +534,24 @@ router.post("/offline/sync", ...anyAuth, async (req, res) => {
 
       results.push({ idempotencyKey: op.idempotencyKey, status: "synced" });
     } catch (err) {
+      const conflict = err instanceof OfflineConflictError;
       await db.insert(offlineQueueTable).values({
         deviceId: deviceRecord?.id ?? null,
         operationType: op.operationType,
         idempotencyKey: op.idempotencyKey,
         payload: op.payload,
-        status: "failed",
+        status: conflict ? "conflict" : "failed",
         lastError: String(err),
       }).onConflictDoUpdate({
         target: offlineQueueTable.idempotencyKey,
-        set: { status: "failed", lastError: String(err) },
+        set: { status: conflict ? "conflict" : "failed", lastError: String(err) },
       });
 
-      results.push({ idempotencyKey: op.idempotencyKey, status: "failed", error: String(err) });
+      results.push({
+        idempotencyKey: op.idempotencyKey,
+        status: conflict ? "conflict" : "failed",
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
   }
 
@@ -522,9 +566,24 @@ router.post("/offline/sync", ...anyAuth, async (req, res) => {
           eq(offlineQueueTable.status, "pending"),
         ));
       await db.update(offlineDevicesTable)
-        .set({ pendingOps: Number(count) })
+        .set({ pendingOps: Number(count), status: "online", lastSyncAt: new Date() })
         .where(eq(offlineDevicesTable.id, device.id));
     }
+  }
+
+  if (operations.length > 0) {
+    await db.insert(techEventsTable).values({
+      level: results.some((result) => result.status === "failed") ? "warning" : "info",
+      module: "offline",
+      message: "Recuperación automática de operaciones offline completada",
+      data: {
+        deviceId: foundDevice.id,
+        total: operations.length,
+        synced: results.filter((result) => ["synced", "skipped"].includes(result.status)).length,
+        conflicts: results.filter((result) => result.status === "conflict").length,
+        failed: results.filter((result) => result.status === "failed").length,
+      },
+    }).catch(() => {});
   }
 
   res.json({ results });

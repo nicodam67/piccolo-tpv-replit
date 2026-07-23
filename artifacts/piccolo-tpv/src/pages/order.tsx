@@ -361,10 +361,7 @@ export default function OrderPage() {
   useEffect(() => {
     if (!order?.id && !employeeId) return;
     const socket = connectAuthenticatedSocket();
-
-    // Track connection state for the reconnecting indicator.
-    socket.on('connect', () => setSocketConnected(true));
-    socket.on('disconnect', () => setSocketConnected(false));
+    let hasConnected = false;
 
     // After any reconnect, suppress the "remotely updated" banner (it's our own
     // reconnect) and re-fetch fresh data.
@@ -375,7 +372,14 @@ export default function OrderPage() {
       queryClient.invalidateQueries({ queryKey: getGetTableOrderQueryKey(tableId) });
       queryClient.invalidateQueries({ queryKey: getGetUnreadNotificationsQueryKey() });
     };
-    socket.on('reconnect', handleReconnect);
+    // Socket.IO v4 emits reconnect lifecycle events on the Manager. The Socket
+    // itself emits "connect" again, so use that portable signal.
+    socket.on('connect', () => {
+      setSocketConnected(true);
+      if (hasConnected) handleReconnect();
+      hasConnected = true;
+    });
+    socket.on('disconnect', () => setSocketConnected(false));
 
     if (order?.id) {
       socket.on('waiter:order-ready', (data: any) => {

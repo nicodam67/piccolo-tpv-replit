@@ -51,6 +51,7 @@ router.post(
   "/cash-sessions/open",
   requireAuth,
   requireRole(...CASH_MANAGER_ROLES),
+  idempotency,
   async (req, res): Promise<void> => {
     const employeeId = (req as any).user?.id as string;
     const {

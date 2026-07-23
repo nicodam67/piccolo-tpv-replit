@@ -571,14 +571,8 @@ router.post("/orders/:orderId/send", requireAuth, idempotency, async (req, res):
   const printMode = (businessCfg?.printMode ?? "kds_only") as "kds_only" | "printers_only" | "both";
   const sendToKds = printMode !== "printers_only";
 
-  // Capture sentAt BEFORE the transaction so isAdded is correct on first send.
-  // After the transaction, sentAt is always non-null, so deriving it post-update
-  // would wrongly flag every first send as "AÑADIDO".
-  const [preUpdateOrder] = await db
-    .select({ sentAt: ordersTable.sentAt })
-    .from(ordersTable)
-    .where(eq(ordersTable.id, orderId));
-  const wasAlreadySent = preUpdateOrder?.sentAt !== null;
+  // Derived again under the order lock so concurrent sends cannot disagree.
+  let wasAlreadySent = false;
 
   let draftItems = await db
     .select()
@@ -614,12 +608,13 @@ router.post("/orders/:orderId/send", requireAuth, idempotency, async (req, res):
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${"order-send:" + orderId}))`);
 
     const [lockedOrder] = await tx
-      .select({ status: ordersTable.status })
+      .select({ status: ordersTable.status, sentAt: ordersTable.sentAt })
       .from(ordersTable)
       .where(eq(ordersTable.id, orderId))
       .for("update");
     if (!lockedOrder) throw new Error("ORDER_NOT_FOUND");
     if (lockedOrder.status === "bill_requested") throw new Error("BILL_REQUESTED");
+    wasAlreadySent = lockedOrder.sentAt !== null;
 
     // Re-read drafts only after acquiring the lock. A concurrent request that
     // already sent them will observe an empty set and cannot duplicate effects.
@@ -789,8 +784,57 @@ router.post("/orders/:orderId/send", requireAuth, idempotency, async (req, res):
       .where(eq(ordersTable.id, orderId));
     if (!updatedOrder) throw new Error("ORDER_NOT_FOUND");
 
-    // Persist the exact successful response in the SAME transaction as KDS and
-    // stock side effects. A process crash after COMMIT can still be replayed.
+    // Persist physical-print jobs in the SAME transaction as KDS, stock and the
+    // order state. In printers_only mode, a missing printer/route aborts safely
+    // instead of acknowledging a command that cannot reach the kitchen.
+    const { dispatchKitchenPrint } = await import("../lib/print-dispatch");
+    const printItems = draftItems.map((row) => {
+      const item = row.order_items;
+      const product = row.products;
+      const modifiers = (modsByItem.get(item.id) ?? []).map((modifier) => modifier.modifierName);
+      return {
+        productId: product.id,
+        categoryId: product.categoryId,
+        prepZone: product.prepZone,
+        ticketItem: {
+          quantity: item.quantity,
+          name: product.name,
+          formatName: item.formatName,
+          notes: item.notes,
+          allergyNote: item.allergyNote,
+          hasAllergy: item.hasAllergy,
+          modifiers,
+        },
+      };
+    });
+    const tableName = updatedOrder.tableId
+      ? (await tx.select({ name: restaurantTablesTable.name })
+          .from(restaurantTablesTable)
+          .where(eq(restaurantTablesTable.id, updatedOrder.tableId)))[0]?.name
+      : null;
+    await dispatchKitchenPrint({
+      order: {
+        id: orderId,
+        tableName: tableName ?? null,
+        orderNumber: updatedOrder.orderNumber ?? null,
+        orderType: updatedOrder.orderType,
+        deliveryType: updatedOrder.deliveryType,
+        clientName: updatedOrder.clientName,
+        guestCount: updatedOrder.guestCount,
+        employeeName: req.user?.name,
+        estimatedReadyAt: updatedOrder.estimatedReadyAt,
+        sentAt: updatedOrder.sentAt,
+        createdAt: updatedOrder.createdAt,
+      },
+      items: printItems,
+      isAdded: wasAlreadySent,
+      actorId: req.user?.id,
+      actorName: req.user?.name,
+      executor: tx,
+    });
+
+    // Persist the exact successful response in the SAME transaction as every
+    // durable side effect. A process crash after COMMIT can still be replayed.
     const requestKey = req.headers["idempotency-key"];
     if (typeof requestKey === "string" && req.user?.id) {
       await tx
@@ -836,60 +880,6 @@ router.post("/orders/:orderId/send", requireAuth, idempotency, async (req, res):
     }
     emitRefresh(orderId, req.user?.name);
   } catch { /* ignore */ }
-
-  // ── Print dispatch (non-blocking, does not affect KDS flow) ──────────────
-  try {
-    const { dispatchKitchenPrint } = await import("../lib/print-dispatch");
-    // isAdded is true only when the order had already been sent BEFORE this
-    // request — derived from the pre-transaction snapshot captured above.
-    const isAdded = wasAlreadySent;
-
-    const printItems = draftItems.map(row => {
-      const item = row.order_items;
-      const product = row.products;
-      const mods = (modsByItem.get(item.id) ?? []).map(m => m.modifierName);
-      return {
-        productId: product.id,
-        categoryId: product.categoryId,
-        prepZone: product.prepZone,
-        ticketItem: {
-          quantity: item.quantity,
-          name: product.name,
-          formatName: item.formatName,
-          notes: item.notes,
-          allergyNote: item.allergyNote,
-          hasAllergy: item.hasAllergy,
-          modifiers: mods,
-        },
-      };
-    });
-
-    const tableName = updated?.tableId
-      ? (await db.select({ name: restaurantTablesTable.name })
-          .from(restaurantTablesTable)
-          .where(eq(restaurantTablesTable.id, updated.tableId)))[0]?.name
-      : null;
-
-    await dispatchKitchenPrint({
-      order: {
-        id: orderId,
-        tableName: tableName ?? null,
-        orderNumber: updated?.orderNumber ?? null,
-        orderType: updated?.orderType,
-        deliveryType: updated?.deliveryType,
-        clientName: updated?.clientName,
-        guestCount: updated?.guestCount,
-        employeeName: req.user?.name,
-        estimatedReadyAt: updated?.estimatedReadyAt,
-        sentAt: updated?.sentAt,
-        createdAt: updated?.createdAt,
-      },
-      items: printItems,
-      isAdded,
-      actorId: req.user?.id,
-      actorName: req.user?.name,
-    });
-  } catch { /* print errors never fail the order send */ }
 
   res.json(updated);
 });

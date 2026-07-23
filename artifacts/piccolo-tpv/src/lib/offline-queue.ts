@@ -74,6 +74,14 @@ export async function enqueueOperation(
   const ts = Date.now();
   const key = buildIdempotencyKey(operationType, entityId, ts);
   await offlineOps.enqueue({ idempotencyKey: key, operationType, payload });
+  if ('serviceWorker' in navigator) {
+    void navigator.serviceWorker.ready.then(async (registration) => {
+      const backgroundSync = (registration as ServiceWorkerRegistration & {
+        sync?: { register: (tag: string) => Promise<void> };
+      }).sync;
+      await backgroundSync?.register('piccolo-offline-sync');
+    }).catch(() => {});
+  }
   return key;
 }
 
@@ -101,7 +109,7 @@ export async function syncQueue(): Promise<{
 
     // Mark as sending
     for (const op of batch) {
-      await offlineOps.update(op.idempotencyKey, { status: 'sending' });
+      await offlineOps.update(op.idempotencyKey, { status: 'sending', retryable: true });
     }
 
     try {
@@ -138,6 +146,7 @@ export async function syncQueue(): Promise<{
         for (const op of batch) {
           await offlineOps.update(op.idempotencyKey, {
             status: 'failed',
+            retryable: false,
             lastError: `HTTP 403 ${body.error ?? 'forbidden'}`,
             attempts: op.attempts + 1,
           });
@@ -147,9 +156,11 @@ export async function syncQueue(): Promise<{
       }
 
       if (!res.ok) {
+        const transient = [408, 425, 429, 500, 502, 503, 504].includes(res.status);
         for (const op of batch) {
           await offlineOps.update(op.idempotencyKey, {
-            status: 'failed',
+            status: transient ? 'pending' : 'failed',
+            retryable: transient,
             lastError: `HTTP ${res.status}`,
             attempts: op.attempts + 1,
           });
@@ -171,6 +182,7 @@ export async function syncQueue(): Promise<{
         if (!op) continue;
         await offlineOps.update(r.idempotencyKey, {
           status: r.status === 'skipped' ? 'synced' : r.status,
+          retryable: r.status === 'failed' ? false : undefined,
           lastError: r.error,
           attempts: op.attempts + 1,
         });
@@ -181,7 +193,8 @@ export async function syncQueue(): Promise<{
     } catch (err) {
       for (const op of batch) {
         await offlineOps.update(op.idempotencyKey, {
-          status: 'failed',
+          status: 'pending',
+          retryable: true,
           lastError: String(err),
           attempts: op.attempts + 1,
         });

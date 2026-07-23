@@ -12,7 +12,7 @@
  *
  * Inactivity: 20 s of no interaction resets to home.
  */
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Loader2, WifiOff } from "lucide-react";
 import TabletHome, { type NfcClockStatus } from "./TabletHome";
 import TabletPinKeypad from "./TabletPinKeypad";
@@ -70,6 +70,7 @@ export default function TabletApp() {
   const [clockStatus, setClockStatus] = useState<ClockStatus | null>(null);
   const [clockProofs, setClockProofs] = useState<Record<Action, string> | null>(null);
   const [confirmation, setConfirmation] = useState<{ action: string; time: string; name: string } | null>(null);
+  const clockAttemptKeys = useRef(new Map<string, string>());
 
   // ── Online indicator ───────────────────────────────────────────────────────
   const [online, setOnline] = useState(navigator.onLine);
@@ -187,7 +188,9 @@ export default function TabletApp() {
   // ── Clock action ───────────────────────────────────────────────────────────
   async function onAction(action: Action) {
     if (!selectedEmployee || !deviceToken || !clockProofs?.[action]) return;
-    const idem = `${selectedEmployee.id}-${action}-${new Date().toISOString().slice(0, 16)}`;
+    const proof = clockProofs[action];
+    const idem = clockAttemptKeys.current.get(proof) ?? crypto.randomUUID();
+    clockAttemptKeys.current.set(proof, idem);
     const r = await fetch(`${BASE}/api/tablet/clock`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "Idempotency-Key": idem },
@@ -195,11 +198,12 @@ export default function TabletApp() {
         employeeId: selectedEmployee.id,
         action,
         deviceToken,
-        proof: clockProofs[action],
+        proof,
       }),
     });
     const data = await r.json();
     if (r.ok && data.success) {
+      clockAttemptKeys.current.delete(proof);
       setClockProofs(null);
       const rawTime = data.serverTime ?? new Date().toISOString();
       const t = new Date(rawTime).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
