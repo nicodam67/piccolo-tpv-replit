@@ -3,6 +3,7 @@ import {
   generateCrmQrToken,
   normalizeCrmEmail,
   normalizeCrmPhone,
+  resolveCrmClientForReservation,
   splitCrmDisplayName,
 } from "./crm-client-service";
 
@@ -26,5 +27,15 @@ describe("CRM canonical customer identity", () => {
 
   it("uses the existing CRM QR token format", () => {
     expect(generateCrmQrToken()).toMatch(/^CL-[A-Z2-9]{4}-[A-Z2-9]{4}$/);
+  });
+
+  it("requires a stable identity before creating a reservation client", async () => {
+    await expect(
+      resolveCrmClientForReservation({
+        nombre: "Cliente sin contacto",
+        telefono: "",
+        email: "",
+      }),
+    ).rejects.toThrow(/teléfono, email o un cliente CRM/i);
   });
 });
