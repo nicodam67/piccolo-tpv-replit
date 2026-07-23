@@ -75,3 +75,4 @@ curl -sf "http://localhost:${API_PORT}/api/healthz" >/dev/null || {
 }
 
 pnpm --filter @workspace/piccolo-tpv run test:e2e
+pnpm --filter @workspace/api-server run certify:performance
