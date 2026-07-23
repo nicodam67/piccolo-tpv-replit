@@ -9,7 +9,9 @@
     "apiWrapperCalls": 205,
     "convexCalls": 95,
     "manualFilesPending": 95,
-    "justifiedAdapterFiles": 9
+    "justifiedAdapterFiles": 9,
+    "phase1ConsumerFiles": 6,
+    "phase1MigratedHooks": 24
   },
   "historicalManualHooks": [
     "useActivateDocumentTemplate",
@@ -2858,6 +2860,64 @@
         "convex": 3
       },
       "classification": "generated-client"
+    }
+  ],
+  "phase1Consumers": [
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/admin-kds-stations.tsx",
+      "hooks": [
+        "useGetKdsStations",
+        "useCreateKdsStation",
+        "useUpdateKdsStation",
+        "useDeleteKdsStation",
+        "usePingKdsStation"
+      ]
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/configuracion.tsx",
+      "hooks": [
+        "useGetAlertConfig",
+        "usePatchAlertConfig"
+      ]
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/kds.tsx",
+      "hooks": [
+        "useUpdateKitchenTaskStatus",
+        "useResendKitchenTask",
+        "useGetKdsHistory"
+      ]
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/order.tsx",
+      "hooks": [
+        "useUpdateOrder",
+        "useUpdateOrderItem",
+        "useDuplicateOrderItem",
+        "useGetPrefacturaStatus",
+        "useGetOrderAudit"
+      ]
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/prefactura.tsx",
+      "hooks": [
+        "useCreatePrefacturaPrint",
+        "useGetPrefacturaStatus"
+      ]
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/tables.tsx",
+      "hooks": [
+        "useGetOccupationSummary",
+        "useGetAlertConfig",
+        "useGetTableHistory",
+        "useCleanTable",
+        "useBlockTable",
+        "useTransferTable",
+        "useMergeTables",
+        "useSeparateTable",
+        "useTransferWaiter"
+      ]
     }
   ]
 }

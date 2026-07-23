@@ -15,6 +15,14 @@ function walk(directory: string): string[] {
 }
 
 const files = roots.flatMap(walk).filter((file) => /\.(?:ts|tsx|js)$/.test(file));
+const phase1Consumers = files.flatMap((file) => {
+  const source = fs.readFileSync(file, "utf8");
+  if (!source.includes("@workspace/api-client-react/phase1")) return [];
+  const imports = [...source.matchAll(/import\s*\{([^}]*)\}\s*from\s*['"]@workspace\/api-client-react\/phase1['"]/g)]
+    .flatMap((match) => match[1]!.split(",").map((name) => name.trim()))
+    .filter((name) => /^use[A-Z]/.test(name));
+  return [{ file: path.relative(root, file), hooks: imports }];
+});
 const rows = files.flatMap((file) => {
   const source = fs.readFileSync(file, "utf8");
   const mechanisms = {
@@ -64,12 +72,15 @@ const totals = {
   convexCalls: rows.reduce((sum, row) => sum + row.mechanisms.convex, 0),
   manualFilesPending: rows.filter((row) => row.classification === "manual-http-to-migrate").length,
   justifiedAdapterFiles: rows.filter((row) => row.classification === "justified-adapter").length,
+  phase1ConsumerFiles: phase1Consumers.length,
+  phase1MigratedHooks: new Set(phase1Consumers.flatMap((row) => row.hooks)).size,
 };
 const report = {
   totals,
   historicalManualHooks: manualGeneratedHooks.sort(),
   uncontractedManualHooks: uncontractedManualHooks.sort(),
   consumers: rows,
+  phase1Consumers,
 };
 fs.writeFileSync(
   path.join(root, "artifacts/api-client-inventory.json"),
@@ -84,7 +95,7 @@ const adapters = rows.filter((row) => row.classification === "justified-adapter"
   .join("\n");
 fs.writeFileSync(path.join(root, "docs/API-CLIENT-MIGRATION.md"), `# Migración de clientes API
 
-Inventario automático de Entrega 40.
+Inventario automático acumulado de clientes API.
 
 ## Totales iniciales
 
@@ -99,7 +110,8 @@ Inventario automático de Entrega 40.
 
 ## Estado de migración
 
-- Migrados en Entrega 40: 0
+- Hooks migrados al cliente parcial de Entrega 41: ${totals.phase1MigratedHooks}
+- Archivos consumidores migrados: ${totals.phase1ConsumerFiles}
 - Eliminados por evidencia de obsolescencia: 0
 - Adaptadores conservados: ${totals.justifiedAdapterFiles}
 - Pendientes: ${totals.manualFilesPending}

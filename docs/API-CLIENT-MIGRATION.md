@@ -1,6 +1,6 @@
 # Migración de clientes API
 
-Inventario automático de Entrega 40.
+Inventario automático acumulado de clientes API.
 
 ## Totales iniciales
 
@@ -15,7 +15,8 @@ Inventario automático de Entrega 40.
 
 ## Estado de migración
 
-- Migrados en Entrega 40: 0
+- Hooks migrados al cliente parcial de Entrega 41: 24
+- Archivos consumidores migrados: 6
 - Eliminados por evidencia de obsolescencia: 0
 - Adaptadores conservados: 9
 - Pendientes: 95
