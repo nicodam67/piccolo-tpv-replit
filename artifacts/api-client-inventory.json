@@ -1,0 +1,2878 @@
+{
+  "totals": {
+    "filesWithHttp": 233,
+    "generatedHookExports": 202,
+    "historicalManualHooks": 160,
+    "uncontractedManualHooks": 135,
+    "fetchCalls": 84,
+    "customFetchCalls": 84,
+    "apiWrapperCalls": 210,
+    "convexCalls": 95,
+    "manualFilesPending": 96,
+    "justifiedAdapterFiles": 9
+  },
+  "historicalManualHooks": [
+    "useActivateDocumentTemplate",
+    "useAddDiscount",
+    "useAddSubrecipeItem",
+    "useAddTip",
+    "useArriveReservation",
+    "useAssignProductModifierGroups",
+    "useBlockTable",
+    "useCancelAdminVerifactuRecord",
+    "useCancelCashMachinePayment",
+    "useCleanTable",
+    "useCreateAdminCategory",
+    "useCreateAdminIngredient",
+    "useCreateAdminModifier",
+    "useCreateAdminModifierGroup",
+    "useCreateAdminProduct",
+    "useCreateAdminVerifactuRecord",
+    "useCreateCashMachineRefund",
+    "useCreateClient",
+    "useCreateCrmClient",
+    "useCreateCrmGiftCard",
+    "useCreateCrmPromotion",
+    "useCreateDocumentTemplate",
+    "useCreateGoodsReceipt",
+    "useCreateInvoice",
+    "useCreateOrderSplits",
+    "useCreatePrefacturaPrint",
+    "useCreatePrinterConfig",
+    "useCreateProductFormatFull",
+    "useCreatePurchaseOrder",
+    "useCreateRecipeLine",
+    "useCreateReprint",
+    "useCreateReservation",
+    "useCreateStockMovement",
+    "useCreateSubcategory",
+    "useCreateSubrecipe",
+    "useCreateSupplier",
+    "useDeleteAdminCategory",
+    "useDeleteAdminIngredient",
+    "useDeleteAdminModifier",
+    "useDeleteAdminModifierGroup",
+    "useDeleteAdminProduct",
+    "useDeleteDocumentTemplate",
+    "useDeletePrinterConfig",
+    "useDeleteProductFormat",
+    "useDeleteRecipeLine",
+    "useDeleteReservation",
+    "useDeleteSubcategory",
+    "useDeleteSubrecipe",
+    "useDeleteSubrecipeItem",
+    "useDuplicateDocumentTemplate",
+    "useDuplicateOrderItem",
+    "useGetAdminBranding",
+    "useGetAdminCategories",
+    "useGetAdminCostAlerts",
+    "useGetAdminCostHistory",
+    "useGetAdminExpiringLots",
+    "useGetAdminGoodsReceipts",
+    "useGetAdminIngredients",
+    "useGetAdminModifierGroups",
+    "useGetAdminProducts",
+    "useGetAdminProfitability",
+    "useGetAdminProfitabilityByCategory",
+    "useGetAdminProfitabilityReports",
+    "useGetAdminPurchaseOrders",
+    "useGetAdminPurchaseReportsBySupplier",
+    "useGetAdminSubrecipe",
+    "useGetAdminSubrecipes",
+    "useGetAdminSupplierInvoices",
+    "useGetAdminSuppliers",
+    "useGetAdminSuppliersId",
+    "useGetAdminVerifactuConfig",
+    "useGetAdminVerifactuRecords",
+    "useGetAdminVerifactuStatus",
+    "useGetAlertConfig",
+    "useGetBusinessConfig",
+    "useGetCashMachineCashLevels",
+    "useGetCashMachineConfig",
+    "useGetCashMachinePayment",
+    "useGetCashMachineSessionSummary",
+    "useGetCashMachineStatus",
+    "useGetCashSessionHistory",
+    "useGetCashSessionReport",
+    "useGetCashSessionXReport",
+    "useGetClients",
+    "useGetCrmClient",
+    "useGetCrmClientHistory",
+    "useGetCrmClients",
+    "useGetCrmGiftCards",
+    "useGetCrmLoyaltyConfig",
+    "useGetCrmPromotions",
+    "useGetCrmReports",
+    "useGetDocumentAuditLog",
+    "useGetDocumentTemplates",
+    "useGetInvoice",
+    "useGetKdsHistory",
+    "useGetOccupationSummary",
+    "useGetOrderAudit",
+    "useGetOrderDiscounts",
+    "useGetOrderSplits",
+    "useGetPaymentMethods",
+    "useGetPrefacturaStatus",
+    "useGetPrinterConfigs",
+    "useGetProductAvailability",
+    "useGetProductFormats",
+    "useGetProductRecipe",
+    "useGetPublicBranding",
+    "useGetReservations",
+    "useGetStockAlerts",
+    "useGetStockMovements",
+    "useGetStockReports",
+    "useGetTableHistory",
+    "useImportProducts",
+    "useInventoryCount",
+    "useIssueCrmPoints",
+    "useMarkSplitGroupPaid",
+    "useMergeTables",
+    "useMoveItems",
+    "usePatchAdminBranding",
+    "usePatchAlertConfig",
+    "usePatchReservation",
+    "usePayWithCrmGiftCard",
+    "useRechargeCrmGiftCard",
+    "useRectifyInvoice",
+    "useRedeemCrmPoints",
+    "useReopenCashSession",
+    "useResendKitchenTask",
+    "useRetryAdminVerifactuRecord",
+    "useSendAdminVerifactuRecord",
+    "useSeparateTable",
+    "useSimulatePrice",
+    "useStartCashMachinePayment",
+    "useStockIn",
+    "useTestCashMachineConnection",
+    "useTransferTable",
+    "useTransferWaiter",
+    "useUpdateAdminCategory",
+    "useUpdateAdminIngredient",
+    "useUpdateAdminModifier",
+    "useUpdateAdminModifierGroup",
+    "useUpdateAdminProduct",
+    "useUpdateAdminProductTaxRate",
+    "useUpdateAdminVerifactuConfig",
+    "useUpdateBusinessConfig",
+    "useUpdateCashMachineConfig",
+    "useUpdateClient",
+    "useUpdateCrmClient",
+    "useUpdateCrmLoyaltyConfig",
+    "useUpdateDocumentTemplate",
+    "useUpdateOrder",
+    "useUpdateOrderItem",
+    "useUpdatePrinterConfig",
+    "useUpdateProductFormatFull",
+    "useUpdateProductFormatTaxRate",
+    "useUpdateRecipeLine",
+    "useUpdateSubcategory",
+    "useUpdateSubrecipe",
+    "useUpdateSubrecipeItem",
+    "useValidateCrmPromotion",
+    "useVerifyAdminVerifactuChain",
+    "useVoidPayment"
+  ],
+  "uncontractedManualHooks": [
+    "useAddDiscount",
+    "useAddSubrecipeItem",
+    "useAddTip",
+    "useArriveReservation",
+    "useAssignProductModifierGroups",
+    "useBlockTable",
+    "useCancelAdminVerifactuRecord",
+    "useCancelCashMachinePayment",
+    "useCleanTable",
+    "useCreateAdminCategory",
+    "useCreateAdminIngredient",
+    "useCreateAdminModifier",
+    "useCreateAdminModifierGroup",
+    "useCreateAdminProduct",
+    "useCreateAdminVerifactuRecord",
+    "useCreateCashMachineRefund",
+    "useCreateCrmClient",
+    "useCreateCrmGiftCard",
+    "useCreateCrmPromotion",
+    "useCreateGoodsReceipt",
+    "useCreateOrderSplits",
+    "useCreatePrefacturaPrint",
+    "useCreateProductFormatFull",
+    "useCreatePurchaseOrder",
+    "useCreateRecipeLine",
+    "useCreateReservation",
+    "useCreateStockMovement",
+    "useCreateSubcategory",
+    "useCreateSubrecipe",
+    "useCreateSupplier",
+    "useDeleteAdminCategory",
+    "useDeleteAdminIngredient",
+    "useDeleteAdminModifier",
+    "useDeleteAdminModifierGroup",
+    "useDeleteAdminProduct",
+    "useDeleteProductFormat",
+    "useDeleteRecipeLine",
+    "useDeleteReservation",
+    "useDeleteSubcategory",
+    "useDeleteSubrecipe",
+    "useDeleteSubrecipeItem",
+    "useGetAdminBranding",
+    "useGetAdminCategories",
+    "useGetAdminCostAlerts",
+    "useGetAdminCostHistory",
+    "useGetAdminExpiringLots",
+    "useGetAdminGoodsReceipts",
+    "useGetAdminIngredients",
+    "useGetAdminModifierGroups",
+    "useGetAdminProducts",
+    "useGetAdminProfitability",
+    "useGetAdminProfitabilityByCategory",
+    "useGetAdminProfitabilityReports",
+    "useGetAdminPurchaseOrders",
+    "useGetAdminPurchaseReportsBySupplier",
+    "useGetAdminSubrecipe",
+    "useGetAdminSubrecipes",
+    "useGetAdminSupplierInvoices",
+    "useGetAdminSuppliers",
+    "useGetAdminSuppliersId",
+    "useGetAdminVerifactuConfig",
+    "useGetAdminVerifactuRecords",
+    "useGetAdminVerifactuStatus",
+    "useGetAlertConfig",
+    "useGetCashMachineCashLevels",
+    "useGetCashMachineConfig",
+    "useGetCashMachinePayment",
+    "useGetCashMachineSessionSummary",
+    "useGetCashMachineStatus",
+    "useGetCashSessionHistory",
+    "useGetCashSessionReport",
+    "useGetCashSessionXReport",
+    "useGetCrmClient",
+    "useGetCrmClientHistory",
+    "useGetCrmClients",
+    "useGetCrmGiftCards",
+    "useGetCrmLoyaltyConfig",
+    "useGetCrmPromotions",
+    "useGetCrmReports",
+    "useGetKdsHistory",
+    "useGetOccupationSummary",
+    "useGetOrderDiscounts",
+    "useGetOrderSplits",
+    "useGetPaymentMethods",
+    "useGetPrefacturaStatus",
+    "useGetProductAvailability",
+    "useGetProductRecipe",
+    "useGetPublicBranding",
+    "useGetReservations",
+    "useGetStockAlerts",
+    "useGetStockMovements",
+    "useGetStockReports",
+    "useGetTableHistory",
+    "useImportProducts",
+    "useInventoryCount",
+    "useIssueCrmPoints",
+    "useMarkSplitGroupPaid",
+    "useMergeTables",
+    "useMoveItems",
+    "usePatchAdminBranding",
+    "usePatchAlertConfig",
+    "usePatchReservation",
+    "usePayWithCrmGiftCard",
+    "useRechargeCrmGiftCard",
+    "useRedeemCrmPoints",
+    "useReopenCashSession",
+    "useResendKitchenTask",
+    "useRetryAdminVerifactuRecord",
+    "useSendAdminVerifactuRecord",
+    "useSeparateTable",
+    "useSimulatePrice",
+    "useStartCashMachinePayment",
+    "useStockIn",
+    "useTestCashMachineConnection",
+    "useTransferTable",
+    "useTransferWaiter",
+    "useUpdateAdminCategory",
+    "useUpdateAdminIngredient",
+    "useUpdateAdminModifier",
+    "useUpdateAdminModifierGroup",
+    "useUpdateAdminProduct",
+    "useUpdateAdminProductTaxRate",
+    "useUpdateAdminVerifactuConfig",
+    "useUpdateCashMachineConfig",
+    "useUpdateCrmClient",
+    "useUpdateCrmLoyaltyConfig",
+    "useUpdateProductFormatFull",
+    "useUpdateProductFormatTaxRate",
+    "useUpdateRecipeLine",
+    "useUpdateSubcategory",
+    "useUpdateSubrecipe",
+    "useUpdateSubrecipeItem",
+    "useValidateCrmPromotion",
+    "useVerifyAdminVerifactuChain",
+    "useVoidPayment"
+  ],
+  "consumers": [
+    {
+      "file": "artifacts/piccolo-tpv/src/App.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 1,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/components/EditItemModal.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 8,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/components/OfflineBanner.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 1,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/components/auth/ManagerPinModal.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 1,
+        "generatedHooks": 5,
+        "convex": 0
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/components/auth/ProtectedRoute.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 3,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/components/auth/RequirePermission.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 3,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/components/auth/RequireRole.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 3,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/components/ui/calendar.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 1,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/components/ui/carousel.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 15,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/components/ui/chart.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 6,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/components/ui/field.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 1,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/components/ui/form.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 8,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/components/ui/input-otp.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 1,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/components/ui/sidebar.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 13,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/components/ui/sonner.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 1,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/components/ui/toaster.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 1,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/components/ui/toggle-group.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 1,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/hooks/use-manager-auth.ts",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 4,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/hooks/use-mobile.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 2,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/hooks/use-scroll-guard.ts",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 5,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/hooks/use-toast.ts",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 2,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/hooks/useNetworkStatus.ts",
+      "mechanisms": {
+        "fetch": 1,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 11,
+        "convex": 0
+      },
+      "classification": "justified-adapter"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/lib/api-client.ts",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 2,
+        "generatedHooks": 0,
+        "convex": 0
+      },
+      "classification": "justified-adapter"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/lib/offline-queue.ts",
+      "mechanisms": {
+        "fetch": 2,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 0,
+        "convex": 0
+      },
+      "classification": "justified-adapter"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/CartCheckout.tsx",
+      "mechanisms": {
+        "fetch": 3,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 11,
+        "convex": 0
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/admin-almacenes.tsx",
+      "mechanisms": {
+        "fetch": 4,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 6,
+        "convex": 3
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/admin-categorias-ingredientes.tsx",
+      "mechanisms": {
+        "fetch": 4,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 6,
+        "convex": 3
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/admin-cola-impresion.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 1,
+        "apiWrapper": 0,
+        "generatedHooks": 6,
+        "convex": 0
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/admin-dashboard.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 1,
+        "apiWrapper": 0,
+        "generatedHooks": 13,
+        "convex": 0
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/admin-datos-demo.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 4,
+        "convex": 1
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/admin-impresoras.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 1,
+        "apiWrapper": 0,
+        "generatedHooks": 9,
+        "convex": 0
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/admin-instalacion-qr.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 1,
+        "generatedHooks": 11,
+        "convex": 0
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/admin-instalacion.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 5,
+        "apiWrapper": 0,
+        "generatedHooks": 22,
+        "convex": 6
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/admin-kds-stations.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 5,
+        "generatedHooks": 7,
+        "convex": 0
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/admin-mermas.tsx",
+      "mechanisms": {
+        "fetch": 4,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 6,
+        "convex": 1
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/admin-permisos.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 1,
+        "apiWrapper": 0,
+        "generatedHooks": 3,
+        "convex": 0
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/admin-print-test.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 3,
+        "generatedHooks": 7,
+        "convex": 0
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/admin-repartidores.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 6,
+        "generatedHooks": 6,
+        "convex": 0
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/admin-salud.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 1,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/admin-sistema.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 3,
+        "apiWrapper": 0,
+        "generatedHooks": 4,
+        "convex": 0
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/admin-turnos-reservas.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 4,
+        "generatedHooks": 5,
+        "convex": 0
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/administracion/AdministracionHub.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 2,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/backup/BackupPage.tsx",
+      "mechanisms": {
+        "fetch": 3,
+        "customFetch": 0,
+        "apiWrapper": 10,
+        "generatedHooks": 12,
+        "convex": 0
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/backup/DevicesPage.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 10,
+        "generatedHooks": 11,
+        "convex": 0
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/backup/DiagnosticsPage.tsx",
+      "mechanisms": {
+        "fetch": 1,
+        "customFetch": 0,
+        "apiWrapper": 5,
+        "generatedHooks": 10,
+        "convex": 0
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/branding.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 16,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/caja-automatica-estado.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 5,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/caja-automatica.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 10,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/carta-categoria.tsx",
+      "mechanisms": {
+        "fetch": 2,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 8,
+        "convex": 0
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/carta-cocina/CartaCocinaHub.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 1,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/carta-imprimir.tsx",
+      "mechanisms": {
+        "fetch": 2,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 7,
+        "convex": 0
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/carta-publica/CartaInicio.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 1,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/carta-publica/IdiomaSelector.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 1,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/carta.tsx",
+      "mechanisms": {
+        "fetch": 1,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 8,
+        "convex": 0
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/cash-session.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 29,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/categorias.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 20,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/clientes-pedidos/ClientesPedidosHub.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 2,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/comparacion-precios.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 2,
+        "apiWrapper": 0,
+        "generatedHooks": 4,
+        "convex": 0
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/conciliacion-documental.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 2,
+        "apiWrapper": 0,
+        "generatedHooks": 4,
+        "convex": 0
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/conciliacion-factura.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 4,
+        "apiWrapper": 0,
+        "generatedHooks": 9,
+        "convex": 4
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/configuracion.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 29,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/crm.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 29,
+        "generatedHooks": 55,
+        "convex": 0
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/delivery.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 11,
+        "generatedHooks": 18,
+        "convex": 0
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/director/DirectorAlertas.tsx",
+      "mechanisms": {
+        "fetch": 3,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 4,
+        "convex": 0
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/director/DirectorCRM.tsx",
+      "mechanisms": {
+        "fetch": 1,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 3,
+        "convex": 0
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/director/DirectorCaja.tsx",
+      "mechanisms": {
+        "fetch": 1,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 3,
+        "convex": 0
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/director/DirectorCocina.tsx",
+      "mechanisms": {
+        "fetch": 1,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 3,
+        "convex": 0
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/director/DirectorCostos.tsx",
+      "mechanisms": {
+        "fetch": 3,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 6,
+        "convex": 0
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/director/DirectorHoy.tsx",
+      "mechanisms": {
+        "fetch": 1,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 7,
+        "convex": 0
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/director/DirectorInformes.tsx",
+      "mechanisms": {
+        "fetch": 4,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 5,
+        "convex": 0
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/director/DirectorObjetivos.tsx",
+      "mechanisms": {
+        "fetch": 4,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 5,
+        "convex": 0
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/director/DirectorPage.tsx",
+      "mechanisms": {
+        "fetch": 2,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 2,
+        "convex": 0
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/director/DirectorPersonal.tsx",
+      "mechanisms": {
+        "fetch": 1,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 3,
+        "convex": 0
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/director/DirectorPrevision.tsx",
+      "mechanisms": {
+        "fetch": 2,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 2,
+        "convex": 0
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/director/DirectorRentabilidad.tsx",
+      "mechanisms": {
+        "fetch": 1,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 3,
+        "convex": 0
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/director/DirectorReparto.tsx",
+      "mechanisms": {
+        "fetch": 1,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 3,
+        "convex": 0
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/director/DirectorReservas.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 1,
+        "generatedHooks": 3,
+        "convex": 0
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/director/DirectorStock.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 1,
+        "generatedHooks": 2,
+        "convex": 0
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/director/DirectorVentas.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 1,
+        "generatedHooks": 3,
+        "convex": 0
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/documentos.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 33,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/driver-view.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 2,
+        "apiWrapper": 0,
+        "generatedHooks": 9,
+        "convex": 0
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/escaner-facturas.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 2,
+        "apiWrapper": 0,
+        "generatedHooks": 8,
+        "convex": 2
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/facturas-proveedor.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 6,
+        "apiWrapper": 0,
+        "generatedHooks": 8,
+        "convex": 3
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/fichaje/FichajeAuditoria.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 1,
+        "generatedHooks": 4,
+        "convex": 0
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/fichaje/FichajeAusencias.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 4,
+        "generatedHooks": 8,
+        "convex": 0
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/fichaje/FichajeConfiguracion.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 2,
+        "generatedHooks": 4,
+        "convex": 0
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/fichaje/FichajeCorrecciones.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 3,
+        "generatedHooks": 9,
+        "convex": 0
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/fichaje/FichajeCostesLaborales.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 2,
+        "generatedHooks": 5,
+        "convex": 0
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/fichaje/FichajeDispositivos.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 5,
+        "generatedHooks": 9,
+        "convex": 0
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/fichaje/FichajeEmpleados.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 4,
+        "generatedHooks": 12,
+        "convex": 0
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/fichaje/FichajeImportar.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 3,
+        "generatedHooks": 2,
+        "convex": 0
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/fichaje/FichajeImportarAnviz.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 2,
+        "generatedHooks": 2,
+        "convex": 0
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/fichaje/FichajeIncidencias.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 1,
+        "generatedHooks": 5,
+        "convex": 0
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/fichaje/FichajeInformes.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 2,
+        "generatedHooks": 7,
+        "convex": 0
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/fichaje/FichajeLayout.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 3,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/fichaje/FichajePanelDiario.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 1,
+        "generatedHooks": 7,
+        "convex": 0
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/fichaje/FichajePausas.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 2,
+        "generatedHooks": 5,
+        "convex": 0
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/fichaje/FichajePlanificacion.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 3,
+        "generatedHooks": 6,
+        "convex": 0
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/fichaje/FichajePortalEmpleado.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 1,
+        "generatedHooks": 2,
+        "convex": 0
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/fichaje/FichajeRegistros.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 3,
+        "generatedHooks": 10,
+        "convex": 0
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/fichaje/FichajeReloj.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 5,
+        "generatedHooks": 6,
+        "convex": 0
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/fichaje/FichajeTurnos.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 5,
+        "generatedHooks": 7,
+        "convex": 0
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/fichaje/FichajeVacaciones.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 4,
+        "generatedHooks": 6,
+        "convex": 0
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/fichaje/tablet/TabletApp.tsx",
+      "mechanisms": {
+        "fetch": 7,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 7,
+        "convex": 0
+      },
+      "classification": "justified-adapter"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/fichaje/tablet/TabletConfirmation.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 2,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/fichaje/tablet/TabletHome.tsx",
+      "mechanisms": {
+        "fetch": 2,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 12,
+        "convex": 0
+      },
+      "classification": "justified-adapter"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/fichaje/tablet/TabletPinKeypad.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 6,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/fichaje/tablet/useInactivityReset.ts",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 4,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/fichaje/tablet/useNfc.ts",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 5,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/fichaje/tablet/useTabletClock.ts",
+      "mechanisms": {
+        "fetch": 1,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 4,
+        "convex": 0
+      },
+      "classification": "justified-adapter"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/fiscal.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 8,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/food-cost/FoodCostLayout.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 3,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/food-cost/FoodCostVista.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 1,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/hardware/HardwareHub.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 2,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/hr/HRCatalogos.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 8,
+        "generatedHooks": 7,
+        "convex": 2
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/hr/HREmpleados.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 7,
+        "generatedHooks": 8,
+        "convex": 2
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/hr/HRImport.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 6,
+        "generatedHooks": 10,
+        "convex": 3
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/hr/HRInformes.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 3,
+        "generatedHooks": 3,
+        "convex": 0
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/hr/HRPage.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 1,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/hr/HRPeriodos.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 4,
+        "generatedHooks": 8,
+        "convex": 3
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/hr/HRSolicitudes.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 4,
+        "generatedHooks": 8,
+        "convex": 2
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/informes-stock.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 1,
+        "generatedHooks": 6,
+        "convex": 0
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/informes.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 1,
+        "apiWrapper": 0,
+        "generatedHooks": 4,
+        "convex": 0
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/ingredientes.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 2,
+        "generatedHooks": 14,
+        "convex": 0
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/inventario-fisico.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 1,
+        "generatedHooks": 14,
+        "convex": 0
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/kds.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 1,
+        "generatedHooks": 22,
+        "convex": 0
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/login.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 13,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/lotes-caducidades.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 1,
+        "generatedHooks": 5,
+        "convex": 0
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/menu.tsx",
+      "mechanisms": {
+        "fetch": 10,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 29,
+        "convex": 0
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/modificadores.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 21,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/not-found.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 2,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/online-config.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 1,
+        "apiWrapper": 0,
+        "generatedHooks": 12,
+        "convex": 0
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/online-orders-inbox.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 1,
+        "apiWrapper": 0,
+        "generatedHooks": 17,
+        "convex": 0
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/online-reports.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 1,
+        "apiWrapper": 0,
+        "generatedHooks": 5,
+        "convex": 0
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/operaciones/OperacionesHub.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 2,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/order-status.tsx",
+      "mechanisms": {
+        "fetch": 2,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 4,
+        "convex": 0
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/order.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 39,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/payment.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 3,
+        "generatedHooks": 59,
+        "convex": 0
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/pedidos-compra.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 10,
+        "apiWrapper": 0,
+        "generatedHooks": 12,
+        "convex": 5
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/personal/PersonalLanding.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 1,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/personal/PersonalLayout.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 3,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/prefactura.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 9,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/productos.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 3,
+        "generatedHooks": 66,
+        "convex": 0
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/proveedores.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 10,
+        "apiWrapper": 0,
+        "generatedHooks": 14,
+        "convex": 7
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/qr-menu/FontManager.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 1,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/qr-menu/QrMenuLayout.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 3,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/qr-menu/QrMenuPage.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 8,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/qr-menu/TabExport.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 1,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/qr-menu/TabIdiomas.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 4,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/qr-menu/TabMenuTree.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 14,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/qr-menu/TabPreview.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 2,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/qr-menu/TabPrint.tsx",
+      "mechanisms": {
+        "fetch": 1,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 2,
+        "convex": 0
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/qr-menu/TabQRShare.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 3,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/qr-menu/lib.ts",
+      "mechanisms": {
+        "fetch": 1,
+        "customFetch": 6,
+        "apiWrapper": 0,
+        "generatedHooks": 0,
+        "convex": 0
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/recepcion-mercancia.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 7,
+        "apiWrapper": 0,
+        "generatedHooks": 10,
+        "convex": 1
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/recogida.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 8,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/rentabilidad.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 8,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/reservations.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 15,
+        "generatedHooks": 25,
+        "convex": 0
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/retirada-lote.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 2,
+        "generatedHooks": 8,
+        "convex": 0
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/revision-factura.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 6,
+        "apiWrapper": 0,
+        "generatedHooks": 11,
+        "convex": 5
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/setup/SetupWelcome.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 3,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/setup/SetupWizardPage.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 11,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/setup/steps/SetupBackup.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 3,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/setup/steps/SetupCaja.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 2,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/setup/steps/SetupCarta.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 3,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/setup/steps/SetupDiagnostico.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 2,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/setup/steps/SetupFiscalidad.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 2,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/setup/steps/SetupHorarios.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 2,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/setup/steps/SetupIdentidad.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 3,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/setup/steps/SetupImpresoras.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 5,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/setup/steps/SetupKDS.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 2,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/setup/steps/SetupProduccion.tsx",
+      "mechanisms": {
+        "fetch": 1,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 5,
+        "convex": 0
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/setup/steps/SetupReservas.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 2,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/setup/steps/SetupServicios.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 1,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/setup/steps/SetupSimulacion.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 4,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/setup/steps/SetupStock.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 3,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/setup/steps/SetupUsuarios.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 5,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/setup/steps/SetupZonas.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 5,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/simulador-precios.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 10,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/sistema/SistemaHub.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 2,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/stock.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 14,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/subrecetas.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 32,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/tables.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 52,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/ticket.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 7,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/trazabilidad-lotes.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 3,
+        "generatedHooks": 8,
+        "convex": 0
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/verifactu.tsx",
+      "mechanisms": {
+        "fetch": 1,
+        "customFetch": 11,
+        "apiWrapper": 0,
+        "generatedHooks": 14,
+        "convex": 4
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/x-report.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 3,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/z-report.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 4,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/zone-editor.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 33,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/providers/AuthProvider.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 3,
+        "generatedHooks": 8,
+        "convex": 0
+      },
+      "classification": "manual-http-to-migrate"
+    },
+    {
+      "file": "artifacts/qr-menu/src/App.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 1,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/qr-menu/src/components/InstallBanner.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 6,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/qr-menu/src/components/providers/locale-wrapper.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 3,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/qr-menu/src/components/ui/calendar.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 1,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/qr-menu/src/components/ui/carousel.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 15,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/qr-menu/src/components/ui/chart.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 6,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/qr-menu/src/components/ui/color-picker.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 1,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/qr-menu/src/components/ui/field.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 1,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/qr-menu/src/components/ui/form.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 9,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/qr-menu/src/components/ui/input-otp.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 1,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/qr-menu/src/components/ui/locale-switcher.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 3,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/qr-menu/src/components/ui/sidebar.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 13,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/qr-menu/src/components/ui/signin.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 7,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/qr-menu/src/components/ui/slider.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 1,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/qr-menu/src/components/ui/sonner.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 1,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/qr-menu/src/components/ui/toaster.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 1,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/qr-menu/src/components/ui/toggle-group.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 1,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/qr-menu/src/hooks/use-mobile.ts",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 2,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/qr-menu/src/hooks/use-mobile.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 2,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/qr-menu/src/hooks/use-saved-colors.ts",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 3,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/qr-menu/src/hooks/use-service-worker.ts",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 3,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/qr-menu/src/hooks/use-theme-colors.ts",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 4,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/qr-menu/src/hooks/use-toast.ts",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 2,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/qr-menu/src/lib/demo-convex-auth.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 1,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/qr-menu/src/lib/demo-convex.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 5,
+        "convex": 1
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/qr-menu/src/pages/Index.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 7,
+        "convex": 2
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/qr-menu/src/pages/NotFound.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 2,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/qr-menu/src/pages/_components/ItemDetailModal.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 3,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/qr-menu/src/pages/_components/MenuItemCard.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 1,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/qr-menu/src/pages/_components/ScheduleDisplay.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 1,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/qr-menu/src/pages/admin/_components/AdminDashboard.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 6,
+        "convex": 4
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/qr-menu/src/pages/admin/_components/BrandingManager.tsx",
+      "mechanisms": {
+        "fetch": 2,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 6,
+        "convex": 3
+      },
+      "classification": "justified-adapter"
+    },
+    {
+      "file": "artifacts/qr-menu/src/pages/admin/_components/CategoryManager.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 8,
+        "convex": 4
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/qr-menu/src/pages/admin/_components/ChangePasswordForm.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 5,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/qr-menu/src/pages/admin/_components/FontManager.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 1,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/qr-menu/src/pages/admin/_components/ItemManager.tsx",
+      "mechanisms": {
+        "fetch": 2,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 11,
+        "convex": 5
+      },
+      "classification": "justified-adapter"
+    },
+    {
+      "file": "artifacts/qr-menu/src/pages/admin/_components/MenuExport.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 2,
+        "convex": 2
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/qr-menu/src/pages/admin/_components/MenuTree.tsx",
+      "mechanisms": {
+        "fetch": 2,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 45,
+        "convex": 11
+      },
+      "classification": "justified-adapter"
+    },
+    {
+      "file": "artifacts/qr-menu/src/pages/admin/_components/QRShare.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 2,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/qr-menu/src/pages/admin/page.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 1,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/qr-menu/src/pages/admin-portal/_components/InstallAdminButton.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 5,
+        "convex": 0
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/qr-menu/src/pages/categoria/page.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 10,
+        "convex": 3
+      },
+      "classification": "generated-client"
+    },
+    {
+      "file": "artifacts/qr-menu/src/pages/print/page.tsx",
+      "mechanisms": {
+        "fetch": 0,
+        "customFetch": 0,
+        "apiWrapper": 0,
+        "generatedHooks": 10,
+        "convex": 3
+      },
+      "classification": "generated-client"
+    }
+  ]
+}
