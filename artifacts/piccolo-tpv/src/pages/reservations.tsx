@@ -24,6 +24,8 @@ interface Reservation {
   mascota: boolean; ocasion?: string | null; canal: string; notes: string;
   notasInternas: string; status: string; clientId?: string | null;
   clientNombre?: string | null; shiftId?: string | null;
+  clientTotalVisitas?: number | null; clientPuntosSaldo?: number | null;
+  clientNivelNombre?: string | null;
   confirmacionRequerida: boolean; recordatorioEnviado: boolean; createdAt: string;
 }
 interface WaitingEntry {
@@ -34,6 +36,7 @@ interface WaitingEntry {
 interface CrmClient {
   id: string; nombre: string; apellidos: string; telefono: string; email: string;
   alergias?: string; observaciones?: string; totalVisitas?: number;
+  puntosSaldo?: number; nivelNombre?: string;
 }
 interface Zone { id: string; name: string; }
 interface TableRow { id: string; tableNumber: string; capacity: number; status: string; zoneName?: string; }
@@ -112,6 +115,13 @@ function ReservationCard({ r, isManager, onEdit, onDelete, onStatusChange, onArr
             {r.telefono && <span className="flex items-center gap-1"><Phone size={9} />{r.telefono}</span>}
             {r.zonaPreferida && <span className="flex items-center gap-1"><MapPin size={9} />{r.zonaPreferida}</span>}
             {r.mesaNumero && <span className="flex items-center gap-1"><Hash size={9} />M.{r.mesaNumero}</span>}
+            {r.clientId && (
+              <span className="flex items-center gap-1 text-primary/80">
+                <Star size={9} />
+                {r.clientTotalVisitas ?? 0} visitas · {r.clientPuntosSaldo ?? 0} pts
+                {r.clientNivelNombre ? ` · ${r.clientNivelNombre}` : ""}
+              </span>
+            )}
           </div>
           {r.alergias && <p className="text-[10px] text-amber-400/80 mt-1">⚠️ {r.alergias}</p>}
           {r.notes && <p className="text-[10px] text-muted-foreground mt-1 leading-relaxed">{r.notes}</p>}
@@ -254,7 +264,7 @@ function ClientSearch({ onSelect }: { onSelect: (c: CrmClient | null) => void })
     const t = setTimeout(async () => {
       setLoading(true);
       try {
-        const data = await api.get<CrmClient[]>(`/api/clients?q=${encodeURIComponent(q)}&limit=8`);
+        const data = await api.get<CrmClient[]>(`/api/crm/clients?q=${encodeURIComponent(q)}&limit=8`);
         setResults(data ?? []);
       } catch { /* ignore */ } finally { setLoading(false); }
     }, 300);
@@ -279,7 +289,12 @@ function ClientSearch({ onSelect }: { onSelect: (c: CrmClient | null) => void })
               <div>
                 <div className="text-sm font-bold">{c.nombre} {c.apellidos}</div>
                 <div className="text-[11px] text-muted-foreground">{c.telefono} · {c.email}</div>
-                {c.totalVisitas !== undefined && <div className="text-[10px] text-muted-foreground/60">{c.totalVisitas} visitas</div>}
+                {c.totalVisitas !== undefined && (
+                  <div className="text-[10px] text-muted-foreground/60">
+                    {c.totalVisitas} visitas · {c.puntosSaldo ?? 0} pts
+                    {c.nivelNombre ? ` · ${c.nivelNombre}` : ""}
+                  </div>
+                )}
               </div>
             </button>
           ))}

@@ -15,15 +15,17 @@ import {
   crmClientsTable,
   crmLoyaltyConfigTable,
   crmLoyaltyPointsTable,
+  crmLoyaltyLevelsTable,
   crmGiftCardsTable,
   crmGiftCardTransactionsTable,
   crmPromotionsTable,
+  crmCouponUsesTable,
   crmAuditLogTable,
   ordersTable,
   orderItemsTable,
   reservationsTable,
 } from "@workspace/db";
-import { eq, ilike, or, desc, and, sql, sum, count } from "drizzle-orm";
+import { eq, ilike, or, desc, and, sql, sum, count, inArray } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth.js";
 
 const router = Router();
@@ -47,8 +49,9 @@ async function getLoyaltyConfig() {
 }
 
 /**
- * Issue loyalty points to a client for a sale.
- * Returns the points movement row, or null if loyalty is disabled.
+ * Record one paid visit and issue configured points exactly once per order.
+ * The existing CRM audit log is the idempotency marker, so visits remain
+ * authoritative even when points are disabled and no schema change is needed.
  */
 export async function issuePoints(params: {
   clientId: string;
@@ -56,38 +59,99 @@ export async function issuePoints(params: {
   importeTotal: number;
   empleadoId: string | null;
   empleadoNombre: string;
-}): Promise<{ puntos: number; saldoPosterior: number } | null> {
+}): Promise<{ puntos: number; saldoPosterior: number; alreadyRecorded: boolean } | null> {
   const config = await getLoyaltyConfig();
-  if (!config.activo) return null;
+  return db.transaction(async (tx) => {
+    // Serialize both the customer balance and this order's reward.
+    await tx.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtext(${`loyalty:client:${params.clientId}`}))`,
+    );
+    await tx.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtext(${`loyalty:order:${params.orderId}`}))`,
+    );
 
-  const puntosPorEuro = parseFloat(config.puntosPorEuro);
-  const puntos = Math.floor(params.importeTotal * puntosPorEuro);
-  if (puntos <= 0) return null;
+    const [client] = await tx
+      .select()
+      .from(crmClientsTable)
+      .where(eq(crmClientsTable.id, params.clientId))
+      .limit(1);
+    if (!client) return null;
 
-  const [client] = await db.select().from(crmClientsTable).where(eq(crmClientsTable.id, params.clientId));
-  if (!client) return null;
+    const [recorded] = await tx
+      .select({ id: crmAuditLogTable.id })
+      .from(crmAuditLogTable)
+      .where(
+        and(
+          eq(crmAuditLogTable.accion, "loyalty_paid_order"),
+          eq(crmAuditLogTable.entidadTipo, "order"),
+          eq(crmAuditLogTable.entidadId, params.orderId),
+        ),
+      )
+      .limit(1);
+    if (recorded) {
+      return {
+        puntos: 0,
+        saldoPosterior: client.puntosSaldo,
+        alreadyRecorded: true,
+      };
+    }
 
-  const saldoAnterior = client.puntosSaldo;
-  const saldoPosterior = saldoAnterior + puntos;
+    // Orders rewarded before this idempotency marker existed must not be
+    // rewarded again after deployment.
+    const [legacyMovement] = await tx
+      .select({
+        puntos: crmLoyaltyPointsTable.puntos,
+        saldoPosterior: crmLoyaltyPointsTable.saldoPosterior,
+      })
+      .from(crmLoyaltyPointsTable)
+      .where(
+        and(
+          eq(crmLoyaltyPointsTable.orderId, params.orderId),
+          eq(crmLoyaltyPointsTable.tipo, "emision"),
+        ),
+      )
+      .limit(1);
+    if (legacyMovement) {
+      await tx.insert(crmAuditLogTable).values({
+        accion: "loyalty_paid_order",
+        clientId: params.clientId,
+        entidadTipo: "order",
+        entidadId: params.orderId,
+        empleadoId: params.empleadoId,
+        empleadoNombre: params.empleadoNombre,
+        datos: { migratedFromPointsLedger: true },
+      });
+      return {
+        puntos: legacyMovement.puntos,
+        saldoPosterior: legacyMovement.saldoPosterior,
+        alreadyRecorded: true,
+      };
+    }
 
-  const expiraEn: Date | null =
-    config.caducidadDias > 0
-      ? new Date(Date.now() + config.caducidadDias * 86400 * 1000)
-      : null;
+    const puntosPorEuro = config.activo ? parseFloat(config.puntosPorEuro) : 0;
+    const puntos = Math.max(0, Math.floor(params.importeTotal * puntosPorEuro));
+    const saldoAnterior = client.puntosSaldo;
+    const saldoPosterior = saldoAnterior + puntos;
+    const expiraEn: Date | null =
+      puntos > 0 && config.caducidadDias > 0
+        ? new Date(Date.now() + config.caducidadDias * 86400 * 1000)
+        : null;
 
-  await db.transaction(async (tx) => {
-    await tx.insert(crmLoyaltyPointsTable).values({
-      clientId: params.clientId,
-      tipo: "emision",
-      puntos,
-      saldoAnterior,
-      saldoPosterior,
-      descripcion: `Venta: +${puntos} pts`,
-      orderId: params.orderId,
-      empleadoId: params.empleadoId,
-      empleadoNombre: params.empleadoNombre,
-      expiraEn,
-    });
+    if (puntos > 0) {
+      await tx.insert(crmLoyaltyPointsTable).values({
+        clientId: params.clientId,
+        tipo: "emision",
+        puntos,
+        saldoAnterior,
+        saldoPosterior,
+        descripcion: `Venta: +${puntos} pts`,
+        orderId: params.orderId,
+        empleadoId: params.empleadoId,
+        empleadoNombre: params.empleadoNombre,
+        expiraEn,
+      });
+    }
+
     await tx
       .update(crmClientsTable)
       .set({
@@ -98,9 +162,19 @@ export async function issuePoints(params: {
         updatedAt: new Date(),
       })
       .where(eq(crmClientsTable.id, params.clientId));
-  });
 
-  return { puntos, saldoPosterior };
+    await tx.insert(crmAuditLogTable).values({
+      accion: "loyalty_paid_order",
+      clientId: params.clientId,
+      entidadTipo: "order",
+      entidadId: params.orderId,
+      empleadoId: params.empleadoId,
+      empleadoNombre: params.empleadoNombre,
+      datos: { puntos, importeTotal: params.importeTotal },
+    });
+
+    return { puntos, saldoPosterior, alreadyRecorded: false };
+  });
 }
 
 /**
@@ -269,6 +343,58 @@ export async function getClientHistory(clientId: string) {
     .orderBy(desc(crmGiftCardsTable.createdAt))
     .limit(10);
 
+  const [level] = client.nivelId
+    ? await db
+        .select()
+        .from(crmLoyaltyLevelsTable)
+        .where(
+          and(
+            eq(crmLoyaltyLevelsTable.id, client.nivelId),
+            eq(crmLoyaltyLevelsTable.activo, true),
+          ),
+        )
+        .limit(1)
+    : [];
+
+  const promotions = await db
+    .select()
+    .from(crmPromotionsTable)
+    .where(eq(crmPromotionsTable.activo, true))
+    .orderBy(desc(crmPromotionsTable.createdAt));
+
+  const promotionIds = promotions.map((promotion) => promotion.id);
+  const couponUses = promotionIds.length
+    ? await db
+        .select({
+          promotionId: crmCouponUsesTable.promotionId,
+          uses: count(),
+        })
+        .from(crmCouponUsesTable)
+        .where(
+          and(
+            eq(crmCouponUsesTable.clientId, clientId),
+            inArray(crmCouponUsesTable.promotionId, promotionIds),
+          ),
+        )
+        .groupBy(crmCouponUsesTable.promotionId)
+    : [];
+  const usesByPromotion = new Map(
+    couponUses.map((usage) => [usage.promotionId, Number(usage.uses)]),
+  );
+  const availableRewards = promotions.filter((promotion) => {
+    const clientUses = usesByPromotion.get(promotion.id) ?? 0;
+    if (
+      promotion.usoMaximoPorCliente > 0 &&
+      clientUses >= promotion.usoMaximoPorCliente
+    ) {
+      return false;
+    }
+    return validatePromotion(
+      promotion,
+      parseFloat(promotion.montoMinimo),
+    ).valid;
+  });
+
   const ticketMedio =
     client.totalVisitas > 0
       ? parseFloat((parseFloat(client.totalGasto) / client.totalVisitas).toFixed(2))
@@ -280,6 +406,8 @@ export async function getClientHistory(clientId: string) {
     reservations,
     points,
     giftCards,
+    benefits: level?.beneficios ?? [],
+    availableRewards,
     stats: {
       totalGasto: parseFloat(client.totalGasto),
       totalVisitas: client.totalVisitas,

@@ -25,6 +25,7 @@ import {
 import { eq, and, sum } from "drizzle-orm";
 import { calcMultiRateBreakdown } from "./tax";
 import { logDocumentAction } from "./document-audit";
+import { issuePoints } from "../routes/crm";
 
 export interface SettlementResult {
   /** True if the order was just settled (ticket issued, status → paid). */
@@ -51,12 +52,14 @@ export async function settleOrderIfFullyPaid({
   employeeName?: string;
   cashSessionId?: string | null;
 }): Promise<SettlementResult> {
-  return db.transaction(async (tx) => {
+  let loyaltyClientId: string | null = null;
+  const result = await db.transaction(async (tx) => {
     // Guard against re-settlement
     const [order] = await tx.select().from(ordersTable).where(eq(ordersTable.id, orderId));
     if (!order || order.status === "paid") {
       return { settled: false, ticket: null, remaining: 0 };
     }
+    loyaltyClientId = order.clientId;
 
     // Compute order total with VAT
     const items = await tx
@@ -148,4 +151,20 @@ export async function settleOrderIfFullyPaid({
 
     return { settled: true, ticket, remaining: 0 };
   });
+
+  if (result.settled && result.ticket && loyaltyClientId) {
+    try {
+      await issuePoints({
+        clientId: loyaltyClientId,
+        orderId,
+        importeTotal: parseFloat(result.ticket.total),
+        empleadoId: employeeId,
+        empleadoNombre: employeeName,
+      });
+    } catch {
+      // Loyalty must never block a completed payment.
+    }
+  }
+
+  return result;
 }
