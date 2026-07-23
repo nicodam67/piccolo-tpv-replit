@@ -75,7 +75,7 @@ async function logAudit(
 
 // GET /api/fichaje/public/employees — list active employees for PIN selection
 router.get("/fichaje/public/employees", async (req, res): Promise<void> => {
-  const device = await getActivePublicDevice(req.query.deviceToken as string | undefined);
+  const device = await getActivePublicDevice(req.headers["x-device-token"] as string | undefined);
   if (!device) {
     res.status(401).json({ error: CLOCK_AUTH_DENIED });
     return;
@@ -103,7 +103,7 @@ router.get("/fichaje/public/clock-status", async (_req, res): Promise<void> => {
 
 // GET /api/fichaje/public/my-status/:employeeId — current clock state for employee
 router.get("/fichaje/public/my-status/:employeeId", async (req, res): Promise<void> => {
-  const device = await getActivePublicDevice(req.query.deviceToken as string | undefined);
+  const device = await getActivePublicDevice(req.headers["x-device-token"] as string | undefined);
   if (!device) {
     res.status(401).json({ error: CLOCK_AUTH_DENIED });
     return;

@@ -49,11 +49,23 @@ import {
   onlineCartsTable,
   paymentAttemptsTable,
   productAvailabilityRulesTable,
+  restaurantTablesTable,
+  businessConfigTable,
+  techEventsTable,
+  onlineOrderAuditTable,
 } from "@workspace/db";
 import { eq, and, desc, asc, sql } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { calcMultiRateBreakdown } from "../lib/tax";
 import { emitToFunction } from "../lib/socket-events";
+import { withoutBearerToken } from "../lib/mask-secrets";
+import {
+  restaurantVersion,
+  signTableQr,
+  tableSessionMatchesCurrent,
+  tableVersion,
+  verifyTableQr,
+} from "../lib/table-qr";
 
 const router: IRouter = Router();
 
@@ -75,25 +87,79 @@ function hoursFromNow(h: number): Date {
 // returns an existing open one for the same table.
 
 router.post("/public/table-sessions", async (req, res): Promise<void> => {
-  const { tableId, zoneId, tableLabel = "", zoneLabel = "" } = req.body as {
-    tableId?: string;
-    zoneId?: string;
-    tableLabel?: string;
-    zoneLabel?: string;
-  };
+  const { ticket, guestName = "" } = req.body as { ticket?: string; guestName?: string };
+  if (!ticket) { res.status(400).json({ error: "Ticket QR firmado requerido" }); return; }
+  try {
+    const payload = verifyTableQr(ticket);
+    if (payload.rid !== process.env.RESTAURANT_ID) throw new Error("QR_RESTAURANT_INVALID");
+    const [[table], [business]] = await Promise.all([
+      db.select().from(restaurantTablesTable).where(eq(restaurantTablesTable.id, payload.tid)).limit(1),
+      db.select({ updatedAt: businessConfigTable.updatedAt }).from(businessConfigTable).limit(1),
+    ]);
+    if (
+      !table || !table.active || table.zoneId !== payload.zid
+      || tableVersion(table) !== payload.tv
+      || !business || restaurantVersion(business.updatedAt) !== payload.rv
+    ) throw new Error("QR_RESOURCE_INVALIDATED");
 
-  const token = crypto.randomUUID();
-  const [session] = await db.insert(tableSessionsTable).values({
-    tableId: tableId ?? null,
-    zoneId: zoneId ?? null,
-    tableLabel: tableLabel.trim(),
-    zoneLabel: zoneLabel.trim(),
-    token,
-    status: "open",
-    expiresAt: hoursFromNow(4),
-  } as any).returning();
+    const session = await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${"table-qr:" + table.id}))`);
+      const [existing] = await tx.select().from(tableSessionsTable).where(and(
+        eq(tableSessionsTable.tableId, table.id),
+        eq(tableSessionsTable.status, "open"),
+      )).orderBy(desc(tableSessionsTable.createdAt)).limit(1);
+      if (
+        existing
+        && existing.expiresAt > new Date()
+        && tableSessionMatchesCurrent(existing, table, business.updatedAt)
+      ) return existing;
+      if (existing) {
+        await tx.update(tableSessionsTable).set({ status: "closed", closedAt: new Date() })
+          .where(eq(tableSessionsTable.id, existing.id));
+      }
+      const expiresAt = new Date(Math.min(payload.exp * 1000, hoursFromNow(4).getTime()));
+      const [created] = await tx.insert(tableSessionsTable).values({
+        tableId: table.id,
+        zoneId: table.zoneId,
+        tableLabel: table.name,
+        zoneLabel: "",
+        token: `${crypto.randomUUID()}.${payload.rv}`,
+        guestName: guestName.trim(),
+        status: "open",
+        expiresAt,
+      } as any).returning();
+      return created;
+    });
+    res.status(201).json(session);
+  } catch (error) {
+    await db.insert(techEventsTable).values({
+      level: "warning",
+      module: "qr-menu",
+      message: "Intento de apertura con QR de mesa inválido",
+      data: { reason: error instanceof Error ? error.message : "unknown" },
+    }).catch(() => {});
+    res.status(403).json({ error: "QR de mesa inválido o caducado" });
+  }
+});
 
-  res.status(201).json(session);
+router.get("/admin/tables/:id/qr-ticket", requireAuth, requireRole("manager", "admin"), async (req, res): Promise<void> => {
+  const id = req.params.id as string;
+  const [[table], [business]] = await Promise.all([
+    db.select().from(restaurantTablesTable).where(eq(restaurantTablesTable.id, id)).limit(1),
+    db.select({ updatedAt: businessConfigTable.updatedAt }).from(businessConfigTable).limit(1),
+  ]);
+  if (!table?.active || !business) { res.status(404).json({ error: "Mesa o configuración no disponible" }); return; }
+  const ttl = Math.min(Math.max(Number(process.env.QR_TABLE_TICKET_TTL_SECONDS ?? 31_536_000), 300), 31_536_000);
+  const exp = Math.floor(Date.now() / 1000) + ttl;
+  const ticket = signTableQr({
+    rid: process.env.RESTAURANT_ID!,
+    tid: table.id,
+    zid: table.zoneId,
+    tv: tableVersion(table),
+    rv: restaurantVersion(business.updatedAt),
+    exp,
+  });
+  res.json({ ticket, expiresAt: new Date(exp * 1000).toISOString() });
 });
 
 // ── PUBLIC: GET /public/table-sessions/check ─────────────────────────────────
@@ -109,6 +175,18 @@ router.get("/public/table-sessions/check", async (req, res): Promise<void> => {
   if (!session) { res.status(404).json({ error: "Sesión no encontrada." }); return; }
   if (session.status !== "open" || (session.expiresAt && session.expiresAt < new Date())) {
     res.status(410).json({ error: "Sesión caducada.", session });
+    return;
+  }
+  const [[table], [business]] = await Promise.all([
+    session.tableId
+      ? db.select().from(restaurantTablesTable).where(eq(restaurantTablesTable.id, session.tableId)).limit(1)
+      : Promise.resolve([]),
+    db.select({ updatedAt: businessConfigTable.updatedAt }).from(businessConfigTable).limit(1),
+  ]);
+  if (!tableSessionMatchesCurrent(session, table, business?.updatedAt)) {
+    await db.update(tableSessionsTable).set({ status: "closed", closedAt: new Date() })
+      .where(eq(tableSessionsTable.id, session.id));
+    res.status(410).json({ error: "Sesión invalidada por un cambio de mesa o restaurante." });
     return;
   }
 
@@ -190,25 +268,13 @@ router.post("/public/orders/online-v2", async (req, res): Promise<void> => {
     res.status(400).json({ error: "El pedido debe tener al menos un artículo." });
     return;
   }
-
-  // ── Idempotency guard ─────────────────────────────────────────────────────
-  if (idempotencyKey) {
-    const existingResult = await db.execute(sql`
-      SELECT id, order_number, status, created_at
-      FROM orders
-      WHERE idempotency_key = ${idempotencyKey}
-      LIMIT 1
-    `);
-    const existing = existingResult.rows[0] as Record<string, unknown> | undefined;
-    if (existing) {
-      res.status(200).json({
-        orderId: existing.id,
-        orderNumber: existing.order_number,
-        status: existing.status,
-        idempotent: true,
-      });
-      return;
-    }
+  if (typeof idempotencyKey !== "string" || idempotencyKey.length < 8) {
+    res.status(400).json({ error: "idempotencyKey es obligatoria." });
+    return;
+  }
+  if (items.some((item) => !Number.isInteger(item.quantity) || item.quantity < 1 || item.quantity > 99)) {
+    res.status(400).json({ error: "Cantidad de producto no válida." });
+    return;
   }
 
   // ── Validate table session ────────────────────────────────────────────────
@@ -220,7 +286,17 @@ router.post("/public/orders/online-v2", async (req, res): Promise<void> => {
         eq(tableSessionsTable.status, "open"),
       )).limit(1);
 
-    if (!session || (session.expiresAt && session.expiresAt < new Date())) {
+    const [[table], [business]] = session ? await Promise.all([
+      session.tableId
+        ? db.select().from(restaurantTablesTable).where(eq(restaurantTablesTable.id, session.tableId)).limit(1)
+        : Promise.resolve([]),
+      db.select({ updatedAt: businessConfigTable.updatedAt }).from(businessConfigTable).limit(1),
+    ]) : [[], []];
+    if (
+      !session
+      || (session.expiresAt && session.expiresAt < new Date())
+      || !tableSessionMatchesCurrent(session, table, business?.updatedAt)
+    ) {
       res.status(410).json({ error: "La sesión de mesa ha caducado. Escanea el QR de nuevo." });
       return;
     }
@@ -256,7 +332,10 @@ router.post("/public/orders/online-v2", async (req, res): Promise<void> => {
 
     if (item.formatId) {
       const [fmt] = await db.select().from(productFormatsTable)
-        .where(eq(productFormatsTable.id, item.formatId)).limit(1);
+        .where(and(
+          eq(productFormatsTable.id, item.formatId),
+          eq(productFormatsTable.productId, item.productId),
+        )).limit(1);
       if (fmt && fmt.active) {
         unitPrice = parseFloat(fmt.price);
         effectiveTaxRate = fmt.taxRate ?? product.taxRate;
@@ -282,93 +361,120 @@ router.post("/public/orders/online-v2", async (req, res): Promise<void> => {
   const tipAmountNum = parseFloat(String(tipAmount ?? 0)) || 0;
   const grandTotal = orderTotal + tipAmountNum;
 
-  // ── Delivery address ──────────────────────────────────────────────────────
-  let deliveryAddressId: string | null = null;
-  if (deliveryType === "delivery" && deliveryAddress?.street) {
-    const addrResult = await db.execute(sql`
-      INSERT INTO delivery_addresses (street, "number", floor, postal_code, city, notes)
-      VALUES (
-        ${deliveryAddress.street ?? ""},
-        ${deliveryAddress.number ?? ""},
-        ${deliveryAddress.floor ?? ""},
-        ${deliveryAddress.postalCode ?? ""},
-        ${deliveryAddress.city ?? ""},
-        ${deliveryAddress.notes ?? ""}
-      )
-      RETURNING id
-    `);
-    const addr = addrResult.rows[0] as Record<string, unknown> | undefined;
-    deliveryAddressId = (addr?.id as string) ?? null;
-  }
-
   const isAsap = !scheduledAt || scheduledAt === "asap";
   const requestedAt = isAsap ? null : new Date(scheduledAt as string);
+  if (requestedAt && Number.isNaN(requestedAt.getTime())) {
+    res.status(400).json({ error: "Fecha programada no válida." });
+    return;
+  }
   const estimatedReadyAt = new Date(Date.now() + 30 * 60_000);
   const orderNumber = generateOrderNumber();
 
-  // ── Insert order ──────────────────────────────────────────────────────────
-  const orderResult = await db.execute(sql`
-    INSERT INTO orders (
-      status, delivery_type, channel, client_name, client_phone,
-      notes, scheduled_at, order_number, online_payment_status,
-      estimated_ready_at, delivery_address_id,
-      tip_amount, idempotency_key, table_session_id,
-      consent_rgpd
-    ) VALUES (
-      'pending_confirm',
-      ${deliveryType},
-      ${channel},
-      ${clientName.trim()},
-      ${clientPhone.trim()},
-      '',
-      ${requestedAt ? requestedAt.toISOString() : null},
-      ${orderNumber},
-      ${paymentMethod === "online" ? "pending" : "none"},
-      ${estimatedReadyAt.toISOString()},
-      ${deliveryAddressId},
-      ${tipAmountNum.toFixed(2)},
-      ${idempotencyKey ?? null},
-      ${tableSessionId},
-      ${consentRgpd}
-    )
-    RETURNING id, order_number, status
-  `);
-  const order = orderResult.rows[0] as Record<string, unknown>;
-
-  const orderId = order.id as string;
-
-  // ── Insert order items ────────────────────────────────────────────────────
-  for (const item of resolvedItems) {
-    await db.execute(sql`
-      INSERT INTO order_items (
-        order_id, product_id, format_id, format_name,
-        quantity, unit_price, tax_rate, status, notes,
-        allergy_note, has_allergy, is_invitation
-      ) VALUES (
-        ${orderId},
-        ${item.productId},
-        ${item.formatId},
-        ${item.formatName},
-        ${item.quantity},
-        ${item.unitPrice},
-        ${item.taxRate},
-        'draft',
-        ${item.notes},
-        '', false, false
-      )
+  const result = await db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${"online-order:" + idempotencyKey}))`);
+    const replay = await tx.execute(sql`
+      SELECT id, order_number, status FROM orders
+      WHERE idempotency_key = ${idempotencyKey} LIMIT 1
     `);
+    const existing = replay.rows[0] as Record<string, unknown> | undefined;
+    if (existing) {
+      await tx.insert(onlineOrderAuditTable).values({
+        orderId: existing.id as string,
+        event: "order_idempotent_replay",
+        userName: "public",
+        metadata: { idempotencyKey },
+      });
+      return { order: existing, idempotent: true };
+    }
+
+    let lockedSessionId = tableSessionId;
+    if (tableSessionToken) {
+      const [session] = await tx.select().from(tableSessionsTable).where(and(
+        eq(tableSessionsTable.token, tableSessionToken),
+        eq(tableSessionsTable.status, "open"),
+      )).for("update").limit(1);
+      if (!session || session.expiresAt <= new Date()) throw new Error("TABLE_SESSION_EXPIRED");
+      const [[table], [business]] = await Promise.all([
+        session.tableId
+          ? tx.select().from(restaurantTablesTable).where(eq(restaurantTablesTable.id, session.tableId)).limit(1)
+          : Promise.resolve([]),
+        tx.select({ updatedAt: businessConfigTable.updatedAt }).from(businessConfigTable).limit(1),
+      ]);
+      if (!tableSessionMatchesCurrent(session, table, business?.updatedAt)) {
+        throw new Error("TABLE_SESSION_EXPIRED");
+      }
+      lockedSessionId = session.id;
+    }
+
+    let deliveryAddressId: string | null = null;
+    if (deliveryType === "delivery" && deliveryAddress?.street) {
+      const address = await tx.execute(sql`
+        INSERT INTO delivery_addresses (street, "number", floor, postal_code, city, notes)
+        VALUES (${deliveryAddress.street}, ${deliveryAddress.number ?? ""}, ${deliveryAddress.floor ?? ""},
+          ${deliveryAddress.postalCode ?? ""}, ${deliveryAddress.city ?? ""}, ${deliveryAddress.notes ?? ""})
+        RETURNING id
+      `);
+      deliveryAddressId = (address.rows[0] as { id?: string } | undefined)?.id ?? null;
+    }
+
+    const inserted = await tx.execute(sql`
+      INSERT INTO orders (
+        status, delivery_type, channel, client_name, client_phone,
+        notes, scheduled_at, order_number, online_payment_status,
+        estimated_ready_at, delivery_address_id, tip_amount,
+        idempotency_key, table_session_id
+      ) VALUES (
+        'pending_confirm', ${deliveryType}, ${channel}, ${clientName.trim()}, ${clientPhone.trim()},
+        '', ${requestedAt ? requestedAt.toISOString() : null}, ${orderNumber},
+        ${paymentMethod === "online" ? "pending" : "none"}, ${estimatedReadyAt.toISOString()},
+        ${deliveryAddressId}, ${tipAmountNum.toFixed(2)}, ${idempotencyKey}, ${lockedSessionId}
+      ) RETURNING id, order_number, status
+    `);
+    const order = inserted.rows[0] as Record<string, unknown>;
+    for (const item of resolvedItems) {
+      await tx.execute(sql`
+        INSERT INTO order_items (
+          order_id, product_id, format_id, format_name, quantity,
+          unit_price, tax_rate, status, notes, allergy_note, has_allergy, is_invitation
+        ) VALUES (
+          ${order.id as string}, ${item.productId}, ${item.formatId}, ${item.formatName},
+          ${item.quantity}, ${item.unitPrice}, ${item.taxRate}, 'draft', ${item.notes}, '', false, false
+        )
+      `);
+    }
+    await tx.insert(onlineOrderAuditTable).values({
+      orderId: order.id as string,
+      event: "order_created",
+      userName: "public",
+      metadata: {
+        idempotencyKey,
+        itemCount: resolvedItems.length,
+        tableSessionId: lockedSessionId,
+        consentRgpd,
+      },
+    });
+    return { order, idempotent: false };
+  }).catch((error) => {
+    if (error instanceof Error && error.message === "TABLE_SESSION_EXPIRED") return null;
+    throw error;
+  });
+  if (!result) {
+    res.status(410).json({ error: "La sesión de mesa ha caducado. Escanea el QR de nuevo." });
+    return;
   }
+  const order = result.order;
+  const orderId = order.id as string;
 
   // Notify staff via socket
   try { emitToFunction("floor", "online-orders:refresh"); } catch { /* ignore */ }
 
-  res.status(201).json({
+  res.status(result.idempotent ? 200 : 201).json({
     orderId,
     orderNumber: order.order_number,
     status: order.status,
     total: grandTotal.toFixed(2),
     tipAmount: tipAmountNum.toFixed(2),
-    idempotent: false,
+    idempotent: result.idempotent,
   });
 });
 
@@ -377,6 +483,10 @@ router.post("/public/orders/online-v2", async (req, res): Promise<void> => {
 // Uses real Stripe if STRIPE_SECRET_KEY is set, otherwise returns a simulator ref.
 
 router.post("/public/payment/intent", async (req, res): Promise<void> => {
+  if (process.env["NODE_ENV"] === "production") {
+    res.status(503).json({ error: "Pagos online no configurados" });
+    return;
+  }
   const { orderId, returnUrl } = req.body as { orderId: string; returnUrl?: string };
   if (!orderId) { res.status(400).json({ error: "orderId requerido." }); return; }
 
@@ -466,6 +576,10 @@ router.post("/public/payment/intent", async (req, res): Promise<void> => {
 //     `x-simulator-secret` header for an extra layer of protection.
 
 router.post("/public/payment/webhook", async (req, res): Promise<void> => {
+  if (process.env["NODE_ENV"] === "production") {
+    res.status(503).json({ error: "Pagos online desactivados" });
+    return;
+  }
   const sig = req.headers["stripe-signature"] as string | undefined;
   const webhookSecret = process.env["STRIPE_WEBHOOK_SECRET"] ?? "";
   const body = req.body as Record<string, unknown>;
@@ -583,7 +697,7 @@ router.get("/admin/table-sessions", requireAuth, requireRole("manager", "admin")
     .limit(100);
 
   const filtered = status ? rows.filter(s => s.status === status) : rows;
-  res.json(filtered);
+  res.json(filtered.map((session) => withoutBearerToken(session as unknown as Record<string, unknown>)));
 });
 
 // ── ADMIN: PATCH /admin/table-sessions/:id ───────────────────────────────────
@@ -602,7 +716,7 @@ router.patch("/admin/table-sessions/:id", requireAuth, requireRole("manager", "a
     .returning();
 
   if (!session) { res.status(404).json({ error: "Sesión no encontrada." }); return; }
-  res.json(session);
+  res.json(withoutBearerToken(session as unknown as Record<string, unknown>));
 });
 
 // ── ADMIN: PATCH /admin/products/:id/soldout ─────────────────────────────────
@@ -710,6 +824,10 @@ router.delete("/admin/product-availability-rules/:id", requireAuth, requireRole(
 // ── ADMIN: POST /admin/online-orders/:id/refund ───────────────────────────────
 
 router.post("/admin/online-orders/:id/refund", requireAuth, requireRole("manager", "admin"), async (req, res): Promise<void> => {
+  if (process.env["NODE_ENV"] === "production") {
+    res.status(503).json({ error: "Reembolsos online no configurados" });
+    return;
+  }
   const id = req.params.id as string;
   const { reason = "" } = req.body as { reason?: string };
 

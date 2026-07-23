@@ -65,6 +65,7 @@ app.use(
       "Idempotency-Key",
       "X-Manager-Token",
       "X-Courier-Token",
+      "X-Device-Token",
     ],
     credentials: true,
   }),
@@ -95,6 +96,18 @@ app.use(cookieParser());
 // Strip HTML tags from all text body fields (defense-in-depth; Zod schemas are
 // still the primary validation layer).
 app.use(sanitizeInputs);
+
+app.use("/api", (req, res, next) => {
+  const normalizedPath = req.path.toLowerCase();
+  if (
+    process.env.NODE_ENV === "production"
+    && (/\/demo-data(?:\/|$)/.test(normalizedPath) || normalizedPath.includes("simulation"))
+  ) {
+    res.status(404).json({ error: "Ruta no disponible en producción" });
+    return;
+  }
+  next();
+});
 
 app.use("/api", router);
 
