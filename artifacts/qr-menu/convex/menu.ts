@@ -1,6 +1,6 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
-import { ConvexError } from "convex/values";
+import { requireAdmin } from "./requireAdmin";
 
 // ── Public queries ────────────────────────────────────────────────────────────
 
@@ -74,12 +74,6 @@ export const getItemsByCategoryId = query({
 });
 
 // ── Admin mutations ───────────────────────────────────────────────────────────
-
-async function requireAdmin(ctx: { auth: { getUserIdentity: () => Promise<unknown> } }) {
-  const identity = await ctx.auth.getUserIdentity();
-  if (!identity) throw new ConvexError({ message: "Not authenticated", code: "UNAUTHENTICATED" });
-  return identity;
-}
 
 const translationsValidator = v.optional(
   v.record(
@@ -283,8 +277,7 @@ export const reorderItems = mutation({
 export const listAllItems = query({
   args: {},
   handler: async (ctx) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new ConvexError({ message: "Not authenticated", code: "UNAUTHENTICATED" });
+    await requireAdmin(ctx);
     const items = await ctx.db.query("menuItems").collect();
     return resolveItemImages(ctx, items);
   },

@@ -1,6 +1,6 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
-import { ConvexError } from "convex/values";
+import { requireAdmin } from "./requireAdmin";
 
 // Returns the single branding document (or null if not yet set)
 // Also resolves heroImageStorageId -> heroImageUrl if present
@@ -27,8 +27,7 @@ export const get = query({
 export const generateUploadUrl = mutation({
   args: {},
   handler: async (ctx) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new ConvexError({ message: "Not authenticated", code: "UNAUTHENTICATED" });
+    await requireAdmin(ctx);
     return await ctx.storage.generateUploadUrl();
   },
 });
@@ -92,10 +91,7 @@ export const upsert = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) {
-      throw new ConvexError({ message: "Not authenticated", code: "UNAUTHENTICATED" });
-    }
+    await requireAdmin(ctx);
     const existing = await ctx.db.query("branding").first();
     if (existing) {
       await ctx.db.patch(existing._id, args);
