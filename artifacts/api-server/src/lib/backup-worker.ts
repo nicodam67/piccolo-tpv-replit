@@ -21,7 +21,8 @@ import {
 } from "@workspace/db";
 import { eq, and, lte, desc, gte, sql } from "drizzle-orm";
 import {
-  backupChecksum,
+  BACKUP_FORMAT_VERSION,
+  backupArtifactChecksum,
   createDatabaseSnapshot,
   encryptBackup,
 } from "./backup-core";
@@ -105,7 +106,12 @@ async function runScheduledBackup(schedule: typeof backupSchedulesTable.$inferSe
   try {
     const { payload, rowCounts } = await createDatabaseSnapshot(APP_VERSION);
     const { iv, ciphertext } = encryptBackup(JSON.stringify(payload));
-    const hash = backupChecksum(ciphertext);
+    const hash = backupArtifactChecksum({
+      formatVersion: BACKUP_FORMAT_VERSION,
+      appVersion: APP_VERSION,
+      iv,
+      ciphertext,
+    });
 
     await db.update(backupRecordsTable).set({
       status: "valid",

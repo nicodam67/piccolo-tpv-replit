@@ -96,4 +96,26 @@ describe("emergency export security", () => {
     expect(response.body.tables.ventas).toHaveLength(1);
     expect(mockDb.execute).not.toHaveBeenCalled();
   });
+
+  it("strips client QR credentials from exported CRM rows", async () => {
+    mockDb.select.mockReturnValueOnce(chain([{ id: "client-1", nombre: "Ana", qrToken: "secret-token" }]));
+    const response = await request(app())
+      .post("/api/backup/emergency-export")
+      .set("Authorization", "Bearer admin")
+      .send({ modules: ["clientes"], format: "json" });
+    expect(response.status).toBe(200);
+    expect(response.body.tables.clientes[0]).not.toHaveProperty("qrToken");
+  });
+
+  it("does not deliver an export when mandatory auditing fails", async () => {
+    mockDb.select.mockReturnValueOnce(chain([{ id: "ticket-1" }]));
+    mockDb.insert.mockImplementationOnce(() => {
+      throw new Error("audit unavailable");
+    });
+    const response = await request(app())
+      .post("/api/backup/emergency-export")
+      .set("Authorization", "Bearer admin")
+      .send({ modules: ["ventas"], format: "json" });
+    expect(response.status).toBe(500);
+  });
 });

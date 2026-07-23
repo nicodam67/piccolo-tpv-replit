@@ -44,6 +44,9 @@ function stripEconomic<T extends Record<string, unknown>>(emp: T, role: string):
 const VALID_EMPLOYEE_ROLES = new Set([
   "admin", "manager", "encargado", "employee", "waiter", "cashier", "kitchen", "delivery",
 ]);
+const MANAGER_ASSIGNABLE_ROLES = new Set([
+  "encargado", "employee", "waiter", "cashier", "kitchen", "delivery",
+]);
 
 const MUTABLE_EMPLOYEE_FIELDS = new Set([
   "name", "role", "active", "lastName", "employeeNumber", "email", "phone", "dni",
@@ -320,14 +323,14 @@ router.post("/hr/employees", requireAuth, requireRole("admin", "manager"), async
     const { pin, ...empData } = body as { pin?: string } & Partial<typeof employeesTable.$inferInsert>;
 
     if (!empData.name?.trim()) { res.status(400).json({ error: "El nombre es obligatorio" }); return; }
-    if (!empData.role) { res.status(400).json({ error: "El rol es obligatorio" }); return; }
-    if (!VALID_EMPLOYEE_ROLES.has(empData.role)) {
+    if (typeof body.role !== "string") { res.status(400).json({ error: "El rol es obligatorio" }); return; }
+    if (!VALID_EMPLOYEE_ROLES.has(body.role)) {
       res.status(400).json({ error: "Rol no válido" });
       return;
     }
-    if (req.user!.role !== "admin" && empData.role === "admin") {
-      await auditEmployeeSecurity(req, "employee_privilege_denied", "Manager intentó crear un administrador");
-      res.status(403).json({ error: "Solo un administrador puede crear otros administradores" });
+    if (req.user!.role !== "admin" && !MANAGER_ASSIGNABLE_ROLES.has(body.role)) {
+      await auditEmployeeSecurity(req, "employee_privilege_denied", `Manager intentó crear rol ${body.role}`);
+      res.status(403).json({ error: "Un manager solo puede crear roles subordinados" });
       return;
     }
 
@@ -385,6 +388,22 @@ router.patch("/hr/employees/:id", requireAuth, requireRole("admin", "manager"), 
   try {
     const body = req.body as Record<string, unknown>;
     const pin = typeof body.pin === "string" ? body.pin : undefined;
+    if ("pin" in body && typeof body.pin !== "string") {
+      res.status(400).json({ error: "PIN no válido" });
+      return;
+    }
+    if ("active" in body && typeof body.active !== "boolean") {
+      res.status(400).json({ error: "active debe ser booleano" });
+      return;
+    }
+    if ("role" in body && typeof body.role !== "string") {
+      res.status(400).json({ error: "Rol no válido" });
+      return;
+    }
+    if ("empStatus" in body && typeof body.empStatus !== "string") {
+      res.status(400).json({ error: "Estado no válido" });
+      return;
+    }
     const updates = Object.fromEntries(
       Object.entries(body).filter(([key]) => MUTABLE_EMPLOYEE_FIELDS.has(key)),
     ) as Partial<typeof employeesTable.$inferInsert>;
@@ -409,8 +428,8 @@ router.patch("/hr/employees/:id", requireAuth, requireRole("admin", "manager"), 
         && updates.role !== undefined
         && updates.role !== target.role;
       if (!actorIsAdmin && (
-        target.role === "admin"
-        || updates.role === "admin"
+        ["admin", "manager"].includes(target.role)
+        || (updates.role !== undefined && !MANAGER_ASSIGNABLE_ROLES.has(updates.role))
         || changesOwnRole
       )) {
         throw new Error("PRIVILEGE_ESCALATION");

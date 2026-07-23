@@ -58,6 +58,17 @@ describe("integrated QR fail-closed behavior", () => {
     expect(response.status).toBe(503);
   });
 
+  it("returns a controlled 503 when categories have no visible products", async () => {
+    process.env.NODE_ENV = "production";
+    mockDb.select
+      .mockReturnValueOnce(chain([{ nombreComercial: "Piccolo", active: true }]))
+      .mockReturnValueOnce(chain([{ id: "cat-1", name: "Carta" }]))
+      .mockReturnValueOnce(chain([]))
+      .mockReturnValueOnce(chain([]));
+    const response = await request(app()).get("/api/public/menu");
+    expect(response.status).toBe(503);
+  });
+
   it("keeps empty development installations available without demo seeding", async () => {
     process.env.NODE_ENV = "development";
     const response = await request(app()).get("/api/public/menu");

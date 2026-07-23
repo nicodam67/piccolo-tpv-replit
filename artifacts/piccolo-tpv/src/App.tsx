@@ -137,7 +137,7 @@ const ROLES_MANAGER_UP  = ['admin', 'manager'];
 const ROLES_ADMIN_ONLY  = ['admin'];
 
 function QrFixturesRoute() {
-  const enabled = import.meta.env.DEV || import.meta.env.VITE_QR_FIXTURES === 'true';
+  const enabled = import.meta.env.DEV && import.meta.env.VITE_QR_FIXTURES === 'true';
   if (enabled) return <CartaPublicaApp />;
   return (
     <main className="min-h-screen grid place-items-center bg-[#faf8f4] p-8 text-center text-stone-800">

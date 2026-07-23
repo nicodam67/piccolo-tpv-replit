@@ -7,7 +7,16 @@ import { requireAdmin } from "./requireAdmin";
 export const listCategories = query({
   args: {},
   handler: async (ctx) => {
-    return await ctx.db.query("categories").collect();
+    const [categories, items] = await Promise.all([
+      ctx.db.query("categories").collect(),
+      ctx.db.query("menuItems").collect(),
+    ]);
+    const visibleCategoryIds = new Set(
+      items.filter((item) => item.available).map((item) => String(item.categoryId)),
+    );
+    return categories.filter(
+      (category) => category.available !== false && visibleCategoryIds.has(String(category._id)),
+    );
   },
 });
 
@@ -68,6 +77,9 @@ export const listAvailableItems = query({
 export const getItemsByCategoryId = query({
   args: { catId: v.string() },
   handler: async (ctx, args) => {
+    const category = (await ctx.db.query("categories").collect())
+      .find((entry) => String(entry._id) === args.catId);
+    if (!category || category.available === false) return [];
     const all = await ctx.db.query("menuItems").collect();
     return all.filter((i) => i.available === true && i.categoryId === args.catId);
   },

@@ -3,7 +3,12 @@ import { ConvexError, v } from "convex/values";
 
 function assertExplicitDemoSeed(secret: string): void {
   const expected = process.env.DEMO_SEED_SECRET;
-  if (process.env.QR_MENU_DEMO !== "true" || !expected || secret !== expected) {
+  if (
+    process.env.QR_MENU_ENV !== "development"
+    || process.env.QR_MENU_DEMO !== "true"
+    || !expected
+    || secret !== expected
+  ) {
     throw new ConvexError({ message: "Forbidden", code: "FORBIDDEN" });
   }
 }

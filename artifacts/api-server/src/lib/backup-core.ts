@@ -7,6 +7,8 @@ export const BACKUP_EXCLUDED_TABLES = [
   "backup_audit_log",
   "idempotency_keys",
   "revoked_tokens",
+  "_piccolo_migrations",
+  "schema_migrations",
 ] as const;
 
 export interface BackupPayload {
@@ -15,12 +17,19 @@ export interface BackupPayload {
   createdAt: string;
   manifest: string[];
   tables: Record<string, unknown[]>;
+  sequences: Record<string, { lastValue: string; isCalled: boolean }>;
 }
 
 function deriveKey(): Buffer {
   const secret = process.env["SESSION_SECRET"];
   if (!secret) throw new Error("SESSION_SECRET no está configurado");
   return crypto.scryptSync(secret, "piccolo-backup-salt-v2", 32);
+}
+
+function deriveLegacyKey(): Buffer {
+  const secret = process.env["SESSION_SECRET"];
+  if (!secret) throw new Error("SESSION_SECRET no está configurado");
+  return crypto.scryptSync(secret, "piccolo-backup-salt-v1", 32);
 }
 
 export function encryptBackup(plaintext: string): { iv: string; ciphertext: string } {
@@ -32,6 +41,17 @@ export function encryptBackup(plaintext: string): { iv: string; ciphertext: stri
 }
 
 export function decryptBackup(iv: string, ciphertext: string): string {
+  if (detectBackupFormat(iv) === "legacy-1.0.0") {
+    const decipher = crypto.createDecipheriv(
+      "aes-256-cbc",
+      deriveLegacyKey(),
+      Buffer.from(iv, "hex"),
+    );
+    return Buffer.concat([
+      decipher.update(Buffer.from(ciphertext, "base64")),
+      decipher.final(),
+    ]).toString("utf8");
+  }
   const payload = Buffer.from(ciphertext, "base64");
   if (payload.length < 17) throw new Error("Payload cifrado inválido");
   const encrypted = payload.subarray(0, -16);
@@ -47,6 +67,23 @@ export function decryptBackup(iv: string, ciphertext: string): string {
 
 export function backupChecksum(ciphertext: string): string {
   return crypto.createHash("sha256").update(ciphertext).digest("hex");
+}
+
+export function detectBackupFormat(iv: string): "2.0.0" | "legacy-1.0.0" {
+  if (/^[0-9a-f]{24}$/i.test(iv)) return BACKUP_FORMAT_VERSION;
+  if (/^[0-9a-f]{32}$/i.test(iv)) return "legacy-1.0.0";
+  throw new Error("IV de backup inválido");
+}
+
+export function backupArtifactChecksum(input: {
+  formatVersion: string;
+  appVersion: string;
+  iv: string;
+  ciphertext: string;
+}): string {
+  return crypto.createHash("sha256")
+    .update(JSON.stringify(input))
+    .digest("hex");
 }
 
 function assertSafeCatalogIdentifier(name: string): void {
@@ -75,9 +112,24 @@ export async function discoverBackupTables(client: Pick<PoolClient, "query">): P
   return names;
 }
 
+export async function discoverBackupSequences(
+  client: Pick<PoolClient, "query">,
+): Promise<string[]> {
+  const result = await client.query<{ sequencename: string }>(
+    `SELECT sequencename
+       FROM pg_catalog.pg_sequences
+      WHERE schemaname = 'public'
+      ORDER BY sequencename`,
+  );
+  const names = result.rows.map((row) => row.sequencename);
+  names.forEach(assertSafeCatalogIdentifier);
+  return names;
+}
+
 export function validateBackupPayload(
   value: unknown,
   expectedTables?: readonly string[],
+  expectedSequences?: readonly string[],
 ): BackupPayload {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error("Formato de backup inválido");
@@ -92,6 +144,9 @@ export function validateBackupPayload(
   if (!payload.tables || typeof payload.tables !== "object" || Array.isArray(payload.tables)) {
     throw new Error("Manifest de tablas inválido");
   }
+  if (!payload.sequences || typeof payload.sequences !== "object" || Array.isArray(payload.sequences)) {
+    throw new Error("Manifest de secuencias inválido");
+  }
   const manifest = [...payload.manifest].sort();
   const payloadNames = Object.keys(payload.tables).sort();
   if (new Set(manifest).size !== manifest.length || manifest.join("\0") !== payloadNames.join("\0")) {
@@ -103,10 +158,29 @@ export function validateBackupPayload(
       throw new Error(`Filas inválidas para ${name}`);
     }
   }
+  for (const [name, state] of Object.entries(payload.sequences)) {
+    assertSafeCatalogIdentifier(name);
+    if (
+      !state
+      || typeof state !== "object"
+      || typeof state.lastValue !== "string"
+      || !/^-?\d+$/.test(state.lastValue)
+      || typeof state.isCalled !== "boolean"
+    ) {
+      throw new Error(`Estado de secuencia inválido: ${name}`);
+    }
+  }
   if (expectedTables) {
     const expected = [...expectedTables].sort();
     if (expected.join("\0") !== manifest.join("\0")) {
       throw new Error("Backup incompleto o incompatible con el esquema actual");
+    }
+  }
+  if (expectedSequences) {
+    const expected = [...expectedSequences].sort();
+    const actual = Object.keys(payload.sequences).sort();
+    if (expected.join("\0") !== actual.join("\0")) {
+      throw new Error("Backup incompleto o incompatible con las secuencias actuales");
     }
   }
   return payload as BackupPayload;
@@ -120,6 +194,7 @@ export async function createDatabaseSnapshot(appVersion: string): Promise<{
   try {
     await client.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
     const manifest = await discoverBackupTables(client);
+    const sequenceNames = await discoverBackupSequences(client);
     const tables: Record<string, unknown[]> = {};
     const rowCounts: Record<string, number> = {};
     for (const name of manifest) {
@@ -127,12 +202,23 @@ export async function createDatabaseSnapshot(appVersion: string): Promise<{
       tables[name] = result.rows;
       rowCounts[name] = result.rows.length;
     }
+    const sequences: BackupPayload["sequences"] = {};
+    for (const name of sequenceNames) {
+      const [state] = (await client.query<{ last_value: string; is_called: boolean }>(
+        `SELECT last_value::text, is_called FROM ${quoteCatalogIdentifier(name)}`,
+      )).rows;
+      sequences[name] = {
+        lastValue: state?.last_value ?? "1",
+        isCalled: state?.is_called ?? false,
+      };
+    }
     const payload: BackupPayload = {
       formatVersion: BACKUP_FORMAT_VERSION,
       appVersion,
       createdAt: new Date().toISOString(),
       manifest,
       tables,
+      sequences,
     };
     await client.query("COMMIT");
     return { payload, rowCounts };
@@ -148,7 +234,8 @@ export async function validateBackupForCurrentDatabase(payloadInput: unknown): P
   const client = await pool.connect();
   try {
     const currentTables = await discoverBackupTables(client);
-    return validateBackupPayload(payloadInput, currentTables);
+    const currentSequences = await discoverBackupSequences(client);
+    return validateBackupPayload(payloadInput, currentTables, currentSequences);
   } finally {
     client.release();
   }
@@ -161,7 +248,8 @@ export async function restoreDatabaseSnapshot(payloadInput: unknown): Promise<Re
   try {
     await client.query("BEGIN");
     const currentTables = await discoverBackupTables(client);
-    const payload = validateBackupPayload(payloadInput, currentTables);
+    const currentSequences = await discoverBackupSequences(client);
+    const payload = validateBackupPayload(payloadInput, currentTables, currentSequences);
     const roleResult = await client.query<{ session_replication_role: string }>(
       "SHOW session_replication_role",
     );
@@ -174,7 +262,10 @@ export async function restoreDatabaseSnapshot(payloadInput: unknown): Promise<Re
     const restored: Record<string, number> = {};
     for (const name of payload.manifest) {
       const identifier = quoteCatalogIdentifier(name);
-      await client.query(`TRUNCATE TABLE ${identifier} RESTART IDENTITY CASCADE`);
+      await client.query(`DELETE FROM ${identifier}`);
+    }
+    for (const name of payload.manifest) {
+      const identifier = quoteCatalogIdentifier(name);
       const rows = payload.tables[name];
       if (rows.length > 0) {
         await client.query(
@@ -184,6 +275,14 @@ export async function restoreDatabaseSnapshot(payloadInput: unknown): Promise<Re
         );
       }
       restored[name] = rows.length;
+    }
+    for (const [name, state] of Object.entries(payload.sequences)) {
+      assertSafeCatalogIdentifier(name);
+      await client.query("SELECT setval($1::regclass, $2::bigint, $3::boolean)", [
+        `public.${name}`,
+        state.lastValue,
+        state.isCalled,
+      ]);
     }
     await client.query("COMMIT");
     return restored;

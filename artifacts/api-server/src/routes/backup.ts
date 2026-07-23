@@ -41,9 +41,12 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import ExcelJS from "exceljs";
 import {
+  BACKUP_FORMAT_VERSION,
+  backupArtifactChecksum,
   backupChecksum,
   createDatabaseSnapshot,
   decryptBackup,
+  detectBackupFormat,
   encryptBackup,
   restoreDatabaseSnapshot,
   validateBackupForCurrentDatabase,
@@ -88,8 +91,41 @@ async function logAudit(
   }).catch(() => {});
 }
 
+async function logRequiredAudit(
+  backupId: string | null,
+  action: string,
+  result: "ok" | "error",
+  details: Record<string, unknown>,
+  req: { user?: { id?: string; name?: string } },
+) {
+  await db.insert(backupAuditLogTable).values({
+    backupId,
+    action,
+    result,
+    details,
+    employeeId: req.user?.id ?? null,
+    employeeName: req.user?.name ?? "sistema",
+  });
+}
+
 async function logTechEvent(level: string, module: string, message: string, data: Record<string, unknown> = {}) {
   await db.insert(techEventsTable).values({ level, module, message, data }).catch(() => {});
+}
+
+function expectedRecordChecksum(record: {
+  appVersion: string;
+  encryptionIv: string;
+  encryptedPayload: string;
+}): string {
+  const formatVersion = detectBackupFormat(record.encryptionIv);
+  return formatVersion === "legacy-1.0.0"
+    ? backupChecksum(record.encryptedPayload)
+    : backupArtifactChecksum({
+        formatVersion,
+        appVersion: record.appVersion,
+        iv: record.encryptionIv,
+        ciphertext: record.encryptedPayload,
+      });
 }
 
 // ─── POST /backup/create ──────────────────────────────────────────────────────
@@ -112,12 +148,23 @@ router.post("/backup/create", ...guard, backupLimiter, async (req, res) => {
     try {
       const { payload, rowCounts } = await createDatabaseSnapshot(APP_VERSION);
       const { iv, ciphertext } = encryptBackup(JSON.stringify(payload));
-      const hash = backupChecksum(ciphertext);
+      const hash = backupArtifactChecksum({
+        formatVersion: BACKUP_FORMAT_VERSION,
+        appVersion: APP_VERSION,
+        iv,
+        ciphertext,
+      });
       const sizeBytes = Buffer.byteLength(ciphertext, "base64");
 
       // Save to disk
       const filename = `backup_${record.id}.enc`;
-      fs.writeFileSync(path.join(BACKUP_DIR, filename), ciphertext);
+      fs.writeFileSync(path.join(BACKUP_DIR, filename), JSON.stringify({
+        formatVersion: BACKUP_FORMAT_VERSION,
+        appVersion: APP_VERSION,
+        iv,
+        ciphertext,
+        checksum: hash,
+      }));
 
       await db.update(backupRecordsTable).set({
         status: "valid",
@@ -147,11 +194,15 @@ router.post("/backup/:id/verify", ...guard, async (req, res) => {
   const [record] = await db.select().from(backupRecordsTable).where(eq(backupRecordsTable.id, id));
   if (!record) return res.status(404).json({ error: "Copia no encontrada" });
 
-  if (!record.encryptedPayload || !record.integrityHash) {
+  if (!record.encryptedPayload || !record.integrityHash || !record.encryptionIv) {
     return res.status(422).json({ error: "Copia sin payload — no se puede verificar" });
   }
 
-  const hash = backupChecksum(record.encryptedPayload);
+  const hash = expectedRecordChecksum({
+    appVersion: record.appVersion,
+    encryptionIv: record.encryptionIv ?? "",
+    encryptedPayload: record.encryptedPayload,
+  });
   const valid = hash === record.integrityHash;
 
   await db.update(backupRecordsTable).set({
@@ -226,14 +277,23 @@ router.get("/backup/:id/download", ...adminOnly, async (req, res) => {
   const id = req.params.id as string;
   const [record] = await db.select().from(backupRecordsTable).where(eq(backupRecordsTable.id, id));
   if (!record) return res.status(404).json({ error: "Copia no encontrada" });
-  if (!record.encryptedPayload) return res.status(422).json({ error: "Copia sin payload" });
+  if (!record.encryptedPayload || !record.encryptionIv || !record.integrityHash) {
+    return res.status(422).json({ error: "Copia incompleta" });
+  }
 
   await logAudit(id, "downloaded", "ok", {}, req);
 
-  const filename = `piccolo_backup_${id.slice(0, 8)}_${new Date().toISOString().slice(0, 10)}.enc`;
-  res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
-  res.setHeader("Content-Type", "application/octet-stream");
-  res.send(Buffer.from(record.encryptedPayload, "base64"));
+  const filename = `piccolo_backup_${id.slice(0, 8)}_${new Date().toISOString().slice(0, 10)}`;
+  res.setHeader("Content-Disposition", `attachment; filename="${filename}.json"`);
+  res.setHeader("Content-Type", "application/json");
+  const formatVersion = detectBackupFormat(record.encryptionIv);
+  res.json({
+    formatVersion,
+    appVersion: record.appVersion,
+    iv: record.encryptionIv,
+    ciphertext: record.encryptedPayload,
+    checksum: record.integrityHash,
+  });
 });
 
 // ─── POST /backup/:id/dry-run ─────────────────────────────────────────────────
@@ -244,14 +304,14 @@ router.post("/backup/:id/dry-run", ...guard, async (req, res) => {
   if (!record.encryptedPayload || !record.encryptionIv) {
     return res.status(422).json({ error: "Copia sin payload cifrado" });
   }
-  if (!record.integrityHash || backupChecksum(record.encryptedPayload) !== record.integrityHash) {
+  if (!record.integrityHash || expectedRecordChecksum({
+    appVersion: record.appVersion,
+    encryptionIv: record.encryptionIv,
+    encryptedPayload: record.encryptedPayload,
+  }) !== record.integrityHash) {
     await logAudit(id, "test_restored", "error", { reason: "checksum_mismatch" }, req);
     return res.status(422).json({ ok: false, error: "Checksum incorrecto" });
   }
-  if (record.appVersion !== APP_VERSION) {
-    return res.status(422).json({ ok: false, error: "Versión de backup incompatible" });
-  }
-
   try {
     const plaintext = decryptBackup(record.encryptionIv, record.encryptedPayload);
     const data = await validateBackupForCurrentDatabase(JSON.parse(plaintext));
@@ -281,14 +341,14 @@ router.post("/backup/:id/restore", ...adminOnly, backupLimiter, async (req, res)
     return res.status(422).json({ error: "Copia sin payload cifrado" });
   }
 
-  if (!record.integrityHash || backupChecksum(record.encryptedPayload) !== record.integrityHash) {
+  if (!record.integrityHash || expectedRecordChecksum({
+    appVersion: record.appVersion,
+    encryptionIv: record.encryptionIv,
+    encryptedPayload: record.encryptedPayload,
+  }) !== record.integrityHash) {
     await logAudit(id, "restore_rejected", "error", { reason: "checksum_mismatch" }, req);
     return res.status(422).json({ error: "Checksum incorrecto" });
   }
-  if (record.appVersion !== APP_VERSION) {
-    return res.status(422).json({ error: "Versión de backup incompatible" });
-  }
-
   let payload;
   try {
     payload = validateBackupPayload(
@@ -303,7 +363,12 @@ router.post("/backup/:id/restore", ...adminOnly, backupLimiter, async (req, res)
   try {
     const { payload: currentPayload, rowCounts } = await createDatabaseSnapshot(APP_VERSION);
     const { iv, ciphertext } = encryptBackup(JSON.stringify(currentPayload));
-    const hash = backupChecksum(ciphertext);
+    const hash = backupArtifactChecksum({
+      formatVersion: BACKUP_FORMAT_VERSION,
+      appVersion: APP_VERSION,
+      iv,
+      ciphertext,
+    });
     await db.insert(backupRecordsTable).values({
       id: preRestoreId,
       type: "pre-restore",
@@ -489,7 +554,10 @@ router.delete("/backup/destinations/:id", ...adminOnly, async (req, res) => {
 const EMERGENCY_EXPORTERS = {
   ventas: () => db.select().from(ticketsTable),
   caja: () => db.select().from(cashSessionsTable),
-  clientes: () => db.select().from(crmClientsTable),
+  clientes: async () => {
+    const rows = await db.select().from(crmClientsTable);
+    return rows.map(({ qrToken: _credential, ...client }) => client);
+  },
   empleados: () => db.select({
     id: employeesTable.id,
     name: employeesTable.name,
@@ -508,7 +576,7 @@ type EmergencyModule = keyof typeof EMERGENCY_EXPORTERS;
 // ─── POST /backup/emergency-export ────────────────────────────────────────────
 router.post("/backup/emergency-export", requireAuth, backupLimiter, async (req, res) => {
   if (req.user?.role !== "admin") {
-    await logAudit(null, "emergency_export_denied", "error", {
+    await logRequiredAudit(null, "emergency_export_denied", "error", {
       role: req.user?.role ?? "unknown",
       requestedModules: req.body?.modules ?? null,
     }, req);
@@ -516,11 +584,11 @@ router.post("/backup/emergency-export", requireAuth, backupLimiter, async (req, 
   }
   const { modules = ["all"], format = "json" } = req.body as { modules?: string[]; format?: string };
   if (!Array.isArray(modules) || modules.length === 0 || !modules.every((value) => typeof value === "string")) {
-    await logAudit(null, "emergency_export_rejected", "error", { reason: "invalid_modules" }, req);
+    await logRequiredAudit(null, "emergency_export_rejected", "error", { reason: "invalid_modules" }, req);
     return res.status(422).json({ error: "modules debe ser una lista no vacía" });
   }
   if (!["json", "csv", "xlsx"].includes(format)) {
-    await logAudit(null, "emergency_export_rejected", "error", { reason: "invalid_format" }, req);
+    await logRequiredAudit(null, "emergency_export_rejected", "error", { reason: "invalid_format" }, req);
     return res.status(422).json({ error: "Formato no soportado" });
   }
 
@@ -529,7 +597,7 @@ router.post("/backup/emergency-export", requireAuth, backupLimiter, async (req, 
   const requested = modules.includes("all") ? allowedModules : modules;
   const invalid = requested.filter((module) => !allowedModules.includes(module as EmergencyModule));
   if (invalid.length > 0 || (modules.includes("all") && modules.length !== 1)) {
-    await logAudit(null, "emergency_export_rejected", "error", {
+    await logRequiredAudit(null, "emergency_export_rejected", "error", {
       reason: "forbidden_modules",
       modules: invalid,
     }, req);
@@ -539,7 +607,7 @@ router.post("/backup/emergency-export", requireAuth, backupLimiter, async (req, 
   for (const module of requested as EmergencyModule[]) {
     tables[module] = await EMERGENCY_EXPORTERS[module]();
   }
-  await logAudit(null, "emergency_export", "ok", {
+  await logRequiredAudit(null, "emergency_export", "ok", {
     modules: requested,
     format,
     rowCounts: Object.fromEntries(Object.entries(tables).map(([name, rows]) => [name, rows.length])),
