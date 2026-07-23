@@ -1,5 +1,4 @@
 import { motion } from "motion/react";
-import type { Doc } from "@/convex/_generated/dataModel.d.ts";
 import { getTagMeta } from "@/lib/dietary-tags.ts";
 import { getAllergenMeta } from "@/lib/allergens.ts";
 import { cn } from "@/lib/utils.ts";
@@ -9,9 +8,10 @@ import { isSupportedLocale } from "@/i18n.ts";
 import { localize } from "@/lib/translations.ts";
 import type { CardSettings } from "@/pages/admin/_components/CardSettingsManager.tsx";
 import { DEFAULT_CARD_SETTINGS } from "@/pages/admin/_components/CardSettingsManager.tsx";
+import type { MenuItem } from "@/lib/tpv-menu-integration.ts";
 
 type Props = {
-  item: Doc<"menuItems">;
+  item: MenuItem;
   index: number;
   onClick: () => void;
   cardSettings?: CardSettings;
@@ -33,7 +33,7 @@ export default function MenuItemCard({ item, index, onClick, cardSettings = DEFA
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.28, delay: index * 0.04 }}
         onClick={onClick}
-        className="group flex gap-3 p-3 rounded-xl border border-border/60 bg-card hover:shadow-md transition-shadow cursor-pointer items-start"
+        className={`group flex gap-3 p-3 rounded-xl border border-border/60 bg-card hover:shadow-md transition-shadow cursor-pointer items-start ${item.outOfStock ? "opacity-60" : ""}`}
       >
         {/* Text side */}
         <div className="flex-1 min-w-0">
@@ -41,6 +41,11 @@ export default function MenuItemCard({ item, index, onClick, cardSettings = DEFA
             <h3 className="text-sm font-semibold text-foreground leading-tight" style={{ fontFamily: "var(--font-serif)" }}>
               {name}
             </h3>
+            {item.outOfStock && (
+              <span className="text-[10px] font-bold uppercase tracking-wide text-red-600">
+                ⛔ {t("menu.sold_out")}
+              </span>
+            )}
             {cardSettings.showPrice && (
               <div className="shrink-0 text-right ml-2 flex flex-col items-end">
                 <span data-item-price className="text-sm font-bold whitespace-nowrap" style={{ color: "var(--primary, #c41a1a)" }}>
@@ -103,10 +108,15 @@ export default function MenuItemCard({ item, index, onClick, cardSettings = DEFA
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.25, delay: index * 0.03 }}
         onClick={onClick}
-        className="group flex items-baseline justify-between gap-3 py-3 px-4 rounded-lg border border-border/50 bg-card hover:bg-muted/30 transition-colors cursor-pointer"
+        className={`group flex items-baseline justify-between gap-3 py-3 px-4 rounded-lg border border-border/50 bg-card hover:bg-muted/30 transition-colors cursor-pointer ${item.outOfStock ? "opacity-60" : ""}`}
       >
         <div className="flex-1 min-w-0">
           <span className="text-sm font-medium text-foreground" style={{ fontFamily: "var(--font-serif)" }}>{name}</span>
+          {item.outOfStock && (
+            <span className="ml-2 text-[10px] font-bold uppercase tracking-wide text-red-600">
+              ⛔ {t("menu.sold_out")}
+            </span>
+          )}
           {cardSettings.showQuantity && item.quantity && (
             <span className="text-xs text-muted-foreground/60 ml-2">{item.quantity}</span>
           )}
@@ -138,7 +148,7 @@ export default function MenuItemCard({ item, index, onClick, cardSettings = DEFA
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, delay: index * 0.06 }}
       onClick={onClick}
-      className="group rounded-xl overflow-hidden border border-border/60 bg-card shadow-sm hover:shadow-md transition-shadow cursor-pointer"
+      className={`group rounded-xl overflow-hidden border border-border/60 bg-card shadow-sm hover:shadow-md transition-shadow cursor-pointer ${item.outOfStock ? "opacity-60" : ""}`}
     >
       {/* Media */}
       {cardSettings.showImage && (
@@ -160,6 +170,11 @@ export default function MenuItemCard({ item, index, onClick, cardSettings = DEFA
           <h3 className="text-base font-medium leading-tight text-foreground" style={{ fontFamily: "var(--font-serif)" }}>
             {name}
           </h3>
+          {item.outOfStock && (
+            <span className="text-[10px] font-bold uppercase tracking-wide text-red-600">
+              ⛔ {t("menu.sold_out")}
+            </span>
+          )}
           {cardSettings.showPrice && (
             <div className="shrink-0 text-right">
               <span data-item-price className="text-sm font-semibold block" style={{ color: "var(--primary)" }}>

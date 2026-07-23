@@ -75,7 +75,7 @@ export function parseAllergens(raw?: string | null): string[] {
   return raw
     .split(',')
     .map((s) => {
-      const token = s.trim().toLowerCase();
+      const token = s.trim().toLowerCase().replace(/[\s-]+/g, '_');
       const canonical = LEGACY_MAP[token] ?? token;
       return KNOWN_CODES.has(canonical) ? canonical : null;
     })

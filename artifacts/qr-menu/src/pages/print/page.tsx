@@ -1,12 +1,13 @@
-import { useQuery } from "convex/react";
-import { api } from "@/convex/_generated/api.js";
 import { useState, useEffect, useRef } from "react";
 import { useParams } from "react-router-dom";
-import type { Doc, Id } from "@/convex/_generated/dataModel.d.ts";
 import { getAllergenMeta } from "@/lib/allergens.ts";
 import { getTagMeta } from "@/lib/dietary-tags.ts";
 import { SUPPORTED_LOCALES, SUPPORTED_LOCALES_ARRAY, isSupportedLocale, type SupportedLocale } from "@/i18n.ts";
 import { localize, localizeCategory } from "@/lib/translations.ts";
+import {
+  type MenuItem,
+  useTpvMenuSnapshot,
+} from "@/lib/tpv-menu-integration.ts";
 
 // Static translations for allergens and dietary tags
 const LABEL_TRANSLATIONS: Record<string, Record<string, string>> = {
@@ -255,9 +256,7 @@ const PORTION_LABELS: Record<string, { full: string; half: string }> = {
 
 export default function PrintPage() {
   const { lng } = useParams<{ lng?: string }>();
-  const categories = useQuery(api.menu.listCategories, {});
-  const items = useQuery(api.menu.listAvailableItems, {});
-  const branding = useQuery(api.branding.get, {});
+  const { categories, items, branding } = useTpvMenuSnapshot();
 
   const [show, setShow] = useState<ShowOptions>(DEFAULT_SHOW);
   const [colors, setColors] = useState<Colors>(DEFAULT_COLORS);
@@ -337,13 +336,13 @@ export default function PrintPage() {
     ? topCategories
     : topCategories.filter((c) => selectedCategoryIds.has(c._id));
 
-  function getSubcategories(parentId: Id<"categories">) {
+  function getSubcategories(parentId: string) {
     return [...(categories ?? [])]
       .filter((c) => c.parentId === parentId && c.available !== false)
       .sort((a, b) => a.order - b.order);
   }
 
-  function getItemsForCategory(catId: Id<"categories">) {
+  function getItemsForCategory(catId: string) {
     return [...(items ?? [])]
       .filter((i) => i.categoryId === catId)
       .sort((a, b) => a.order - b.order);
@@ -807,7 +806,7 @@ export default function PrintPage() {
 function PrintItem({
   item, locale, headingStyle, bodyStyle, colors, show,
 }: {
-  item: Doc<"menuItems">; locale: SupportedLocale;
+  item: MenuItem; locale: SupportedLocale;
   headingStyle: React.CSSProperties; bodyStyle: React.CSSProperties;
   colors: Colors; show: ShowOptions;
 }) {
