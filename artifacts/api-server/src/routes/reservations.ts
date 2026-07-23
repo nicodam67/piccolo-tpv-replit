@@ -9,7 +9,7 @@
  * Conflict rule: same mesa, same fecha, active reservations overlap based on
  * each reservation's duracion_minutos.
  */
-import { Router, type IRouter } from "express";
+import { Router, type IRouter, type Response } from "express";
 import { db } from "@workspace/db";
 import {
   reservationsTable,
@@ -22,12 +22,38 @@ import {
 } from "@workspace/db";
 import { sql, eq, and, ne, inArray, gte, lte, asc, desc, or } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
+import {
+  CrmClientConflictError,
+  CrmClientIdentityRequiredError,
+  CrmClientNotFoundError,
+  getClientHistory,
+  resolveCrmClientForReservation,
+} from "../lib/crm-client-service";
 
 const router: IRouter = Router();
 
 const TERMINAL_STATUSES = ["cancelada_cliente", "cancelada_restaurante", "no_presentado", "finalizada"];
 const ACTIVE_STATUSES   = ["pendiente", "confirmada", "recordatorio_enviado", "cliente_avisado", "cliente_llegado", "sentada", "en_espera"];
 const ALL_STATUSES      = [...ACTIVE_STATUSES, ...TERMINAL_STATUSES];
+
+function sendCrmResolutionError(res: Response, error: unknown): boolean {
+  if (error instanceof CrmClientIdentityRequiredError) {
+    res.status(400).json({ error: error.message });
+    return true;
+  }
+  if (error instanceof CrmClientNotFoundError) {
+    res.status(404).json({ error: error.message });
+    return true;
+  }
+  if (error instanceof CrmClientConflictError) {
+    res.status(409).json({
+      error: error.message,
+      clientes: error.clients,
+    });
+    return true;
+  }
+  return false;
+}
 
 /** HH:MM → total minutes */
 function toMins(hora: string): number {
@@ -244,23 +270,42 @@ router.post("/reservations", requireAuth, async (req, res): Promise<void> => {
   if (!b.nombre || !b.nombre.trim())              { res.status(400).json({ error: "nombre requerido" }); return; }
 
   const mesaId         = typeof b.mesaId   === "string" && b.mesaId   ? b.mesaId   : null;
-  const clientId       = typeof b.clientId === "string" && b.clientId ? b.clientId : null;
+  const requestedClientId = typeof b.clientId === "string" && b.clientId ? b.clientId : null;
   const shiftId        = typeof b.shiftId  === "string" && b.shiftId  ? b.shiftId  : null;
   const duracionMinutos = Number.isFinite(b.duracionMinutos) && b.duracionMinutos > 0 ? Math.floor(b.duracionMinutos) : 90;
+  const telefono = typeof b.telefono === "string" ? b.telefono.trim() : "";
+  const email = typeof b.email === "string" ? b.email.trim() : "";
 
   if (mesaId) {
     const { conflict, conflictWith } = await hasConflict({ mesaId, fecha: b.fecha, hora: b.hora, duracionMinutos });
     if (conflict) { res.status(409).json({ error: `Ya existe una reserva activa en esa mesa: ${conflictWith}` }); return; }
   }
 
+  let client;
+  try {
+    client = await resolveCrmClientForReservation({
+      clientId: requestedClientId,
+      nombre: b.nombre,
+      telefono,
+      email,
+      idioma: typeof b.idioma === "string" ? b.idioma : "es",
+      zonaFavorita:
+        typeof b.zonaPreferida === "string" ? b.zonaPreferida.trim() || null : null,
+      mesaFavoritaId: mesaId,
+    });
+  } catch (error) {
+    if (sendCrmResolutionError(res, error)) return;
+    throw error;
+  }
+
   const [row] = await db.insert(reservationsTable).values({
     fecha:                b.fecha,
     hora:                 b.hora,
     nombre:               b.nombre.trim(),
-    telefono:             typeof b.telefono === "string" ? b.telefono.trim() : "",
-    email:                typeof b.email    === "string" ? b.email.trim()    : "",
+    telefono,
+    email,
     personas:             Number.isFinite(b.personas) && b.personas >= 1 ? Math.floor(b.personas) : 2,
-    clientId,
+    clientId:             client.id,
     shiftId,
     zonaPreferida:        typeof b.zonaPreferida === "string" ? b.zonaPreferida.trim() || null : null,
     mesaId,
@@ -283,11 +328,9 @@ router.post("/reservations", requireAuth, async (req, res): Promise<void> => {
   await logStatusChange({ reservationId: row!.id, statusFrom: "", statusTo: "pendiente", changedBy: user?.id });
 
   // If linked to a CRM client, update visit stats
-  if (clientId) {
-    await db.update(crmClientsTable)
-      .set({ updatedAt: new Date() })
-      .where(eq(crmClientsTable.id, clientId));
-  }
+  await db.update(crmClientsTable)
+    .set({ updatedAt: new Date() })
+    .where(eq(crmClientsTable.id, client.id));
 
   res.status(201).json(row);
 });
@@ -326,6 +369,33 @@ router.patch("/reservations/:id", requireAuth, async (req, res): Promise<void> =
   if (typeof b.notes         === "string") updates.notes         = b.notes.trim();
   if (typeof b.notasInternas === "string") updates.notasInternas = b.notasInternas.trim();
 
+  if (
+    "clientId" in b ||
+    (!existing.clientId &&
+      ("nombre" in b || "telefono" in b || "email" in b))
+  ) {
+    try {
+      const client = await resolveCrmClientForReservation({
+        clientId:
+          typeof b.clientId === "string" && b.clientId ? b.clientId : null,
+        nombre: updates.nombre ?? existing.nombre,
+        telefono: updates.telefono ?? existing.telefono,
+        email: updates.email ?? existing.email,
+        idioma: updates.idioma ?? existing.idioma,
+        zonaFavorita:
+          updates.zonaPreferida !== undefined
+            ? updates.zonaPreferida
+            : existing.zonaPreferida,
+        mesaFavoritaId:
+          updates.mesaId !== undefined ? updates.mesaId : existing.mesaId,
+      });
+      updates.clientId = client.id;
+    } catch (error) {
+      if (sendCrmResolutionError(res, error)) return;
+      throw error;
+    }
+  }
+
   const newStatus = typeof b.status === "string" && ALL_STATUSES.includes(b.status) ? b.status : null;
   if (newStatus) updates.status = newStatus;
 
@@ -348,22 +418,22 @@ router.patch("/reservations/:id", requireAuth, async (req, res): Promise<void> =
     await logStatusChange({ reservationId: id, statusFrom: existing.status, statusTo: newStatus, changedBy: user?.id, notes: b.statusNotes ?? "" });
 
     // If marked no_presentado, increment counter on CRM client
-    if (newStatus === "no_presentado" && existing.clientId) {
+    if (newStatus === "no_presentado" && row!.clientId) {
       await db.update(crmClientsTable)
         .set({ noPresentados: sql`no_presentados + 1`, updatedAt: new Date() } as any)
-        .where(eq(crmClientsTable.id, existing.clientId));
+        .where(eq(crmClientsTable.id, row!.clientId));
     }
     // If cancelled, increment cancelaciones
-    if ((newStatus === "cancelada_cliente" || newStatus === "cancelada_restaurante") && existing.clientId) {
+    if ((newStatus === "cancelada_cliente" || newStatus === "cancelada_restaurante") && row!.clientId) {
       await db.update(crmClientsTable)
         .set({ cancelaciones: sql`cancelaciones + 1`, updatedAt: new Date() } as any)
-        .where(eq(crmClientsTable.id, existing.clientId));
+        .where(eq(crmClientsTable.id, row!.clientId));
     }
     // If finalizada, update ultima_visita and total_visitas on CRM client
-    if (newStatus === "finalizada" && existing.clientId) {
+    if (newStatus === "finalizada" && row!.clientId) {
       await db.update(crmClientsTable)
         .set({ ultimaVisita: new Date(), totalVisitas: sql`total_visitas + 1`, updatedAt: new Date() } as any)
-        .where(eq(crmClientsTable.id, existing.clientId));
+        .where(eq(crmClientsTable.id, row!.clientId));
     }
   }
 
@@ -391,9 +461,29 @@ router.post("/reservations/:id/arrive", requireAuth, async (req, res): Promise<v
     res.status(409).json({ error: `No se puede marcar llegado desde estado '${reservation.status}'` }); return;
   }
 
+  let client;
+  try {
+    client = await resolveCrmClientForReservation({
+      clientId: reservation.clientId,
+      nombre: reservation.nombre,
+      telefono: reservation.telefono,
+      email: reservation.email,
+      idioma: reservation.idioma,
+      zonaFavorita: reservation.zonaPreferida,
+      mesaFavoritaId: reservation.mesaId,
+    });
+  } catch (error) {
+    if (sendCrmResolutionError(res, error)) return;
+    throw error;
+  }
+
   const [updated] = await db
     .update(reservationsTable)
-    .set({ status: "cliente_llegado", updatedAt: new Date() })
+    .set({
+      status: "cliente_llegado",
+      clientId: client.id,
+      updatedAt: new Date(),
+    })
     .where(eq(reservationsTable.id, id))
     .returning();
 
@@ -420,6 +510,7 @@ router.post("/reservations/:id/arrive", requireAuth, async (req, res): Promise<v
         guestCount: reservation.personas,
         notes:      reservation.notes,
         clientName: reservation.nombre,
+        clientId:   client.id,
       }).returning();
 
       return { tableId: table.id, orderId: order.id };
@@ -442,6 +533,8 @@ router.post("/reservations/:id/arrive", requireAuth, async (req, res): Promise<v
     }
   }
 
+  const clientContext = await getClientHistory(client.id);
+
   res.json({
     reservation: updated,
     tableOpened: tableResult,
@@ -452,7 +545,13 @@ router.post("/reservations/:id/arrive", requireAuth, async (req, res): Promise<v
       mesaId:     reservation.mesaId,
       alergias:   reservation.alergias,
       trona:      reservation.trona,
+      clientId:   client.id,
+      clientObservations: client.observaciones,
+      clientInternalNotes: client.notasInternas,
+      preferredZone: client.zonaFavorita,
+      preferredTableId: client.mesaFavoritaId,
     },
+    clientContext,
   });
 });
 

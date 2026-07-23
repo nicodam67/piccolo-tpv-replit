@@ -33,7 +33,17 @@ interface WaitingEntry {
 }
 interface CrmClient {
   id: string; nombre: string; apellidos: string; telefono: string; email: string;
-  alergias?: string; observaciones?: string; totalVisitas?: number;
+  observaciones?: string; notasInternas?: string; totalVisitas?: number;
+  ultimaVisita?: string | null; idioma?: string; zonaFavorita?: string | null;
+  mesaFavoritaId?: string | null;
+}
+interface CrmClientContext {
+  client: CrmClient;
+  reservations: Reservation[];
+  stats: {
+    totalVisitas: number;
+    ultimaVisita?: string | null;
+  };
 }
 interface Zone { id: string; name: string; }
 interface TableRow { id: string; tableNumber: string; capacity: number; status: string; zoneName?: string; }
@@ -254,7 +264,7 @@ function ClientSearch({ onSelect }: { onSelect: (c: CrmClient | null) => void })
     const t = setTimeout(async () => {
       setLoading(true);
       try {
-        const data = await api.get<CrmClient[]>(`/api/clients?q=${encodeURIComponent(q)}&limit=8`);
+        const data = await api.get<CrmClient[]>(`/api/crm/clients?q=${encodeURIComponent(q)}&limit=8`);
         setResults(data ?? []);
       } catch { /* ignore */ } finally { setLoading(false); }
     }, 300);
@@ -293,6 +303,107 @@ function ClientSearch({ onSelect }: { onSelect: (c: CrmClient | null) => void })
   );
 }
 
+function ArrivalClientContextModal({
+  reservation,
+  context,
+  onClose,
+}: {
+  reservation: Reservation;
+  context: CrmClientContext;
+  onClose: () => void;
+}) {
+  const client = context.client;
+  const previousReservations = context.reservations
+    .filter((item) => item.id !== reservation.id)
+    .slice(0, 5);
+
+  return (
+    <div className="fixed inset-0 z-[60] bg-black/75 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-card border border-border rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden max-h-[92vh] flex flex-col" onClick={event => event.stopPropagation()}>
+        <div className="p-4 border-b border-border flex items-center justify-between shrink-0">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-primary">Ficha CRM recuperada</p>
+            <h2 className="font-black text-base">{client.nombre} {client.apellidos}</h2>
+          </div>
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-secondary text-muted-foreground">
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="overflow-y-auto p-4 space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="rounded-xl border border-border bg-secondary/30 p-3">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Visitas anteriores</p>
+              <p className="font-black text-xl mt-1">{context.stats.totalVisitas ?? 0}</p>
+            </div>
+            <div className="rounded-xl border border-border bg-secondary/30 p-3">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Última visita</p>
+              <p className="font-bold text-sm mt-1">
+                {context.stats.ultimaVisita
+                  ? new Date(context.stats.ultimaVisita).toLocaleDateString("es-ES")
+                  : "Sin visitas"}
+              </p>
+            </div>
+          </div>
+
+          {(reservation.alergias || reservation.notes || reservation.notasInternas) && (
+            <div className="rounded-xl border border-amber-500/25 bg-amber-500/5 p-3 space-y-2">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-amber-400">Información de la reserva actual</p>
+              {reservation.alergias && <p className="text-sm text-amber-300">⚠️ Alergias: {reservation.alergias}</p>}
+              {reservation.notes && <p className="text-sm"><MessageSquare size={12} className="inline mr-1" />{reservation.notes}</p>}
+              {reservation.notasInternas && <p className="text-xs text-muted-foreground">Interno: {reservation.notasInternas}</p>}
+            </div>
+          )}
+
+          {(client.observaciones || client.notasInternas) && (
+            <div className="rounded-xl border border-border p-3 space-y-2">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Observaciones CRM</p>
+              {client.observaciones && <p className="text-sm">{client.observaciones}</p>}
+              {client.notasInternas && <p className="text-xs text-muted-foreground">Interno: {client.notasInternas}</p>}
+            </div>
+          )}
+
+          <div className="rounded-xl border border-border p-3">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">Preferencias</p>
+            <div className="flex flex-wrap gap-2 text-xs">
+              {(client.zonaFavorita || reservation.zonaPreferida) && (
+                <span className="px-2 py-1 rounded-lg bg-secondary">
+                  Zona: {client.zonaFavorita || reservation.zonaPreferida}
+                </span>
+              )}
+              {client.mesaFavoritaId && <span className="px-2 py-1 rounded-lg bg-secondary">Mesa favorita vinculada</span>}
+              <span className="px-2 py-1 rounded-lg bg-secondary">Idioma: {client.idioma || reservation.idioma || "es"}</span>
+              {reservation.trona && <span className="px-2 py-1 rounded-lg bg-secondary">Trona</span>}
+              {reservation.accesibilidad && <span className="px-2 py-1 rounded-lg bg-secondary">Accesibilidad</span>}
+              {reservation.mascota && <span className="px-2 py-1 rounded-lg bg-secondary">Mascota</span>}
+            </div>
+          </div>
+
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">Historial de reservas</p>
+            {previousReservations.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Sin reservas anteriores</p>
+            ) : (
+              <div className="space-y-2">
+                {previousReservations.map((item) => (
+                  <div key={item.id} className="rounded-xl border border-border px-3 py-2 text-sm">
+                    <div className="flex justify-between gap-2">
+                      <span className="font-semibold">{fmtShort(item.fecha)} · {item.personas}p</span>
+                      <span className="text-xs text-muted-foreground">{STATUS[item.status]?.label ?? item.status}</span>
+                    </div>
+                    {item.alergias && <p className="text-xs text-amber-400 mt-1">⚠️ {item.alergias}</p>}
+                    {item.notes && <p className="text-xs text-muted-foreground mt-1">{item.notes}</p>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Reservation Modal ────────────────────────────────────────────────────────
 const BLANK: Partial<Reservation> = {
   nombre:"", telefono:"", email:"", fecha: today(), hora:"20:00", personas:2,
@@ -324,7 +435,6 @@ function ReservationModal({ initial, zones, tables, onClose, onSaved }: {
         nombre: c.nombre + (c.apellidos ? " " + c.apellidos : ""),
         telefono: p.telefono || c.telefono,
         email:    p.email    || c.email,
-        alergias: p.alergias || c.alergias || "",
       }));
     } else {
       setForm(p => ({ ...p, clientId: null }));
@@ -390,13 +500,14 @@ function ReservationModal({ initial, zones, tables, onClose, onSaved }: {
           {tab === "datos" && (
             <>
               {/* CRM client lookup */}
-              {!isEdit && (
-                <div>
-                  <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5 block">Buscar cliente CRM</label>
-                  <ClientSearch onSelect={handleClientSelect} />
-                  {selectedClient && <p className="text-[11px] text-primary mt-1">✓ Vinculado a {selectedClient.nombre}</p>}
-                </div>
-              )}
+              <div>
+                <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5 block">Buscar cliente CRM</label>
+                <ClientSearch onSelect={handleClientSelect} />
+                {selectedClient && <p className="text-[11px] text-primary mt-1">✓ Vinculado a {selectedClient.nombre}</p>}
+                {!selectedClient && form.clientId && (
+                  <p className="text-[11px] text-primary mt-1">✓ Reserva vinculada a una ficha CRM</p>
+                )}
+              </div>
 
               {/* Date/time */}
               <div className="grid grid-cols-2 gap-3">
@@ -718,6 +829,10 @@ export default function Reservations() {
   const [showWaiting, setShowWaiting] = useState(false);
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
+  const [arrivalClient, setArrivalClient] = useState<{
+    reservation: Reservation;
+    context: CrmClientContext;
+  } | null>(null);
 
   const employeeRole = (() => {
     try { return JSON.parse(localStorage.getItem("employee") ?? "{}").role ?? ""; } catch { return ""; }
@@ -768,9 +883,15 @@ export default function Reservations() {
   const handleArrive = async (r: Reservation) => {
     setBusyId(r.id);
     try {
-      const result = await api.post<{ tableOpened?: boolean }>(`/api/reservations/${r.id}/arrive`, { openTable: !!r.mesaId });
+      const result = await api.post<{
+        tableOpened?: { tableId: string; orderId: string } | null;
+        clientContext?: CrmClientContext | null;
+      }>(`/api/reservations/${r.id}/arrive`, { openTable: !!r.mesaId });
       toast.success(`${r.nombre} marcado como llegado`);
       if (result?.tableOpened) toast.success("Mesa abierta automáticamente");
+      if (result?.clientContext) {
+        setArrivalClient({ reservation: r, context: result.clientContext });
+      }
       loadReservations();
     } catch (e: any) { toast.error(e.message); }
     finally { setBusyId(null); }
@@ -1022,6 +1143,13 @@ export default function Reservations() {
       {showCreate && <ReservationModal zones={zones} tables={tables} onClose={() => setShowCreate(false)} onSaved={loadReservations} />}
       {editRes && <ReservationModal initial={editRes} zones={zones} tables={tables} onClose={() => setEditRes(null)} onSaved={loadReservations} />}
       {showWaiting && <WaitingModal zones={zones} onClose={() => setShowWaiting(false)} onSaved={loadWaiting} />}
+      {arrivalClient && (
+        <ArrivalClientContextModal
+          reservation={arrivalClient.reservation}
+          context={arrivalClient.context}
+          onClose={() => setArrivalClient(null)}
+        />
+      )}
     </div>
   );
 }

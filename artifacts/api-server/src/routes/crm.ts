@@ -21,10 +21,16 @@ import {
   crmAuditLogTable,
   ordersTable,
   orderItemsTable,
-  reservationsTable,
 } from "@workspace/db";
 import { eq, ilike, or, desc, and, sql, sum, count } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth.js";
+import {
+  createCanonicalCrmClient,
+  CrmClientConflictError,
+  getClientHistory,
+} from "../lib/crm-client-service.js";
+
+export { getClientHistory } from "../lib/crm-client-service.js";
 
 const router = Router();
 
@@ -232,64 +238,6 @@ export function validatePromotion(
   return { valid: true, descuento };
 }
 
-/** Get aggregated client history */
-export async function getClientHistory(clientId: string) {
-  const [client] = await db.select().from(crmClientsTable).where(eq(crmClientsTable.id, clientId));
-  if (!client) return null;
-
-  const orders = await db
-    .select({
-      id: ordersTable.id,
-      createdAt: ordersTable.createdAt,
-      status: ordersTable.status,
-    })
-    .from(ordersTable)
-    .where(and(eq(ordersTable.clientId, clientId), eq(ordersTable.status, "paid")))
-    .orderBy(desc(ordersTable.createdAt))
-    .limit(20);
-
-  const reservations = await db
-    .select()
-    .from(reservationsTable)
-    .where(eq(reservationsTable.telefono, client.telefono || "__no_phone__"))
-    .orderBy(desc(reservationsTable.createdAt))
-    .limit(10);
-
-  const points = await db
-    .select()
-    .from(crmLoyaltyPointsTable)
-    .where(eq(crmLoyaltyPointsTable.clientId, clientId))
-    .orderBy(desc(crmLoyaltyPointsTable.createdAt))
-    .limit(20);
-
-  const giftCards = await db
-    .select()
-    .from(crmGiftCardsTable)
-    .where(eq(crmGiftCardsTable.clientId, clientId))
-    .orderBy(desc(crmGiftCardsTable.createdAt))
-    .limit(10);
-
-  const ticketMedio =
-    client.totalVisitas > 0
-      ? parseFloat((parseFloat(client.totalGasto) / client.totalVisitas).toFixed(2))
-      : 0;
-
-  return {
-    client,
-    orders,
-    reservations,
-    points,
-    giftCards,
-    stats: {
-      totalGasto: parseFloat(client.totalGasto),
-      totalVisitas: client.totalVisitas,
-      ticketMedio,
-      puntosSaldo: client.puntosSaldo,
-      ultimaVisita: client.ultimaVisita,
-    },
-  };
-}
-
 // ─── CRM Audit Helper ────────────────────────────────────────────────────────
 
 async function logCrmAudit(params: {
@@ -321,7 +269,7 @@ async function logCrmAudit(params: {
 // ═══════════════════════════════════════════════════════════════════════════
 
 // Roles that can access any CRM customer data or point-of-sale operations
-const CRM_STAFF = ["waiter", "cashier", "manager", "admin"] as const;
+const CRM_STAFF = ["waiter", "cashier", "manager", "encargado", "admin"] as const;
 
 // GET /crm/clients?q=...
 router.get("/crm/clients", requireAuth, requireRole(...CRM_STAFF), async (req, res): Promise<void> => {
@@ -364,49 +312,31 @@ router.post("/crm/clients", requireAuth, requireRole(...CRM_STAFF), async (req, 
     return;
   }
 
-  // Duplicate check by phone or email
-  const tel = String(telefono ?? "").trim();
-  const mail = String(email ?? "").trim();
-  if (tel || mail) {
-    const dupeConditions = [];
-    if (tel) dupeConditions.push(eq(crmClientsTable.telefono, tel));
-    if (mail) dupeConditions.push(eq(crmClientsTable.email, mail));
-    const [dupe] = await db
-      .select({ id: crmClientsTable.id, nombre: crmClientsTable.nombre })
-      .from(crmClientsTable)
-      .where(or(...dupeConditions))
-      .limit(1);
-    if (dupe) {
-      res.status(409).json({ error: `Ya existe un cliente con ese teléfono o email (${dupe.nombre})`, clienteExistente: dupe });
-      return;
-    }
-  }
-
-  // Generate unique QR token
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  const seg = (n: number) => Array.from({ length: n }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
-  const qrToken = `CL-${seg(4)}-${seg(4)}`;
-
-  // Get next customer number from sequence
-  const seqResult = await db.execute(sql`SELECT nextval('crm_num_cliente_seq') as n`);
-  const numCliente = Number(seqResult.rows[0]?.n ?? 1000);
-
-  const [client] = await db
-    .insert(crmClientsTable)
-    .values({
+  let client;
+  try {
+    client = await createCanonicalCrmClient({
       nombre: String(nombre).trim(),
       apellidos: String(apellidos ?? ""),
-      telefono: tel,
-      email: mail,
+      telefono: String(telefono ?? ""),
+      email: String(email ?? ""),
       fechaNacimiento: fechaNacimiento ? String(fechaNacimiento) : null,
       direccion: String(direccion ?? ""),
       observaciones: String(observaciones ?? ""),
       rgpdConsentimiento: Boolean(rgpdConsentimiento),
-      rgpdFecha: rgpdConsentimiento ? new Date() : null,
-      qrToken,
-      numCliente,
-    })
-    .returning();
+    });
+  } catch (error) {
+    if (error instanceof CrmClientConflictError) {
+      const existing = error.clients[0];
+      res.status(409).json({
+        error: error.message,
+        clienteExistente: existing
+          ? { id: existing.id, nombre: existing.nombre }
+          : undefined,
+      });
+      return;
+    }
+    throw error;
+  }
 
   await logCrmAudit({
     accion: "crear_cliente",

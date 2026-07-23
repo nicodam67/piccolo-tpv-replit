@@ -13,7 +13,14 @@ const mockState = {
   deleteRows:   [] as MockRow[],
   txUpdateRows: [] as MockRow[],
   txInsertRows: [] as MockRow[],
+  insertValues: [] as unknown[],
+  txInsertValues: [] as unknown[],
 };
+
+const crmServiceMocks = vi.hoisted(() => ({
+  resolve: vi.fn(),
+  history: vi.fn(),
+}));
 
 vi.mock("@workspace/db", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@workspace/db")>();
@@ -26,11 +33,12 @@ vi.mock("@workspace/db", async (importOriginal) => {
     return chain;
   }
 
-  function makeInsert(resultFn: () => MockRow[]) {
+  function makeInsert(resultFn: () => MockRow[], onValues?: (value: unknown) => void) {
     const chain: Record<string, unknown> = {};
     const methods = ["from","where","returning","limit","orderBy","innerJoin","leftJoin","groupBy","offset"] as const;
     methods.forEach(m => { chain[m] = vi.fn(() => chain); });
-    chain.values = vi.fn(() => {
+    chain.values = vi.fn((value: unknown) => {
+      onValues?.(value);
       const c2: Record<string, unknown> = {};
       methods.forEach(m => { c2[m] = vi.fn(() => c2); });
       c2.then = (resolve: (v: MockRow[]) => unknown) => Promise.resolve(resultFn()).then(resolve);
@@ -52,7 +60,7 @@ vi.mock("@workspace/db", async (importOriginal) => {
     ...actual,
     db: {
       update:  () => updateChain(() => mockState.updateRows),
-      insert:  () => makeInsert(() => mockState.insertRows),
+      insert:  () => makeInsert(() => mockState.insertRows, value => mockState.insertValues.push(value)),
       select:  () => makeSelect(() => mockState.selectRows),
       delete:  () => {
         const chain = updateChain(() => mockState.deleteRows);
@@ -61,7 +69,7 @@ vi.mock("@workspace/db", async (importOriginal) => {
       execute: () => Promise.resolve({ rows: [] }),
       transaction: async (fn: (tx: unknown) => unknown) => fn({
         update: () => updateChain(() => mockState.txUpdateRows),
-        insert: () => makeInsert(() => mockState.txInsertRows),
+        insert: () => makeInsert(() => mockState.txInsertRows, value => mockState.txInsertValues.push(value)),
         select: () => makeSelect(() => mockState.selectRows),
         execute: () => Promise.resolve({ rows: [] }),
       }),
@@ -74,6 +82,15 @@ vi.mock("@workspace/db", async (importOriginal) => {
 });
 
 vi.mock("../lib/socket", () => ({ getIO: () => ({ emit: vi.fn() }) }));
+
+vi.mock("../lib/crm-client-service", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../lib/crm-client-service")>();
+  return {
+    ...actual,
+    resolveCrmClientForReservation: crmServiceMocks.resolve,
+    getClientHistory: crmServiceMocks.history,
+  };
+});
 
 vi.mock("../middlewares/auth", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../middlewares/auth")>();
@@ -109,6 +126,19 @@ const PENDING_RES = {
 const CONFIRMED_RES = { ...PENDING_RES, id: "res-2", status: "confirmada" };
 const FREE_TABLE    = { id: "table-1", name: "Mesa 1", status: "free", zoneId: "z1", capacity: 4, x: 0, y: 0, width: 80, height: 80, shape: "square", rotation: 0, layout: "normal", mergeGroup: null, active: true };
 const OPEN_ORDER    = { id: "order-1", tableId: "table-1", employeeId: "emp-1", status: "open", guestCount: 4, notes: "", clientName: "García", createdAt: new Date().toISOString() };
+const CRM_CLIENT = {
+  id: "client-1", nombre: "Ana", apellidos: "García", telefono: "600111222",
+  email: "ana@example.com", observaciones: "Mesa tranquila", notasInternas: "VIP",
+  idioma: "es", zonaFavorita: "terraza", mesaFavoritaId: "table-1",
+};
+const CRM_HISTORY = {
+  client: CRM_CLIENT,
+  reservations: [CONFIRMED_RES],
+  orders: [],
+  points: [],
+  giftCards: [],
+  stats: { totalVisitas: 3, ultimaVisita: new Date().toISOString() },
+};
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -118,6 +148,10 @@ beforeEach(() => {
   mockState.deleteRows   = [];
   mockState.txUpdateRows = [];
   mockState.txInsertRows = [];
+  mockState.insertValues = [];
+  mockState.txInsertValues = [];
+  crmServiceMocks.resolve.mockResolvedValue(CRM_CLIENT);
+  crmServiceMocks.history.mockResolvedValue(CRM_HISTORY);
 });
 
 // ── Test 5: GET /reservations ─────────────────────────────────────────────────
@@ -157,6 +191,10 @@ describe("Test 6 — POST /reservations creates a new reservation", () => {
 
     expect(res.status).toBe(201);
     expect(res.body.nombre).toBe("García"); // from mock insertRows
+    expect(crmServiceMocks.resolve).toHaveBeenCalled();
+    expect(mockState.insertValues).toContainEqual(
+      expect.objectContaining({ clientId: CRM_CLIENT.id }),
+    );
   });
 
   it("returns 409 when same table has an active reservation within 90 min", async () => {
@@ -210,6 +248,7 @@ describe("Test 7 — POST /reservations/:id/arrive", () => {
     expect(res.body.reservation.status).toBe("cliente_llegado");
     expect(res.body.prefill.guestCount).toBe(CONFIRMED_RES.personas);
     expect(res.body.prefill.clientName).toBe(CONFIRMED_RES.nombre);
+    expect(res.body.clientContext.client.id).toBe(CRM_CLIENT.id);
   });
 
   it("opens the assigned table when openTable=true and mesa is assigned", async () => {
@@ -230,5 +269,8 @@ describe("Test 7 — POST /reservations/:id/arrive", () => {
       expect(res.body.tableOpened.tableId).toBeDefined();
       expect(res.body.tableOpened.orderId).toBeDefined();
     }
+    expect(mockState.txInsertValues).toContainEqual(
+      expect.objectContaining({ clientId: CRM_CLIENT.id }),
+    );
   });
 });
