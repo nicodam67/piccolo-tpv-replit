@@ -12,8 +12,8 @@ import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
 type CrmClientInput = {
   nombre: string;
   apellidos?: string;
-  telefono?: string;
-  email?: string;
+  telefono?: string | null;
+  email?: string | null;
   fechaNacimiento?: string | null;
   direccion?: string;
   observaciones?: string;
