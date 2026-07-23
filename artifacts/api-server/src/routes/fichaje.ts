@@ -697,12 +697,14 @@ router.get("/fichaje/settings", requireAuth, requireRole("admin", "manager"), as
     db.select({
       nombreComercial: businessConfigTable.nombreComercial,
       idioma: businessConfigTable.idioma,
-    }).from(businessConfigTable).limit(1),
+    }).from(businessConfigTable).orderBy(desc(businessConfigTable.updatedAt)).limit(1),
   ]);
   res.json({
     ...(settings[0] ?? {}),
-    companyName: business[0]?.nombreComercial ?? "",
-    locale: localeForLanguage(business[0]?.idioma ?? "es"),
+    companyName: business[0]?.nombreComercial ?? settings[0]?.companyName ?? "",
+    locale: business[0]?.idioma
+      ? localeForLanguage(business[0].idioma)
+      : settings[0]?.locale ?? "es-ES",
   });
 });
 
@@ -765,28 +767,33 @@ router.put("/fichaje/settings", requireAuth, requireRole("admin"), async (req, r
       id: businessConfigTable.id,
       nombreComercial: businessConfigTable.nombreComercial,
       idioma: businessConfigTable.idioma,
-    }).from(businessConfigTable).limit(1),
+    }).from(businessConfigTable).orderBy(desc(businessConfigTable.updatedAt)).limit(1),
   ]);
   if (Object.keys(businessUpdates).length > 0 && !existingBusiness[0]) {
     res.status(409).json({ error: "Configura primero los datos obligatorios del negocio." });
     return;
   }
 
-  let updated;
-  if (existingSettings[0]) {
-    [updated] = await db
-      .update(fichajeSettingsTable)
-      .set(updates)
-      .where(eq(fichajeSettingsTable.id, existingSettings[0].id))
-      .returning();
-  } else {
-    [updated] = await db.insert(fichajeSettingsTable).values(updates).returning();
-  }
+  const updated = await db.transaction(async (tx) => {
+    let timeclockSettings;
+    if (existingSettings[0]) {
+      [timeclockSettings] = await tx
+        .update(fichajeSettingsTable)
+        .set(updates)
+        .where(eq(fichajeSettingsTable.id, existingSettings[0].id))
+        .returning();
+    } else {
+      [timeclockSettings] = await tx.insert(fichajeSettingsTable).values(updates).returning();
+    }
+    if (existingBusiness[0] && Object.keys(businessUpdates).length > 0) {
+      await tx.update(businessConfigTable)
+        .set({ ...businessUpdates, updatedAt: new Date() })
+        .where(eq(businessConfigTable.id, existingBusiness[0].id));
+    }
+    return timeclockSettings;
+  });
 
   if (existingBusiness[0] && Object.keys(businessUpdates).length > 0) {
-    await db.update(businessConfigTable)
-      .set({ ...businessUpdates, updatedAt: new Date() })
-      .where(eq(businessConfigTable.id, existingBusiness[0].id));
     await logDocumentAction({
       action: "update_business_config_from_timeclock",
       documentType: "config",

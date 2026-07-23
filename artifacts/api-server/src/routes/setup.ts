@@ -70,7 +70,7 @@ async function detectModules(): Promise<Record<string, ModuleCheck>> {
     verifiedBackupCount,
     cashSessionCount,
   ] = await Promise.all([
-    db.select().from(businessConfigTable).limit(1),
+    db.select().from(businessConfigTable).orderBy(desc(businessConfigTable.updatedAt)).limit(1),
     countRows(employeesTable),
     countRows(productsTable),
     countRows(categoriesTable),
@@ -189,7 +189,7 @@ router.get("/setup/detect", async (_req, res) => {
 router.get("/setup/status", ...managerGuard, async (_req, res) => {
   const [modules, configRows, sessions] = await Promise.all([
     detectModules(),
-    db.select().from(businessConfigTable).limit(1),
+    db.select().from(businessConfigTable).orderBy(desc(businessConfigTable.updatedAt)).limit(1),
     db.select().from(setupWizardSessionsTable)
       .orderBy(desc(setupWizardSessionsTable.updatedAt))
       .limit(5),
@@ -323,7 +323,9 @@ router.patch("/setup/session/:id", ...adminGuard, async (req, res) => {
 router.get("/setup/checklist", ...managerGuard, async (req, res) => {
   const format = (req.query["format"] as string | undefined) ?? "json";
   const modules = await detectModules();
-  const configRows = await db.select().from(businessConfigTable).limit(1);
+  const configRows = await db.select().from(businessConfigTable)
+    .orderBy(desc(businessConfigTable.updatedAt))
+    .limit(1);
   const cfg = configRows[0];
 
   const items = [
@@ -458,7 +460,9 @@ router.post("/setup/go-live", ...adminGuard, async (req, res) => {
 
   // Activate production mode
   const now = new Date();
-  const configRows = await db.select().from(businessConfigTable).limit(1);
+  const configRows = await db.select().from(businessConfigTable)
+    .orderBy(desc(businessConfigTable.updatedAt))
+    .limit(1);
 
   if (configRows.length === 0) {
     res.status(422).json({ error: "Configura los datos del restaurante antes de activar producción" });

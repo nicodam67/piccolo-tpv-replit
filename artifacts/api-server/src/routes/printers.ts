@@ -13,6 +13,7 @@ import {
   businessConfigTable,
   printTestResultsTable,
   categoriesTable,
+  installationDevicesTable,
 } from "@workspace/db";
 import { eq, and, desc, inArray } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
@@ -152,6 +153,28 @@ router.patch("/admin/printers/:id", requireAuth, requireRole("manager", "admin")
 // ── DELETE /admin/printers/:id ────────────────────────────────────────────────
 router.delete("/admin/printers/:id", requireAuth, requireRole("manager", "admin"), async (req, res): Promise<void> => {
   const id = req.params.id as string;
+  const [fallbackReferences, routingRules, deviceReferences] = await Promise.all([
+    db.select({ id: printersTable.id, name: printersTable.name })
+      .from(printersTable)
+      .where(and(eq(printersTable.fallbackPrinterId, id), eq(printersTable.active, true))),
+    db.select({ id: printRoutingTable.id, printerIds: printRoutingTable.printerIds })
+      .from(printRoutingTable),
+    db.select({ id: installationDevicesTable.id, name: installationDevicesTable.name })
+      .from(installationDevicesTable)
+      .where(eq(installationDevicesTable.defaultPrinterId, id)),
+  ]);
+  const routeReferences = routingRules.filter((routing) => routing.printerIds.includes(id));
+  if (fallbackReferences.length > 0 || routeReferences.length > 0 || deviceReferences.length > 0) {
+    res.status(409).json({
+      error: "La impresora sigue referenciada y no se puede desactivar.",
+      references: {
+        fallbackPrinters: fallbackReferences,
+        routingRules: routeReferences.map((routing) => routing.id),
+        devices: deviceReferences,
+      },
+    });
+    return;
+  }
   // Soft delete: set active = false
   const [printer] = await db
     .update(printersTable)
@@ -373,7 +396,7 @@ router.get("/admin/print-config", requireAuth, requireRole("manager", "admin"), 
     nif: businessConfigTable.nif,
     direccionFiscal: businessConfigTable.direccionFiscal,
     logoUrl: businessConfigTable.logoUrl,
-  }).from(businessConfigTable).limit(1);
+  }).from(businessConfigTable).orderBy(desc(businessConfigTable.updatedAt)).limit(1);
   res.json(cfg
     ? { printMode: cfg.printMode, printTemplateConfig: effectivePrintTemplate(cfg) }
     : { printMode: "kds_only", printTemplateConfig: null });
@@ -391,11 +414,37 @@ router.patch("/admin/print-config", requireAuth, requireRole("manager", "admin")
     res.status(400).json({ error: "Modo de impresión no válido." }); return;
   }
 
-  const [existing] = await db.select({ id: businessConfigTable.id }).from(businessConfigTable).limit(1);
+  const [existing] = await db.select({
+    id: businessConfigTable.id,
+    nombreComercial: businessConfigTable.nombreComercial,
+    razonSocial: businessConfigTable.razonSocial,
+    nif: businessConfigTable.nif,
+    direccionFiscal: businessConfigTable.direccionFiscal,
+    logoUrl: businessConfigTable.logoUrl,
+    printTemplateConfig: businessConfigTable.printTemplateConfig,
+  }).from(businessConfigTable).orderBy(desc(businessConfigTable.updatedAt)).limit(1);
 
   if (!existing) {
     res.status(409).json({ error: "Configura primero los datos obligatorios del negocio." });
     return;
+  }
+  if (printTemplateConfig) {
+    const canonicalTemplate = effectivePrintTemplate(existing);
+    const changedCanonicalFields = (["nombreComercial", "datosFiscales", "logoUrl"] as const)
+      .filter((field) => (
+        field in printTemplateConfig
+        && printTemplateConfig[field] !== canonicalTemplate[field]
+      ));
+    if (changedCanonicalFields.length > 0) {
+      res.status(422).json({
+        error: "La identidad y los datos fiscales se modifican desde la configuración del negocio.",
+        issues: changedCanonicalFields.map((field) => ({
+          field: `printTemplateConfig.${field}`,
+          message: "Campo canónico de solo lectura.",
+        })),
+      });
+      return;
+    }
   }
   const presentationTemplate = printTemplateConfig !== undefined
     ? sanitizePrintTemplate(printTemplateConfig)

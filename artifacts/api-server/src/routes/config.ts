@@ -18,7 +18,7 @@ import {
   tabletDevicesTable,
   type QrDaySchedule,
 } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { requireAuth, requirePermission, requireRole } from "../middlewares/auth";
 import { logDocumentAction } from "../lib/document-audit";
 import { PERMISSIONS } from "../lib/permissions";
@@ -48,7 +48,7 @@ function effectiveQrSchedule(row: typeof businessConfigTable.$inferSelect) {
 // GET /config/business — public read (frontend needs restaurant name everywhere)
 router.get("/config/business", async (_req, res): Promise<void> => {
   const [rows, timeclockRows] = await Promise.all([
-    db.select().from(businessConfigTable).limit(1),
+    db.select().from(businessConfigTable).orderBy(desc(businessConfigTable.updatedAt)).limit(1),
     db.select({ timezone: fichajeSettingsTable.timezone }).from(fichajeSettingsTable).limit(1),
   ]);
   const timezone = timeclockRows[0]?.timezone ?? "Europe/Madrid";
@@ -108,7 +108,9 @@ router.put(
       regimenFiscal,
     } = parsed.data as Record<string, string>;
 
-    const existing = await db.select().from(businessConfigTable).limit(1);
+    const existing = await db.select().from(businessConfigTable)
+      .orderBy(desc(businessConfigTable.updatedAt))
+      .limit(1);
     if (existing.length === 0) {
       const missing = [
         ["nombreComercial", nombreComercial],
@@ -215,7 +217,9 @@ router.get(
       permissionOverrides,
       cashMachineRows,
     ] = await Promise.all([
-      db.select().from(businessConfigTable).limit(1),
+      db.select().from(businessConfigTable)
+        .orderBy(desc(businessConfigTable.updatedAt))
+        .limit(2),
       db.select({
         id: fichajeSettingsTable.id,
         timezone: fichajeSettingsTable.timezone,
@@ -289,6 +293,12 @@ router.get(
     const printerIds = new Set(printers.filter((printer) => printer.active).map((printer) => printer.id));
     const issues: ValidationIssue[] = [];
 
+    if (businessRows.length > 1) {
+      issues.push({
+        field: "business",
+        message: "Hay más de una fila en business_config; se usa la actualización más reciente.",
+      });
+    }
     if (!business) {
       issues.push({ field: "business", message: "Falta la configuración del negocio." });
     } else {
@@ -398,11 +408,17 @@ router.get(
         devices: installationDevices,
       },
       compatibility: {
-        desktop: true,
-        waiterTablets: true,
-        fixedClockTablet: true,
-        kds: true,
-        qrMenu: true,
+        desktop: { supported: true, configured: Boolean(business) },
+        waiterTablets: { supported: true, configured: zones.length > 0 && tables.length > 0 },
+        fixedClockTablet: {
+          supported: true,
+          configured: Boolean(timeclockRows[0]) && clockTablets.length > 0,
+        },
+        kds: { supported: true, configured: kdsStations.some((station) => station.active) },
+        qrMenu: {
+          supported: true,
+          configured: Boolean(business?.nombreComercial && business?.openingHours),
+        },
       },
       validation: { valid: issues.length === 0, issues },
     });
@@ -412,7 +428,9 @@ router.get(
 // ── Public branding endpoint (no auth required) ───────────────────────────────
 
 router.get("/public/branding", async (_req, res): Promise<void> => {
-  const rows = await db.select().from(businessConfigTable).limit(1);
+  const rows = await db.select().from(businessConfigTable)
+    .orderBy(desc(businessConfigTable.updatedAt))
+    .limit(1);
   if (rows.length === 0) {
     res.json({
       // New QR-module fields
@@ -457,7 +475,9 @@ router.get("/public/branding", async (_req, res): Promise<void> => {
 // ── Admin branding CRUD ───────────────────────────────────────────────────────
 
 router.get("/admin/branding", requireAuth, requireRole("admin"), async (_req, res): Promise<void> => {
-  const rows = await db.select().from(businessConfigTable).limit(1);
+  const rows = await db.select().from(businessConfigTable)
+    .orderBy(desc(businessConfigTable.updatedAt))
+    .limit(1);
   if (rows.length === 0) {
     res.json({
       nombreComercial: "", tagline: "", heroImageUrl: "", heroVideoUrl: "",
@@ -488,6 +508,39 @@ router.patch("/admin/branding", requireAuth, requireRole("admin"), async (req, r
     address, phone, foundedYear, openingHours, cardLayout, accentColor, logoUrl,
   } = req.body as Record<string, unknown>;
 
+  const canonicalInput: Record<string, unknown> = {};
+  if (nombreComercial !== undefined) canonicalInput.nombreComercial = nombreComercial;
+  if (logoUrl !== undefined) canonicalInput.logoUrl = logoUrl;
+  const parsedCanonical = validateBusinessConfigInput(canonicalInput);
+  if (!parsedCanonical.data) {
+    validationError(res, parsedCanonical.issues);
+    return;
+  }
+  const brandingIssues: ValidationIssue[] = [];
+  for (const [field, value] of Object.entries({
+    tagline, heroImageUrl, heroVideoUrl, address, phone,
+  })) {
+    if (value !== undefined && typeof value !== "string") {
+      brandingIssues.push({ field, message: "Debe ser texto." });
+    }
+  }
+  if (cardLayout !== undefined && !["grid", "list", "compact"].includes(String(cardLayout))) {
+    brandingIssues.push({ field: "cardLayout", message: "Diseño de tarjeta no soportado." });
+  }
+  if (accentColor !== undefined && !/^#[0-9a-f]{6}$/i.test(String(accentColor))) {
+    brandingIssues.push({ field: "accentColor", message: "El color debe usar el formato #RRGGBB." });
+  }
+  if (
+    foundedYear !== undefined
+    && foundedYear !== null
+    && (!Number.isInteger(foundedYear) || Number(foundedYear) < 1000 || Number(foundedYear) > new Date().getFullYear())
+  ) {
+    brandingIssues.push({ field: "foundedYear", message: "Año de fundación no válido." });
+  }
+  if (brandingIssues.length > 0) {
+    validationError(res, brandingIssues);
+    return;
+  }
   if (openingHours !== undefined) {
     const issues = validateOpeningHours(openingHours);
     if (issues.length > 0) {
@@ -496,7 +549,9 @@ router.patch("/admin/branding", requireAuth, requireRole("admin"), async (req, r
     }
   }
 
-  const existing = await db.select().from(businessConfigTable).limit(1);
+  const existing = await db.select().from(businessConfigTable)
+    .orderBy(desc(businessConfigTable.updatedAt))
+    .limit(1);
   if (existing.length === 0) {
     res.status(409).json({
       error: "Configura primero los datos obligatorios del negocio en /api/config/business.",
@@ -505,7 +560,7 @@ router.patch("/admin/branding", requireAuth, requireRole("admin"), async (req, r
   }
 
   const updates: Record<string, unknown> = { updatedAt: new Date() };
-  if (nombreComercial !== undefined) updates.nombreComercial = nombreComercial;
+  if (nombreComercial !== undefined) updates.nombreComercial = parsedCanonical.data.nombreComercial;
   if (tagline !== undefined) updates.tagline = tagline;
   if (heroImageUrl !== undefined) updates.heroImageUrl = heroImageUrl;
   if (heroVideoUrl !== undefined) updates.heroVideoUrl = heroVideoUrl;
@@ -515,7 +570,7 @@ router.patch("/admin/branding", requireAuth, requireRole("admin"), async (req, r
   if (openingHours !== undefined) updates.openingHours = openingHours;
   if (cardLayout !== undefined) updates.cardLayout = cardLayout;
   if (accentColor !== undefined) updates.accentColor = accentColor;
-  if (logoUrl !== undefined) updates.logoUrl = logoUrl;
+  if (logoUrl !== undefined) updates.logoUrl = parsedCanonical.data.logoUrl;
 
   const [result] = await db.update(businessConfigTable)
     .set(updates as any)
@@ -549,7 +604,9 @@ router.patch("/admin/branding", requireAuth, requireRole("admin"), async (req, r
 // ── QR Branding (full schema — separate from legacy /admin/branding) ──────────
 
 router.get("/admin/qr-branding", requireAuth, requireRole("admin"), async (_req, res): Promise<void> => {
-  const rows = await db.select().from(businessConfigTable).limit(1);
+  const rows = await db.select().from(businessConfigTable)
+    .orderBy(desc(businessConfigTable.updatedAt))
+    .limit(1);
   const empty = {
     restaurantName: "", tagline: "", heroImageUrl: "", heroVideoUrl: "",
     address: "", city: "", province: "", postalCode: "", country: "",
@@ -580,13 +637,39 @@ router.get("/admin/qr-branding", requireAuth, requireRole("admin"), async (_req,
 
 router.put("/admin/qr-branding", requireAuth, requireRole("admin"), async (req, res): Promise<void> => {
   const body = req.body as Record<string, unknown>;
-  if (body.restaurantName !== undefined) {
-    const parsedName = validateBusinessConfigInput({ nombreComercial: body.restaurantName });
-    if (!parsedName.data) {
-      validationError(res, parsedName.issues);
-      return;
+  const canonicalInput: Record<string, unknown> = {};
+  if (body.restaurantName !== undefined) canonicalInput.nombreComercial = body.restaurantName;
+  if (body.logoUrl !== undefined) canonicalInput.logoUrl = body.logoUrl;
+  const parsedCanonical = validateBusinessConfigInput(canonicalInput);
+  if (!parsedCanonical.data) {
+    validationError(res, parsedCanonical.issues);
+    return;
+  }
+  if (body.restaurantName !== undefined) body.restaurantName = parsedCanonical.data.nombreComercial;
+  if (body.logoUrl !== undefined) body.logoUrl = parsedCanonical.data.logoUrl;
+
+  const qrIssues: ValidationIssue[] = [];
+  for (const field of [
+    "tagline", "heroImageUrl", "heroVideoUrl", "address", "city", "province",
+    "postalCode", "country", "phone",
+  ]) {
+    if (body[field] !== undefined && typeof body[field] !== "string") {
+      qrIssues.push({ field, message: "Debe ser texto." });
     }
-    body.restaurantName = parsedName.data.nombreComercial;
+  }
+  if (body.establishedYear !== undefined && body.establishedYear !== "") {
+    const year = Number(body.establishedYear);
+    if (!Number.isInteger(year) || year < 1000 || year > new Date().getFullYear()) {
+      qrIssues.push({ field: "establishedYear", message: "Año de fundación no válido." });
+    }
+  }
+  const layout = (body.cardSettings as Record<string, unknown> | undefined)?.layout;
+  if (layout !== undefined && !["grid", "list", "compact"].includes(String(layout))) {
+    qrIssues.push({ field: "cardSettings.layout", message: "Diseño de tarjeta no soportado." });
+  }
+  if (qrIssues.length > 0) {
+    validationError(res, qrIssues);
+    return;
   }
   if (body.schedule !== undefined) {
     const issues = validateQrSchedule(body.schedule);
@@ -595,7 +678,9 @@ router.put("/admin/qr-branding", requireAuth, requireRole("admin"), async (req, 
       return;
     }
   }
-  const existing = await db.select().from(businessConfigTable).limit(1);
+  const existing = await db.select().from(businessConfigTable)
+    .orderBy(desc(businessConfigTable.updatedAt))
+    .limit(1);
   if (existing.length === 0) {
     res.status(409).json({
       error: "Configura primero los datos obligatorios del negocio en /api/config/business.",

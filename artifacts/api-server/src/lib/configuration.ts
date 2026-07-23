@@ -289,8 +289,9 @@ export function validateBusinessConfigInput(input: unknown): {
   }
 
   if (typeof data.nif === "string") {
-    data.nif = data.nif.toUpperCase().replace(/[\s-]/g, "");
-    if (data.nif && !NIF_RE.test(data.nif)) {
+    const normalizedNif = data.nif.toUpperCase().replace(/[\s-]/g, "");
+    data.nif = normalizedNif;
+    if (normalizedNif && !NIF_RE.test(normalizedNif)) {
       issues.push({ field: "nif", message: "El NIF/CIF no tiene un formato válido." });
     }
   }

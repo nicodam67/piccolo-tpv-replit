@@ -18,7 +18,7 @@ import {
   businessConfigTable,
   productsTable,
 } from "@workspace/db";
-import { eq, and, inArray } from "drizzle-orm";
+import { eq, and, desc, inArray } from "drizzle-orm";
 import {
   buildKitchenTicket,
   buildAddedTicket,
@@ -53,10 +53,10 @@ export async function loadPrintConfig(): Promise<{
       razonSocial: businessConfigTable.razonSocial,
       nif: businessConfigTable.nif,
       direccionFiscal: businessConfigTable.direccionFiscal,
-      logoUrl: businessConfigTable.logoUrl,
       web: businessConfigTable.web,
     })
     .from(businessConfigTable)
+    .orderBy(desc(businessConfigTable.updatedAt))
     .limit(1);
 
   const template: TemplateConfig = {
@@ -66,7 +66,6 @@ export async function loadPrintConfig(): Promise<{
     ...(sanitizePrintTemplate(cfg?.printTemplateConfig as Record<string, unknown> | null) ?? {}),
     nombreComercial: cfg?.nombreComercial ?? "",
     datosFiscales: [cfg?.razonSocial, cfg?.nif, cfg?.direccionFiscal].filter(Boolean).join(" · "),
-    logoUrl: cfg?.logoUrl ?? "",
     piePagina:
       ((cfg?.printTemplateConfig as Record<string, unknown> | null)?.piePagina as string | undefined)
       ?? cfg?.web
