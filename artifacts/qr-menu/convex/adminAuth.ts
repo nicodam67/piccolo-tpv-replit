@@ -5,9 +5,9 @@
  *  - getMe             — returns the current admin's basic profile
  */
 import { ConvexError, v } from "convex/values";
-import { action, mutation, query } from "./_generated/server";
+import { action, internalMutation, query } from "./_generated/server";
 import { getAuthUserId } from "@convex-dev/auth/server";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 
 // ── Seed ─────────────────────────────────────────────────────────────────────
 
@@ -52,7 +52,7 @@ export const seedAdminIfEmpty = action({
     });
 
     // Also create the admins role entry.
-    await ctx.runMutation(api.adminAuth.ensureAdminsEntry, { email });
+    await ctx.runMutation(internal.adminAuth.ensureAdminsEntry, { email });
 
     return { created: true, message: `Admin account for ${email} created.` };
   },
@@ -69,7 +69,7 @@ export const adminExists = query({
   },
 });
 
-export const ensureAdminsEntry = mutation({
+export const ensureAdminsEntry = internalMutation({
   args: { email: v.string() },
   handler: async (ctx, args) => {
     const existing = await ctx.db
@@ -152,7 +152,7 @@ export const getMe = query({
     return {
       id: userId,
       email: user.email,
-      role: adminEntry?.role ?? "admin",
+      role: adminEntry?.role ?? null,
     };
   },
 });

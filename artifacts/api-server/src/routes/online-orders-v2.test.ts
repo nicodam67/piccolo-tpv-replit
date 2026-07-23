@@ -51,6 +51,7 @@ vi.mock("@workspace/db", async (importOriginal) => {
       from: () => c,
       where: () => c,
       orderBy: () => c,
+      for: () => c,
       limit: (_n: number) => mockSelectResult(),
       then: (resolve: any, reject: any) =>
         mockSelectResult().then(resolve, reject),
@@ -58,10 +59,7 @@ vi.mock("@workspace/db", async (importOriginal) => {
     return c;
   }
 
-  return {
-    ...actual,
-    pool: { end: async () => {}, query: async () => ({ rows: [] }) },
-    db: {
+  const dbMock: any = {
       insert: (_t: any) => ({
         values: (_data: any) => ({ returning: () => mockInsertReturning() }),
       }),
@@ -73,7 +71,12 @@ vi.mock("@workspace/db", async (importOriginal) => {
       }),
       delete: (_t: any) => ({ where: async () => {} }),
       execute: mockExecuteResult,
-    },
+  };
+  dbMock.transaction = async (callback: (tx: any) => unknown) => callback(dbMock);
+  return {
+    ...actual,
+    pool: { end: async () => {}, query: async () => ({ rows: [] }) },
+    db: dbMock,
   };
 });
 
@@ -81,7 +84,10 @@ vi.mock("@workspace/db", async (importOriginal) => {
 // All admin routes require auth; bypass it in tests by injecting a fake user.
 
 vi.mock("../middlewares/auth", () => ({
-  requireAuth: (_req: any, _res: any, next: any) => next(),
+  requireAuth: (req: any, _res: any, next: any) => {
+    req.user = { id: "admin-1", name: "Admin", role: "admin" };
+    next();
+  },
   requireRole:
     (..._roles: string[]) =>
     (_req: any, _res: any, next: any) =>
@@ -95,6 +101,7 @@ vi.mock("../middlewares/auth", () => ({
 // ─── Import app AFTER mocks are registered ───────────────────────────────────
 
 import app from "../app";
+import { restaurantVersion, signTableQr, tableVersion } from "../lib/table-qr";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -130,12 +137,33 @@ describe("Table sessions", () => {
   });
 
   it("creates a new table session", async () => {
-    const mockSession = makeSession();
+    process.env.SESSION_SECRET = "x".repeat(32);
+    process.env.RESTAURANT_ID = "restaurant-1";
+    const table = {
+      id: "table-001",
+      zoneId: "zone-001",
+      name: `${PFX}Mesa 1`,
+      active: true,
+    };
+    const updatedAt = new Date();
+    const ticket = signTableQr({
+      rid: "restaurant-1",
+      tid: table.id,
+      zid: table.zoneId,
+      tv: tableVersion(table),
+      rv: restaurantVersion(updatedAt),
+      exp: Math.floor(Date.now() / 1000) + 600,
+    });
+    const mockSession = makeSession({ tableId: table.id, zoneId: table.zoneId });
+    mockSelectResult
+      .mockResolvedValueOnce([table])
+      .mockResolvedValueOnce([{ updatedAt }])
+      .mockResolvedValueOnce([]);
     mockInsertReturning.mockResolvedValueOnce([mockSession]);
 
     const res = await request(app)
       .post("/api/public/table-sessions")
-      .send({ tableLabel: `${PFX}Mesa 1`, zoneLabel: "Terraza" });
+      .send({ ticket });
 
     expect(res.status).toBe(201);
     expect(res.body.status).toBe("open");
@@ -398,7 +426,7 @@ describe("Stripe webhook signature verification", () => {
         .set("Content-Type", "application/json")
         .send({ type: "simulator.payment.confirm", orderId: "fake", approve: true });
 
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(503);
     } finally {
       process.env["NODE_ENV"] = originalEnv;
     }

@@ -10,9 +10,11 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "audit-routes": "node --no-warnings --experimental-strip-types scripts/audit-routes.ts"
+    "audit-routes": "node --no-warnings --experimental-strip-types scripts/audit-routes.ts",
+    "validate:restore-staging": "pnpm exec tsx src/scripts/validate-backup-restore.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1092.0",
     "@workspace/api-zod": "workspace:*",
     "@workspace/db": "workspace:*",
     "bcryptjs": "^3.0.3",
@@ -44,6 +46,7 @@
     "socket.io-client": "^4.8.3",
     "supertest": "^7.2.2",
     "thread-stream": "3.1.0",
+    "tsx": "catalog:",
     "vitest": "^4.1.10"
   }
 }
