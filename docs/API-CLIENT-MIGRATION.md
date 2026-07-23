@@ -4,8 +4,8 @@ Inventario automático acumulado de clientes API.
 
 ## Totales iniciales
 
-- Hooks exportados por el cliente actual: 202
-- Hooks históricos añadidos manualmente: 160
+- Hooks exportados por el cliente actual: 182
+- Hooks históricos añadidos manualmente: 141
 - Hooks manuales sin operación equivalente en OpenAPI: 120
 - Llamadas `fetch`: 84
 - Llamadas `customFetch` directas: 84
