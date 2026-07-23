@@ -16,14 +16,15 @@ import { requireAuth, requireRole } from "../middlewares/auth";
 import { adapterRegistry } from "../lib/cash-machine/registry";
 import { settleOrderIfFullyPaid } from "../lib/settle-order";
 import { emitToFunction } from "../lib/socket-events";
-import { idempotency } from "../middlewares/idempotency";
+import { idempotency, invalidateIdempotencyCacheKey } from "../middlewares/idempotency";
+import { logDocumentAction } from "../lib/document-audit";
 
 const ADMIN_ROLES   = ["admin"];
 const MANAGER_ROLES = ["manager", "admin"];
 const PAYMENT_ROLES = ["waiter", "cashier", "encargado", "manager", "admin"];
 const CASH_MACHINE_IN_FLIGHT = [
   "pending", "iniciando", "esperando_efectivo", "efectivo_parcial",
-  "devolviendo_cambio", "conciliacion_pendiente",
+  "devolviendo_cambio", "conciliando", "conciliacion_pendiente",
 ] as const;
 
 const router: IRouter = Router();
@@ -33,6 +34,20 @@ const router: IRouter = Router();
 async function getConfig() {
   const [cfg] = await db.select().from(cashMachineConfigTable).limit(1);
   return cfg ?? null;
+}
+
+function cashMachineConfigDto(config: typeof cashMachineConfigTable.$inferSelect) {
+  const { credentialKey: _credential, ...safe } = config;
+  return { ...safe, hasCredential: Boolean(_credential) };
+}
+
+function transactionIdempotencyCacheKey(transaction: {
+  employeeId: string | null;
+  splitRef: string | null;
+}): string | null {
+  if (!transaction.employeeId || !transaction.splitRef?.startsWith("idem:")) return null;
+  const idempotencyKey = transaction.splitRef.slice(5).split("|split:", 1)[0];
+  return `${transaction.employeeId}:${idempotencyKey}`;
 }
 
 async function ensurePaymentMethod(tx?: typeof db): Promise<string> {
@@ -69,14 +84,13 @@ router.get(
         port: 8080,
         connectionType: "tcp",
         deviceId: "device-1",
-        credentialKey: null,
         timeoutMs: 30000,
         enabled: false,
         hasCredential: false,
       });
       return;
     }
-    res.json({ ...cfg, hasCredential: !!cfg.credentialKey });
+    res.json(cashMachineConfigDto(cfg));
   },
 );
 
@@ -101,6 +115,14 @@ router.put(
     };
 
     const existing = await getConfig();
+    if (
+      process.env["NODE_ENV"] === "production"
+      && (enabled === true || existing?.enabled)
+      && (manufacturer ?? existing?.manufacturer ?? "simulator") === "simulator"
+    ) {
+      res.status(503).json({ error: "No se puede habilitar una caja simulada en producción" });
+      return;
+    }
 
     if (!existing) {
       const [row] = await db
@@ -117,7 +139,15 @@ router.put(
           enabled:      enabled ?? false,
         })
         .returning();
-      res.status(201).json({ ...row, hasCredential: !!row.credentialKey });
+      await logDocumentAction({
+        action: "cash_machine_config_updated",
+        documentType: "config",
+        documentId: row.id,
+        employeeId: req.user?.id,
+        employeeName: req.user?.name ?? "",
+        details: "Configuración creada; credencial omitida de auditoría",
+      });
+      res.status(201).json(cashMachineConfigDto(row));
       return;
     }
 
@@ -138,7 +168,15 @@ router.put(
       .where(eq(cashMachineConfigTable.id, existing.id))
       .returning();
 
-    res.json({ ...updated, hasCredential: !!updated.credentialKey });
+    await logDocumentAction({
+      action: "cash_machine_config_updated",
+      documentType: "config",
+      documentId: updated.id,
+      employeeId: req.user?.id,
+      employeeName: req.user?.name ?? "",
+      details: `Campos actualizados: ${Object.keys(updates).filter((key) => key !== "credentialKey").join(", ")}`,
+    });
+    res.json(cashMachineConfigDto(updated));
   },
 );
 
@@ -221,7 +259,6 @@ router.post(
       res.status(503).json({ error: "La caja automática no está habilitada" });
       return;
     }
-
     // Validate order — must exist and not already be paid
     if (orderId) {
       const [order] = await db
@@ -233,8 +270,8 @@ router.post(
         res.status(404).json({ error: "Pedido no encontrado" });
         return;
       }
-      if (order.status === "paid") {
-        res.status(409).json({ error: "El pedido ya está cobrado" });
+      if (["paid", "completed"].includes(order.status)) {
+        res.status(409).json({ error: "El pedido ya está cobrado o cerrado" });
         return;
       }
     }
@@ -261,14 +298,31 @@ router.post(
           `cash-machine:device:${cfg.deviceId}`,
           `cash-machine:reference:${requestKey}`,
           `cash-machine:terminal:${terminal}`,
-          ...(orderId ? [`cash-machine:order:${orderId}`] : []),
+          ...(orderId ? [`order-critical:${orderId}`] : []),
           ...(orderForLock?.tableId ? [`cash-machine:table:${orderForLock.tableId}`] : []),
           ...(splitRef ? [`cash-machine:split:${splitRef}`] : []),
         ].sort();
         for (const key of lockKeys) {
           await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${key}))`);
         }
-        const [inflight] = await tx.select({ id: cashMachineTransactionsTable.id })
+        if (orderId) {
+          const [lockedOrder] = await tx.select({ status: ordersTable.status })
+            .from(ordersTable)
+            .where(eq(ordersTable.id, orderId))
+            .for("update");
+          if (!lockedOrder || ["paid", "completed"].includes(lockedOrder.status)) {
+            throw new Error("ORDER_ALREADY_PAID");
+          }
+        }
+        const [inflight] = await tx.select({
+          id: cashMachineTransactionsTable.id,
+          transactionType: cashMachineTransactionsTable.transactionType,
+          status: cashMachineTransactionsTable.status,
+          deviceId: cashMachineTransactionsTable.deviceId,
+          orderId: cashMachineTransactionsTable.orderId,
+          splitRef: cashMachineTransactionsTable.splitRef,
+          terminalName: cashMachineTransactionsTable.terminalName,
+        })
           .from(cashMachineTransactionsTable)
           .where(and(
             eq(cashMachineTransactionsTable.transactionType, "payment"),
@@ -281,10 +335,14 @@ router.post(
             ),
           ))
           .limit(1);
-        if (inflight) throw new Error("CASH_MACHINE_IN_FLIGHT");
+        if (
+          inflight
+          && inflight.transactionType === "payment"
+          && (CASH_MACHINE_IN_FLIGHT as readonly string[]).includes(inflight.status)
+        ) throw new Error("CASH_MACHINE_IN_FLIGHT");
         const [pending] = await tx.insert(cashMachineTransactionsTable).values({
         orderId: orderId ?? null,
-        splitRef: splitRef ?? null,
+        splitRef: `idem:${requestKey}${splitRef ? `|split:${splitRef}` : ""}`,
         transactionType: "payment",
         amountRequested: parseFloat(amount).toFixed(2),
         status: "pending",
@@ -307,6 +365,10 @@ router.post(
         res.status(409).json({ error: "Ya existe un cobro físico pendiente de conciliación" });
         return;
       }
+      if (error instanceof Error && error.message === "ORDER_ALREADY_PAID") {
+        res.status(409).json({ error: "El pedido ya está cobrado" });
+        return;
+      }
       throw error;
     }
 
@@ -315,10 +377,15 @@ router.post(
         parseFloat(amount).toFixed(2),
         txRow.id,
       );
-      const [started] = await db.update(cashMachineTransactionsTable).set({
+      const [updatedStart] = await db.update(cashMachineTransactionsTable).set({
         status: deviceResult.status,
         deviceTransactionId: deviceResult.deviceTransactionId,
       }).where(eq(cashMachineTransactionsTable.id, txRow.id)).returning();
+      const started = updatedStart ?? {
+        ...txRow,
+        status: deviceResult.status,
+        deviceTransactionId: deviceResult.deviceTransactionId,
+      };
       await db.update(idempotencyKeysTable).set({
         statusCode: 201,
         response: { transaction: started },
@@ -354,6 +421,10 @@ router.get(
 
     if (!txRow) {
       res.status(404).json({ error: "Transacción no encontrada" });
+      return;
+    }
+    if (txRow.transactionType !== "payment") {
+      res.status(400).json({ error: "La transacción no es un cobro" });
       return;
     }
 
@@ -413,7 +484,7 @@ router.get(
       const isNowTerminal = TERMINAL_STATUSES.includes(deviceStatus.status);
       justCompleted = isNowTerminal && deviceStatus.status === "completada";
       [updated] = await db.update(cashMachineTransactionsTable).set({
-        status: deviceStatus.status,
+        status: justCompleted && txRow.orderId ? "conciliando" : deviceStatus.status,
         amountReceived: deviceStatus.amountReceived,
         changeDispensed: deviceStatus.changeDispensed,
         deviceError: deviceStatus.deviceError ?? null,
@@ -428,6 +499,8 @@ router.get(
     let settlementResult = null;
     if (justCompleted && txRow.orderId && txRow.employeeId) {
       try {
+        const physicalOrderId = txRow.orderId;
+        const physicalEmployeeId = txRow.employeeId;
         const methodId = await ensurePaymentMethod();
         const netAmount = (
           parseFloat(deviceStatus.amountReceived) - parseFloat(deviceStatus.changeDispensed)
@@ -438,25 +511,45 @@ router.get(
           .where(eq(cashSessionsTable.status, "open"))
           .limit(1);
 
-        // Insert payment (idempotent)
-        await db
-          .insert(paymentsTable)
-          .values({
-            orderId:         txRow.orderId,
+        await db.transaction(async (tx) => {
+          await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${"order-critical:" + physicalOrderId}))`);
+          const [lockedOrder] = await tx.select({ status: ordersTable.status })
+            .from(ordersTable)
+            .where(eq(ordersTable.id, physicalOrderId))
+            .for("update");
+          const [existingPayment] = await tx.select({ id: paymentsTable.id })
+            .from(paymentsTable)
+            .where(eq(paymentsTable.reference, txRow.id))
+            .limit(1);
+          if (lockedOrder?.status === "paid" && !existingPayment) {
+            throw new Error("ORDER_PAID_BEFORE_PHYSICAL_RECONCILIATION");
+          }
+          await tx.insert(paymentsTable).values({
+            orderId:         physicalOrderId,
             paymentMethodId: methodId,
             amount:          netAmount,
-            employeeId:      txRow.employeeId,
+            employeeId:      physicalEmployeeId,
             reference:       txRow.id,   // idempotency key — unique index enforces exactly-once
             ...(openSession ? { cashSessionId: openSession.id } : {}),
-          })
-          .onConflictDoNothing();
+          }).onConflictDoNothing();
+          await tx.update(cashMachineTransactionsTable).set({
+            status: "conciliando",
+            amountReceived: deviceStatus.amountReceived,
+            changeDispensed: deviceStatus.changeDispensed,
+          }).where(eq(cashMachineTransactionsTable.id, txRow.id));
+        });
 
         // Settle the order (ticket issuance + order→paid + table→free)
         settlementResult = await settleOrderIfFullyPaid({
-          orderId:       txRow.orderId,
-          employeeId:    txRow.employeeId,
+          orderId:       physicalOrderId,
+          employeeId:    physicalEmployeeId,
           cashSessionId: openSession?.id ?? null,
         });
+        [updated] = await db.update(cashMachineTransactionsTable).set({
+          status: "completada",
+          deviceError: null,
+          completedAt: new Date(),
+        }).where(eq(cashMachineTransactionsTable.id, txRow.id)).returning();
 
         // Notify floor plan clients
         if (settlementResult.settled) {
@@ -511,7 +604,7 @@ router.post(
       return;
     }
 
-    const NON_CANCELLABLE = ["completada", "cancelada", "tiempo_agotado", "error", "conciliacion_pendiente"];
+    const NON_CANCELLABLE = ["completada", "cancelada", "tiempo_agotado", "error", "conciliando", "conciliacion_pendiente"];
     if (NON_CANCELLABLE.includes(txRow.status)) {
       res.status(409).json({ error: "La transacción ya no se puede cancelar" });
       return;
@@ -562,12 +655,81 @@ router.post(
   },
 );
 
+router.post(
+  "/cash-machine/payments/:id/reconcile",
+  requireAuth,
+  requireRole("manager", "admin"),
+  async (req, res): Promise<void> => {
+    const id = req.params.id as string;
+    const [current] = await db.select().from(cashMachineTransactionsTable)
+      .where(eq(cashMachineTransactionsTable.id, id))
+      .limit(1);
+    if (!current) {
+      res.status(404).json({ error: "Transacción no encontrada" });
+      return;
+    }
+    if (current.status !== "conciliacion_pendiente") {
+      res.status(409).json({ error: "La transacción no requiere conciliación" });
+      return;
+    }
+    if (current.transactionType === "refund") {
+      try {
+        const result = await adapterRegistry.getAdapter().refund(current.amountRequested, current.id);
+        const [refund] = await db.update(cashMachineTransactionsTable).set({
+          status: result.status === "completada" ? "completada" : "error",
+          changeDispensed: result.status === "completada" ? current.amountRequested : "0",
+          deviceError: result.deviceError ?? null,
+          completedAt: new Date(),
+        }).where(eq(cashMachineTransactionsTable.id, id)).returning();
+        const cacheKey = transactionIdempotencyCacheKey(current);
+        if (cacheKey) {
+          await db.update(idempotencyKeysTable).set({
+            statusCode: result.status === "completada" ? 200 : 422,
+            response: { transaction: refund },
+          }).where(eq(idempotencyKeysTable.cacheKey, cacheKey));
+          invalidateIdempotencyCacheKey(cacheKey);
+        }
+        res.status(result.status === "completada" ? 200 : 422).json({ transaction: refund });
+      } catch {
+        res.status(202).json({ transaction: current, reconciliationRequired: true });
+      }
+      return;
+    }
+    if (current.transactionType !== "payment") {
+      res.status(409).json({ error: "Tipo de transacción no conciliable" });
+      return;
+    }
+    const [updated] = await db.update(cashMachineTransactionsTable).set({
+      status: current.deviceTransactionId ? "iniciando" : "pending",
+      deviceError: null,
+    }).where(eq(cashMachineTransactionsTable.id, id)).returning();
+    const cacheKey = transactionIdempotencyCacheKey(current);
+    if (cacheKey) {
+      await db.update(idempotencyKeysTable).set({
+        statusCode: 202,
+        response: { transaction: updated, recovering: true },
+      }).where(eq(idempotencyKeysTable.cacheKey, cacheKey));
+      invalidateIdempotencyCacheKey(cacheKey);
+    }
+    await logDocumentAction({
+      action: "cash_machine_reconciliation_started",
+      documentType: "cash_machine",
+      documentId: id,
+      employeeId: req.user?.id,
+      employeeName: req.user?.name ?? "",
+      details: "Reconciliación manual iniciada",
+    });
+    res.status(202).json({ transaction: updated, recovering: true });
+  },
+);
+
 // ─── Refunds ──────────────────────────────────────────────────────────────────
 
 router.post(
   "/cash-machine/refunds",
   requireAuth,
   requireRole(...MANAGER_ROLES),
+  idempotency,
   async (req, res): Promise<void> => {
     const employeeId = (req as any).user?.id as string;
     const { orderId, amount, splitRef, terminalName } = req.body as {
@@ -581,42 +743,97 @@ router.post(
       res.status(400).json({ error: "Importe inválido" });
       return;
     }
+    const requestKey = req.headers["idempotency-key"];
+    if (typeof requestKey !== "string") {
+      res.status(400).json({ error: "Idempotency-Key es obligatoria" });
+      return;
+    }
 
     const cfg = await getConfig();
     if (!cfg?.enabled) {
       res.status(503).json({ error: "La caja automática no está habilitada" });
       return;
     }
+    let refundAdapter;
+    try {
+      refundAdapter = adapterRegistry.getAdapter();
+    } catch (error) {
+      res.status(503).json({ error: error instanceof Error ? error.message : "Conector no configurado" });
+      return;
+    }
 
-    // Create pending transaction record
-    const [txRow] = await db
-      .insert(cashMachineTransactionsTable)
-      .values({
+    const terminal = terminalName ?? "Caja principal";
+    const txRow = await db.transaction(async (tx) => {
+      for (const key of [
+        `cash-machine:device:${cfg.deviceId}`,
+        `cash-machine:refund:${requestKey}`,
+        ...(orderId ? [`order-critical:${orderId}`] : []),
+      ].sort()) {
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${key}))`);
+      }
+      const [inflight] = await tx.select({
+        id: cashMachineTransactionsTable.id,
+        transactionType: cashMachineTransactionsTable.transactionType,
+        status: cashMachineTransactionsTable.status,
+      })
+        .from(cashMachineTransactionsTable)
+        .where(and(
+          eq(cashMachineTransactionsTable.transactionType, "refund"),
+          eq(cashMachineTransactionsTable.deviceId, cfg.deviceId),
+          inArray(cashMachineTransactionsTable.status, [...CASH_MACHINE_IN_FLIGHT]),
+        ))
+        .limit(1);
+      if (
+        inflight
+        && inflight.transactionType === "refund"
+        && (CASH_MACHINE_IN_FLIGHT as readonly string[]).includes(inflight.status)
+      ) throw new Error("REFUND_IN_FLIGHT");
+      const [pending] = await tx.insert(cashMachineTransactionsTable).values({
         orderId: orderId ?? null,
-        splitRef: splitRef ?? null,
+        splitRef: `idem:${requestKey}${splitRef ? `|split:${splitRef}` : ""}`,
         transactionType: "refund",
         amountRequested: parseFloat(amount).toFixed(2),
-        status: "iniciando",
+        status: "pending",
         deviceId: cfg.deviceId,
-        terminalName: terminalName ?? "Caja principal",
+        terminalName: terminal,
         employeeId,
-      })
-      .returning();
+      }).returning();
+      await tx.insert(idempotencyKeysTable).values({
+        cacheKey: `${req.user!.id}:${requestKey}`,
+        userId: req.user!.id,
+        statusCode: 202,
+        response: { transaction: pending },
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1_000),
+      }).onConflictDoNothing();
+      return pending;
+    }).catch((error) => {
+      if (error instanceof Error && error.message === "REFUND_IN_FLIGHT") return null;
+      throw error;
+    });
+    if (!txRow) {
+      res.status(409).json({ error: "Ya existe una devolución física en curso" });
+      return;
+    }
 
     let deviceResult;
     try {
       const scenario = req.headers["x-simulator-scenario"] as string | undefined;
       if (scenario) adapterRegistry.setScenario(scenario);
-      deviceResult = await adapterRegistry.getAdapter().refund(
+      deviceResult = await refundAdapter.refund(
         parseFloat(amount).toFixed(2),
-        orderId ?? `refund-${txRow.id}`,
+        txRow.id,
       );
     } catch (err: any) {
-      await db
+      const [unknown] = await db
         .update(cashMachineTransactionsTable)
-        .set({ status: "error", deviceError: err?.message, completedAt: new Date() })
-        .where(eq(cashMachineTransactionsTable.id, txRow.id));
-      res.status(503).json({ error: err?.message ?? "Device unreachable" });
+        .set({ status: "conciliacion_pendiente", deviceError: "Resultado de devolución desconocido" })
+        .where(eq(cashMachineTransactionsTable.id, txRow.id))
+        .returning();
+      await db.update(idempotencyKeysTable).set({
+        statusCode: 202,
+        response: { transaction: unknown, reconciliationRequired: true },
+      }).where(eq(idempotencyKeysTable.cacheKey, `${req.user!.id}:${requestKey}`));
+      res.status(202).json({ transaction: unknown, reconciliationRequired: true });
       return;
     }
 
@@ -633,10 +850,18 @@ router.post(
       .returning();
 
     if (finalStatus === "error") {
+      await db.update(idempotencyKeysTable).set({
+        statusCode: 422,
+        response: { error: deviceResult.deviceError ?? "Refund failed", transaction: updated },
+      }).where(eq(idempotencyKeysTable.cacheKey, `${req.user!.id}:${requestKey}`));
       res.status(422).json({ error: deviceResult.deviceError ?? "Refund failed", transaction: updated });
       return;
     }
 
+    await db.update(idempotencyKeysTable).set({
+      statusCode: 201,
+      response: { transaction: updated },
+    }).where(eq(idempotencyKeysTable.cacheKey, `${req.user!.id}:${requestKey}`));
     res.status(201).json({ transaction: updated });
   },
 );

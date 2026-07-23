@@ -25,7 +25,7 @@ import {
   useCreateOrderSplits,
   useMarkSplitGroupPaid,
   useGetOrderSplits,
-  useStartCashMachinePayment,
+  startCashMachinePayment as startCashMachinePaymentRequest,
   useGetCashMachinePayment,
   useCancelCashMachinePayment,
   useGetCashMachineStatus,
@@ -985,9 +985,6 @@ interface CashMachinePaymentModalProps {
 
 function CashMachinePaymentModal({ orderId, amount, terminal, onSuccess, onCancel }: CashMachinePaymentModalProps) {
   const paymentAttemptKey = useRef(crypto.randomUUID());
-  const startPayment  = useStartCashMachinePayment({
-    request: { headers: { 'Idempotency-Key': paymentAttemptKey.current } },
-  });
   const cancelPayment = useCancelCashMachinePayment();
   const [txId, setTxId]             = useState<string | null>(null);
   const [txStatus, setTxStatus]     = useState<string>('pending');
@@ -1041,9 +1038,10 @@ function CashMachinePaymentModal({ orderId, amount, terminal, onSuccess, onCance
   useEffect(() => {
     const init = async () => {
       try {
-        const res = await startPayment.mutateAsync({
-          data: { orderId, amount: fmt(amount), terminalName: terminal ?? 'Caja principal' },
-        });
+        const res = await startCashMachinePaymentRequest(
+          { orderId, amount: fmt(amount), terminalName: terminal ?? 'Caja principal' },
+          { headers: { 'Idempotency-Key': paymentAttemptKey.current } },
+        );
         const id = (res as any)?.transaction?.id as string;
         if (!id) { setErrMsg('Error al iniciar pago.'); return; }
         setTxId(id);
@@ -1082,7 +1080,7 @@ function CashMachinePaymentModal({ orderId, amount, terminal, onSuccess, onCance
   };
 
   const meta = statusMeta[txStatus] ?? statusMeta.pending;
-  const TERMINAL = ['completada', 'cancelada', 'tiempo_agotado', 'error', 'intervencion_manual'];
+  const TERMINAL = ['completada', 'cancelada', 'tiempo_agotado', 'error', 'intervencion_manual', 'conciliacion_pendiente'];
   const isTerminal = TERMINAL.includes(txStatus);
 
   return (
@@ -1137,7 +1135,7 @@ function CashMachinePaymentModal({ orderId, amount, terminal, onSuccess, onCance
         )}
 
         {/* Close after error */}
-        {['error', 'cancelada', 'tiempo_agotado', 'intervencion_manual'].includes(txStatus) && (
+        {['error', 'cancelada', 'tiempo_agotado', 'intervencion_manual', 'conciliacion_pendiente'].includes(txStatus) && (
           <button onClick={onCancel}
             className="w-full py-3 bg-secondary text-foreground font-bold rounded-xl text-sm">
             Cerrar

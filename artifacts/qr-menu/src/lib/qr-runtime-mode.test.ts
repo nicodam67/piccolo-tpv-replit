@@ -10,6 +10,8 @@ describe("QR environment matrix", () => {
     ["development", undefined, "true", "demo"],
     ["development", "https://example.convex.cloud", "true", "live"],
     ["test", undefined, undefined, "blocked"],
+    ["prodution", undefined, "true", "blocked"],
+    ["staging", undefined, "true", "blocked"],
   ])("%s url=%s demo=%s -> %s", (nodeEnv, convexUrl, demoFlag, expected) => {
     expect(resolveQrRuntimeMode({ nodeEnv, convexUrl, demoFlag })).toBe(expected);
   });

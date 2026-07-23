@@ -44,4 +44,10 @@ describe("central environment validation", () => {
     expect(validateApiEnvironment({ NODE_ENV: "development" }).environment).toBe("development");
     expect(validateApiEnvironment({ NODE_ENV: "test" }).environment).toBe("test");
   });
+
+  it("rejects staging, prod and misspelled environments instead of treating them as development", () => {
+    for (const NODE_ENV of ["prod", "staging", "develop"]) {
+      expect(() => validateApiEnvironment({ NODE_ENV })).toThrow("NODE_ENV");
+    }
+  });
 });

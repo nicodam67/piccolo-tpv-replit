@@ -3,6 +3,7 @@ const PUBLIC_KEY = /(publishable|public)/i;
 
 export function maskSecrets<T>(value: T): T {
   if (Array.isArray(value)) return value.map(maskSecrets) as T;
+  if (value instanceof Date || Buffer.isBuffer(value)) return value;
   if (!value || typeof value !== "object") return value;
   const result: Record<string, unknown> = {};
   for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {

@@ -26,7 +26,7 @@ vi.mock("@workspace/db", async (importOriginal) => {
   function updateChain(resultFn: () => MockRow[]) {
     const chain: Record<string, unknown> = {};
     const methods = ["where","from","set","values","returning","limit","orderBy",
-      "innerJoin","leftJoin","groupBy","offset"] as const;
+      "innerJoin","leftJoin","groupBy","offset","for"] as const;
     methods.forEach(m => { chain[m] = vi.fn(() => chain); });
     chain.then = (resolve: (v: MockRow[]) => unknown) =>
       Promise.resolve(resultFn()).then(resolve);
@@ -50,7 +50,7 @@ vi.mock("@workspace/db", async (importOriginal) => {
   function makeSelect(resultFn: () => MockRow[]) {
     const chain: Record<string, unknown> = {};
     const methods = ["where","from","set","values","returning","limit","orderBy",
-      "innerJoin","leftJoin","groupBy","offset"] as const;
+      "innerJoin","leftJoin","groupBy","offset","for"] as const;
     methods.forEach(m => { chain[m] = vi.fn(() => chain); });
     chain.then = (resolve: (v: MockRow[]) => unknown) => Promise.resolve(resultFn()).then(resolve);
     return chain;
@@ -80,9 +80,13 @@ vi.mock("@workspace/db", async (importOriginal) => {
 });
 
 vi.mock("../lib/socket", () => ({ getIO: () => ({ emit: vi.fn() }) }));
-vi.mock("./role-permissions", () => ({
-  checkPermission: vi.fn(async (role: string) => role === "admin" || role === "manager"),
-}));
+vi.mock("./role-permissions", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./role-permissions")>();
+  return {
+    ...actual,
+    checkPermission: vi.fn(async (role: string) => role === "admin" || role === "manager"),
+  };
+});
 
 // ── Auth middleware override ───────────────────────────────────────────────────
 vi.mock("../middlewares/auth", async (importOriginal) => {
@@ -159,6 +163,15 @@ describe("Test 2 — POST /tables/:id/open on occupied table", () => {
 
     expect(res.status).toBe(409);
     expect(res.body.error).toMatch(/disponible/i);
+  });
+
+  it("cannot reopen a table pending cleaning", async () => {
+    mockState.txUpdateRows = [];
+    const res = await request(app)
+      .post("/api/tables/table-1/open")
+      .set("Authorization", WAITER)
+      .send({ guestCount: 2 });
+    expect(res.status).toBe(409);
   });
 });
 
@@ -270,12 +283,31 @@ describe("Test 7 — unpaid table closure is exceptional and audited", () => {
 
   it("allows an authorized force close and leaves the table pending cleaning", async () => {
     mockState.selectRows = [ACTIVE_ORDER];
-    mockState.txUpdateRows = [{ ...OCCUPIED, status: "pendiente_limpieza" }];
+    mockState.txUpdateRows = [{ ...OCCUPIED_TABLE, status: "pendiente_limpieza" }];
     const res = await request(app)
       .post("/api/tables/table-1/close")
       .set("Authorization", ADMIN)
       .send({ force: true, reason: "Cliente abandona el local" });
     expect(res.status).toBe(200);
     expect(res.body.status).toBe("pendiente_limpieza");
+  });
+});
+
+describe("Test 8 — generic endpoints cannot bypass the table lifecycle", () => {
+  it("rejects direct status changes through PATCH", async () => {
+    const res = await request(app)
+      .patch("/api/tables/table-1")
+      .set("Authorization", ADMIN)
+      .send({ status: "free" });
+    expect(res.status).toBe(400);
+  });
+
+  it("does not block/unblock a table with an unpaid order", async () => {
+    mockState.selectRows = [{ id: "order-1" }];
+    const res = await request(app)
+      .post("/api/tables/table-1/block")
+      .set("Authorization", ADMIN)
+      .send({ reason: "maintenance" });
+    expect(res.status).toBe(409);
   });
 });

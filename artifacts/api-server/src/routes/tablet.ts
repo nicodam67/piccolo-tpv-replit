@@ -270,9 +270,10 @@ router.post("/tablet/register", async (req, res): Promise<void> => {
   res.status(201).json({ deviceToken, deviceId: device.id });
 });
 
-// GET /api/tablet/device/:token — validate device and get its status
-router.get("/tablet/device/:token", async (req, res): Promise<void> => {
-  const token = req.params.token as string;
+// Device credentials travel in headers so proxies/access logs never receive them in URLs.
+router.get("/tablet/device", async (req, res): Promise<void> => {
+  const token = req.headers["x-device-token"] as string | undefined;
+  if (!token) { res.status(401).json({ error: "Credencial de dispositivo requerida" }); return; }
   const device = await getDevice(token);
   if (!device) {
     res.status(404).json({ error: "Dispositivo no encontrado" });
@@ -288,15 +289,22 @@ router.get("/tablet/device/:token", async (req, res): Promise<void> => {
   res.json({ id: device.id, name: device.name, status: device.status, location: device.location });
 });
 
-// POST /api/tablet/device/:token/ping — update lastSeen silently
-router.post("/tablet/device/:token/ping", async (req, res): Promise<void> => {
-  const token = req.params.token as string;
+router.post("/tablet/device/ping", async (req, res): Promise<void> => {
+  const token = req.headers["x-device-token"] as string | undefined;
+  if (!token) { res.status(401).json({ error: "Credencial de dispositivo requerida" }); return; }
   const appVersion = (req.body as { appVersion?: string })?.appVersion;
   await db
     .update(tabletDevicesTable)
     .set({ lastSeenAt: new Date(), ...(appVersion ? { appVersion } : {}) })
     .where(eq(tabletDevicesTable.deviceToken, token));
   res.json({ ok: true });
+});
+
+router.all("/tablet/device/:token/ping", (_req, res) => {
+  res.status(410).json({ error: "Usa X-Device-Token; las credenciales en URL están deshabilitadas" });
+});
+router.all("/tablet/device/:token", (_req, res) => {
+  res.status(410).json({ error: "Usa X-Device-Token; las credenciales en URL están deshabilitadas" });
 });
 
 // POST /api/tablet/verify-pin — verify employee PIN with rate limiting

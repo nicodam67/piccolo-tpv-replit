@@ -22,7 +22,7 @@ import {
   businessConfigTable,
   discountsTable,
 } from "@workspace/db";
-import { eq, and, sum } from "drizzle-orm";
+import { eq, and, sum, sql } from "drizzle-orm";
 import { calcMultiRateBreakdown } from "./tax";
 import { logDocumentAction } from "./document-audit";
 
@@ -52,8 +52,11 @@ export async function settleOrderIfFullyPaid({
   cashSessionId?: string | null;
 }): Promise<SettlementResult> {
   return db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${"order-critical:" + orderId}))`);
     // Guard against re-settlement
-    const [order] = await tx.select().from(ordersTable).where(eq(ordersTable.id, orderId));
+    const [order] = await tx.select().from(ordersTable)
+      .where(eq(ordersTable.id, orderId))
+      .for("update");
     if (!order || order.status === "paid") {
       return { settled: false, ticket: null, remaining: 0 };
     }

@@ -6,6 +6,6 @@ export function resolveQrRuntimeMode(input: {
   demoFlag?: string;
 }): QrRuntimeMode {
   if (input.convexUrl) return "live";
-  if (input.nodeEnv !== "production" && input.demoFlag === "true") return "demo";
+  if (input.nodeEnv === "development" && input.demoFlag === "true") return "demo";
   return "blocked";
 }

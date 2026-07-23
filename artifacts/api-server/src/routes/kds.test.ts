@@ -313,6 +313,14 @@ describe("Test 3 — POST /kitchen-tasks/:taskId/resend", () => {
 
     expect(res.status).toBe(404);
   });
+
+  it("cannot resend a task from a paid order", async () => {
+    mockState.selectRows = [{ ...TASK_READY, status: "paid" }];
+    const res = await request(app)
+      .post("/api/kitchen-tasks/task-1/resend")
+      .set("Authorization", WAITER);
+    expect(res.status).toBe(409);
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -389,7 +397,7 @@ describe("Test 4 — Status flow: new → preparing → ready → served", () =>
   });
 
   it("pase served: marks tasks served, emits tables:refresh", async () => {
-    mockState.selectRows = [ORDER];     // order lookup + table lookup
+    mockState.selectRows = [{ ...ORDER, status: "ready" }]; // order lookup + ready tasks
     mockState.txUpdateRows = [];
 
     const res = await request(app)
@@ -400,6 +408,24 @@ describe("Test 4 — Status flow: new → preparing → ready → served", () =>
     expect(res.status).toBe(200);
     expect(mockState.socketEmit).toHaveBeenCalledWith("tables:refresh");
     expect(mockState.txUpdatedTables).not.toContain(restaurantTablesTable);
+  });
+
+  it("pase cannot serve an order that is still preparing", async () => {
+    mockState.selectRows = [{ ...ORDER, status: "preparing" }];
+    const res = await request(app)
+      .post("/api/orders/order-1/pase")
+      .set("Authorization", WAITER)
+      .send({ action: "served" });
+    expect(res.status).toBe(409);
+  });
+
+  it("pase cannot reopen a paid order as served", async () => {
+    mockState.selectRows = [{ ...ORDER, status: "paid" }];
+    const res = await request(app)
+      .post("/api/orders/order-1/pase")
+      .set("Authorization", WAITER)
+      .send({ action: "served" });
+    expect(res.status).toBe(409);
   });
 
   it("returns 400 for an invalid status value", async () => {

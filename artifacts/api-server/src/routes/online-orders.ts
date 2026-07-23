@@ -121,7 +121,8 @@ async function simulateNotification(
   type: string,
   recipient: string,
   payload: object,
-) {
+): Promise<"not_configured" | "simulated"> {
+  if (process.env["NODE_ENV"] === "production") return "not_configured";
   try {
     await db.insert(notificationLogTable).values({
       orderId,
@@ -130,7 +131,10 @@ async function simulateNotification(
       payload,
       simulated: true,
     });
-  } catch { /* non-fatal */ }
+    return "simulated";
+  } catch {
+    return "not_configured";
+  }
 }
 
 /** Emit a WebSocket event to refresh the online orders inbox */
@@ -448,7 +452,7 @@ router.post("/online-orders/:id/confirm", requireAuth, requireRole("manager", "a
   await db.update(ordersTable).set({ status: "sent_to_kitchen" } as any).where(eq(ordersTable.id, id));
 
   await auditOnlineOrder(id, "confirmed", req.user?.id, req.user?.name, { readyAt });
-  await simulateNotification(id, "order_confirmed", (order as any).clientPhone ?? "", {
+  const notificationStatus = await simulateNotification(id, "order_confirmed", (order as any).clientPhone ?? "", {
     orderNumber,
     estimatedReadyAt: readyAt.toISOString(),
     message: `Tu pedido ${orderNumber} ha sido confirmado. Estará listo aproximadamente a las ${readyAt.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}.`,
@@ -457,7 +461,7 @@ router.post("/online-orders/:id/confirm", requireAuth, requireRole("manager", "a
   try { emitToFunction("kds", "kds:refresh"); } catch { /* ignore */ }
   emitOnlineOrdersRefresh({ orderId: id });
 
-  res.json({ ok: true, status: "sent_to_kitchen", estimatedReadyAt: readyAt.toISOString() });
+  res.json({ ok: true, status: "sent_to_kitchen", estimatedReadyAt: readyAt.toISOString(), notificationStatus });
 });
 
 // ── STAFF: POST /api/online-orders/:id/reject ─────────────────────────────────
@@ -478,14 +482,14 @@ router.post("/online-orders/:id/reject", requireAuth, requireRole("manager", "ad
 
   const orderNumber = (order as any).orderNumber ?? id.slice(0, 8);
   await auditOnlineOrder(id, "rejected", req.user?.id, req.user?.name, { reason });
-  await simulateNotification(id, "order_rejected", (order as any).clientPhone ?? "", {
+  const notificationStatus = await simulateNotification(id, "order_rejected", (order as any).clientPhone ?? "", {
     orderNumber,
     reason,
     message: `Lo sentimos, tu pedido ${orderNumber} ha sido cancelado. Motivo: ${reason}.`,
   });
 
   emitOnlineOrdersRefresh({ orderId: id });
-  res.json({ ok: true, status: "rejected" });
+  res.json({ ok: true, status: "rejected", notificationStatus });
 });
 
 // ── STAFF: PATCH /api/online-orders/:id/status ────────────────────────────────
@@ -541,12 +545,12 @@ router.patch("/online-orders/:id/status", requireAuth, async (req, res): Promise
     delivered: "order_delivered",
     cancelled: "order_cancelled",
   };
-  if (notifMap[status]) {
-    await simulateNotification(id, notifMap[status], (order as any).clientPhone ?? "", { status });
-  }
+  const notificationStatus = notifMap[status]
+    ? await simulateNotification(id, notifMap[status], (order as any).clientPhone ?? "", { status })
+    : "not_configured";
 
   emitOnlineOrdersRefresh({ orderId: id });
-  res.json({ ok: true, status });
+  res.json({ ok: true, status, notificationStatus });
 });
 
 // ── STAFF: POST /api/online-orders/:id/payment-simulate ──────────────────────
