@@ -25,7 +25,6 @@ import {
   onlineOrderAuditTable,
   onlineOrdersConfigTable,
   kitchenTasksTable,
-  crmClientsTable,
   productFormatsTable,
   orderItemModifiersTable,
   modifiersTable,
@@ -38,6 +37,7 @@ import { eq, and, inArray, desc, asc, gte, lte, count, avg, sum, sql, or, isNotN
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { emitToFunction } from "../lib/socket-events";
 import { calcMultiRateBreakdown } from "../lib/tax";
+import { resolveCrmClientForReservation } from "../lib/crm-client-service";
 
 const router: IRouter = Router();
 
@@ -221,16 +221,11 @@ router.post("/delivery-orders", requireAuth, async (req: any, res): Promise<void
   let crmClientId: string | null = null;
   if (clientPhone.trim()) {
     try {
-      const [existing] = await db.select().from(crmClientsTable)
-        .where(eq(crmClientsTable.telefono, clientPhone.trim())).limit(1);
-      if (existing) {
-        crmClientId = existing.id;
-      } else {
-        const [newClient] = await db.insert(crmClientsTable).values({
-          nombre: clientName.trim(), apellidos: "", telefono: clientPhone.trim(),
-        }).returning();
-        crmClientId = newClient.id;
-      }
+      const client = await resolveCrmClientForReservation({
+        nombre: clientName,
+        telefono: clientPhone,
+      });
+      crmClientId = client.id;
     } catch { /* non-fatal */ }
   }
 
