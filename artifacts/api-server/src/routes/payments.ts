@@ -14,7 +14,7 @@ import {
   businessConfigTable,
   discountsTable,
 } from "@workspace/db";
-import { eq, and, sum, inArray, gte } from "drizzle-orm";
+import { eq, and, sum, gte, sql } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { idempotency } from "../middlewares/idempotency";
 import { emitToFunction } from "../lib/socket-events";
@@ -23,7 +23,7 @@ import { calcMultiRateBreakdown } from "../lib/tax";
 import { issuePoints } from "./crm.js";
 
 // Roles allowed to process payments (excludes kitchen staff)
-const PAYMENT_ROLES = ["waiter", "cashier", "manager", "admin"];
+const PAYMENT_ROLES = ["waiter", "cashier", "encargado", "manager", "admin"];
 
 const router: IRouter = Router();
 
@@ -232,6 +232,10 @@ router.post("/orders/:id/payments", requireAuth, requireRole(...PAYMENT_ROLES), 
     res.status(409).json({ error: "El pedido ya está cobrado" });
     return;
   }
+  if (order.status === "completed") {
+    res.status(409).json({ error: "El pedido fue cerrado excepcionalmente y no puede cobrarse" });
+    return;
+  }
 
   // Fetch items with taxRate for accurate total
   const items = await db
@@ -310,15 +314,47 @@ router.post("/orders/:id/payments", requireAuth, requireRole(...PAYMENT_ROLES), 
   }
 
   // Insert payment (cap at remaining for non-cash; for cash allow full amount for change calc)
-  const effectiveAmount = methodCode === "cash"
+  let effectiveAmount = methodCode === "cash"
     ? Math.min(amountNum, remaining + 0.001) <= remaining
       ? amount
       : remaining.toFixed(2)  // only charge remaining, return change to customer
     : amount;
 
-  const change = methodCode === "cash" ? Math.max(0, amountNum - remaining) : 0;
+  let change = methodCode === "cash" ? Math.max(0, amountNum - remaining) : 0;
 
-  const result = await db.transaction(async (tx) => {
+  let result;
+  try {
+    result = await db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${"order-critical:" + orderId}))`);
+    const orderLock = await tx.execute(
+      sql`SELECT status FROM orders WHERE id = ${orderId} FOR UPDATE`,
+    ) as unknown as { rows?: Array<{ status: string }> };
+    const lockedOrderStatus = orderLock.rows?.[0]?.status ?? order.status;
+    if (["paid", "completed"].includes(lockedOrderStatus)) {
+      throw new Error("ORDER_ALREADY_SETTLED");
+    }
+    const physicalResult = await tx.execute(sql`
+      SELECT id FROM cash_machine_transactions
+      WHERE order_id = ${orderId}
+        AND transaction_type = 'payment'
+        AND status IN ('pending','iniciando','esperando_efectivo','efectivo_parcial','devolviendo_cambio','conciliando','conciliacion_pendiente')
+      LIMIT 1
+    `) as unknown as { rows?: unknown[] };
+    if ((physicalResult.rows?.length ?? 0) > 0) throw new Error("CASH_MACHINE_IN_FLIGHT");
+    const paidAfterLock = await tx.execute(sql`
+      SELECT COALESCE(SUM(amount), 0)::text AS paid
+      FROM payments WHERE order_id = ${orderId} AND status = 'completed'
+    `) as unknown as { rows?: Array<{ paid: string }> };
+    const lockedAlreadyPaid = parseFloat(paidAfterLock.rows?.[0]?.paid ?? String(alreadyPaid));
+    const lockedRemaining = parseFloat((totalNum - lockedAlreadyPaid).toFixed(2));
+    if (lockedRemaining <= 0.001) throw new Error("ORDER_ALREADY_SETTLED");
+    if (methodCode !== "cash" && amountNum > lockedRemaining + 0.001) {
+      throw new Error(`PAYMENT_EXCEEDS_REMAINING:${lockedRemaining.toFixed(2)}`);
+    }
+    effectiveAmount = methodCode === "cash" && amountNum > lockedRemaining
+      ? lockedRemaining.toFixed(2)
+      : amount;
+    change = methodCode === "cash" ? Math.max(0, amountNum - lockedRemaining) : 0;
     const [payment] = await tx
       .insert(paymentsTable)
       .values({
@@ -333,7 +369,7 @@ router.post("/orders/:id/payments", requireAuth, requireRole(...PAYMENT_ROLES), 
       .returning();
 
     // Recalculate remaining after this payment
-    const newPaid = alreadyPaid + parseFloat(effectiveAmount);
+    const newPaid = lockedAlreadyPaid + parseFloat(effectiveAmount);
     const newRemaining = parseFloat((totalNum - newPaid).toFixed(2));
 
     let ticket = null;
@@ -388,13 +424,29 @@ router.post("/orders/:id/payments", requireAuth, requireRole(...PAYMENT_ROLES), 
       if (order.tableId) {
         await tx
           .update(restaurantTablesTable)
-          .set({ status: "free" })
+          .set({ status: "pendiente_limpieza" })
           .where(eq(restaurantTablesTable.id, order.tableId));
       }
     }
 
     return { payment, ticket, change: change.toFixed(2), newRemaining: Math.max(0, newRemaining) };
-  });
+    });
+  } catch (error) {
+    if (error instanceof Error && error.message === "CASH_MACHINE_IN_FLIGHT") {
+      res.status(409).json({ error: "Hay un cobro físico en curso para este pedido" });
+      return;
+    }
+    if (error instanceof Error && error.message === "ORDER_ALREADY_SETTLED") {
+      res.status(409).json({ error: "El pedido ya está cobrado o cerrado" });
+      return;
+    }
+    if (error instanceof Error && error.message.startsWith("PAYMENT_EXCEEDS_REMAINING:")) {
+      const pending = error.message.split(":")[1];
+      res.status(400).json({ error: `El importe excede el pendiente de ${pending} €` });
+      return;
+    }
+    throw error;
+  }
 
   // Auto-issue loyalty points when order is fully paid and has a client
   if (result.ticket && order.clientId) {
