@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   restaurantVersion,
   signTableQr,
+  tableSessionMatchesCurrent,
   tableVersion,
   verifyTableQr,
 } from "./table-qr";
@@ -46,5 +47,18 @@ describe("signed table QR tickets", () => {
   it("changes the table fingerprint when identity changes", () => {
     expect(tableVersion(table)).not.toBe(tableVersion({ ...table, name: "Mesa nueva" }));
     expect(tableVersion(table)).not.toBe(tableVersion({ ...table, active: false }));
+  });
+
+  it("invalidates an existing session when table or restaurant identity changes", () => {
+    const updatedAt = new Date("2026-01-01T00:00:00Z");
+    const session = {
+      token: `session.${restaurantVersion(updatedAt)}`,
+      tableId: table.id,
+      zoneId: table.zoneId,
+      tableLabel: table.name,
+    };
+    expect(tableSessionMatchesCurrent(session, table, updatedAt)).toBe(true);
+    expect(tableSessionMatchesCurrent(session, { ...table, name: "Mesa 2" }, updatedAt)).toBe(false);
+    expect(tableSessionMatchesCurrent(session, table, new Date("2026-01-02T00:00:00Z"))).toBe(false);
   });
 });

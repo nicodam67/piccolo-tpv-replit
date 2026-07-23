@@ -62,6 +62,7 @@ import { withoutBearerToken } from "../lib/mask-secrets";
 import {
   restaurantVersion,
   signTableQr,
+  tableSessionMatchesCurrent,
   tableVersion,
   verifyTableQr,
 } from "../lib/table-qr";
@@ -107,14 +108,22 @@ router.post("/public/table-sessions", async (req, res): Promise<void> => {
         eq(tableSessionsTable.tableId, table.id),
         eq(tableSessionsTable.status, "open"),
       )).orderBy(desc(tableSessionsTable.createdAt)).limit(1);
-      if (existing && existing.expiresAt > new Date()) return existing;
+      if (
+        existing
+        && existing.expiresAt > new Date()
+        && tableSessionMatchesCurrent(existing, table, business.updatedAt)
+      ) return existing;
+      if (existing) {
+        await tx.update(tableSessionsTable).set({ status: "closed", closedAt: new Date() })
+          .where(eq(tableSessionsTable.id, existing.id));
+      }
       const expiresAt = new Date(Math.min(payload.exp * 1000, hoursFromNow(4).getTime()));
       const [created] = await tx.insert(tableSessionsTable).values({
         tableId: table.id,
         zoneId: table.zoneId,
         tableLabel: table.name,
         zoneLabel: "",
-        token: crypto.randomUUID(),
+        token: `${crypto.randomUUID()}.${payload.rv}`,
         guestName: guestName.trim(),
         status: "open",
         expiresAt,
@@ -166,6 +175,18 @@ router.get("/public/table-sessions/check", async (req, res): Promise<void> => {
   if (!session) { res.status(404).json({ error: "Sesión no encontrada." }); return; }
   if (session.status !== "open" || (session.expiresAt && session.expiresAt < new Date())) {
     res.status(410).json({ error: "Sesión caducada.", session });
+    return;
+  }
+  const [[table], [business]] = await Promise.all([
+    session.tableId
+      ? db.select().from(restaurantTablesTable).where(eq(restaurantTablesTable.id, session.tableId)).limit(1)
+      : Promise.resolve([]),
+    db.select({ updatedAt: businessConfigTable.updatedAt }).from(businessConfigTable).limit(1),
+  ]);
+  if (!tableSessionMatchesCurrent(session, table, business?.updatedAt)) {
+    await db.update(tableSessionsTable).set({ status: "closed", closedAt: new Date() })
+      .where(eq(tableSessionsTable.id, session.id));
+    res.status(410).json({ error: "Sesión invalidada por un cambio de mesa o restaurante." });
     return;
   }
 
@@ -265,7 +286,17 @@ router.post("/public/orders/online-v2", async (req, res): Promise<void> => {
         eq(tableSessionsTable.status, "open"),
       )).limit(1);
 
-    if (!session || (session.expiresAt && session.expiresAt < new Date())) {
+    const [[table], [business]] = session ? await Promise.all([
+      session.tableId
+        ? db.select().from(restaurantTablesTable).where(eq(restaurantTablesTable.id, session.tableId)).limit(1)
+        : Promise.resolve([]),
+      db.select({ updatedAt: businessConfigTable.updatedAt }).from(businessConfigTable).limit(1),
+    ]) : [[], []];
+    if (
+      !session
+      || (session.expiresAt && session.expiresAt < new Date())
+      || !tableSessionMatchesCurrent(session, table, business?.updatedAt)
+    ) {
       res.status(410).json({ error: "La sesión de mesa ha caducado. Escanea el QR de nuevo." });
       return;
     }
@@ -363,6 +394,15 @@ router.post("/public/orders/online-v2", async (req, res): Promise<void> => {
         eq(tableSessionsTable.status, "open"),
       )).for("update").limit(1);
       if (!session || session.expiresAt <= new Date()) throw new Error("TABLE_SESSION_EXPIRED");
+      const [[table], [business]] = await Promise.all([
+        session.tableId
+          ? tx.select().from(restaurantTablesTable).where(eq(restaurantTablesTable.id, session.tableId)).limit(1)
+          : Promise.resolve([]),
+        tx.select({ updatedAt: businessConfigTable.updatedAt }).from(businessConfigTable).limit(1),
+      ]);
+      if (!tableSessionMatchesCurrent(session, table, business?.updatedAt)) {
+        throw new Error("TABLE_SESSION_EXPIRED");
+      }
       lockedSessionId = session.id;
     }
 

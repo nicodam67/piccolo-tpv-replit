@@ -11,7 +11,7 @@ import {
   idempotencyKeysTable,
   restaurantTablesTable,
 } from "@workspace/db";
-import { eq, and, desc, sum, inArray, or, sql } from "drizzle-orm";
+import { eq, and, desc, sum, inArray, or, sql, isNull } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { adapterRegistry } from "../lib/cash-machine/registry";
 import { settleOrderIfFullyPaid } from "../lib/settle-order";
@@ -189,7 +189,7 @@ router.post(
   async (req, res): Promise<void> => {
     try {
       const scenario = req.headers["x-simulator-scenario"] as string | undefined;
-      if (scenario) adapterRegistry.setScenario(scenario);
+      if (scenario && process.env.NODE_ENV !== "production") adapterRegistry.setScenario(scenario);
       const latency = await adapterRegistry.getAdapter().connect();
       res.json({ ok: true, latencyMs: latency });
     } catch (err: any) {
@@ -280,7 +280,7 @@ router.post(
     try {
       adapter = adapterRegistry.getAdapter();
       const scenario = req.headers["x-simulator-scenario"] as string | undefined;
-      if (scenario) adapterRegistry.setScenario(scenario);
+      if (scenario && process.env.NODE_ENV !== "production") adapterRegistry.setScenario(scenario);
     } catch (err: any) {
       res.status(503).json({ error: err?.message ?? "Conector no configurado" });
       return;
@@ -372,6 +372,18 @@ router.post(
       throw error;
     }
 
+    const [claimedStart] = await db.update(cashMachineTransactionsTable).set({
+      status: "iniciando",
+      startedAt: new Date(),
+    }).where(and(
+      eq(cashMachineTransactionsTable.id, txRow.id),
+      eq(cashMachineTransactionsTable.status, "pending"),
+    )).returning();
+    if (!claimedStart) {
+      res.status(202).json({ transaction: txRow, recovering: true });
+      return;
+    }
+
     try {
       const deviceResult = await adapter.startPayment(
         parseFloat(amount).toFixed(2),
@@ -439,6 +451,27 @@ router.get(
     }
 
     if (!txRow.deviceTransactionId) {
+      const recovery = await db.transaction(async (tx) => {
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${"cash-machine:recover:" + id}))`);
+        const [locked] = await tx.select().from(cashMachineTransactionsTable)
+          .where(eq(cashMachineTransactionsTable.id, id))
+          .for("update");
+        if (!locked || locked.deviceTransactionId) return { claimed: false, row: locked };
+        const stale = Date.now() - locked.startedAt.getTime() >= 30_000;
+        if (locked.status === "iniciando" && !stale) return { claimed: false, row: locked };
+        const [claimed] = await tx.update(cashMachineTransactionsTable).set({
+          status: "iniciando",
+          startedAt: new Date(),
+        }).where(and(
+          eq(cashMachineTransactionsTable.id, id),
+          isNull(cashMachineTransactionsTable.deviceTransactionId),
+        )).returning();
+        return { claimed: Boolean(claimed), row: claimed ?? locked };
+      });
+      if (!recovery.claimed) {
+        res.status(202).json({ transaction: recovery.row ?? txRow, recovering: true });
+        return;
+      }
       try {
         const restarted = await adapterRegistry.getAdapter().startPayment(
           txRow.amountRequested,
@@ -818,7 +851,7 @@ router.post(
     let deviceResult;
     try {
       const scenario = req.headers["x-simulator-scenario"] as string | undefined;
-      if (scenario) adapterRegistry.setScenario(scenario);
+      if (scenario && process.env.NODE_ENV !== "production") adapterRegistry.setScenario(scenario);
       deviceResult = await refundAdapter.refund(
         parseFloat(amount).toFixed(2),
         txRow.id,

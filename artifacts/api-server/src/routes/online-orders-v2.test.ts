@@ -127,6 +127,7 @@ function makeSession(overrides: Record<string, unknown> = {}) {
 let sessionToken = "";
 let sessionId = "";
 let ruleId = "";
+const businessUpdatedAt = new Date("2026-07-23T00:00:00Z");
 
 // ─── Table sessions ───────────────────────────────────────────────────────────
 
@@ -145,7 +146,7 @@ describe("Table sessions", () => {
       name: `${PFX}Mesa 1`,
       active: true,
     };
-    const updatedAt = new Date();
+    const updatedAt = businessUpdatedAt;
     const ticket = signTableQr({
       rid: "restaurant-1",
       tid: table.id,
@@ -154,7 +155,11 @@ describe("Table sessions", () => {
       rv: restaurantVersion(updatedAt),
       exp: Math.floor(Date.now() / 1000) + 600,
     });
-    const mockSession = makeSession({ tableId: table.id, zoneId: table.zoneId });
+    const mockSession = makeSession({
+      tableId: table.id,
+      zoneId: table.zoneId,
+      token: `open-token-001.${restaurantVersion(updatedAt)}`,
+    });
     mockSelectResult
       .mockResolvedValueOnce([table])
       .mockResolvedValueOnce([{ updatedAt }])
@@ -174,8 +179,21 @@ describe("Table sessions", () => {
   });
 
   it("validates a live session token", async () => {
-    const mockSession = makeSession();
-    mockSelectResult.mockResolvedValueOnce([mockSession]);
+    const table = {
+      id: "table-001",
+      zoneId: "zone-001",
+      name: `${PFX}Mesa 1`,
+      active: true,
+    };
+    const mockSession = makeSession({
+      token: `open-token-001.${restaurantVersion(businessUpdatedAt)}`,
+      tableId: table.id,
+      zoneId: table.zoneId,
+    });
+    mockSelectResult
+      .mockResolvedValueOnce([mockSession])
+      .mockResolvedValueOnce([table])
+      .mockResolvedValueOnce([{ updatedAt: businessUpdatedAt }]);
 
     const res = await request(app).get(
       `/api/public/table-sessions/check?token=${sessionToken || "open-token-001"}`,

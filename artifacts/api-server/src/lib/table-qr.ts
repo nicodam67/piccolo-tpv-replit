@@ -35,6 +35,17 @@ export function restaurantVersion(updatedAt: Date): string {
     .slice(0, 22);
 }
 
+export function tableSessionMatchesCurrent(
+  session: { token: string; tableId: string | null; zoneId: string | null; tableLabel: string },
+  table: { id: string; zoneId: string; name: string; active: boolean } | undefined,
+  businessUpdatedAt: Date | undefined,
+): boolean {
+  if (!table || !businessUpdatedAt || !table.active || session.tableId !== table.id) return false;
+  return session.zoneId === table.zoneId
+    && session.tableLabel === table.name
+    && session.token.endsWith(`.${restaurantVersion(businessUpdatedAt)}`);
+}
+
 export function signTableQr(payload: TableQrPayload): string {
   const encoded = Buffer.from(JSON.stringify(payload)).toString("base64url");
   const signature = createHmac("sha256", signingSecret()).update(encoded).digest("base64url");

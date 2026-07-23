@@ -68,14 +68,14 @@ vi.mock("@workspace/db", async (importOriginal) => {
     ...actual,
     db: {
       select:  () => makeChain(() => mockState.selectRows),
-      update:  () => makeChain(() => mockState.updateRows),
+      update:  () => makeChain(() => mockState.updateRows.length ? mockState.updateRows : mockState.insertRows),
       delete:  () => makeChain(() => []),
       insert:  () => makeInsert(() => mockState.insertRows),
       execute: () => Promise.resolve({ rows: [] }),
       transaction: async (fn: (tx: unknown) => unknown) =>
         fn({
           select:  () => makeChain(() => mockState.selectRows),
-          update:  () => makeChain(() => mockState.updateRows),
+          update:  () => makeChain(() => mockState.updateRows.length ? mockState.updateRows : mockState.insertRows),
           insert:  () => makeInsert(() => mockState.insertRows),
           execute: () => Promise.resolve({ rows: [] }),
         }),
@@ -123,6 +123,7 @@ import { adapterRegistry } from "../lib/cash-machine/registry";
 import type { CashMachineAdapter, DeviceStatus, PaymentStatusResult, RefundResult, StartPaymentResult } from "../lib/cash-machine/adapter";
 
 let callCounts: Record<string, number> = {};
+let startPaymentCalls = 0;
 
 function makeMockAdapter(scenario: string = "normal"): CashMachineAdapter {
   return {
@@ -140,6 +141,7 @@ function makeMockAdapter(scenario: string = "normal"): CashMachineAdapter {
       supportsCashLevels: true,
     }),
     startPayment: async (amount: string, reference: string): Promise<StartPaymentResult> => {
+      startPaymentCalls += 1;
       mockState.events.push("device-start");
       mockState.lastDeviceReference = reference;
       if (scenario === "disconnected") throw new Error("Device offline");
@@ -223,6 +225,7 @@ const BASE_TX = {
 
 beforeEach(() => {
   callCounts = {};
+  startPaymentCalls = 0;
   mockState.selectRows   = [];
   mockState.updateRows   = [];
   mockState.insertRows   = [];
@@ -247,6 +250,22 @@ describe("1. Connection OK", () => {
     expect(res.status).toBe(200);
     expect(res.body.ok).toBe(true);
     expect(res.body.latencyMs).toBeGreaterThanOrEqual(0);
+  });
+
+  it("ignores simulator scenario headers in production", async () => {
+    const previous = process.env.NODE_ENV;
+    process.env.NODE_ENV = "production";
+    const scenarioSpy = vi.spyOn(adapterRegistry, "setScenario");
+    try {
+      const res = await request(app)
+        .post("/api/admin/cash-machine/test-connection")
+        .set("X-Simulator-Scenario", "disconnected")
+        .send({});
+      expect(res.status).toBe(200);
+      expect(scenarioSpy).not.toHaveBeenCalled();
+    } finally {
+      process.env.NODE_ENV = previous;
+    }
   });
 });
 
@@ -769,6 +788,19 @@ describe("14. Settlement integration — order closure after device completada",
 });
 
 describe("15. Reconciliation recovery", () => {
+  it("does not start the physical payment again while another request owns recovery", async () => {
+    mockState.selectRows = [{
+      ...BASE_TX,
+      status: "iniciando",
+      deviceTransactionId: null,
+      startedAt: new Date(),
+    }];
+    const res = await request(app).get(`/api/cash-machine/payments/${BASE_TX.id}`);
+    expect(res.status).toBe(202);
+    expect(res.body.recovering).toBe(true);
+    expect(startPaymentCalls).toBe(0);
+  });
+
   it("allows a manager to resume a payment with unknown physical result", async () => {
     mockState.selectRows = [{
       ...BASE_TX,
