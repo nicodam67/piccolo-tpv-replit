@@ -10,6 +10,11 @@ const VALID_PRODUCTION = {
 };
 
 describe("central environment validation", () => {
+  it("classifies public and secret variables explicitly", () => {
+    expect(ENV_CLASSIFICATION.public).toContain("NODE_ENV");
+    expect(ENV_CLASSIFICATION.secret).toContain("SESSION_SECRET");
+    expect(ENV_CLASSIFICATION.public).not.toContain("SESSION_SECRET");
+  });
   it("accepts a complete production environment", () => {
     expect(validateApiEnvironment(VALID_PRODUCTION).environment).toBe("production");
   });

@@ -11,6 +11,11 @@ export const ENV_CLASSIFICATION = {
     "VITE_QR_FIXTURES",
   ],
   testOnly: ["RUN_DB_INTEGRATION_TESTS", "E2E_ADMIN_ID", "E2E_WAITER_ID"],
+  public: ["PORT", "NODE_ENV", "RESTAURANT_ID", "ALLOWED_ORIGINS", "LOG_LEVEL"],
+  secret: [
+    "DATABASE_URL", "SESSION_SECRET", "BOOTSTRAP_SECRET",
+    "STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET", "SIMULATOR_WEBHOOK_SECRET",
+  ],
 } as const;
 
 export interface EnvironmentValidationResult {
