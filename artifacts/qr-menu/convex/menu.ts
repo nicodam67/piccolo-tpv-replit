@@ -1,13 +1,22 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
-import { ConvexError } from "convex/values";
+import { requireAdmin } from "./requireAdmin";
 
 // ── Public queries ────────────────────────────────────────────────────────────
 
 export const listCategories = query({
   args: {},
   handler: async (ctx) => {
-    return await ctx.db.query("categories").collect();
+    const [categories, items] = await Promise.all([
+      ctx.db.query("categories").collect(),
+      ctx.db.query("menuItems").collect(),
+    ]);
+    const visibleCategoryIds = new Set(
+      items.filter((item) => item.available).map((item) => String(item.categoryId)),
+    );
+    return categories.filter(
+      (category) => category.available !== false && visibleCategoryIds.has(String(category._id)),
+    );
   },
 });
 
@@ -68,18 +77,15 @@ export const listAvailableItems = query({
 export const getItemsByCategoryId = query({
   args: { catId: v.string() },
   handler: async (ctx, args) => {
+    const category = (await ctx.db.query("categories").collect())
+      .find((entry) => String(entry._id) === args.catId);
+    if (!category || category.available === false) return [];
     const all = await ctx.db.query("menuItems").collect();
     return all.filter((i) => i.available === true && i.categoryId === args.catId);
   },
 });
 
 // ── Admin mutations ───────────────────────────────────────────────────────────
-
-async function requireAdmin(ctx: { auth: { getUserIdentity: () => Promise<unknown> } }) {
-  const identity = await ctx.auth.getUserIdentity();
-  if (!identity) throw new ConvexError({ message: "Not authenticated", code: "UNAUTHENTICATED" });
-  return identity;
-}
 
 const translationsValidator = v.optional(
   v.record(
@@ -283,8 +289,7 @@ export const reorderItems = mutation({
 export const listAllItems = query({
   args: {},
   handler: async (ctx) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new ConvexError({ message: "Not authenticated", code: "UNAUTHENTICATED" });
+    await requireAdmin(ctx);
     const items = await ctx.db.query("menuItems").collect();
     return resolveItemImages(ctx, items);
   },
