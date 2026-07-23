@@ -1,0 +1,16 @@
+[
+  {
+    "method": "ALL",
+    "path": "/tablet/device/:token/ping",
+    "reason": "Compatibility sentinel returning 410 for credentials formerly accepted in URLs.",
+    "owner": "tablet",
+    "reviewCondition": "Remove only after supported tablet versions no longer call the legacy URL."
+  },
+  {
+    "method": "ALL",
+    "path": "/tablet/device/:token",
+    "reason": "Compatibility sentinel returning 410 for credentials formerly accepted in URLs.",
+    "owner": "tablet",
+    "reviewCondition": "Remove only after supported tablet versions no longer call the legacy URL."
+  }
+]
