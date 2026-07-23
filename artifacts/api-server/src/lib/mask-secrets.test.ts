@@ -27,4 +27,12 @@ describe("secret masking", () => {
       hasToken: true,
     });
   });
+
+  it("preserves dates while masking nested values", () => {
+    const createdAt = new Date();
+    expect(maskSecrets({ createdAt, apiKey: "secret" })).toEqual({
+      createdAt,
+      apiKey: "***",
+    });
+  });
 });

@@ -28,6 +28,10 @@ export function validateApiEnvironment(
       : "development";
   const issues: string[] = [];
   const warnings: string[] = [];
+  if (!source.NODE_ENV) issues.push("NODE_ENV es obligatoria");
+  if (source.NODE_ENV && !["production", "development", "test"].includes(source.NODE_ENV)) {
+    issues.push(`NODE_ENV no reconocido: ${source.NODE_ENV}`);
+  }
 
   if (environment === "production") {
     for (const key of ENV_CLASSIFICATION.productionRequired) {

@@ -14,6 +14,9 @@ if (Number.isNaN(port) || port <= 0) {
 
 const basePath = process.env.BASE_PATH ?? "/qr-menu/";
 
+if (process.env.NODE_ENV && !["production", "development", "test"].includes(process.env.NODE_ENV)) {
+  throw new Error(`Unsupported NODE_ENV: ${process.env.NODE_ENV}`);
+}
 const runtimeMode = resolveQrRuntimeMode({
   nodeEnv: process.env.NODE_ENV,
   convexUrl: process.env.VITE_CONVEX_URL,

@@ -32,12 +32,14 @@ const [
   { submitRecord },
   { default: onlineV1 },
   { default: onlineV2 },
+  { default: fullApp },
 ] = await Promise.all([
   import("../lib/print-connector-sim"),
   import("../lib/cash-machine/registry"),
   import("./verifactu"),
   import("./online-orders"),
   import("./online-orders-v2"),
+  import("../app"),
 ]);
 
 function app() {
@@ -90,6 +92,24 @@ describe("production connector gates", () => {
       .set("Authorization", "Bearer admin").send({})).status).toBe(503);
     expect((await request(app()).post("/api/online-orders/order-1/payment-simulate")
       .set("Authorization", "Bearer admin").send({ approve: true })).status).toBe(403);
+    expect((await request(fullApp).post("/api/crm/campaigns/campaign-1/send")
+      .set("Authorization", "Bearer admin").send({})).status).toBe(503);
     expect(mockDb.insert).not.toHaveBeenCalled();
+  });
+
+  it("removes demo and simulation endpoints from production", async () => {
+    expect((await request(fullApp).post("/api/backup/demo-data")).status).toBe(404);
+    expect((await request(fullApp).post("/api/setup/simulation/start")).status).toBe(404);
+    expect((await request(fullApp).post("/api/admin/installation-simulation/run")).status).toBe(404);
+    expect((await request(fullApp).post("/api/backup/DEMO-DATA")).status).toBe(404);
+  });
+
+  it("does not allow enabling simulated fiscal or cash connectors", async () => {
+    expect((await request(fullApp).put("/api/admin/verifactu/config")
+      .set("Authorization", "Bearer admin")
+      .send({ activo: true, entorno: "simulador" })).status).toBe(503);
+    expect((await request(fullApp).put("/api/admin/cash-machine/config")
+      .set("Authorization", "Bearer admin")
+      .send({ enabled: true, manufacturer: "simulator" })).status).toBe(503);
   });
 });
