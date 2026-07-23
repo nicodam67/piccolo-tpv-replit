@@ -12,6 +12,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "audit-routes": "node --no-warnings --experimental-strip-types scripts/audit-routes.ts",
     "audit-openapi": "node --no-warnings --experimental-strip-types scripts/audit-openapi-coverage.ts",
+    "inventory-api": "node --no-warnings --experimental-strip-types scripts/generate-api-inventory.ts",
+    "inventory-api-clients": "node --no-warnings --experimental-strip-types scripts/generate-api-client-inventory.ts",
     "certify:performance": "node --no-warnings --experimental-strip-types scripts/performance-certification.ts",
     "validate:restore-staging": "pnpm exec tsx src/scripts/validate-backup-restore.ts"
   },
