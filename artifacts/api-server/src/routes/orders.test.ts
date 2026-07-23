@@ -47,6 +47,7 @@ const mockDb = vi.hoisted(() => ({
 }));
 
 const mockEmit = vi.hoisted(() => vi.fn());
+const mockDispatchKitchenPrint = vi.hoisted(() => vi.fn().mockResolvedValue(0));
 
 /**
  * Controllable jwt.verify mock so individual tests can simulate a different
@@ -73,6 +74,12 @@ vi.mock("drizzle-orm", async (importOriginal) => importOriginal());
 vi.mock("../lib/socket", () => ({
   getIO: () => ({ emit: mockEmit }),
   initSocket: vi.fn(),
+}));
+
+vi.mock("../lib/print-dispatch", () => ({
+  dispatchKitchenPrint: mockDispatchKitchenPrint,
+  dispatchCancellationPrint: vi.fn().mockResolvedValue(undefined),
+  dispatchModificationPrint: vi.fn().mockResolvedValue(undefined),
 }));
 
 // ─── App import (after mocks are registered) ──────────────────────────────────
@@ -117,11 +124,26 @@ const DELETE_ITEM_ROW = {
   products: PRODUCT,
 };
 
+function resetTestMocks() {
+  mockDb.select.mockReset();
+  mockDb.insert.mockReset();
+  mockDb.update.mockReset();
+  mockDb.delete.mockReset();
+  mockDb.transaction.mockReset();
+  mockEmit.mockReset();
+  mockJwtVerify.mockReset().mockReturnValue({
+    id: "waiter-1",
+    name: "Test Waiter",
+    role: "waiter",
+  });
+  mockDispatchKitchenPrint.mockReset().mockResolvedValue(0);
+}
+
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 describe("POST /api/orders/:orderId/items — add item emits orders:refresh", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    resetTestMocks();
     process.env["SESSION_SECRET"] = "test-secret";
     // Default: any unmocked DB call returns an empty chain so the route
     // doesn't throw when it hits optional queries (modifiers, audit log,
@@ -181,7 +203,7 @@ describe("POST /api/orders/:orderId/items — add item emits orders:refresh", ()
 
 describe("DELETE /api/order-items/:itemId — remove item emits orders:refresh", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    resetTestMocks();
     process.env["SESSION_SECRET"] = "test-secret";
     mockDb.select.mockImplementation(() => makeChain([]));
     mockDb.insert.mockImplementation(() => makeChain([]));
@@ -264,7 +286,7 @@ describe("POST /api/orders/:orderId/send — emits kds:refresh and orders:refres
   };
 
   beforeEach(() => {
-    vi.clearAllMocks();
+    resetTestMocks();
     process.env["SESSION_SECRET"] = "test-secret";
   });
 
@@ -283,7 +305,8 @@ describe("POST /api/orders/:orderId/send — emits kds:refresh and orders:refres
         .mockReturnValueOnce(makeChain([draftRow]))
         .mockReturnValueOnce(makeChain([]))
         .mockReturnValueOnce(makeChain([]))
-        .mockReturnValueOnce(makeChain([UPDATED_ORDER]));
+        .mockReturnValueOnce(makeChain([UPDATED_ORDER]))
+        .mockReturnValueOnce(makeChain([{ name: "Mesa 1" }]));
       await cb({
         execute: vi.fn().mockResolvedValue({ rows: [] }),
         select: txSelect,
@@ -292,7 +315,6 @@ describe("POST /api/orders/:orderId/send — emits kds:refresh and orders:refres
       });
       return { txInsert, txUpdate };
     });
-    mockDb.select.mockReturnValueOnce(makeChain([UPDATED_ORDER]));                // 6. updated order
   }
 
   it("emits kds:refresh and orders:refresh after successfully sending draft items (kds_only mode)", async () => {
@@ -353,7 +375,8 @@ describe("POST /api/orders/:orderId/send — emits kds:refresh and orders:refres
         .mockReturnValueOnce(makeChain([DRAFT_ROW]))
         .mockReturnValueOnce(makeChain([]))
         .mockReturnValueOnce(makeChain([]))
-        .mockReturnValueOnce(makeChain([UPDATED_ORDER]));
+        .mockReturnValueOnce(makeChain([UPDATED_ORDER]))
+        .mockReturnValueOnce(makeChain([{ name: "Mesa 1" }]));
       await cb({
         execute: vi.fn().mockResolvedValue({ rows: [] }),
         select: txSelect,
@@ -361,7 +384,6 @@ describe("POST /api/orders/:orderId/send — emits kds:refresh and orders:refres
         update: txUpdate,
       });
     });
-    mockDb.select.mockReturnValueOnce(makeChain([UPDATED_ORDER]));
 
     const res = await request(app)
       .post(`/api/orders/${ORDER_ID}/send`)
@@ -400,7 +422,8 @@ describe("POST /api/orders/:orderId/send — emits kds:refresh and orders:refres
         .mockReturnValueOnce(makeChain([DRAFT_ROW]))
         .mockReturnValueOnce(makeChain([]))
         .mockReturnValueOnce(makeChain([]))
-        .mockReturnValueOnce(makeChain([UPDATED_ORDER]));
+        .mockReturnValueOnce(makeChain([UPDATED_ORDER]))
+        .mockReturnValueOnce(makeChain([{ name: "Mesa 1" }]));
       await cb({
         execute: vi.fn().mockResolvedValue({ rows: [] }),
         select: txSelect,
@@ -408,7 +431,6 @@ describe("POST /api/orders/:orderId/send — emits kds:refresh and orders:refres
         update: txUpdate,
       });
     });
-    mockDb.select.mockReturnValueOnce(makeChain([UPDATED_ORDER]));
 
     const res = await request(app)
       .post(`/api/orders/${ORDER_ID}/send`)
@@ -447,7 +469,7 @@ describe("orders:refresh employeeName — name always comes from the JWT, never 
    */
 
   beforeEach(() => {
-    vi.clearAllMocks();
+    resetTestMocks();
     process.env["SESSION_SECRET"] = "test-secret";
     mockDb.select.mockImplementation(() => makeChain([]));
     mockDb.insert.mockImplementation(() => makeChain([]));
@@ -528,7 +550,7 @@ describe("Two-session live sync — end-to-end scenario", () => {
    */
 
   beforeEach(() => {
-    vi.clearAllMocks();
+    resetTestMocks();
     process.env["SESSION_SECRET"] = "test-secret";
     mockDb.select.mockImplementation(() => makeChain([]));
     mockDb.insert.mockImplementation(() => makeChain([]));
