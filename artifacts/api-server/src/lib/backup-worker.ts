@@ -18,6 +18,7 @@ import {
   printersTable,
   directorAlertsTable,
   backupAuditLogTable,
+  backupDestinationsTable,
 } from "@workspace/db";
 import { eq, and, lte, desc, gte, sql } from "drizzle-orm";
 import {
@@ -26,6 +27,13 @@ import {
   createDatabaseSnapshot,
   encryptBackup,
 } from "./backup-core";
+import {
+  purgeBackupArtifact,
+  uploadBackupArtifact,
+  verifyBackupArtifact,
+  type BackupArtifact,
+  type BackupDestination,
+} from "./backup-destinations";
 
 const POLL_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 const APP_VERSION = "1.2.0";
@@ -93,17 +101,25 @@ function computeNextRun(schedule: {
 
 // ─── Run a scheduled backup ───────────────────────────────────────────────────
 async function runScheduledBackup(schedule: typeof backupSchedulesTable.$inferSelect): Promise<void> {
+  const [destination] = schedule.destinationId
+    ? await db.select().from(backupDestinationsTable).where(and(
+        eq(backupDestinationsTable.id, schedule.destinationId),
+        eq(backupDestinationsTable.active, true),
+      )).limit(1)
+    : [];
   const [record] = await db.insert(backupRecordsTable).values({
     type: "auto",
     backupType: schedule.backupType,
     appVersion: APP_VERSION,
     status: "pending",
     scheduleId: schedule.id,
+    destinationId: destination?.id ?? null,
     notes: `Copia automática: ${schedule.name}`,
     createdByName: "Sistema",
   }).returning();
 
   try {
+    if (!destination) throw new Error("La copia programada no tiene un destino externo activo");
     const { payload, rowCounts } = await createDatabaseSnapshot(APP_VERSION);
     const { iv, ciphertext } = encryptBackup(JSON.stringify(payload));
     const hash = backupArtifactChecksum({
@@ -112,6 +128,24 @@ async function runScheduledBackup(schedule: typeof backupSchedulesTable.$inferSe
       iv,
       ciphertext,
     });
+    const artifact: BackupArtifact = {
+      formatVersion: BACKUP_FORMAT_VERSION,
+      appVersion: APP_VERSION,
+      backupId: record.id,
+      createdAt: payload.createdAt,
+      iv,
+      ciphertext,
+      checksum: hash,
+    };
+    const externalRef = await uploadBackupArtifact(
+      destination as unknown as BackupDestination,
+      artifact,
+    );
+    if (!await verifyBackupArtifact(
+      destination as unknown as BackupDestination,
+      externalRef,
+      hash,
+    )) throw new Error("Verificación externa fallida");
 
     await db.update(backupRecordsTable).set({
       status: "valid",
@@ -123,6 +157,8 @@ async function runScheduledBackup(schedule: typeof backupSchedulesTable.$inferSe
       recordCounts: rowCounts,
       verified: true,
       verifiedAt: new Date(),
+      destinationId: destination.id,
+      preAction: externalRef,
     }).where(eq(backupRecordsTable.id, record.id));
 
     await db.update(backupSchedulesTable).set({
@@ -137,13 +173,17 @@ async function runScheduledBackup(schedule: typeof backupSchedulesTable.$inferSe
       backupId: record.id,
       action: "scheduled_created",
       result: "ok",
-      details: { scheduleId: schedule.id, rowCounts },
+      details: { scheduleId: schedule.id, rowCounts, destinationId: destination.id, externalRef },
       employeeName: "sistema",
     }).catch(() => {});
 
     // Enforce retention: delete oldest excess backups from this schedule
     if (schedule.retention > 0) {
-      const backups = await db.select({ id: backupRecordsTable.id })
+      const backups = await db.select({
+        id: backupRecordsTable.id,
+        destinationId: backupRecordsTable.destinationId,
+        preAction: backupRecordsTable.preAction,
+      })
         .from(backupRecordsTable)
         .where(and(
           eq(backupRecordsTable.scheduleId, schedule.id),
@@ -153,6 +193,12 @@ async function runScheduledBackup(schedule: typeof backupSchedulesTable.$inferSe
 
       const toDelete = backups.slice(schedule.retention);
       for (const b of toDelete) {
+        if (b.destinationId === destination.id && b.preAction) {
+          await purgeBackupArtifact(
+            destination as unknown as BackupDestination,
+            b.preAction,
+          ).catch(() => {});
+        }
         await db.delete(backupRecordsTable).where(eq(backupRecordsTable.id, b.id)).catch(() => {});
       }
     }

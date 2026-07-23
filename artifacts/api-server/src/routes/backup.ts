@@ -37,8 +37,6 @@ import {
 import { eq, and, desc, sql } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import crypto from "node:crypto";
-import * as fs from "node:fs";
-import * as path from "node:path";
 import ExcelJS from "exceljs";
 import { maskSecrets } from "../lib/mask-secrets";
 import {
@@ -53,6 +51,13 @@ import {
   validateBackupForCurrentDatabase,
   validateBackupPayload,
 } from "../lib/backup-core";
+import {
+  downloadBackupArtifact,
+  uploadBackupArtifact,
+  verifyBackupArtifact,
+  type BackupArtifact,
+  type BackupDestination,
+} from "../lib/backup-destinations";
 
 const router = Router();
 const guard = [requireAuth, requireRole("admin", "manager")];
@@ -69,11 +74,7 @@ const backupLimiter = rateLimit({
   message: { error: "Demasiadas operaciones de copia de seguridad en esta hora. Inténtelo más tarde." },
 });
 
-const BACKUP_DIR = "/tmp/piccolo-backups";
 const APP_VERSION = "1.2.0";
-
-// Ensure backup directory exists
-try { fs.mkdirSync(BACKUP_DIR, { recursive: true }); } catch {}
 
 async function logAudit(
   backupId: string | null,
@@ -131,7 +132,16 @@ function expectedRecordChecksum(record: {
 
 // ─── POST /backup/create ──────────────────────────────────────────────────────
 router.post("/backup/create", ...guard, backupLimiter, async (req, res) => {
-  const { backupType = "full", notes = "", scheduleId } = req.body as Record<string, string>;
+  const { backupType = "full", notes = "", scheduleId, destinationId } = req.body as Record<string, string>;
+  const [destination] = destinationId
+    ? await db.select().from(backupDestinationsTable).where(and(
+        eq(backupDestinationsTable.id, destinationId),
+        eq(backupDestinationsTable.active, true),
+      )).limit(1)
+    : [];
+  if (process.env.NODE_ENV === "production" && !destination) {
+    return res.status(422).json({ error: "Un destino externo activo es obligatorio en producción" });
+  }
 
   const [record] = await db.insert(backupRecordsTable).values({
     type: "manual",
@@ -140,6 +150,7 @@ router.post("/backup/create", ...guard, backupLimiter, async (req, res) => {
     status: "pending",
     notes,
     scheduleId: scheduleId ?? null,
+    destinationId: destination?.id ?? null,
     createdByName: (req.user as { name?: string } | undefined)?.name ?? "admin",
     createdBy: (req.user as { id?: string } | undefined)?.id ?? null,
   }).returning();
@@ -157,15 +168,27 @@ router.post("/backup/create", ...guard, backupLimiter, async (req, res) => {
       });
       const sizeBytes = Buffer.byteLength(ciphertext, "base64");
 
-      // Save to disk
-      const filename = `backup_${record.id}.enc`;
-      fs.writeFileSync(path.join(BACKUP_DIR, filename), JSON.stringify({
+      const artifact: BackupArtifact = {
         formatVersion: BACKUP_FORMAT_VERSION,
         appVersion: APP_VERSION,
+        backupId: record.id,
+        createdAt: payload.createdAt,
         iv,
         ciphertext,
         checksum: hash,
-      }));
+      };
+      let externalRef: string | null = null;
+      if (destination) {
+        externalRef = await uploadBackupArtifact(
+          destination as unknown as BackupDestination,
+          artifact,
+        );
+        if (!await verifyBackupArtifact(
+          destination as unknown as BackupDestination,
+          externalRef,
+          hash,
+        )) throw new Error("La verificación del destino externo falló");
+      }
 
       await db.update(backupRecordsTable).set({
         status: "valid",
@@ -175,9 +198,15 @@ router.post("/backup/create", ...guard, backupLimiter, async (req, res) => {
         sizeBytes,
         tablesIncluded: payload.manifest,
         recordCounts: rowCounts,
+        destinationId: destination?.id ?? null,
+        preAction: externalRef,
+        verified: Boolean(destination),
+        verifiedAt: destination ? new Date() : null,
       }).where(eq(backupRecordsTable.id, record.id));
 
-      await logAudit(record.id, "created", "ok", { backupType, rowCounts }, req);
+      await logAudit(record.id, "created", "ok", {
+        backupType, rowCounts, destinationId: destination?.id ?? null, externalRef,
+      }, req);
       await logTechEvent("info", "backup", `Copia creada: ${backupType}`, { backupId: record.id });
     } catch (err) {
       await db.update(backupRecordsTable).set({ status: "corrupted" }).where(eq(backupRecordsTable.id, record.id));
@@ -425,6 +454,82 @@ router.post("/backup/:id/restore", ...adminOnly, backupLimiter, async (req, res)
   });
 });
 
+router.post("/backup/restore-from-destination", ...adminOnly, backupLimiter, async (req, res) => {
+  const { destinationId, reference, confirm } = req.body as {
+    destinationId?: string;
+    reference?: string;
+    confirm?: boolean;
+  };
+  if (!confirm) return res.status(422).json({ error: "Se requiere confirm:true" });
+  if (!destinationId || !reference) return res.status(400).json({ error: "Destino y referencia requeridos" });
+  const [destination] = await db.select().from(backupDestinationsTable).where(and(
+    eq(backupDestinationsTable.id, destinationId),
+    eq(backupDestinationsTable.active, true),
+  )).limit(1);
+  if (!destination) return res.status(404).json({ error: "Destino no encontrado" });
+
+  try {
+    const artifact = await downloadBackupArtifact(
+      destination as unknown as BackupDestination,
+      reference,
+    );
+    const expected = backupArtifactChecksum({
+      formatVersion: artifact.formatVersion,
+      appVersion: artifact.appVersion,
+      iv: artifact.iv,
+      ciphertext: artifact.ciphertext,
+    });
+    if (expected !== artifact.checksum) throw new Error("Checksum externo incorrecto");
+    if (!await verifyBackupArtifact(
+      destination as unknown as BackupDestination,
+      reference,
+      artifact.checksum,
+    )) throw new Error("Artefacto externo no verificable");
+    const payload = await validateBackupForCurrentDatabase(
+      JSON.parse(decryptBackup(artifact.iv, artifact.ciphertext)),
+    );
+
+    const pre = await createDatabaseSnapshot(APP_VERSION);
+    const encrypted = encryptBackup(JSON.stringify(pre.payload));
+    const preChecksum = backupArtifactChecksum({
+      formatVersion: BACKUP_FORMAT_VERSION,
+      appVersion: APP_VERSION,
+      iv: encrypted.iv,
+      ciphertext: encrypted.ciphertext,
+    });
+    await db.insert(backupRecordsTable).values({
+      type: "pre-restore",
+      backupType: "full",
+      appVersion: APP_VERSION,
+      status: "valid",
+      encryptedPayload: encrypted.ciphertext,
+      encryptionIv: encrypted.iv,
+      integrityHash: preChecksum,
+      tablesIncluded: pre.payload.manifest,
+      recordCounts: pre.rowCounts,
+      protected: true,
+      verified: true,
+      verifiedAt: new Date(),
+      createdBy: req.user?.id ?? null,
+      createdByName: req.user?.name ?? "",
+    });
+    const restored = await restoreDatabaseSnapshot(payload);
+    await logAudit(null, "restored_external", "ok", {
+      destinationId,
+      reference,
+      restored,
+    }, req);
+    res.json({ ok: true, restored });
+  } catch (error) {
+    await logAudit(null, "restored_external", "error", {
+      destinationId,
+      reference,
+      error: String(error),
+    }, req);
+    res.status(422).json({ error: "No se pudo validar o restaurar el backup externo" });
+  }
+});
+
 // ─── DELETE /backup/:id ───────────────────────────────────────────────────────
 router.delete("/backup/:id", ...adminOnly, async (req, res) => {
   const id = req.params.id as string;
@@ -537,9 +642,13 @@ router.get("/backup/destinations", ...guard, async (_req, res) => {
 
 router.post("/backup/destinations", ...adminOnly, async (req, res) => {
   const body = req.body as Record<string, unknown>;
+  const destType = String(body.destType ?? "");
+  if (!["s3", "nas", "local", "local_mount"].includes(destType)) {
+    return res.status(422).json({ error: "Tipo de destino no soportado" });
+  }
   const [row] = await db.insert(backupDestinationsTable).values({
     name: body.name as string ?? "Interno",
-    destType: body.destType as string ?? "internal",
+    destType,
     config: (body.config as Record<string, unknown>) ?? {},
     active: body.active !== false,
   }).returning();
