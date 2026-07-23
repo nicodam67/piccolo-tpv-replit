@@ -2,8 +2,8 @@
   "totals": {
     "endpoints": 622,
     "active": 608,
-    "documented": 69,
-    "undocumented": 553,
+    "documented": 90,
+    "undocumented": 532,
     "duplicates": 0,
     "obsolete": 14,
     "manualConsumerFiles": 159
@@ -43,8 +43,8 @@
         404
       ],
       "openapi": {
-        "documented": false,
-        "operationId": null
+        "documented": true,
+        "operationId": "getAlertConfig"
       },
       "consumers": [
         "artifacts/piccolo-tpv/dist/public/assets/index-D8eqqtAl.js"
@@ -85,8 +85,8 @@
         404
       ],
       "openapi": {
-        "documented": false,
-        "operationId": null
+        "documented": true,
+        "operationId": "patchAlertConfig"
       },
       "consumers": [
         "artifacts/piccolo-tpv/dist/public/assets/index-D8eqqtAl.js"
@@ -4118,8 +4118,8 @@
         404
       ],
       "openapi": {
-        "documented": false,
-        "operationId": null
+        "documented": true,
+        "operationId": "getKdsStations"
       },
       "consumers": [
         "artifacts/piccolo-tpv/dist/public/assets/index-D8eqqtAl.js",
@@ -4170,8 +4170,8 @@
         404
       ],
       "openapi": {
-        "documented": false,
-        "operationId": null
+        "documented": true,
+        "operationId": "createKdsStation"
       },
       "consumers": [
         "artifacts/piccolo-tpv/dist/public/assets/index-D8eqqtAl.js",
@@ -4217,8 +4217,8 @@
         404
       ],
       "openapi": {
-        "documented": false,
-        "operationId": null
+        "documented": true,
+        "operationId": "deleteKdsStation"
       },
       "consumers": [
         "artifacts/piccolo-tpv/dist/public/assets/index-D8eqqtAl.js",
@@ -4270,8 +4270,8 @@
         404
       ],
       "openapi": {
-        "documented": false,
-        "operationId": null
+        "documented": true,
+        "operationId": "updateKdsStation"
       },
       "consumers": [
         "artifacts/piccolo-tpv/dist/public/assets/index-D8eqqtAl.js",
@@ -4317,8 +4317,8 @@
         404
       ],
       "openapi": {
-        "documented": false,
-        "operationId": null
+        "documented": true,
+        "operationId": "pingKdsStation"
       },
       "consumers": [
         "artifacts/piccolo-tpv/dist/public/assets/index-D8eqqtAl.js",
@@ -4361,8 +4361,8 @@
         200
       ],
       "openapi": {
-        "documented": false,
-        "operationId": null
+        "documented": true,
+        "operationId": "getKdsZoneTransitions"
       },
       "consumers": [],
       "classification": "active-no-known-consumer",
@@ -22269,8 +22269,8 @@
         422
       ],
       "openapi": {
-        "documented": false,
-        "operationId": null
+        "documented": true,
+        "operationId": "getKdsHistory"
       },
       "consumers": [
         "artifacts/piccolo-tpv/dist/public/assets/index-D8eqqtAl.js"
@@ -22414,8 +22414,8 @@
         409
       ],
       "openapi": {
-        "documented": false,
-        "operationId": null
+        "documented": true,
+        "operationId": "resendKitchenTask"
       },
       "consumers": [
         "artifacts/piccolo-tpv/dist/public/assets/index-D8eqqtAl.js",
@@ -24702,8 +24702,8 @@
         409
       ],
       "openapi": {
-        "documented": false,
-        "operationId": null
+        "documented": true,
+        "operationId": "moveItems"
       },
       "consumers": [
         "artifacts/api-server/src/lib/print-dispatch.ts",
@@ -24808,8 +24808,8 @@
         409
       ],
       "openapi": {
-        "documented": false,
-        "operationId": null
+        "documented": true,
+        "operationId": "createPrefacturaPrint"
       },
       "consumers": [
         "artifacts/api-server/src/lib/print-dispatch.ts",
@@ -24861,8 +24861,8 @@
         409
       ],
       "openapi": {
-        "documented": false,
-        "operationId": null
+        "documented": true,
+        "operationId": "getPrefacturaStatus"
       },
       "consumers": [
         "artifacts/api-server/src/lib/print-dispatch.ts",
@@ -27622,8 +27622,8 @@
         409
       ],
       "openapi": {
-        "documented": false,
-        "operationId": null
+        "documented": true,
+        "operationId": "blockTable"
       },
       "consumers": [
         "artifacts/piccolo-tpv/dist/public/assets/index-D8eqqtAl.js",
@@ -27691,8 +27691,8 @@
         409
       ],
       "openapi": {
-        "documented": false,
-        "operationId": null
+        "documented": true,
+        "operationId": "cleanTable"
       },
       "consumers": [
         "artifacts/piccolo-tpv/dist/public/assets/index-D8eqqtAl.js",
@@ -27896,8 +27896,8 @@
         404
       ],
       "openapi": {
-        "documented": false,
-        "operationId": null
+        "documented": true,
+        "operationId": "getTableHistory"
       },
       "consumers": [
         "artifacts/piccolo-tpv/dist/public/assets/index-D8eqqtAl.js",
@@ -28101,8 +28101,8 @@
         400
       ],
       "openapi": {
-        "documented": false,
-        "operationId": null
+        "documented": true,
+        "operationId": "separateTable"
       },
       "consumers": [
         "artifacts/piccolo-tpv/dist/public/assets/index-D8eqqtAl.js",
@@ -28169,8 +28169,8 @@
         400
       ],
       "openapi": {
-        "documented": false,
-        "operationId": null
+        "documented": true,
+        "operationId": "transferTable"
       },
       "consumers": [
         "artifacts/piccolo-tpv/dist/public/assets/index-D8eqqtAl.js",
@@ -28240,8 +28240,8 @@
         409
       ],
       "openapi": {
-        "documented": false,
-        "operationId": null
+        "documented": true,
+        "operationId": "transferWaiter"
       },
       "consumers": [
         "artifacts/piccolo-tpv/dist/public/assets/index-D8eqqtAl.js",
@@ -28306,8 +28306,8 @@
         400
       ],
       "openapi": {
-        "documented": false,
-        "operationId": null
+        "documented": true,
+        "operationId": "mergeTables"
       },
       "consumers": [
         "artifacts/piccolo-tpv/dist/public/assets/index-D8eqqtAl.js"
@@ -28346,8 +28346,8 @@
         200
       ],
       "openapi": {
-        "documented": false,
-        "operationId": null
+        "documented": true,
+        "operationId": "getOccupationSummary"
       },
       "consumers": [
         "artifacts/piccolo-tpv/dist/public/assets/index-D8eqqtAl.js"

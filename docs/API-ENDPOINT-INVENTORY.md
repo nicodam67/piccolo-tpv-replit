@@ -5,8 +5,8 @@ Generado automáticamente. No usar la ausencia de consumidores como evidencia de
 ## Totales
 
 - Endpoints detectados: 622
-- Documentados: 69
-- Sin documentar: 553
+- Documentados: 90
+- Sin documentar: 532
 - Duplicados: 0
 - Obsoletos explícitos: 14
 
@@ -25,8 +25,6 @@ Generado automáticamente. No usar la ausencia de consumidores como evidencia de
 
 | Método | Ruta | Módulo | Clasificación | Consumidores |
 |---|---|---|---|---:|
-| GET | `/admin/alert-config` | tables | active-and-used | 1 |
-| PATCH | `/admin/alert-config` | tables | active-and-used | 1 |
 | GET | `/admin/allergens` | allergens | active-no-known-consumer | 0 |
 | GET | `/admin/allergens/:code` | allergens | active-no-known-consumer | 0 |
 | GET | `/admin/allergens/audit` | allergens | active-no-known-consumer | 0 |
@@ -110,12 +108,6 @@ Generado automáticamente. No usar la ausencia de consumidores como evidencia de
 | POST | `/admin/invoice-scanner/:id/reject` | invoice-scanner | active-and-used | 4 |
 | GET | `/admin/invoice-scanner/suppliers/candidates` | invoice-scanner | active-and-used | 2 |
 | POST | `/admin/invoice-scanner/upload` | invoice-scanner | active-and-used | 2 |
-| GET | `/admin/kds-stations` | kds | active-and-used | 5 |
-| POST | `/admin/kds-stations` | kds | active-and-used | 5 |
-| DELETE | `/admin/kds-stations/:id` | kds | active-and-used | 5 |
-| PATCH | `/admin/kds-stations/:id` | kds | active-and-used | 5 |
-| POST | `/admin/kds-stations/:id/ping` | kds | active-and-used | 5 |
-| GET | `/admin/kds-zones/transitions` | kds | active-no-known-consumer | 0 |
 | GET | `/admin/modifier-groups` | modifiers | active-and-used | 1 |
 | POST | `/admin/modifier-groups` | modifiers | active-and-used | 1 |
 | DELETE | `/admin/modifier-groups/:id` | modifiers | active-and-used | 1 |
@@ -463,10 +455,8 @@ Generado automáticamente. No usar la ausencia de consumidores como evidencia de
 | GET | `/hr/work-centers` | hr | active-no-known-consumer | 0 |
 | POST | `/hr/work-centers` | hr | active-no-known-consumer | 0 |
 | PATCH | `/hr/work-centers/:id` | hr | active-no-known-consumer | 0 |
-| GET | `/kds/history` | kds | active-and-used | 1 |
 | POST | `/kitchen-tasks/:taskId/allergy-confirm` | table-allergies | active-and-used | 2 |
 | GET | `/kitchen-tasks/:taskId/allergy-confirmation` | table-allergies | active-and-used | 2 |
-| POST | `/kitchen-tasks/:taskId/resend` | kds | active-and-used | 2 |
 | POST | `/kitchen-tasks/:taskId/substitute-ingredient` | table-allergies | active-and-used | 2 |
 | GET | `/menu/products` | allergens | active-no-known-consumer | 0 |
 | GET | `/offline/devices` | offline | active-and-used | 4 |
@@ -499,9 +489,6 @@ Generado automáticamente. No usar la ausencia de consumidores como evidencia de
 | GET | `/orders/:orderId/guest-allergies` | table-allergies | active-and-used | 13 |
 | POST | `/orders/:orderId/guest-allergies` | table-allergies | active-and-used | 13 |
 | DELETE | `/orders/:orderId/guest-allergies/:id` | table-allergies | active-and-used | 13 |
-| POST | `/orders/:orderId/move-items` | table-operations | active-and-used | 13 |
-| POST | `/orders/:orderId/prefactura/print` | orders | active-and-used | 13 |
-| GET | `/orders/:orderId/prefactura/status` | orders | active-and-used | 13 |
 | GET | `/payment-methods` | cash | active-and-used | 1 |
 | POST | `/payments/:id/tip` | tips | active-and-used | 6 |
 | GET | `/products` | products | active-and-used | 7 |
@@ -555,14 +542,6 @@ Generado automáticamente. No usar la ausencia de consumidores como evidencia de
 | DELETE | `/setup/simulation/cleanup` | setup | development-or-test | 2 |
 | POST | `/setup/simulation/start` | setup | development-or-test | 3 |
 | GET | `/setup/status` | setup | strictly-internal | 3 |
-| POST | `/tables/:tableId/block` | tables | active-and-used | 26 |
-| POST | `/tables/:tableId/clean` | tables | active-and-used | 26 |
-| GET | `/tables/:tableId/history` | tables | active-and-used | 26 |
-| POST | `/tables/:tableId/separate` | table-operations | active-and-used | 26 |
-| POST | `/tables/:tableId/transfer` | table-operations | active-and-used | 26 |
-| POST | `/tables/:tableId/transfer-waiter` | table-operations | active-and-used | 26 |
-| POST | `/tables/merge` | table-operations | active-and-used | 1 |
-| GET | `/tables/occupation-summary` | tables | active-and-used | 1 |
 | POST | `/tablet/clock` | tablet | active-and-used | 2 |
 | GET | `/tablet/device` | tablet | obsolete | 3 |
 | ALL | `/tablet/device/:token` | tablet | obsolete | 3 |

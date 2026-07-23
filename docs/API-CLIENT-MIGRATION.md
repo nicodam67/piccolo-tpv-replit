@@ -6,19 +6,19 @@ Inventario automático de Entrega 40.
 
 - Hooks exportados por el cliente actual: 202
 - Hooks históricos añadidos manualmente: 160
-- Hooks manuales sin operación equivalente en OpenAPI: 135
+- Hooks manuales sin operación equivalente en OpenAPI: 120
 - Llamadas `fetch`: 84
 - Llamadas `customFetch` directas: 84
-- Llamadas mediante wrapper `api`: 210
+- Llamadas mediante wrapper `api`: 205
 - Llamadas Convex: 95
-- Archivos manuales pendientes: 96
+- Archivos manuales pendientes: 95
 
 ## Estado de migración
 
 - Migrados en Entrega 40: 0
 - Eliminados por evidencia de obsolescencia: 0
 - Adaptadores conservados: 9
-- Pendientes: 96
+- Pendientes: 95
 
 No se migran llamadas hasta que su operación y tipos estén respaldados por OpenAPI; hacerlo antes
 solo trasladaría URLs sin crear un contrato fiable.
@@ -48,7 +48,6 @@ solo trasladaría URLs sin crear un contrato fiable.
 | `artifacts/piccolo-tpv/src/pages/admin-impresoras.tsx` | 0 | 1 | 0 |
 | `artifacts/piccolo-tpv/src/pages/admin-instalacion-qr.tsx` | 0 | 0 | 1 |
 | `artifacts/piccolo-tpv/src/pages/admin-instalacion.tsx` | 0 | 5 | 0 |
-| `artifacts/piccolo-tpv/src/pages/admin-kds-stations.tsx` | 0 | 0 | 5 |
 | `artifacts/piccolo-tpv/src/pages/admin-mermas.tsx` | 4 | 0 | 0 |
 | `artifacts/piccolo-tpv/src/pages/admin-permisos.tsx` | 0 | 1 | 0 |
 | `artifacts/piccolo-tpv/src/pages/admin-print-test.tsx` | 0 | 0 | 3 |
