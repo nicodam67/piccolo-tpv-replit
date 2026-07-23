@@ -30,6 +30,7 @@ import {
 } from "@workspace/db";
 import { eq, and, count, desc, sql } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
+import { validateBusinessConfigInput, validateOpeningHours } from "../lib/configuration";
 
 const router = Router();
 
@@ -86,12 +87,27 @@ async function detectModules(): Promise<Record<string, ModuleCheck>> {
   const hasName = !!cfg?.nombreComercial?.trim();
   const hasNif = !!cfg?.nif?.trim();
   const hasFiscal = !!cfg?.direccionFiscal?.trim();
+  const businessValid = cfg
+    ? validateBusinessConfigInput({
+        nombreComercial: cfg.nombreComercial,
+        razonSocial: cfg.razonSocial,
+        nif: cfg.nif,
+        direccionFiscal: cfg.direccionFiscal,
+        moneda: cfg.moneda,
+        idioma: cfg.idioma,
+        regimenFiscal: cfg.regimenFiscal,
+      }).issues.length === 0
+    : false;
   let configStatus: ModuleStatus = "empty";
-  if (hasName && hasNif && hasFiscal) configStatus = "configured";
+  if (hasName && hasNif && hasFiscal && businessValid) configStatus = "configured";
   else if (hasName || hasNif) configStatus = "partial";
 
   // Services/hours
-  const hasHours = !!(cfg?.openingHours && Object.keys(cfg.openingHours as object).length > 0);
+  const hasHours = !!(
+    cfg?.openingHours
+    && Object.keys(cfg.openingHours as object).length > 0
+    && validateOpeningHours(cfg.openingHours).length === 0
+  );
 
   return {
     identidad: {
@@ -99,7 +115,11 @@ async function detectModules(): Promise<Record<string, ModuleCheck>> {
       detail: hasName ? cfg!.nombreComercial : undefined,
     },
     fiscalidad: {
-      status: hasNif && hasName ? "configured" : hasName ? "partial" : "empty",
+      status: hasNif && hasName && hasFiscal && businessValid
+        ? "configured"
+        : hasName || hasNif || hasFiscal
+          ? "partial"
+          : "empty",
       detail: hasNif ? cfg!.nif : undefined,
     },
     horarios: {

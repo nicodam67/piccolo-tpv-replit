@@ -28,6 +28,7 @@ import {
   type TicketItem,
   type TemplateConfig,
 } from "./ticket-builder";
+import { sanitizePrintTemplate } from "./configuration";
 
 // Map KDS prepZone values to printer types
 const ZONE_TO_PRINTER_TYPE: Record<string, string> = {
@@ -49,20 +50,27 @@ export async function loadPrintConfig(): Promise<{
       printMode: (businessConfigTable as any).printMode,
       printTemplateConfig: (businessConfigTable as any).printTemplateConfig,
       nombreComercial: businessConfigTable.nombreComercial,
-      datosFiscales: (businessConfigTable as any).razonSocial,
+      razonSocial: businessConfigTable.razonSocial,
+      nif: businessConfigTable.nif,
+      direccionFiscal: businessConfigTable.direccionFiscal,
+      logoUrl: businessConfigTable.logoUrl,
       web: businessConfigTable.web,
     })
     .from(businessConfigTable)
     .limit(1);
 
   const template: TemplateConfig = {
-    nombreComercial: cfg?.nombreComercial ?? "",
-    datosFiscales: cfg?.datosFiscales ?? "",
-    piePagina: cfg?.web ?? "",
     mensajeAgradecimiento: "¡Gracias por su visita!",
     mostrarPrecios: false,
     headerExtra: "",
-    ...(cfg?.printTemplateConfig as object ?? {}),
+    ...(sanitizePrintTemplate(cfg?.printTemplateConfig as Record<string, unknown> | null) ?? {}),
+    nombreComercial: cfg?.nombreComercial ?? "",
+    datosFiscales: [cfg?.razonSocial, cfg?.nif, cfg?.direccionFiscal].filter(Boolean).join(" · "),
+    logoUrl: cfg?.logoUrl ?? "",
+    piePagina:
+      ((cfg?.printTemplateConfig as Record<string, unknown> | null)?.piePagina as string | undefined)
+      ?? cfg?.web
+      ?? "",
   };
 
   return {

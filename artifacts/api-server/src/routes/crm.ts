@@ -510,6 +510,14 @@ router.put("/crm/loyalty/config", requireAuth, requireRole("admin"), async (req,
     .set(updates as any)
     .where(eq(crmLoyaltyConfigTable.id, config.id))
     .returning();
+  await logCrmAudit({
+    accion: "actualizar_config_fidelizacion",
+    entidadTipo: "crm_loyalty_config",
+    entidadId: config.id,
+    empleadoId: req.user?.id,
+    empleadoNombre: req.user?.name ?? "",
+    datos: { campos: Object.keys(updates).filter((key) => key !== "updatedAt") },
+  });
   res.json(updated);
 });
 

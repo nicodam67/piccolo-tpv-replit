@@ -75,6 +75,26 @@ function tableShape(t: typeof restaurantTablesTable.$inferSelect) {
   };
 }
 
+async function duplicateTableExists(
+  zoneId: string,
+  layout: string,
+  name: string,
+  excludeId?: string,
+): Promise<boolean> {
+  const [duplicate] = await db
+    .select({ id: restaurantTablesTable.id })
+    .from(restaurantTablesTable)
+    .where(and(
+      eq(restaurantTablesTable.zoneId, zoneId),
+      eq(restaurantTablesTable.layout, layout),
+      eq(restaurantTablesTable.active, true),
+      sql`lower(trim(${restaurantTablesTable.name})) = lower(trim(${name}))`,
+      ...(excludeId ? [sql`${restaurantTablesTable.id} <> ${excludeId}`] : []),
+    ))
+    .limit(1);
+  return Boolean(duplicate);
+}
+
 /** Insert a table event (history entry). Fire-and-forget — callers do not await. */
 async function addTableEvent(params: {
   tableId: string;
@@ -287,11 +307,23 @@ router.post("/zones/:zoneId/tables", requireAuth, requireRole("admin"), async (r
   const rotation = Number.isFinite(b.rotation) ? Math.round(b.rotation) % 360 : 0;
   const layout   = VALID_LAYOUTS.includes(b.layout) ? b.layout : "normal";
 
+  if (await duplicateTableExists(zoneId, layout, name)) {
+    res.status(409).json({ error: "Ya existe una mesa con ese nombre en la sala y el plano." });
+    return;
+  }
+
   const [table] = await db
     .insert(restaurantTablesTable)
     .values({ zoneId, name, capacity, x, y, width, height, shape, rotation, layout })
     .returning();
 
+  void addTableEvent({
+    tableId: table.id,
+    employeeId: req.user?.id,
+    employeeName: req.user?.name ?? "",
+    action: "table_config_created",
+    details: `Mesa ${name} creada en el plano ${layout}`,
+  });
   res.status(201).json(tableShape(table));
 });
 
@@ -309,12 +341,18 @@ router.post("/tables/:tableId/duplicate", requireAuth, requireRole("admin"), asy
 
   const newX = Math.min(original.x + 40, CANVAS_W - original.width);
   const newY = Math.min(original.y + 40, CANVAS_H - original.height);
+  let copyNumber = 1;
+  let copyName = `${original.name} (copia)`;
+  while (await duplicateTableExists(original.zoneId, original.layout, copyName)) {
+    copyNumber += 1;
+    copyName = `${original.name} (copia ${copyNumber})`;
+  }
 
   const [copy] = await db
     .insert(restaurantTablesTable)
     .values({
       zoneId:     original.zoneId,
-      name:       original.name + " (copia)",
+      name:       copyName,
       capacity:   original.capacity,
       status:     "free",
       x:          newX,
@@ -329,6 +367,13 @@ router.post("/tables/:tableId/duplicate", requireAuth, requireRole("admin"), asy
     })
     .returning();
 
+  void addTableEvent({
+    tableId: copy.id,
+    employeeId: req.user?.id,
+    employeeName: req.user?.name ?? "",
+    action: "table_config_duplicated",
+    details: `Mesa duplicada desde ${original.name}`,
+  });
   res.status(201).json(tableShape(copy));
 });
 
@@ -353,6 +398,28 @@ router.patch("/tables/:tableId", requireAuth, requireRole("admin"), async (req, 
 
   if (Object.keys(updates).length === 0) { res.status(400).json({ error: "Sin cambios" }); return; }
 
+  if (updates.name !== undefined || updates.layout !== undefined) {
+    const [current] = await db
+      .select({
+        zoneId: restaurantTablesTable.zoneId,
+        name: restaurantTablesTable.name,
+        layout: restaurantTablesTable.layout,
+      })
+      .from(restaurantTablesTable)
+      .where(and(eq(restaurantTablesTable.id, tableId), eq(restaurantTablesTable.active, true)))
+      .limit(1);
+    if (!current) { res.status(404).json({ error: "Mesa no encontrada" }); return; }
+    if (await duplicateTableExists(
+      current.zoneId,
+      String(updates.layout ?? current.layout),
+      String(updates.name ?? current.name),
+      tableId,
+    )) {
+      res.status(409).json({ error: "Ya existe una mesa con ese nombre en la sala y el plano." });
+      return;
+    }
+  }
+
   const [table] = await db
     .update(restaurantTablesTable)
     .set(updates as Partial<typeof restaurantTablesTable.$inferInsert>)
@@ -360,6 +427,13 @@ router.patch("/tables/:tableId", requireAuth, requireRole("admin"), async (req, 
     .returning();
 
   if (!table) { res.status(404).json({ error: "Mesa no encontrada" }); return; }
+  void addTableEvent({
+    tableId,
+    employeeId: req.user?.id,
+    employeeName: req.user?.name ?? "",
+    action: "table_config_updated",
+    details: `Configuración modificada: ${Object.keys(updates).join(", ")}`,
+  });
   res.json(tableShape(table));
 });
 
