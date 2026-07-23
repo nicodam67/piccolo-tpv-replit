@@ -64,6 +64,8 @@ import { requireAuth, requireRole } from "../middlewares/auth";
 import { emitToFunction } from "../lib/socket-events";
 import { calcMultiRateBreakdown } from "../lib/tax";
 import { issuePoints } from "./crm.js";
+import { validateOpeningHours } from "../lib/configuration";
+import { logDocumentAction } from "../lib/document-audit";
 
 const router: IRouter = Router();
 
@@ -628,6 +630,13 @@ router.get("/admin/online-config", requireAuth, requireRole("manager", "admin"),
 
 router.patch("/admin/online-config", requireAuth, requireRole("manager", "admin"), async (req, res): Promise<void> => {
   const fields = req.body as Partial<typeof onlineOrdersConfigTable.$inferInsert>;
+  if (fields.schedule !== undefined) {
+    const issues = validateOpeningHours(fields.schedule);
+    if (issues.length > 0) {
+      res.status(422).json({ error: "Horario de pedidos online no válido", issues });
+      return;
+    }
+  }
 
   const [existing] = await db.select().from(onlineOrdersConfigTable).limit(1);
 
@@ -644,6 +653,14 @@ router.patch("/admin/online-config", requireAuth, requireRole("manager", "admin"
       .returning();
   }
 
+  await logDocumentAction({
+    action: "update_online_orders_config",
+    documentType: "configuration",
+    documentId: result.id,
+    employeeId: req.user?.id,
+    employeeName: req.user?.name ?? "",
+    details: `Campos modificados: ${Object.keys(fields).join(", ")}`,
+  });
   res.json(result);
 });
 

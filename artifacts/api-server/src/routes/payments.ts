@@ -14,7 +14,7 @@ import {
   businessConfigTable,
   discountsTable,
 } from "@workspace/db";
-import { eq, and, sum, inArray, gte } from "drizzle-orm";
+import { eq, and, desc, sum, inArray, gte } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { idempotency } from "../middlewares/idempotency";
 import { emitToFunction } from "../lib/socket-events";
@@ -342,7 +342,9 @@ router.post("/orders/:id/payments", requireAuth, requireRole(...PAYMENT_ROLES), 
       const { taxBreakdown, subtotal, taxTotal } = calcMultiRateBreakdown(lineTotals, discountForOrder);
 
       // Copy emisor fields from business_config (snapshot at issuance time)
-      const [bizConfig] = await db.select().from(businessConfigTable).limit(1);
+      const [bizConfig] = await db.select().from(businessConfigTable)
+        .orderBy(desc(businessConfigTable.updatedAt))
+        .limit(1);
       // Determine payment method name for forma_pago
       const [pmRow] = await db
         .select({ name: paymentMethodsTable.name })

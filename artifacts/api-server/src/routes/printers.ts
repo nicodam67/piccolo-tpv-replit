@@ -13,6 +13,7 @@ import {
   businessConfigTable,
   printTestResultsTable,
   categoriesTable,
+  installationDevicesTable,
 } from "@workspace/db";
 import { eq, and, desc, inArray } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
@@ -21,6 +22,7 @@ import {
   buildReprintHeader,
 } from "../lib/ticket-builder";
 import { getPrinterStatus } from "../lib/print-connector-sim";
+import { sanitizePrintTemplate } from "../lib/configuration";
 
 const router: IRouter = Router();
 
@@ -42,6 +44,35 @@ async function auditPrint(
   }).catch(() => {});
 }
 
+async function fallbackPrinterExists(fallbackPrinterId: string, currentPrinterId?: string): Promise<boolean> {
+  if (fallbackPrinterId === currentPrinterId) return false;
+  const [fallback] = await db
+    .select({ id: printersTable.id })
+    .from(printersTable)
+    .where(and(eq(printersTable.id, fallbackPrinterId), eq(printersTable.active, true)))
+    .limit(1);
+  return Boolean(fallback);
+}
+
+function effectivePrintTemplate(config: {
+  nombreComercial: string;
+  razonSocial: string;
+  nif: string;
+  direccionFiscal: string;
+  logoUrl: string;
+  printTemplateConfig: unknown;
+}) {
+  const fiscal = [config.razonSocial, config.nif, config.direccionFiscal]
+    .filter(Boolean)
+    .join(" · ");
+  return {
+    ...(sanitizePrintTemplate(config.printTemplateConfig as Record<string, unknown> | null) ?? {}),
+    nombreComercial: config.nombreComercial,
+    datosFiscales: fiscal,
+    logoUrl: config.logoUrl,
+  };
+}
+
 // ── GET /admin/printers ───────────────────────────────────────────────────────
 router.get("/admin/printers", requireAuth, requireRole("manager", "admin"), async (req, res): Promise<void> => {
   const printers = await db
@@ -57,6 +88,10 @@ router.post("/admin/printers", requireAuth, requireRole("manager", "admin"), asy
     req.body as Partial<typeof printersTable.$inferInsert>;
 
   if (!name?.trim()) { res.status(400).json({ error: "El nombre es obligatorio." }); return; }
+  if (fallbackPrinterId && !await fallbackPrinterExists(fallbackPrinterId)) {
+    res.status(422).json({ error: "La impresora de respaldo no existe o está inactiva." });
+    return;
+  }
 
   const [printer] = await db.insert(printersTable).values({
     name: name.trim(),
@@ -81,6 +116,15 @@ router.patch("/admin/printers/:id", requireAuth, requireRole("manager", "admin")
   const id = req.params.id as string;
   const { name, type, brand, model, ip, port, paperWidth, copies, active, isPrimary, fallbackPrinterId } =
     req.body as Partial<typeof printersTable.$inferInsert>;
+
+  if (fallbackPrinterId && !await fallbackPrinterExists(fallbackPrinterId, id)) {
+    res.status(422).json({
+      error: fallbackPrinterId === id
+        ? "Una impresora no puede ser su propio respaldo."
+        : "La impresora de respaldo no existe o está inactiva.",
+    });
+    return;
+  }
 
   const [printer] = await db
     .update(printersTable)
@@ -109,6 +153,28 @@ router.patch("/admin/printers/:id", requireAuth, requireRole("manager", "admin")
 // ── DELETE /admin/printers/:id ────────────────────────────────────────────────
 router.delete("/admin/printers/:id", requireAuth, requireRole("manager", "admin"), async (req, res): Promise<void> => {
   const id = req.params.id as string;
+  const [fallbackReferences, routingRules, deviceReferences] = await Promise.all([
+    db.select({ id: printersTable.id, name: printersTable.name })
+      .from(printersTable)
+      .where(and(eq(printersTable.fallbackPrinterId, id), eq(printersTable.active, true))),
+    db.select({ id: printRoutingTable.id, printerIds: printRoutingTable.printerIds })
+      .from(printRoutingTable),
+    db.select({ id: installationDevicesTable.id, name: installationDevicesTable.name })
+      .from(installationDevicesTable)
+      .where(eq(installationDevicesTable.defaultPrinterId, id)),
+  ]);
+  const routeReferences = routingRules.filter((routing) => routing.printerIds.includes(id));
+  if (fallbackReferences.length > 0 || routeReferences.length > 0 || deviceReferences.length > 0) {
+    res.status(409).json({
+      error: "La impresora sigue referenciada y no se puede desactivar.",
+      references: {
+        fallbackPrinters: fallbackReferences,
+        routingRules: routeReferences.map((routing) => routing.id),
+        devices: deviceReferences,
+      },
+    });
+    return;
+  }
   // Soft delete: set active = false
   const [printer] = await db
     .update(printersTable)
@@ -176,6 +242,27 @@ router.put("/admin/print-routing/:entityType/:entityId", requireAuth, requireRol
   const { printerIds } = req.body as { printerIds: string[] };
 
   if (!Array.isArray(printerIds)) { res.status(400).json({ error: "printerIds debe ser un array." }); return; }
+  if (!["category", "product"].includes(entityType)) {
+    res.status(422).json({ error: "entityType debe ser category o product." });
+    return;
+  }
+  const uniquePrinterIds = [...new Set(printerIds)];
+  if (uniquePrinterIds.length !== printerIds.length) {
+    res.status(422).json({ error: "printerIds no puede contener duplicados." });
+    return;
+  }
+  if (printerIds.length > 0) {
+    const validPrinters = await db
+      .select({ id: printersTable.id })
+      .from(printersTable)
+      .where(and(inArray(printersTable.id, printerIds), eq(printersTable.active, true)));
+    if (validPrinters.length !== printerIds.length) {
+      res.status(422).json({
+        error: "La ruta contiene impresoras inexistentes o inactivas.",
+      });
+      return;
+    }
+  }
 
   // Upsert
   const existing = await db
@@ -300,12 +387,19 @@ router.post("/admin/print-queue/:id/reprint", requireAuth, requireRole("manager"
 });
 
 // ── GET /admin/print-config ───────────────────────────────────────────────────
-router.get("/admin/print-config", requireAuth, requireRole("manager", "admin"), async (req, res): Promise<void> => {
+router.get("/admin/print-config", requireAuth, requireRole("manager", "admin"), async (_req, res): Promise<void> => {
   const [cfg] = await db.select({
     printMode: (businessConfigTable as any).printMode,
     printTemplateConfig: (businessConfigTable as any).printTemplateConfig,
-  }).from(businessConfigTable).limit(1);
-  res.json(cfg ?? { printMode: "kds_only", printTemplateConfig: null });
+    nombreComercial: businessConfigTable.nombreComercial,
+    razonSocial: businessConfigTable.razonSocial,
+    nif: businessConfigTable.nif,
+    direccionFiscal: businessConfigTable.direccionFiscal,
+    logoUrl: businessConfigTable.logoUrl,
+  }).from(businessConfigTable).orderBy(desc(businessConfigTable.updatedAt)).limit(1);
+  res.json(cfg
+    ? { printMode: cfg.printMode, printTemplateConfig: effectivePrintTemplate(cfg) }
+    : { printMode: "kds_only", printTemplateConfig: null });
 });
 
 // ── PATCH /admin/print-config ─────────────────────────────────────────────────
@@ -320,15 +414,51 @@ router.patch("/admin/print-config", requireAuth, requireRole("manager", "admin")
     res.status(400).json({ error: "Modo de impresión no válido." }); return;
   }
 
-  const [existing] = await db.select({ id: businessConfigTable.id }).from(businessConfigTable).limit(1);
+  const [existing] = await db.select({
+    id: businessConfigTable.id,
+    nombreComercial: businessConfigTable.nombreComercial,
+    razonSocial: businessConfigTable.razonSocial,
+    nif: businessConfigTable.nif,
+    direccionFiscal: businessConfigTable.direccionFiscal,
+    logoUrl: businessConfigTable.logoUrl,
+    printTemplateConfig: businessConfigTable.printTemplateConfig,
+  }).from(businessConfigTable).orderBy(desc(businessConfigTable.updatedAt)).limit(1);
 
-  if (existing) {
-    await db.update(businessConfigTable).set({
-      ...(printMode !== undefined && { printMode } as any),
-      ...(printTemplateConfig !== undefined && { printTemplateConfig } as any),
-      updatedAt: new Date(),
-    }).where(eq(businessConfigTable.id, existing.id));
+  if (!existing) {
+    res.status(409).json({ error: "Configura primero los datos obligatorios del negocio." });
+    return;
   }
+  if (printTemplateConfig) {
+    const canonicalTemplate = effectivePrintTemplate(existing);
+    const changedCanonicalFields = (["nombreComercial", "datosFiscales", "logoUrl"] as const)
+      .filter((field) => (
+        field in printTemplateConfig
+        && printTemplateConfig[field] !== canonicalTemplate[field]
+      ));
+    if (changedCanonicalFields.length > 0) {
+      res.status(422).json({
+        error: "La identidad y los datos fiscales se modifican desde la configuración del negocio.",
+        issues: changedCanonicalFields.map((field) => ({
+          field: `printTemplateConfig.${field}`,
+          message: "Campo canónico de solo lectura.",
+        })),
+      });
+      return;
+    }
+  }
+  const presentationTemplate = printTemplateConfig !== undefined
+    ? sanitizePrintTemplate(printTemplateConfig)
+    : undefined;
+  await db.update(businessConfigTable).set({
+    ...(printMode !== undefined && { printMode } as any),
+    ...(presentationTemplate !== undefined && { printTemplateConfig: presentationTemplate } as any),
+    updatedAt: new Date(),
+  }).where(eq(businessConfigTable.id, existing.id));
+
+  await auditPrint(null, "print_config_changed", req.user?.id, req.user?.name ?? "admin", {
+    printMode,
+    templateFields: presentationTemplate ? Object.keys(presentationTemplate) : [],
+  });
 
   res.json({ ok: true });
 });

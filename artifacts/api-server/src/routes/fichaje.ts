@@ -10,6 +10,7 @@ import {
   csvImportsTable,
   fichajeAuditTable,
   fichajeSettingsTable,
+  businessConfigTable,
   nfcCardsTable,
   tabletDevicesTable,
 } from "@workspace/db";
@@ -26,6 +27,12 @@ import {
   consumeClockProof,
   issueClockProofs,
 } from "../lib/clock-authorization";
+import {
+  languageFromLocale,
+  localeForLanguage,
+  validateBusinessConfigInput,
+} from "../lib/configuration";
+import { logDocumentAction } from "../lib/document-audit";
 
 const router: IRouter = Router();
 const publicClockLimiter = rateLimit({
@@ -685,29 +692,127 @@ router.get(
 // ─── Settings ────────────────────────────────────────────────────────────────
 
 router.get("/fichaje/settings", requireAuth, requireRole("admin", "manager"), async (_req, res): Promise<void> => {
-  const settings = await db.select().from(fichajeSettingsTable).limit(1);
-  res.json(settings[0] ?? {});
+  const [settings, business] = await Promise.all([
+    db.select().from(fichajeSettingsTable).limit(1),
+    db.select({
+      nombreComercial: businessConfigTable.nombreComercial,
+      idioma: businessConfigTable.idioma,
+    }).from(businessConfigTable).orderBy(desc(businessConfigTable.updatedAt)).limit(1),
+  ]);
+  res.json({
+    ...(settings[0] ?? {}),
+    companyName: business[0]?.nombreComercial ?? settings[0]?.companyName ?? "",
+    locale: business[0]?.idioma
+      ? localeForLanguage(business[0].idioma)
+      : settings[0]?.locale ?? "es-ES",
+  });
 });
 
 router.put("/fichaje/settings", requireAuth, requireRole("admin"), async (req, res): Promise<void> => {
   const allowed = [
-    "companyName", "locale", "timezone", "weekStart",
-    "mobileClockEnabled", "reportEmail", "reportDayOfWeek",
+    "timezone", "weekStart", "mobileClockEnabled", "reportEmail", "reportDayOfWeek",
   ];
   const updates: Record<string, unknown> = {};
   for (const k of allowed) {
     if (k in req.body) updates[k] = req.body[k];
   }
+
+  if (updates.timezone !== undefined) {
+    try {
+      new Intl.DateTimeFormat("es", { timeZone: String(updates.timezone) }).format();
+    } catch {
+      res.status(422).json({
+        error: "Configuración no válida",
+        issues: [{ field: "timezone", message: "Zona horaria no soportada." }],
+      });
+      return;
+    }
+  }
+  if (updates.weekStart !== undefined && !["monday", "sunday"].includes(String(updates.weekStart))) {
+    res.status(422).json({
+      error: "Configuración no válida",
+      issues: [{ field: "weekStart", message: "Inicio de semana no soportado." }],
+    });
+    return;
+  }
+
+  const businessUpdates: Record<string, unknown> = {};
+  if ("companyName" in req.body) {
+    const parsed = validateBusinessConfigInput({ nombreComercial: req.body.companyName });
+    if (!parsed.data) {
+      res.status(422).json({ error: "Configuración no válida", issues: parsed.issues });
+      return;
+    }
+    businessUpdates.nombreComercial = parsed.data.nombreComercial;
+  }
+  if ("locale" in req.body) {
+    const language = typeof req.body.locale === "string"
+      ? languageFromLocale(req.body.locale)
+      : null;
+    if (!language) {
+      res.status(422).json({
+        error: "Configuración no válida",
+        issues: [{ field: "locale", message: "Idioma no soportado." }],
+      });
+      return;
+    }
+    businessUpdates.idioma = language;
+  }
+
   updates["updatedAt"] = new Date();
 
-  const [updated] = await db
-    .update(fichajeSettingsTable)
-    .set(updates)
-    .where(eq(fichajeSettingsTable.id, 1))
-    .returning();
+  const [existingSettings, existingBusiness] = await Promise.all([
+    db.select({ id: fichajeSettingsTable.id }).from(fichajeSettingsTable).limit(1),
+    db.select({
+      id: businessConfigTable.id,
+      nombreComercial: businessConfigTable.nombreComercial,
+      idioma: businessConfigTable.idioma,
+    }).from(businessConfigTable).orderBy(desc(businessConfigTable.updatedAt)).limit(1),
+  ]);
+  if (Object.keys(businessUpdates).length > 0 && !existingBusiness[0]) {
+    res.status(409).json({ error: "Configura primero los datos obligatorios del negocio." });
+    return;
+  }
 
-  await logAudit("settings_updated", null, req.user!.id, "fichaje_settings", "1", updates);
-  res.json(updated);
+  const updated = await db.transaction(async (tx) => {
+    let timeclockSettings;
+    if (existingSettings[0]) {
+      [timeclockSettings] = await tx
+        .update(fichajeSettingsTable)
+        .set(updates)
+        .where(eq(fichajeSettingsTable.id, existingSettings[0].id))
+        .returning();
+    } else {
+      [timeclockSettings] = await tx.insert(fichajeSettingsTable).values(updates).returning();
+    }
+    if (existingBusiness[0] && Object.keys(businessUpdates).length > 0) {
+      await tx.update(businessConfigTable)
+        .set({ ...businessUpdates, updatedAt: new Date() })
+        .where(eq(businessConfigTable.id, existingBusiness[0].id));
+    }
+    return timeclockSettings;
+  });
+
+  if (existingBusiness[0] && Object.keys(businessUpdates).length > 0) {
+    await logDocumentAction({
+      action: "update_business_config_from_timeclock",
+      documentType: "config",
+      documentId: existingBusiness[0].id,
+      employeeId: req.user!.id,
+      employeeName: req.user!.name,
+      details: `Campos canónicos actualizados: ${Object.keys(businessUpdates).join(", ")}`,
+    });
+  }
+
+  await logAudit("settings_updated", null, req.user!.id, "fichaje_settings", String(updated.id), {
+    ...updates,
+    canonicalBusinessFields: Object.keys(businessUpdates),
+  });
+  res.json({
+    ...updated,
+    companyName: businessUpdates.nombreComercial ?? existingBusiness[0]?.nombreComercial ?? "",
+    locale: localeForLanguage(String(businessUpdates.idioma ?? existingBusiness[0]?.idioma ?? "es")),
+  });
 });
 
 // ─── Audit log ───────────────────────────────────────────────────────────────

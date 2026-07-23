@@ -22,7 +22,7 @@ import {
   businessConfigTable,
   discountsTable,
 } from "@workspace/db";
-import { eq, and, sum } from "drizzle-orm";
+import { eq, and, desc, sum } from "drizzle-orm";
 import { calcMultiRateBreakdown } from "./tax";
 import { logDocumentAction } from "./document-audit";
 
@@ -95,7 +95,9 @@ export async function settleOrderIfFullyPaid({
 
     // ── Fully paid → settle ───────────────────────────────────────────────────
 
-    const [bizConfig] = await tx.select().from(businessConfigTable).limit(1);
+    const [bizConfig] = await tx.select().from(businessConfigTable)
+      .orderBy(desc(businessConfigTable.updatedAt))
+      .limit(1);
 
     // Forma de pago: use name of the most recent payment method
     const [pmRow] = await tx

@@ -30,6 +30,7 @@ import {
 } from "@workspace/db";
 import { eq, and, count, desc, sql } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
+import { validateBusinessConfigInput, validateOpeningHours } from "../lib/configuration";
 
 const router = Router();
 
@@ -69,7 +70,7 @@ async function detectModules(): Promise<Record<string, ModuleCheck>> {
     verifiedBackupCount,
     cashSessionCount,
   ] = await Promise.all([
-    db.select().from(businessConfigTable).limit(1),
+    db.select().from(businessConfigTable).orderBy(desc(businessConfigTable.updatedAt)).limit(1),
     countRows(employeesTable),
     countRows(productsTable),
     countRows(categoriesTable),
@@ -86,12 +87,27 @@ async function detectModules(): Promise<Record<string, ModuleCheck>> {
   const hasName = !!cfg?.nombreComercial?.trim();
   const hasNif = !!cfg?.nif?.trim();
   const hasFiscal = !!cfg?.direccionFiscal?.trim();
+  const businessValid = cfg
+    ? validateBusinessConfigInput({
+        nombreComercial: cfg.nombreComercial,
+        razonSocial: cfg.razonSocial,
+        nif: cfg.nif,
+        direccionFiscal: cfg.direccionFiscal,
+        moneda: cfg.moneda,
+        idioma: cfg.idioma,
+        regimenFiscal: cfg.regimenFiscal,
+      }).issues.length === 0
+    : false;
   let configStatus: ModuleStatus = "empty";
-  if (hasName && hasNif && hasFiscal) configStatus = "configured";
+  if (hasName && hasNif && hasFiscal && businessValid) configStatus = "configured";
   else if (hasName || hasNif) configStatus = "partial";
 
   // Services/hours
-  const hasHours = !!(cfg?.openingHours && Object.keys(cfg.openingHours as object).length > 0);
+  const hasHours = !!(
+    cfg?.openingHours
+    && Object.keys(cfg.openingHours as object).length > 0
+    && validateOpeningHours(cfg.openingHours).length === 0
+  );
 
   return {
     identidad: {
@@ -99,7 +115,11 @@ async function detectModules(): Promise<Record<string, ModuleCheck>> {
       detail: hasName ? cfg!.nombreComercial : undefined,
     },
     fiscalidad: {
-      status: hasNif && hasName ? "configured" : hasName ? "partial" : "empty",
+      status: hasNif && hasName && hasFiscal && businessValid
+        ? "configured"
+        : hasName || hasNif || hasFiscal
+          ? "partial"
+          : "empty",
       detail: hasNif ? cfg!.nif : undefined,
     },
     horarios: {
@@ -169,7 +189,7 @@ router.get("/setup/detect", async (_req, res) => {
 router.get("/setup/status", ...managerGuard, async (_req, res) => {
   const [modules, configRows, sessions] = await Promise.all([
     detectModules(),
-    db.select().from(businessConfigTable).limit(1),
+    db.select().from(businessConfigTable).orderBy(desc(businessConfigTable.updatedAt)).limit(1),
     db.select().from(setupWizardSessionsTable)
       .orderBy(desc(setupWizardSessionsTable.updatedAt))
       .limit(5),
@@ -303,7 +323,9 @@ router.patch("/setup/session/:id", ...adminGuard, async (req, res) => {
 router.get("/setup/checklist", ...managerGuard, async (req, res) => {
   const format = (req.query["format"] as string | undefined) ?? "json";
   const modules = await detectModules();
-  const configRows = await db.select().from(businessConfigTable).limit(1);
+  const configRows = await db.select().from(businessConfigTable)
+    .orderBy(desc(businessConfigTable.updatedAt))
+    .limit(1);
   const cfg = configRows[0];
 
   const items = [
@@ -438,7 +460,9 @@ router.post("/setup/go-live", ...adminGuard, async (req, res) => {
 
   // Activate production mode
   const now = new Date();
-  const configRows = await db.select().from(businessConfigTable).limit(1);
+  const configRows = await db.select().from(businessConfigTable)
+    .orderBy(desc(businessConfigTable.updatedAt))
+    .limit(1);
 
   if (configRows.length === 0) {
     res.status(422).json({ error: "Configura los datos del restaurante antes de activar producción" });

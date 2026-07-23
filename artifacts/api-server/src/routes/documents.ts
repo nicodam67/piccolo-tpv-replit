@@ -384,7 +384,9 @@ router.post(
     }
 
     // Get business config for emisor fields
-    const [config] = await db.select().from(businessConfigTable).limit(1);
+    const [config] = await db.select().from(businessConfigTable)
+      .orderBy(desc(businessConfigTable.updatedAt))
+      .limit(1);
 
     // Get order to calculate totals
     const [order] = await db.select().from(ordersTable).where(eq(ordersTable.id, orderId));

@@ -567,6 +567,7 @@ router.post("/orders/:orderId/send", requireAuth, idempotency, async (req, res):
   const [businessCfg] = await db
     .select({ printMode: businessConfigTable.printMode })
     .from(businessConfigTable)
+    .orderBy(desc(businessConfigTable.updatedAt))
     .limit(1);
   const printMode = (businessCfg?.printMode ?? "kds_only") as "kds_only" | "printers_only" | "both";
   const sendToKds = printMode !== "printers_only";
