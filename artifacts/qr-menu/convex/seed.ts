@@ -1,7 +1,7 @@
 import { mutation } from "./_generated/server";
 import { ConvexError, v } from "convex/values";
 
-function assertExplicitDemoSeed(secret: string): void {
+function assertExplicitDevelopmentDemo(secret: string): void {
   const expected = process.env.DEMO_SEED_SECRET;
   if (
     process.env.QR_MENU_ENV !== "development"
@@ -17,7 +17,7 @@ function assertExplicitDemoSeed(secret: string): void {
 export const seedIfEmpty = mutation({
   args: { secret: v.string() },
   handler: async (ctx, args) => {
-    assertExplicitDemoSeed(args.secret);
+    assertExplicitDevelopmentDemo(args.secret);
     const existing = await ctx.db.query("categories").first();
     if (existing) return; // already seeded
 
@@ -220,7 +220,7 @@ export const seedIfEmpty = mutation({
 export const publicSeedIfEmpty = mutation({
   args: { secret: v.string() },
   handler: async (ctx, args) => {
-    assertExplicitDemoSeed(args.secret);
+    assertExplicitDevelopmentDemo(args.secret);
     const existing = await ctx.db.query("categories").first();
     if (existing) return;
     // Reuse the same logic — we call inner mutations via ctx.db directly

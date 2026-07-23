@@ -1,28 +1,18 @@
 import { describe, expect, it } from "vitest";
 import { resolveQrRuntimeMode } from "./qr-runtime-mode";
 
-describe("QR runtime mode", () => {
-  it("requires complete configuration in production", () => {
-    expect(resolveQrRuntimeMode({ nodeEnv: "production" })).toBe("blocked");
-    expect(resolveQrRuntimeMode({
-      nodeEnv: "production",
-      demoFlag: "true",
-    })).toBe("blocked");
-    expect(resolveQrRuntimeMode({
-      nodeEnv: "production",
-      convexUrl: "https://example.convex.cloud",
-    })).toBe("live");
-  });
-
-  it("only enables demo explicitly in development", () => {
-    expect(resolveQrRuntimeMode({ nodeEnv: "development" })).toBe("blocked");
-    expect(resolveQrRuntimeMode({
-      nodeEnv: "development",
-      demoFlag: "true",
-    })).toBe("demo");
-    expect(resolveQrRuntimeMode({
-      nodeEnv: "development",
-      convexUrl: "https://example.convex.cloud",
-    })).toBe("live");
+describe("QR environment matrix", () => {
+  it.each([
+    ["production", undefined, undefined, "blocked"],
+    ["production", undefined, "true", "blocked"],
+    ["production", "https://example.convex.cloud", undefined, "live"],
+    ["development", undefined, undefined, "blocked"],
+    ["development", undefined, "true", "demo"],
+    ["development", "https://example.convex.cloud", "true", "live"],
+    ["test", undefined, undefined, "blocked"],
+    ["prodution", undefined, "true", "blocked"],
+    ["staging", undefined, "true", "blocked"],
+  ])("%s url=%s demo=%s -> %s", (nodeEnv, convexUrl, demoFlag, expected) => {
+    expect(resolveQrRuntimeMode({ nodeEnv, convexUrl, demoFlag })).toBe(expected);
   });
 });

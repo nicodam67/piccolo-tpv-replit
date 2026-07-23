@@ -984,7 +984,10 @@ interface CashMachinePaymentModalProps {
 }
 
 function CashMachinePaymentModal({ orderId, amount, terminal, onSuccess, onCancel }: CashMachinePaymentModalProps) {
-  const startPayment  = useStartCashMachinePayment();
+  const paymentAttemptKey = useRef(crypto.randomUUID());
+  const startPayment  = useStartCashMachinePayment({
+    request: { headers: { 'Idempotency-Key': paymentAttemptKey.current } },
+  });
   const cancelPayment = useCancelCashMachinePayment();
   const [txId, setTxId]             = useState<string | null>(null);
   const [txStatus, setTxStatus]     = useState<string>('pending');
@@ -996,8 +999,6 @@ function CashMachinePaymentModal({ orderId, amount, terminal, onSuccess, onCance
   // Capture onSuccess in a ref so the interval always calls the latest version
   const onSuccessRef = useRef(onSuccess);
   useEffect(() => { onSuccessRef.current = onSuccess; }, [onSuccess]);
-
-  const TERMINAL_STATUSES = ['completada', 'cancelada', 'tiempo_agotado', 'error', 'intervencion_manual'];
 
   /** Plain fetch so the closure always uses the correct transaction ID, avoiding
    *  stale-refetch issues that arise when the React Query hook is initialized before
@@ -1016,7 +1017,7 @@ function CashMachinePaymentModal({ orderId, amount, terminal, onSuccess, onCance
         if (tx.status === 'completada') {
           if (intervalRef.current) clearInterval(intervalRef.current);
           setTimeout(() => onSuccessRef.current(), 1200);
-        } else if (['error', 'cancelada', 'tiempo_agotado', 'intervencion_manual'].includes(tx.status)) {
+        } else if (['error', 'cancelada', 'tiempo_agotado', 'intervencion_manual', 'conciliacion_pendiente'].includes(tx.status)) {
           if (intervalRef.current) clearInterval(intervalRef.current);
           setErrMsg((tx as any).deviceError ?? 'La transacción no se completó.');
         }
@@ -1077,6 +1078,7 @@ function CashMachinePaymentModal({ orderId, amount, terminal, onSuccess, onCance
     cancelada:           { label: 'Cancelado',             color: 'text-muted-foreground', icon: <X size={32} className="text-muted-foreground" /> },
     tiempo_agotado:      { label: 'Tiempo agotado',        color: 'text-destructive',      icon: <X size={32} className="text-destructive" /> },
     intervencion_manual: { label: 'Intervención manual',   color: 'text-destructive',      icon: <X size={32} className="text-destructive" /> },
+    conciliacion_pendiente: { label: 'Pendiente de conciliación', color: 'text-amber-400', icon: <AlertCircle size={32} /> },
   };
 
   const meta = statusMeta[txStatus] ?? statusMeta.pending;

@@ -23,7 +23,7 @@ import { calcMultiRateBreakdown } from "../lib/tax";
 import { issuePoints } from "./crm.js";
 
 // Roles allowed to process payments (excludes kitchen staff)
-const PAYMENT_ROLES = ["waiter", "cashier", "manager", "admin"];
+const PAYMENT_ROLES = ["waiter", "cashier", "encargado", "manager", "admin"];
 
 const router: IRouter = Router();
 
@@ -388,7 +388,7 @@ router.post("/orders/:id/payments", requireAuth, requireRole(...PAYMENT_ROLES), 
       if (order.tableId) {
         await tx
           .update(restaurantTablesTable)
-          .set({ status: "free" })
+          .set({ status: "pendiente_limpieza" })
           .where(eq(restaurantTablesTable.id, order.tableId));
       }
     }

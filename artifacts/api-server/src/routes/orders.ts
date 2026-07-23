@@ -108,7 +108,7 @@ router.get("/tables/:tableId/order", requireAuth, async (req, res): Promise<void
   const [order] = await db
     .select()
     .from(ordersTable)
-    .where(and(eq(ordersTable.tableId, tableId), inArray(ordersTable.status, ["open", "sent", "ready", "bill_requested"])))
+    .where(and(eq(ordersTable.tableId, tableId), inArray(ordersTable.status, ["open", "sent", "ready", "served", "bill_requested"])))
     .orderBy(ordersTable.createdAt)
     .limit(1);
 
@@ -1040,14 +1040,8 @@ router.post("/orders/:orderId/pase", requireAuth, async (req, res): Promise<void
         .update(ordersTable)
         .set({ status: "served" })
         .where(eq(ordersTable.id, orderId));
-
-      if (order.tableId) {
-        await tx
-          .update(restaurantTablesTable)
-          .set({ status: "free" })
-          .where(eq(restaurantTablesTable.id, order.tableId));
-      }
     });
+    await writeAudit(orderId, req.user?.id, req.user?.name ?? "", "order_served", "Pedido servido; mesa permanece pendiente de cobro");
 
     try {
       if (order.tableId) {

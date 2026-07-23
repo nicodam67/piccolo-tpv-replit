@@ -80,6 +80,9 @@ vi.mock("@workspace/db", async (importOriginal) => {
 });
 
 vi.mock("../lib/socket", () => ({ getIO: () => ({ emit: vi.fn() }) }));
+vi.mock("./role-permissions", () => ({
+  checkPermission: vi.fn(async (role: string) => role === "admin" || role === "manager"),
+}));
 
 // ── Auth middleware override ───────────────────────────────────────────────────
 vi.mock("../middlewares/auth", async (importOriginal) => {
@@ -233,5 +236,46 @@ describe("Test 6 — GET /tables/occupation-summary", () => {
     expect(res.body.reservedCount).toBe(1);
     expect(res.body.currentGuests).toBe(14);   // 8 + 6
     expect(res.body.pendingCleaningCount).toBe(1);
+  });
+});
+
+describe("Test 7 — unpaid table closure is exceptional and audited", () => {
+  const ACTIVE_ORDER = { id: "order-1", status: "served" };
+
+  it("rejects a normal close while payment is pending", async () => {
+    mockState.selectRows = [ACTIVE_ORDER];
+    const res = await request(app)
+      .post("/api/tables/table-1/close")
+      .set("Authorization", WAITER);
+    expect(res.status).toBe(409);
+  });
+
+  it("rejects a KDS/waiter force-close attempt", async () => {
+    mockState.selectRows = [ACTIVE_ORDER];
+    const res = await request(app)
+      .post("/api/tables/table-1/close")
+      .set("Authorization", WAITER)
+      .send({ force: true, reason: "Incidencia" });
+    expect(res.status).toBe(403);
+  });
+
+  it("requires a reason for an authorized exceptional close", async () => {
+    mockState.selectRows = [ACTIVE_ORDER];
+    const res = await request(app)
+      .post("/api/tables/table-1/close")
+      .set("Authorization", ADMIN)
+      .send({ force: true });
+    expect(res.status).toBe(422);
+  });
+
+  it("allows an authorized force close and leaves the table pending cleaning", async () => {
+    mockState.selectRows = [ACTIVE_ORDER];
+    mockState.txUpdateRows = [{ ...OCCUPIED, status: "pendiente_limpieza" }];
+    const res = await request(app)
+      .post("/api/tables/table-1/close")
+      .set("Authorization", ADMIN)
+      .send({ force: true, reason: "Cliente abandona el local" });
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe("pendiente_limpieza");
   });
 });

@@ -40,6 +40,7 @@ import crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import ExcelJS from "exceljs";
+import { maskSecrets } from "../lib/mask-secrets";
 import {
   BACKUP_FORMAT_VERSION,
   backupArtifactChecksum,
@@ -531,7 +532,7 @@ router.delete("/backup/schedules/:id", ...adminOnly, async (req, res) => {
 // ─── Destinations CRUD ────────────────────────────────────────────────────────
 router.get("/backup/destinations", ...guard, async (_req, res) => {
   const rows = await db.select().from(backupDestinationsTable);
-  res.json(rows);
+  res.json(rows.map(maskSecrets));
 });
 
 router.post("/backup/destinations", ...adminOnly, async (req, res) => {
@@ -542,7 +543,7 @@ router.post("/backup/destinations", ...adminOnly, async (req, res) => {
     config: (body.config as Record<string, unknown>) ?? {},
     active: body.active !== false,
   }).returning();
-  res.status(201).json(row);
+  res.status(201).json(maskSecrets(row));
 });
 
 router.delete("/backup/destinations/:id", ...adminOnly, async (req, res) => {
