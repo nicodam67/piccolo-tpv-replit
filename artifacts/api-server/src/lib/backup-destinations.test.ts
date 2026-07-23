@@ -1,7 +1,8 @@
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { S3Client } from "@aws-sdk/client-s3";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   downloadBackupArtifact,
   purgeBackupArtifact,
@@ -26,6 +27,7 @@ beforeEach(async () => {
   process.env.BACKUP_LOCAL_ROOTS = root;
 });
 afterEach(async () => {
+  vi.restoreAllMocks();
   await rm(root, { recursive: true, force: true });
   delete process.env.BACKUP_LOCAL_ROOTS;
 });
@@ -57,5 +59,31 @@ describe("external backup destinations", () => {
     const reference = await uploadBackupArtifact(destination, artifact);
     await writeFile(path.join(root, reference), JSON.stringify({ ...artifact, checksum: "tampered" }));
     expect(await verifyBackupArtifact(destination, reference, artifact.checksum)).toBe(false);
+  });
+
+  it("uploads, reads and verifies an S3-compatible artifact", async () => {
+    vi.spyOn(S3Client.prototype as any, "send").mockImplementation(async (command: any) => {
+      const name = command.constructor.name;
+      if (name === "HeadObjectCommand") return { Metadata: { checksum: artifact.checksum } };
+      if (name === "GetObjectCommand") {
+        return { Body: { transformToString: async () => JSON.stringify(artifact) } };
+      }
+      return {};
+    });
+    const destination = {
+      id: "s3-1",
+      destType: "s3",
+      config: {
+        endpoint: "https://s3.example.invalid",
+        region: "eu-west-1",
+        bucket: "piccolo",
+        accessKeyId: "access",
+        secretAccessKey: "secret",
+      },
+    };
+    const reference = await uploadBackupArtifact(destination, artifact);
+    expect(reference).toContain(artifact.backupId);
+    expect(await verifyBackupArtifact(destination, reference, artifact.checksum)).toBe(true);
+    expect(await downloadBackupArtifact(destination, reference)).toEqual(artifact);
   });
 });

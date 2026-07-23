@@ -382,12 +382,12 @@ router.post("/public/orders/online-v2", async (req, res): Promise<void> => {
         status, delivery_type, channel, client_name, client_phone,
         notes, scheduled_at, order_number, online_payment_status,
         estimated_ready_at, delivery_address_id, tip_amount,
-        idempotency_key, table_session_id, consent_rgpd
+        idempotency_key, table_session_id
       ) VALUES (
         'pending_confirm', ${deliveryType}, ${channel}, ${clientName.trim()}, ${clientPhone.trim()},
         '', ${requestedAt ? requestedAt.toISOString() : null}, ${orderNumber},
         ${paymentMethod === "online" ? "pending" : "none"}, ${estimatedReadyAt.toISOString()},
-        ${deliveryAddressId}, ${tipAmountNum.toFixed(2)}, ${idempotencyKey}, ${lockedSessionId}, ${consentRgpd}
+        ${deliveryAddressId}, ${tipAmountNum.toFixed(2)}, ${idempotencyKey}, ${lockedSessionId}
       ) RETURNING id, order_number, status
     `);
     const order = inserted.rows[0] as Record<string, unknown>;
@@ -406,7 +406,12 @@ router.post("/public/orders/online-v2", async (req, res): Promise<void> => {
       orderId: order.id as string,
       event: "order_created",
       userName: "public",
-      metadata: { idempotencyKey, itemCount: resolvedItems.length, tableSessionId: lockedSessionId },
+      metadata: {
+        idempotencyKey,
+        itemCount: resolvedItems.length,
+        tableSessionId: lockedSessionId,
+        consentRgpd,
+      },
     });
     return { order, idempotent: false };
   }).catch((error) => {

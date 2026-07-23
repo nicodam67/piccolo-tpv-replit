@@ -7,7 +7,7 @@ PGDATA="${PGDATA:-/tmp/piccolo-e2e-pg}"
 PGPORT="${PGPORT:-55434}"
 PGSOCKET="${PGSOCKET:-/tmp}"
 DB_NAME="${DB_NAME:-piccolo_e2e_test}"
-API_PORT="${API_PORT:-3000}"
+API_PORT="${API_PORT:-3010}"
 API_LOG="${API_LOG:-/tmp/piccolo-e2e-api.log}"
 API_PID=""
 
@@ -38,6 +38,12 @@ export RUN_DB_INTEGRATION_TESTS=1
 cd "$ROOT"
 pnpm --filter @workspace/db run migrate
 
+pnpm --filter @workspace/api-server run test
+
+"$PG_BIN/dropdb" -h "$PGSOCKET" -p "$PGPORT" "$DB_NAME"
+"$PG_BIN/createdb" -h "$PGSOCKET" -p "$PGPORT" "$DB_NAME"
+pnpm --filter @workspace/db run migrate
+
 "$PG_BIN/psql" "$DATABASE_URL" <<'SQL'
 INSERT INTO employees (id, name, role, active) VALUES
   ('26000000-0000-4000-8000-000000000011','E2E Admin','admin',true),
@@ -60,10 +66,10 @@ SQL
 setsid pnpm --filter @workspace/api-server run dev >"$API_LOG" 2>&1 &
 API_PID=$!
 for _ in $(seq 1 90); do
-  if curl -sf "http://localhost:${API_PORT}/healthz" >/dev/null; then break; fi
+  if curl -sf "http://localhost:${API_PORT}/api/healthz" >/dev/null; then break; fi
   sleep 1
 done
-curl -sf "http://localhost:${API_PORT}/healthz" >/dev/null || {
+curl -sf "http://localhost:${API_PORT}/api/healthz" >/dev/null || {
   cat "$API_LOG"
   exit 1
 }
