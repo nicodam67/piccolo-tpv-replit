@@ -33,6 +33,7 @@ vi.mock("@workspace/db", async (importOriginal) => {
     const methods = [
       "from", "where", "set", "values", "returning", "limit", "orderBy",
       "innerJoin", "leftJoin", "groupBy", "offset", "$dynamic", "onConflictDoNothing",
+      "for",
     ] as const;
     methods.forEach((m) => { chain[m] = vi.fn(() => chain); });
     chain.then = (resolve: (v: MockRow[]) => unknown, reject?: (e: unknown) => unknown) =>

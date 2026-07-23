@@ -885,6 +885,8 @@ export default function MenuPage() {
   const [sessionError, setSessionError] = useState('');
 
   const sessionToken = useSearchParam('token');
+  const signedTableTicket = useSearchParam('ticket');
+  const [activeSessionToken, setActiveSessionToken] = useState<string | null>(sessionToken);
 
   // Cart state
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -943,22 +945,42 @@ export default function MenuPage() {
   // ── Validate table session from URL token ──────────────────────────────────
 
   useEffect(() => {
-    if (!sessionToken) return;
-    fetch(`${BASE}/api/public/table-sessions/check?token=${encodeURIComponent(sessionToken)}`)
+    if (sessionToken) {
+      setActiveSessionToken(sessionToken);
+      return;
+    }
+    if (!signedTableTicket) return;
+    fetch(`${BASE}/api/public/table-sessions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ticket: signedTableTicket }),
+    })
+      .then(async r => {
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.error ?? 'QR inválido');
+        setSession(data);
+        setActiveSessionToken(data.token);
+      })
+      .catch(() => setSessionError('El QR de mesa no es válido o ha caducado.'));
+  }, [sessionToken, signedTableTicket]);
+
+  useEffect(() => {
+    if (!activeSessionToken || signedTableTicket) return;
+    fetch(`${BASE}/api/public/table-sessions/check?token=${encodeURIComponent(activeSessionToken)}`)
       .then(r => r.json())
       .then(data => {
         if (data.error) setSessionError(data.error);
         else setSession(data);
       })
       .catch(() => setSessionError('No se pudo verificar la sesión de mesa.'));
-  }, [sessionToken]);
+  }, [activeSessionToken, signedTableTicket]);
 
   // ── Server-side cart persistence ───────────────────────────────────────────
 
   // Load persisted cart from server when session is first validated
   useEffect(() => {
-    if (!session || !sessionToken) return;
-    fetch(`${BASE}/api/public/cart?token=${encodeURIComponent(sessionToken)}`)
+    if (!session || !activeSessionToken) return;
+    fetch(`${BASE}/api/public/cart?token=${encodeURIComponent(activeSessionToken)}`)
       .then(r => (r.ok ? r.json() : null))
       .then(data => {
         if (data?.items && Array.isArray(data.items) && data.items.length > 0) {
@@ -966,23 +988,23 @@ export default function MenuPage() {
         }
       })
       .catch(() => {/* ignore network errors */});
-  }, [session, sessionToken]);
+  }, [session, activeSessionToken]);
 
   // Debounce-save cart to server whenever it changes (session only)
   useEffect(() => {
-    if (!session || !sessionToken) return;
+    if (!session || !activeSessionToken) return;
     if (saveCartTimer.current) clearTimeout(saveCartTimer.current);
     saveCartTimer.current = setTimeout(() => {
       fetch(`${BASE}/api/public/cart`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: sessionToken, items: cart, deliveryType: 'dine_in' }),
+        body: JSON.stringify({ token: activeSessionToken, items: cart, deliveryType: 'dine_in' }),
       }).catch(() => {/* silently ignore */});
     }, 600);
     return () => {
       if (saveCartTimer.current) clearTimeout(saveCartTimer.current);
     };
-  }, [cart, session, sessionToken]);
+  }, [cart, session, activeSessionToken]);
 
   // ── Cart operations ────────────────────────────────────────────────────────
 

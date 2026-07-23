@@ -13,6 +13,7 @@ import {
   ticketsTable,
   businessConfigTable,
   discountsTable,
+  tableSessionsTable,
 } from "@workspace/db";
 import { eq, and, sum, gte, sql } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
@@ -426,6 +427,13 @@ router.post("/orders/:id/payments", requireAuth, requireRole(...PAYMENT_ROLES), 
           .update(restaurantTablesTable)
           .set({ status: "pendiente_limpieza" })
           .where(eq(restaurantTablesTable.id, order.tableId));
+        await tx.update(tableSessionsTable).set({
+          status: "closed",
+          closedAt: new Date(),
+        }).where(and(
+          eq(tableSessionsTable.tableId, order.tableId),
+          eq(tableSessionsTable.status, "open"),
+        ));
       }
     }
 

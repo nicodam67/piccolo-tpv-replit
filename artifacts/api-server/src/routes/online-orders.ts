@@ -50,7 +50,6 @@ import {
   couriersTable,
   onlineOrderAuditTable,
   notificationLogTable,
-  kitchenTasksTable,
   productFormatsTable,
   orderItemModifiersTable,
   crmClientsTable,
@@ -412,45 +411,10 @@ router.post("/online-orders/:id/confirm", requireAuth, requireRole("manager", "a
     estimatedReadyAt: readyAt,
   } as any).where(eq(ordersTable.id, id));
 
-  // Create kitchen tasks for each item
-  const items = await db.select({
-    id: orderItemsTable.id,
-    productId: orderItemsTable.productId,
-    productName: productsTable.name,
-    quantity: orderItemsTable.quantity,
-    notes: orderItemsTable.notes,
-    allergyNote: orderItemsTable.allergyNote,
-    hasAllergy: orderItemsTable.hasAllergy,
-    prepZone: productsTable.prepZone,
-  }).from(orderItemsTable)
-    .innerJoin(productsTable, eq(orderItemsTable.productId, productsTable.id))
-    .where(eq(orderItemsTable.orderId, id));
-
-  const deliveryType = (order as any).deliveryType ?? "takeaway";
-  const label = deliveryType === "delivery" ? "🛵 REPARTO" : "🏪 RECOGIDA";
-  const clientName = order.clientName;
   const orderNumber = (order as any).orderNumber ?? id.slice(0, 8);
 
-  for (const item of items) {
-    await db.insert(kitchenTasksTable).values({
-      orderId: id,
-      orderItemId: item.id,
-      prepZone: item.prepZone ?? "cocina",
-      productName: item.productName,
-      quantity: item.quantity,
-      status: "new",
-      notes: `${label} · ${clientName} · ${orderNumber}${item.notes ? ` | ${item.notes}` : ""}`,
-      allergyNote: item.allergyNote ?? "",
-      hasAllergy: item.hasAllergy ?? false,
-    } as any);
-
-    // Mark order item as sent
-    await db.update(orderItemsTable).set({ status: "sent" }).where(eq(orderItemsTable.id, item.id));
-  }
-
-  // Update order to sent_to_kitchen
-  await db.update(ordersTable).set({ status: "sent_to_kitchen" } as any).where(eq(ordersTable.id, id));
-
+  // Keep items as draft. The caller must invoke the canonical /orders/:id/send
+  // path, which atomically creates KDS tasks, decrements stock and audits.
   await auditOnlineOrder(id, "confirmed", req.user?.id, req.user?.name, { readyAt });
   const notificationStatus = await simulateNotification(id, "order_confirmed", (order as any).clientPhone ?? "", {
     orderNumber,
@@ -458,10 +422,15 @@ router.post("/online-orders/:id/confirm", requireAuth, requireRole("manager", "a
     message: `Tu pedido ${orderNumber} ha sido confirmado. Estará listo aproximadamente a las ${readyAt.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}.`,
   });
 
-  try { emitToFunction("kds", "kds:refresh"); } catch { /* ignore */ }
   emitOnlineOrdersRefresh({ orderId: id });
 
-  res.json({ ok: true, status: "sent_to_kitchen", estimatedReadyAt: readyAt.toISOString(), notificationStatus });
+  res.json({
+    ok: true,
+    status: "confirmed",
+    estimatedReadyAt: readyAt.toISOString(),
+    notificationStatus,
+    requiresKitchenSend: true,
+  });
 });
 
 // ── STAFF: POST /api/online-orders/:id/reject ─────────────────────────────────

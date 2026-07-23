@@ -21,6 +21,7 @@ import {
   ticketsTable,
   businessConfigTable,
   discountsTable,
+  tableSessionsTable,
 } from "@workspace/db";
 import { eq, and, sum, sql } from "drizzle-orm";
 import { calcMultiRateBreakdown } from "./tax";
@@ -147,6 +148,13 @@ export async function settleOrderIfFullyPaid({
         .update(restaurantTablesTable)
         .set({ status: "pendiente_limpieza" })
         .where(eq(restaurantTablesTable.id, order.tableId));
+      await tx.update(tableSessionsTable).set({
+        status: "closed",
+        closedAt: new Date(),
+      }).where(and(
+        eq(tableSessionsTable.tableId, order.tableId),
+        eq(tableSessionsTable.status, "open"),
+      ));
     }
 
     return { settled: true, ticket, remaining: 0 };

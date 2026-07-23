@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { restaurantTablesTable, roomZonesTable, ordersTable, tableEventsTable, alertConfigTable, reservationsTable, auditLogTable } from "@workspace/db";
+import { restaurantTablesTable, roomZonesTable, ordersTable, tableEventsTable, alertConfigTable, reservationsTable, auditLogTable, tableSessionsTable } from "@workspace/db";
 import { sql, eq, and, asc, inArray } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { checkPermission } from "./role-permissions";
@@ -492,6 +492,10 @@ router.post("/tables/:tableId/close", requireAuth, async (req, res): Promise<voi
         action: "force_close_unpaid",
         details: reason.trim(),
       });
+      await tx.update(tableSessionsTable).set({
+        status: "closed",
+        closedAt: new Date(),
+      }).where(and(eq(tableSessionsTable.tableId, tableId), eq(tableSessionsTable.status, "open")));
       return updated;
     });
     void addTableEvent({
@@ -539,6 +543,10 @@ router.post("/tables/:tableId/clean", requireAuth, async (req, res): Promise<voi
     .returning();
 
   if (!table) { res.status(409).json({ error: "La mesa no está pendiente de limpieza" }); return; }
+  await db.update(tableSessionsTable).set({
+    status: "closed",
+    closedAt: new Date(),
+  }).where(and(eq(tableSessionsTable.tableId, tableId), eq(tableSessionsTable.status, "open")));
 
   void addTableEvent({
     tableId,
