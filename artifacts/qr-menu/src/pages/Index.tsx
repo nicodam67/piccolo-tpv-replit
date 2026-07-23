@@ -1,6 +1,6 @@
-import { useQuery, useMutation } from "convex/react";
+import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api.js";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { motion } from "motion/react";
 import { ChevronRight, Clock, Phone } from "lucide-react";
 import { ALLERGENS } from "@/lib/allergens.ts";
@@ -24,14 +24,10 @@ export default function Index() {
   // ── Convex data ───────────────────────────────────────────────────────────
   const categories = useQuery(api.menu.listCategories, {});
   const branding   = useQuery(api.branding.get, {});
-  const seed       = useMutation(api.seed.publicSeedIfEmpty);
 
   // Apply branding theme (fonts + colors) from Convex
   useThemeColors(branding?.themeColors ? { ...branding.themeColors } : null);
   useThemeFonts(branding?.themeFonts ?? null);
-
-  // Seed demo data only when the DB is empty
-  useEffect(() => { seed({ secret: "init" }).catch(() => {}); }, [seed]);
 
   // ── Derived branding values (with safe fallbacks) ─────────────────────────
   const restaurantName  = branding?.restaurantName  ?? "Piccolo La Ràpita";
@@ -69,6 +65,20 @@ export default function Index() {
     if (activeTag)      params.set("tag",      activeTag);
     const qs = params.toString();
     navigate(`/${locale}/categoria/${catId}${qs ? `?${qs}` : ""}`);
+  }
+
+  if (categories !== undefined && (!branding || sortedCategories.length === 0)) {
+    return (
+      <main style={{
+        minHeight: "100vh", display: "grid", placeItems: "center",
+        padding: "2rem", textAlign: "center", background: "#f8f7f4", color: "#292524",
+      }}>
+        <div>
+          <h1 style={{ fontSize: "1.75rem", marginBottom: "0.75rem" }}>Carta no disponible</h1>
+          <p>La configuración del establecimiento está incompleta.</p>
+        </div>
+      </main>
+    );
   }
 
   // ── Shared pill style helpers ─────────────────────────────────────────────

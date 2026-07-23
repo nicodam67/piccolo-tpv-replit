@@ -24,7 +24,6 @@ import {
   couriersTable,
   onlineOrderAuditTable,
   onlineOrdersConfigTable,
-  kitchenTasksTable,
   crmClientsTable,
   productFormatsTable,
   orderItemModifiersTable,
@@ -33,11 +32,16 @@ import {
   modifierGroupsTable,
   deliveryOrderStatusHistoryTable,
   courierSettlementsTable,
+  idempotencyKeysTable,
+  stockMovementsTable,
+  ingredientsTable,
+  kitchenTasksTable,
 } from "@workspace/db";
 import { eq, and, inArray, desc, asc, gte, lte, count, avg, sum, sql, or, isNotNull } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { emitToFunction } from "../lib/socket-events";
 import { calcMultiRateBreakdown } from "../lib/tax";
+import { idempotency } from "../middlewares/idempotency";
 
 const router: IRouter = Router();
 
@@ -114,7 +118,7 @@ function findDeliveryZone(
 // ── POST /api/delivery-orders ─────────────────────────────────────────────────
 // Create a manual delivery or pickup order from the TPV (phone orders, counter)
 
-router.post("/delivery-orders", requireAuth, async (req: any, res): Promise<void> => {
+router.post("/delivery-orders", requireAuth, idempotency, async (req: any, res): Promise<void> => {
   const {
     deliveryType = "takeaway",  // "takeaway" | "delivery"
     channel = "phone",           // "phone" | "counter" | "tpv"
@@ -148,6 +152,15 @@ router.post("/delivery-orders", requireAuth, async (req: any, res): Promise<void
   if (!clientName?.trim()) { res.status(400).json({ error: "El nombre del cliente es obligatorio." }); return; }
   if (!Array.isArray(items) || items.length === 0) { res.status(400).json({ error: "El pedido debe contener al menos un producto." }); return; }
   if (!["takeaway", "delivery"].includes(deliveryType)) { res.status(400).json({ error: "Tipo de pedido no válido." }); return; }
+  const requestKey = req.headers["idempotency-key"] as string | undefined;
+  if (!requestKey || requestKey.length < 8) {
+    res.status(400).json({ error: "Idempotency-Key es obligatoria." });
+    return;
+  }
+  if (items.some((item) => !Number.isInteger(item.quantity) || item.quantity < 1 || item.quantity > 99)) {
+    res.status(400).json({ error: "Cantidad no válida." });
+    return;
+  }
 
   // ── Load delivery config ──────────────────────────────────────────────────
   const [cfg] = await db.select().from(onlineOrdersConfigTable).limit(1);
@@ -217,95 +230,107 @@ router.post("/delivery-orders", requireAuth, async (req: any, res): Promise<void
   const { total } = calcMultiRateBreakdown(subtotalLines, 0);
   const totalWithDelivery = (parseFloat(total) + effectiveDeliveryFee - discountAmount).toFixed(2);
 
-  // ── CRM: find or create client ────────────────────────────────────────────
-  let crmClientId: string | null = null;
-  if (clientPhone.trim()) {
-    try {
-      const [existing] = await db.select().from(crmClientsTable)
-        .where(eq(crmClientsTable.telefono, clientPhone.trim())).limit(1);
-      if (existing) {
-        crmClientId = existing.id;
-      } else {
-        const [newClient] = await db.insert(crmClientsTable).values({
-          nombre: clientName.trim(), apellidos: "", telefono: clientPhone.trim(),
-        }).returning();
-        crmClientId = newClient.id;
-      }
-    } catch { /* non-fatal */ }
-  }
-
-  // ── Save delivery address ─────────────────────────────────────────────────
-  let deliveryAddressId: string | null = null;
-  if (deliveryType === "delivery" && deliveryAddress) {
-    const [addr] = await db.insert(deliveryAddressesTable).values({
-      clientId: crmClientId, name: clientName.trim(), phone: clientPhone.trim(),
-      street: deliveryAddress.street, number: deliveryAddress.number,
-      floor: deliveryAddress.floor ?? "", postalCode: deliveryAddress.postalCode,
-      city: deliveryAddress.city, notes: deliveryAddress.notes ?? "",
-    }).returning();
-    deliveryAddressId = addr.id;
-  }
-
-  // ── Create order ──────────────────────────────────────────────────────────
   const estimatedReadyAt = new Date(Date.now() + (cfg?.prepTimeMinutes ?? 30) * 60 * 1000 + (matchedZone?.estimatedMinutes ?? 0) * 60 * 1000);
   const orderNumber = generateOrderNumber(channel);
+  const result = await db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${"delivery-create:" + requestKey}))`);
+    const [cached] = await tx.select({ response: idempotencyKeysTable.response })
+      .from(idempotencyKeysTable)
+      .where(eq(idempotencyKeysTable.cacheKey, `${req.user!.id}:${requestKey}`))
+      .limit(1);
+    if (cached?.response) return cached.response as Record<string, unknown>;
 
-  const [order] = await db.insert(ordersTable).values({
-    channel: channel as any,
-    deliveryType: deliveryType as any,
-    orderType: deliveryType,
-    status: "confirmed",  // Manual TPV orders go straight to confirmed
-    clientName: clientName.trim(),
-    clientId: crmClientId,
-    clientPhone: clientPhone.trim(),
-    deliveryAddressId,
-    deliveryFee: effectiveDeliveryFee.toFixed(2),
-    estimatedReadyAt,
-    scheduledAt: scheduledAt ? new Date(scheduledAt) : null,
-    orderNumber,
-    notes,
-    courierId: courierId || null,
-    onlinePaymentStatus: paymentMethod === "online" ? "pending" : "none",
-    employeeId: (req as any).employee?.id ?? null,
-  }).returning();
-
-  // ── Insert order items ────────────────────────────────────────────────────
-  const displayName = `${deliveryType === "delivery" ? "🛵" : "🏪"} ${clientName.trim()}`;
-  for (const item of resolvedItems) {
-    const [oi] = await db.insert(orderItemsTable).values({
-      orderId: order.id, productId: item.productId,
-      quantity: item.quantity, unitPrice: item.unitPrice, taxRate: item.taxRate,
-      notes: item.notes, formatId: item.formatId ?? undefined, formatName: item.formatName ?? undefined,
-      isInvitation: false,
+    let crmClientId: string | null = null;
+    if (clientPhone.trim()) {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${"crm-phone:" + clientPhone.trim()}))`);
+      const [existing] = await tx.select().from(crmClientsTable)
+        .where(eq(crmClientsTable.telefono, clientPhone.trim())).limit(1);
+      if (existing) crmClientId = existing.id;
+      else {
+        const [created] = await tx.insert(crmClientsTable).values({
+          nombre: clientName.trim(), apellidos: "", telefono: clientPhone.trim(),
+        }).returning();
+        crmClientId = created.id;
+      }
+    }
+    let deliveryAddressId: string | null = null;
+    if (deliveryType === "delivery" && deliveryAddress) {
+      const [address] = await tx.insert(deliveryAddressesTable).values({
+        clientId: crmClientId, name: clientName.trim(), phone: clientPhone.trim(),
+        street: deliveryAddress.street, number: deliveryAddress.number,
+        floor: deliveryAddress.floor ?? "", postalCode: deliveryAddress.postalCode,
+        city: deliveryAddress.city, notes: deliveryAddress.notes ?? "",
+      }).returning();
+      deliveryAddressId = address.id;
+    }
+    const [order] = await tx.insert(ordersTable).values({
+      channel: channel as any,
+      deliveryType: deliveryType as any,
+      orderType: deliveryType,
+      status: "confirmed",
+      clientName: clientName.trim(),
+      clientId: crmClientId,
+      clientPhone: clientPhone.trim(),
+      deliveryAddressId,
+      deliveryFee: effectiveDeliveryFee.toFixed(2),
+      estimatedReadyAt,
+      scheduledAt: scheduledAt ? new Date(scheduledAt) : null,
+      orderNumber,
+      notes,
+      courierId: courierId || null,
+      onlinePaymentStatus: paymentMethod === "online" ? "pending" : "none",
+      employeeId: req.user?.id ?? null,
     }).returning();
-    if (item.modifiers.length) {
-      await db.insert(orderItemModifiersTable).values(
-        item.modifiers.map((m) => ({ orderItemId: oi.id, modifierName: m.modifierName, priceDelta: m.priceDelta }))
-      );
+    for (const item of resolvedItems) {
+      const [orderItem] = await tx.insert(orderItemsTable).values({
+        orderId: order.id, productId: item.productId, quantity: item.quantity,
+        unitPrice: item.unitPrice, taxRate: item.taxRate, notes: item.notes,
+        formatId: item.formatId ?? undefined, formatName: item.formatName ?? undefined,
+        isInvitation: false,
+      }).returning();
+      if (item.modifiers.length) {
+        await tx.insert(orderItemModifiersTable).values(item.modifiers.map((modifier) => ({
+          orderItemId: orderItem.id,
+          modifierName: modifier.modifierName,
+          priceDelta: modifier.priceDelta,
+        })));
+      }
     }
-
-    // ── Send to KDS ─────────────────────────────────────────────────────────
-    if (!scheduledAt) {
-      await db.insert(kitchenTasksTable).values({
-        orderId: order.id, orderItemId: oi.id, productName: item.productName,
-        quantity: item.quantity, notes: item.notes, status: "new",
-        prepZone: "cocina",
-      } as any).catch(() => {});
-    }
-  }
-
-  // ── Audit + status history ────────────────────────────────────────────────
-  await auditOrder(order.id, "created_manual", (req as any).employee?.id, (req as any).employee?.name, { channel, deliveryType });
-  await recordStatusHistory(order.id, null, "confirmed", (req as any).employee?.id, (req as any).employee?.name ?? "TPV");
+    await tx.insert(onlineOrderAuditTable).values({
+      orderId: order.id,
+      event: "created_manual",
+      userId: req.user?.id ?? null,
+      userName: req.user?.name ?? "",
+      metadata: { channel, deliveryType, requiresKitchenSend: true },
+    });
+    await tx.insert(deliveryOrderStatusHistoryTable).values({
+      orderId: order.id,
+      fromStatus: null,
+      toStatus: "confirmed",
+      changedBy: req.user?.id ?? null,
+      changedByName: req.user?.name ?? "TPV",
+    } as any);
+    const response = {
+      id: order.id, orderNumber, status: "confirmed",
+      total: totalWithDelivery, estimatedReadyAt,
+      matchedZone: matchedZone?.name ?? null,
+      deliveryFee: effectiveDeliveryFee,
+      requiresKitchenSend: true,
+    };
+    await tx.insert(idempotencyKeysTable).values({
+      cacheKey: `${req.user!.id}:${requestKey}`,
+      userId: req.user!.id,
+      statusCode: 201,
+      response,
+      expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+    }).onConflictDoNothing();
+    return response;
+  });
 
   // ── WebSocket refresh ─────────────────────────────────────────────────────
   try { emitToFunction("floor", "online-orders:refresh", {}); } catch { /* ignore */ }
 
-  res.status(201).json({
-    id: order.id, orderNumber, status: "confirmed",
-    total: totalWithDelivery, estimatedReadyAt, matchedZone: matchedZone?.name ?? null,
-    deliveryFee: effectiveDeliveryFee,
-  });
+  res.status(201).json(result);
 });
 
 // ── GET /api/delivery-orders — list with filters ──────────────────────────────
@@ -448,50 +473,108 @@ router.patch("/delivery-orders/:id", requireAuth, async (req: any, res): Promise
   if (estimatedReadyAt) updates.estimatedReadyAt = new Date(estimatedReadyAt);
   if (notes !== undefined) updates.notes = notes;
 
-  await db.update(ordersTable).set(updates).where(eq(ordersTable.id, id));
-
-  if (status && status !== current.status) {
-    await recordStatusHistory(id, current.status, status, req.employee?.id, req.employee?.name ?? "TPV", "tpv", note ?? "");
-    await auditOrder(id, `status_changed:${status}`, req.employee?.id, req.employee?.name, { from: current.status, to: status });
-  }
-
-  // Resolve the effective courier: prefer body param, fall back to order's existing courier
-  const effectiveCourierId: string | null = courierId ?? (current as any).existingCourierId ?? null;
-
-  // ── Courier side-effects (only on status transition, after guard above) ───────
-  if (status === "in_delivery" && effectiveCourierId) {
-    await db.update(couriersTable)
-      .set({ status: "busy" } as any)
-      .where(eq(couriersTable.id, effectiveCourierId));
-  }
-  if (status === "delivered" && effectiveCourierId) {
-    await db.update(couriersTable)
-      .set({ status: "available" } as any)
-      .where(eq(couriersTable.id, effectiveCourierId));
-    // Increment total_deliveries counter
-    await db.execute(sql`UPDATE couriers SET total_deliveries = total_deliveries + 1 WHERE id = ${effectiveCourierId}`);
-    // Accumulate cash pending for unpaid orders
-    if ((current as any).onlinePaymentStatus !== "paid") {
-      await db.execute(sql`
-        UPDATE couriers
-        SET earned_cash_pending = COALESCE(earned_cash_pending, 0) + (
-          SELECT COALESCE(SUM(unit_price::numeric * quantity), 0)
-                 + COALESCE(${(current as any).deliveryFee ?? "0"}::numeric, 0)
-          FROM order_items WHERE order_id = ${id}
-        )
-        WHERE id = ${effectiveCourierId}
-      `);
+  const transition = await db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${"delivery-status:" + id}))`);
+    const [locked] = await tx.select({
+      status: ordersTable.status,
+      existingCourierId: (ordersTable as any).courierId,
+      onlinePaymentStatus: (ordersTable as any).onlinePaymentStatus,
+      deliveryFee: (ordersTable as any).deliveryFee,
+    }).from(ordersTable).where(eq(ordersTable.id, id)).for("update");
+    if (!locked) return { error: "Pedido no encontrado", code: 404 };
+    if (status) {
+      const allowed = STATUS_TRANSITIONS[status];
+      if (locked.status === status) return { idempotent: true, courierId: (locked as any).existingCourierId };
+      if (allowed !== undefined && !allowed.includes(locked.status)) {
+        return { error: `Transición no permitida: ${locked.status} → ${status}`, code: 409 };
+      }
     }
+    await tx.update(ordersTable).set(updates).where(eq(ordersTable.id, id));
+    const effectiveCourierId: string | null = courierId ?? (locked as any).existingCourierId ?? null;
+    if (status && status !== locked.status) {
+      await tx.insert(deliveryOrderStatusHistoryTable).values({
+        orderId: id, fromStatus: locked.status, toStatus: status,
+        changedBy: req.user?.id ?? null, changedByName: req.user?.name ?? "TPV",
+        source: "tpv", note: note ?? "",
+      } as any);
+      await tx.insert(onlineOrderAuditTable).values({
+        orderId: id, event: `status_changed:${status}`,
+        userId: req.user?.id ?? null, userName: req.user?.name ?? "",
+        metadata: { from: locked.status, to: status },
+      });
+    }
+    if (status === "in_delivery" && effectiveCourierId) {
+      await tx.update(couriersTable).set({ status: "busy" } as any).where(eq(couriersTable.id, effectiveCourierId));
+    }
+    if (status === "delivered" && effectiveCourierId) {
+      await tx.update(couriersTable).set({ status: "available" } as any).where(eq(couriersTable.id, effectiveCourierId));
+      await tx.execute(sql`UPDATE couriers SET total_deliveries = total_deliveries + 1 WHERE id = ${effectiveCourierId}`);
+      if ((locked as any).onlinePaymentStatus !== "paid") {
+        await tx.execute(sql`
+          UPDATE couriers SET earned_cash_pending = COALESCE(earned_cash_pending, 0) + (
+            SELECT COALESCE(SUM(unit_price::numeric * quantity), 0)
+              + COALESCE(${(locked as any).deliveryFee ?? "0"}::numeric, 0)
+            FROM order_items WHERE order_id = ${id}
+          ) WHERE id = ${effectiveCourierId}
+        `);
+      }
+    }
+    if (["cancelled", "rejected", "incident"].includes(status ?? "") && effectiveCourierId) {
+      await tx.update(couriersTable).set({ status: "available" } as any).where(eq(couriersTable.id, effectiveCourierId));
+    }
+    if (status === "cancelled" || status === "rejected") {
+      const sales = await tx.select({
+        id: stockMovementsTable.id,
+        orderItemId: stockMovementsTable.orderItemId,
+        ingredientId: stockMovementsTable.ingredientId,
+        quantity: stockMovementsTable.quantity,
+        unitCost: stockMovementsTable.unitCost,
+      }).from(stockMovementsTable)
+        .innerJoin(orderItemsTable, eq(stockMovementsTable.orderItemId, orderItemsTable.id))
+        .where(and(
+          eq(orderItemsTable.orderId, id),
+          eq(stockMovementsTable.movementType, "sale"),
+        ));
+      for (const sale of sales) {
+        if (!sale.orderItemId) continue;
+        const [reversed] = await tx.select({ id: stockMovementsTable.id }).from(stockMovementsTable)
+          .where(and(
+            eq(stockMovementsTable.orderItemId, sale.orderItemId),
+            eq(stockMovementsTable.ingredientId, sale.ingredientId),
+            eq(stockMovementsTable.movementType, "sale_reversal"),
+          )).limit(1);
+        if (reversed) continue;
+        const qty = Math.abs(parseFloat(sale.quantity));
+        await tx.update(ingredientsTable).set({
+          currentStock: sql`(${ingredientsTable.currentStock})::numeric + ${qty}::numeric`,
+          updatedAt: new Date(),
+        }).where(eq(ingredientsTable.id, sale.ingredientId));
+        await tx.insert(stockMovementsTable).values({
+          ingredientId: sale.ingredientId,
+          orderItemId: sale.orderItemId,
+          movementType: "sale_reversal",
+          quantity: String(qty),
+          unitCost: sale.unitCost,
+          reason: `Cancelación delivery ${id}`,
+          employeeId: req.user?.id ?? null,
+        });
+      }
+      await tx.update(kitchenTasksTable).set({ status: "cancelled" })
+        .where(eq(kitchenTasksTable.orderId, id));
+    }
+    return { courierId: effectiveCourierId };
+  });
+  if ("error" in transition) {
+    res.status(transition.code ?? 409).json({ error: transition.error });
+    return;
   }
-  // If order is cancelled or incident/rejected, free the courier if they were busy
-  if ((status === "cancelled" || status === "rejected" || status === "incident") && effectiveCourierId) {
-    await db.update(couriersTable)
-      .set({ status: "available" } as any)
-      .where(eq(couriersTable.id, effectiveCourierId));
+  if (transition.idempotent) {
+    res.json({ success: true, courierId: transition.courierId, idempotent: true });
+    return;
   }
 
   try { emitToFunction("floor", "online-orders:refresh", { orderId: id }); } catch { /* ignore */ }
-  res.json({ success: true, courierId: effectiveCourierId });
+  res.json({ success: true, courierId: transition.courierId });
 });
 
 // ── GET /api/admin/couriers/:id/summary ──────────────────────────────────────

@@ -97,6 +97,10 @@ router.patch("/admin/ingredients/:id", requireAuth, requireRole("admin"), async 
 
   const [existing] = await db.select().from(ingredientsTable).where(eq(ingredientsTable.id, id));
   if (!existing) { res.status(404).json({ error: "Ingrediente no encontrado" }); return; }
+  if (currentStock !== undefined) {
+    res.status(400).json({ error: "Use los endpoints de movimiento o inventario para cambiar stock" });
+    return;
+  }
 
   const updates: Record<string, unknown> = {};
   if (name != null) updates.name = (name as string).trim();
@@ -116,26 +120,6 @@ router.patch("/admin/ingredients/:id", requireAuth, requireRole("admin"), async 
   if (categoryId !== undefined) updates.categoryId = categoryId ?? null;
   if (locationId !== undefined) updates.locationId = locationId ?? null;
   updates.updatedAt = new Date();
-
-  // If currentStock is being set directly (inventory adjustment)
-  if (currentStock !== undefined) {
-    const prev = parseFloat(String(existing.currentStock));
-    const next = parseFloat(String(currentStock));
-    const diff = next - prev;
-    updates.currentStock = String(next);
-
-    if (diff !== 0) {
-      const user = (req as any).user;
-      await db.insert(stockMovementsTable).values({
-        ingredientId: id,
-        movementType: "adjustment",
-        quantity: String(diff),
-        unitCost: String(purchaseCost ?? existing.purchaseCost),
-        reason: "Ajuste de inventario",
-        employeeId: user?.id ?? null,
-      });
-    }
-  }
 
   if (!Object.keys(updates).length) { res.status(400).json({ error: "Sin cambios" }); return; }
   const [updated] = await db.update(ingredientsTable).set(updates as any).where(eq(ingredientsTable.id, id)).returning();
@@ -185,18 +169,20 @@ router.post("/admin/ingredients/:id/stock-in", requireAuth, requireRole("admin")
 
   const user = (req as any).user;
   const inQty = parseFloat(String(quantity));
-  const prevStock = parseFloat(String(ingredient.currentStock));
-  const newStock = prevStock + inQty;
-  const costToUse = unitCost ? parseFloat(String(unitCost)) : parseFloat(String(ingredient.purchaseCost));
-  const prevCost = ingredient.purchaseCost;
-
-  // Weighted average cost: (prev_stock * prev_avg + in_qty * in_cost) / new_stock
-  const prevAvg = parseFloat(String(ingredient.averageCost ?? ingredient.purchaseCost ?? "0"));
-  const newAvg = newStock > 0
-    ? (prevStock * prevAvg + inQty * costToUse) / newStock
-    : costToUse;
 
   await db.transaction(async (tx) => {
+    const [locked] = await tx.select().from(ingredientsTable)
+      .where(eq(ingredientsTable.id, id))
+      .for("update");
+    if (!locked) throw new Error("Ingrediente no encontrado");
+    const prevStock = parseFloat(String(locked.currentStock));
+    const newStock = prevStock + inQty;
+    const costToUse = unitCost ? parseFloat(String(unitCost)) : parseFloat(String(locked.purchaseCost));
+    const prevCost = locked.purchaseCost;
+    const prevAvg = parseFloat(String(locked.averageCost ?? locked.purchaseCost ?? "0"));
+    const newAvg = newStock > 0
+      ? (prevStock * prevAvg + inQty * costToUse) / newStock
+      : costToUse;
     await tx.update(ingredientsTable)
       .set({
         currentStock: String(newStock),
@@ -222,7 +208,7 @@ router.post("/admin/ingredients/:id/stock-in", requireAuth, requireRole("admin")
         ingredientId: id,
         previousCost: prevCost,
         newCost: String(costToUse),
-        supplierName: ingredient.supplierName ?? null,
+        supplierName: locked.supplierName ?? null,
         reason: `Stock-in: ${reason}`,
         employeeId: user?.id ?? null,
       });
@@ -302,11 +288,15 @@ router.post("/admin/stock/movements", requireAuth, requireRole("admin"), async (
 
   const user = (req as any).user;
   const qty = parseFloat(String(quantity));
-  const newStock = parseFloat(String(ingredient.currentStock)) + qty;
-
   await db.transaction(async (tx) => {
+    await tx.select({ id: ingredientsTable.id }).from(ingredientsTable)
+      .where(eq(ingredientsTable.id, ingredientId))
+      .for("update");
     await tx.update(ingredientsTable)
-      .set({ currentStock: String(Math.max(0, newStock)), updatedAt: new Date() })
+      .set({
+        currentStock: sql`GREATEST(0, (${ingredientsTable.currentStock})::numeric + ${qty}::numeric)`,
+        updatedAt: new Date(),
+      })
       .where(eq(ingredientsTable.id, ingredientId));
     await tx.insert(stockMovementsTable).values({
       ingredientId,
@@ -335,7 +325,9 @@ router.post("/admin/stock/inventory-count", requireAuth, requireRole("admin"), a
 
   await db.transaction(async (tx) => {
     for (const line of lines) {
-      const [ing] = await tx.select().from(ingredientsTable).where(eq(ingredientsTable.id, line.ingredientId));
+      const [ing] = await tx.select().from(ingredientsTable)
+        .where(eq(ingredientsTable.id, line.ingredientId))
+        .for("update");
       if (!ing) continue;
       const before = parseFloat(String(ing.currentStock));
       const after = parseFloat(String(line.actualQty));

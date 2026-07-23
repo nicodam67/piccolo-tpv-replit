@@ -5,15 +5,18 @@ import {
   useGetOrderPaymentSummary,
   useGetBusinessConfig,
   useGetDocumentTemplates,
-  useCreatePrefacturaPrint,
-  useGetPrefacturaStatus,
   getGetOrderPaymentSummaryQueryKey,
   getGetBusinessConfigQueryKey,
   getGetDocumentTemplatesQueryKey,
-  getGetPrefacturaStatusQueryKey,
 } from '@workspace/api-client-react';
+import {
+  useCreatePrefacturaPrint,
+  useGetPrefacturaStatus,
+  getGetPrefacturaStatusQueryKey,
+  type PrefacturaPrintResult,
+} from '@workspace/api-client-react/phase1';
 import { Loader2, ChevronLeft, Printer, CreditCard, RefreshCw, AlertTriangle } from 'lucide-react';
-import type { TaxBreakdownItem, PrefacturaPrintResult } from '@workspace/api-client-react';
+import type { TaxBreakdownItem } from '@workspace/api-client-react';
 import { toast } from 'sonner';
 
 // Helper: parse employee id from localStorage

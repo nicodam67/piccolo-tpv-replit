@@ -213,7 +213,6 @@ router.patch("/kitchen-tasks/:taskId/status", requireAuth, requireRole("admin", 
     });
     return;
   }
-
   const now = new Date();
   const updateData: Record<string, unknown> = { status, updatedAt: now };
   if (status === "ready")     updateData.readyAt     = now;
@@ -241,7 +240,7 @@ router.patch("/kitchen-tasks/:taskId/status", requireAuth, requireRole("admin", 
       .from(kitchenTasksTable)
       .where(eq(kitchenTasksTable.orderId, task.orderId));
 
-    const allReady = allTasks.every(t => ["ready", "collected", "served"].includes(t.status));
+    const allReady = allTasks.every(t => ["ready", "collected", "served", "cancelled"].includes(t.status));
 
     if (allReady) {
       await db.update(ordersTable).set({ status: "ready" }).where(eq(ordersTable.id, task.orderId));
@@ -293,6 +292,13 @@ router.post("/kitchen-tasks/:taskId/resend", requireAuth, requireRole("admin", "
 
   if (!existing) {
     res.status(404).json({ error: "Tarea no encontrada" });
+    return;
+  }
+  const [order] = await db.select({ status: ordersTable.status }).from(ordersTable)
+    .where(eq(ordersTable.id, existing.orderId))
+    .limit(1);
+  if (!order || ["paid", "completed", "bill_requested"].includes(order.status)) {
+    res.status(409).json({ error: "No se puede reenviar una tarea de un pedido cerrado o en cobro" });
     return;
   }
 
