@@ -46,6 +46,7 @@ const mockDb = vi.hoisted(() => ({
   update: vi.fn(),
   delete: vi.fn(),
   transaction: vi.fn(),
+  execute: vi.fn(),
 }));
 
 vi.mock("@workspace/db", async (importOriginal) => {
@@ -136,6 +137,7 @@ beforeEach(() => {
   mockDb.insert.mockReturnValue(makeChain([]));
   mockDb.update.mockReturnValue(makeChain([]));
   mockDb.delete.mockReturnValue(makeChain([]));
+  mockDb.execute.mockResolvedValue({ rows: [] });
   mockDb.transaction.mockImplementation(async (fn: (tx: typeof mockDb) => Promise<unknown>) =>
     fn(mockDb)
   );
@@ -164,10 +166,17 @@ function mockOpenOrderFlow(override: { paymentRow?: object } = {}) {
   });
 
   mockDb.transaction.mockImplementation(async (fn: (tx: typeof mockDb) => Promise<unknown>) => {
+    const txSelectResults = [
+      [{ unitPrice: "20.00", quantity: 1, taxRate: 10 }],
+      [{ total: "0" }],
+      [{ paid: "0" }],
+      [{ nif: "B12345678", razonSocial: "Piccolo SL", direccionFiscal: "Calle Mayor 1" }],
+      [{ name: "Tarjeta" }],
+    ];
     const txMock = {
       ...mockDb,
       insert: vi.fn().mockReturnValue(makeChain([override.paymentRow ?? COMPLETED_PAYMENT])),
-      select: vi.fn().mockReturnValue(makeChain([TICKET])),
+      select: vi.fn(() => makeChain(txSelectResults.shift() ?? [])),
       update: vi.fn().mockReturnValue(makeChain([])),
     };
     return fn(txMock as unknown as typeof mockDb);
@@ -225,10 +234,15 @@ describe("POST /api/orders/:id/payments", () => {
         return makeChain([]);
       });
       mockDb.transaction.mockImplementationOnce(async (fn: (tx: typeof mockDb) => Promise<unknown>) => {
+        const txSelectResults = [
+          [{ unitPrice: "20.00", quantity: 1, taxRate: 10 }],
+          [{ total: "0" }],
+          [{ paid: "0" }],
+        ];
         const txMock = {
           ...mockDb,
           insert: vi.fn().mockReturnValue(makeChain([PARTIAL_PAYMENT_1])),
-          select: vi.fn().mockReturnValue(makeChain([])), // no ticket yet (still 10.00 remaining)
+          select: vi.fn(() => makeChain(txSelectResults.shift() ?? [])),
           update: vi.fn().mockReturnValue(makeChain([])),
         };
         return fn(txMock as unknown as typeof mockDb);
@@ -260,10 +274,17 @@ describe("POST /api/orders/:id/payments", () => {
         return makeChain([]);
       });
       mockDb.transaction.mockImplementationOnce(async (fn: (tx: typeof mockDb) => Promise<unknown>) => {
+        const txSelectResults = [
+          [{ unitPrice: "20.00", quantity: 1, taxRate: 10 }],
+          [{ total: "0" }],
+          [{ paid: "10.00" }],
+          [{ nif: "B12345678", razonSocial: "Piccolo SL", direccionFiscal: "Calle Mayor 1" }],
+          [{ name: "Tarjeta" }],
+        ];
         const txMock = {
           ...mockDb,
           insert: vi.fn().mockReturnValue(makeChain([PARTIAL_PAYMENT_2])),
-          select: vi.fn().mockReturnValue(makeChain([TICKET])), // ticket issued on full payment
+          select: vi.fn(() => makeChain(txSelectResults.shift() ?? [])),
           update: vi.fn().mockReturnValue(makeChain([])),
         };
         return fn(txMock as unknown as typeof mockDb);
@@ -294,6 +315,7 @@ describe("POST /api/orders/:id/payments", () => {
     expect(res.status).toBe(201);
     expect(res.body.payment).toBeTruthy();
     expect(res.body.idempotent).toBeUndefined();
+    expect(mockDb.execute).toHaveBeenCalledTimes(4);
   });
 
   // ── Scenario 4 ──────────────────────────────────────────────────────────────

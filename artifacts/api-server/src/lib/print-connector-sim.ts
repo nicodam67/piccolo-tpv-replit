@@ -29,12 +29,18 @@ export interface PrinterStatusResult {
 }
 
 export interface SendToPrinterArgs {
+  /** Stable queue-job key; the local connector must deduplicate retries. */
+  idempotencyKey: string;
   printerId: string;
   printerIp: string;
   printerPort: number;
   content: string;
   copies: number;
 }
+
+const completedJobs = new Set<string>();
+type SendResult = { ok: boolean; simulated: true; error?: string; duplicate?: boolean };
+const inFlightJobs = new Map<string, Promise<SendResult>>();
 
 // Simulate a random latency between min and max ms
 function randomDelay(min: number, max: number): Promise<void> {
@@ -45,30 +51,40 @@ function randomDelay(min: number, max: number): Promise<void> {
 // failure and recovery scenarios without any real hardware.
 const FAILURE_RATE = 0.12; // 12% chance of failure per send attempt
 
-export async function sendToPrinter(args: SendToPrinterArgs): Promise<{
-  ok: boolean;
-  simulated: true;
-  error?: string;
-}> {
-  // Simulate network round-trip latency (200–800 ms)
-  await randomDelay(200, 800);
-
-  // Simulate random failures
-  if (Math.random() < FAILURE_RATE) {
-    const errors = [
-      "Connection refused",
-      "Printer offline",
-      "Paper out",
-      "Buffer overflow",
-    ];
-    return {
-      ok: false,
-      simulated: true,
-      error: errors[Math.floor(Math.random() * errors.length)],
-    };
+export async function sendToPrinter(args: SendToPrinterArgs): Promise<SendResult> {
+  if (completedJobs.has(args.idempotencyKey)) {
+    return { ok: true, simulated: true, duplicate: true };
+  }
+  const active = inFlightJobs.get(args.idempotencyKey);
+  if (active) {
+    const result = await active;
+    return result.ok ? { ...result, duplicate: true } : result;
   }
 
-  return { ok: true, simulated: true };
+  const operation = (async (): Promise<SendResult> => {
+    await randomDelay(200, 800);
+    if (Math.random() < FAILURE_RATE) {
+      const errors = [
+        "Connection refused",
+        "Printer offline",
+        "Paper out",
+        "Buffer overflow",
+      ];
+      return {
+        ok: false,
+        simulated: true,
+        error: errors[Math.floor(Math.random() * errors.length)],
+      };
+    }
+    completedJobs.add(args.idempotencyKey);
+    return { ok: true, simulated: true };
+  })();
+  inFlightJobs.set(args.idempotencyKey, operation);
+  try {
+    return await operation;
+  } finally {
+    inFlightJobs.delete(args.idempotencyKey);
+  }
 }
 
 export async function getPrinterStatus(printerId: string): Promise<PrinterStatusResult> {

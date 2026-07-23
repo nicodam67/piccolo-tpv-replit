@@ -15,7 +15,7 @@ import {
 import { toast } from 'sonner';
 import {
   useGetOrderPaymentSummary,
-  useAddPayment,
+  addPayment as submitPayment,
   useGetClients,
   useCreateInvoice,
   useCreateClient,
@@ -288,7 +288,10 @@ interface TipModalProps {
 }
 
 function TipModal({ paymentId, onClose, onSaved }: TipModalProps) {
-  const addTip = useAddTip();
+  const tipAttemptId = useRef(crypto.randomUUID());
+  const addTip = useAddTip({
+    request: { headers: { 'Idempotency-Key': tipAttemptId.current } },
+  });
   const [amount, setAmount] = useState('');
   const [method, setMethod] = useState<'cash' | 'card'>('cash');
   const [saving, setSaving] = useState(false);
@@ -301,6 +304,7 @@ function TipModal({ paymentId, onClose, onSaved }: TipModalProps) {
     setSaving(true);
     try {
       await addTip.mutateAsync({ paymentId, data: { amount: fmt(n), method } });
+      tipAttemptId.current = crypto.randomUUID();
       toast.success(`Propina de ${fmt(n)}€ registrada`);
       onSaved();
     } catch {
@@ -789,7 +793,7 @@ interface SplitPayModeProps {
 
 function SplitPayMode({ orderId, groups, terminal, orderTotal, orderPaid, orderRemaining, onDone, onRefresh }: SplitPayModeProps) {
   const qc = useQueryClient();
-  const addPayment   = useAddPayment();
+  const paymentAttemptId = useRef(crypto.randomUUID());
   const markPaid     = useMarkSplitGroupPaid();
   const { data: methods = [] } = useGetPaymentMethods({ query: { queryKey: getGetPaymentMethodsQueryKey() } });
 
@@ -841,15 +845,15 @@ function SplitPayMode({ orderId, groups, terminal, orderTotal, orderPaid, orderR
       for (const m of methods) {
         const a = parseAmt(amounts[m.code] ?? '0');
         if (a <= 0) continue;
-        const res = await new Promise<any>((resolve, reject) => {
-          addPayment.mutate(
-            { orderId, data: { methodCode: m.code as AddPaymentInputMethodCode, amount: fmt(a), terminal } },
-            { onSuccess: resolve, onError: reject }
-          );
-        });
+        const res = await submitPayment(
+          orderId,
+          { methodCode: m.code as AddPaymentInputMethodCode, amount: fmt(a), terminal },
+          { headers: { 'Idempotency-Key': `${paymentAttemptId.current}:${m.code}` } },
+        );
         lastPaymentId = res.payment?.id ?? null;
       }
       await markPaid.mutateAsync({ orderId, groupId: group.id, data: { paymentId: lastPaymentId ?? undefined } });
+      paymentAttemptId.current = crypto.randomUUID();
       qc.invalidateQueries({ queryKey: getGetOrderPaymentSummaryQueryKey(orderId) });
       qc.invalidateQueries({ queryKey: getGetOrderSplitsQueryKey(orderId) });
       toast.success(`${group.label} cobrado`);
@@ -1169,7 +1173,7 @@ export default function Payment() {
   const { data: paymentMethods = [], isLoading: loadingMethods } = useGetPaymentMethods({ query: { queryKey: getGetPaymentMethodsQueryKey() } });
   const { data: splits = [], refetch: refetchSplits } = useGetOrderSplits(orderId!, { query: { enabled: !!orderId, queryKey: getGetOrderSplitsQueryKey(orderId!) } });
 
-  const addPayment = useAddPayment();
+  const paymentAttemptId = useRef(crypto.randomUUID());
 
   // UI state
   const [amounts, setAmounts]             = useState<Record<string, string>>({});
@@ -1219,6 +1223,7 @@ export default function Payment() {
   useEffect(() => {
     if (!orderId) return;
     const socket = connectAuthenticatedSocket();
+    let hasConnected = false;
 
     // After any reconnect, suppress the banner and re-fetch fresh data.
     const handleReconnect = () => {
@@ -1230,7 +1235,10 @@ export default function Payment() {
       }, 500);
       queryClient.invalidateQueries({ queryKey: getGetOrderPaymentSummaryQueryKey(orderId) });
     };
-    socket.on('reconnect', handleReconnect);
+    socket.on('connect', () => {
+      if (hasConnected) handleReconnect();
+      hasConnected = true;
+    });
 
     socket.on('orders:refresh', (data: any) => {
       if (data?.orderId !== orderId) return;
@@ -1328,12 +1336,11 @@ export default function Payment() {
       const amtStr = amounts[m.code] ?? '0';
       if (parseAmt(amtStr) <= 0) continue;
       try {
-        const res = await new Promise<any>((resolve, reject) => {
-          addPayment.mutate(
-            { orderId: orderId!, data: { methodCode: m.code as AddPaymentInputMethodCode, amount: amtStr, terminal: terminal || undefined } },
-            { onSuccess: resolve, onError: reject }
-          );
-        });
+        const res = await submitPayment(
+          orderId!,
+          { methodCode: m.code as AddPaymentInputMethodCode, amount: amtStr, terminal: terminal || undefined },
+          { headers: { 'Idempotency-Key': `${paymentAttemptId.current}:${m.code}` } },
+        );
         lastChange    = parseFloat(res.change ?? '0');
         lastPaymentId = res.payment?.id ?? null;
       } catch (e: any) {
@@ -1341,6 +1348,7 @@ export default function Payment() {
         setSubmitting(false); setShowConfirm(false); return;
       }
     }
+    paymentAttemptId.current = crypto.randomUUID();
     setSubmitting(false); setShowConfirm(false);
     queryClient.invalidateQueries({ queryKey: getGetOrderPaymentSummaryQueryKey(orderId!) });
     if (lastChange > 0) toast.success(`Cobro completo. Cambio: ${fmt(lastChange)}€`);

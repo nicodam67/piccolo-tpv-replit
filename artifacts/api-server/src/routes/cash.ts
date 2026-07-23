@@ -11,6 +11,7 @@ import {
   tipsTable,
   paymentVoidsTable,
   ticketsTable,
+  idempotencyKeysTable,
 } from "@workspace/db";
 import { eq, and, or, desc, sum, sql, inArray, isNull } from "drizzle-orm";
 import type { TaxBreakdownItem } from "../lib/tax";
@@ -51,6 +52,7 @@ router.post(
   "/cash-sessions/open",
   requireAuth,
   requireRole(...CASH_MANAGER_ROLES),
+  idempotency,
   async (req, res): Promise<void> => {
     const employeeId = (req as any).user?.id as string;
     const {
@@ -65,29 +67,47 @@ router.post(
       notes?: string;
     };
 
-    // Enforce unique open session per terminal
-    const [existing] = await db
-      .select()
-      .from(cashSessionsTable)
-      .where(
-        and(
-          eq(cashSessionsTable.status, "open"),
-          eq(cashSessionsTable.terminalName, terminalName),
-        ),
-      )
-      .limit(1);
+    let session;
+    try {
+      session = await db.transaction(async (tx) => {
+        await tx.execute(
+          sql`SELECT pg_advisory_xact_lock(hashtext(${"cash-open:" + terminalName}))`,
+        );
+        const [existing] = await tx
+          .select()
+          .from(cashSessionsTable)
+          .where(
+            and(
+              eq(cashSessionsTable.status, "open"),
+              eq(cashSessionsTable.terminalName, terminalName),
+            ),
+          )
+          .limit(1);
+        if (existing) throw new Error("CASH_SESSION_ALREADY_OPEN");
 
-    if (existing) {
+        const [created] = await tx
+          .insert(cashSessionsTable)
+          .values({ employeeId, openingFloat, terminalName, blindClose, notes: notes ?? null, status: "open" })
+          .returning();
+        const requestKey = req.headers["idempotency-key"];
+        if (typeof requestKey === "string" && req.user?.id) {
+          await tx.insert(idempotencyKeysTable).values({
+            cacheKey: `${req.user.id}:${requestKey}`,
+            userId: req.user.id,
+            statusCode: 201,
+            response: created,
+            expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1_000),
+          }).onConflictDoNothing();
+        }
+        return created;
+      });
+    } catch (error) {
+      if (!(error instanceof Error) || error.message !== "CASH_SESSION_ALREADY_OPEN") throw error;
       res.status(409).json({
         error: `Ya hay una sesión abierta en "${terminalName}". Ciérrala primero.`,
       });
       return;
     }
-
-    const [session] = await db
-      .insert(cashSessionsTable)
-      .values({ employeeId, openingFloat, terminalName, blindClose, notes: notes ?? null, status: "open" })
-      .returning();
 
     await logDocumentAction({
       action: "open_cash_session",
@@ -137,6 +157,7 @@ router.post(
   "/cash-sessions/:id/movements",
   requireAuth,
   requireRole(...CASH_MANAGER_ROLES),
+  idempotency,
   async (req, res): Promise<void> => {
     const id = req.params.id as string;
     const employeeId = (req as any).user?.id as string;
@@ -156,20 +177,38 @@ router.post(
       return;
     }
 
-    const [session] = await db
-      .select()
-      .from(cashSessionsTable)
-      .where(and(eq(cashSessionsTable.id, id), eq(cashSessionsTable.status, "open")));
+    const result = await db.transaction(async (tx) => {
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock(hashtext(${"cash-session:" + id}))`,
+      );
+      const [session] = await tx
+        .select()
+        .from(cashSessionsTable)
+        .where(and(eq(cashSessionsTable.id, id), eq(cashSessionsTable.status, "open")))
+        .for("update");
+      if (!session) return null;
+      const [movement] = await tx
+        .insert(cashMovementsTable)
+        .values({ cashSessionId: id, movementType, amount, reason: reason.trim(), employeeId })
+        .returning();
+      const requestKey = req.headers["idempotency-key"];
+      if (typeof requestKey === "string" && req.user?.id) {
+        await tx.insert(idempotencyKeysTable).values({
+          cacheKey: `${req.user.id}:${requestKey}`,
+          userId: req.user.id,
+          statusCode: 201,
+          response: movement,
+          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1_000),
+        }).onConflictDoNothing();
+      }
+      return { session, movement };
+    });
 
-    if (!session) {
+    if (!result) {
       res.status(404).json({ error: "Sesión de caja no encontrada o cerrada" });
       return;
     }
-
-    const [movement] = await db
-      .insert(cashMovementsTable)
-      .values({ cashSessionId: id, movementType, amount, reason: reason.trim(), employeeId })
-      .returning();
+    const { session, movement } = result;
 
     await logDocumentAction({
       action: "cash_movement",
@@ -207,79 +246,103 @@ router.post(
       return;
     }
 
-    const [session] = await db
-      .select()
-      .from(cashSessionsTable)
-      .where(and(eq(cashSessionsTable.id, id), eq(cashSessionsTable.status, "open")));
+    let result;
+    try {
+      result = await db.transaction(async (tx) => {
+        await tx.execute(
+          sql`SELECT pg_advisory_xact_lock(hashtext(${"cash-session:" + id}))`,
+        );
+        const [session] = await tx
+          .select()
+          .from(cashSessionsTable)
+          .where(and(eq(cashSessionsTable.id, id), eq(cashSessionsTable.status, "open")))
+          .for("update");
+        if (!session) throw new Error("CASH_SESSION_NOT_OPEN");
 
-    if (!session) {
-      res.status(404).json({ error: "Sesión no encontrada o ya cerrada" });
-      return;
-    }
+        // Recalculate under the same lock used by payment insertion.
+        const [cashMethod] = await tx
+          .select({ id: paymentMethodsTable.id })
+          .from(paymentMethodsTable)
+          .where(eq(paymentMethodsTable.code, "cash"))
+          .limit(1);
+        const cashPaymentsResult = cashMethod
+          ? await tx
+              .select({ total: sum(paymentsTable.amount) })
+              .from(paymentsTable)
+              .where(and(
+                eq(paymentsTable.cashSessionId, id),
+                eq(paymentsTable.paymentMethodId, cashMethod.id),
+                eq(paymentsTable.status, "completed"),
+              ))
+          : [{ total: "0" }];
+        const movementsResult = await tx
+          .select({ type: cashMovementsTable.movementType, total: sum(cashMovementsTable.amount) })
+          .from(cashMovementsTable)
+          .where(eq(cashMovementsTable.cashSessionId, id))
+          .groupBy(cashMovementsTable.movementType);
 
-    // Expected cash = opening float + cash payments in this session + movements_in - movements_out
-    const cashMethodRow = await db
-      .select({ id: paymentMethodsTable.id })
-      .from(paymentMethodsTable)
-      .where(eq(paymentMethodsTable.code, "cash"))
-      .limit(1);
+        const cashSales = parseFloat(cashPaymentsResult[0]?.total ?? "0");
+        const cashInTypes = ["in", "tip", "change_added", "correction"];
+        const cashOutTypes = ["out", "supplier_payment"];
+        const movIn = movementsResult
+          .filter((movement) => cashInTypes.includes(movement.type!))
+          .reduce((total, movement) => total + parseFloat(movement.total ?? "0"), 0);
+        const movOut = movementsResult
+          .filter((movement) => cashOutTypes.includes(movement.type!))
+          .reduce((total, movement) => total + parseFloat(movement.total ?? "0"), 0);
+        const expectedCash = (parseFloat(session.openingFloat) + cashSales + movIn - movOut).toFixed(2);
+        const difference = (parseFloat(countedCash) - parseFloat(expectedCash)).toFixed(2);
+        if (Math.abs(parseFloat(difference)) > 0.001 && !discrepancyReason?.trim()) {
+          throw new Error(`CASH_DISCREPANCY:${expectedCash}:${difference}`);
+        }
 
-    const cashMethodId = cashMethodRow[0]?.id;
+        const [closed] = await tx
+          .update(cashSessionsTable)
+          .set({
+            status: "closed",
+            closedAt: new Date(),
+            expectedCash,
+            countedCash,
+            difference,
+            discrepancyReason: discrepancyReason ?? null,
+            closingNotes: closingNotes ?? null,
+            denominationBreakdown: denominationBreakdown ?? null,
+          })
+          .where(and(eq(cashSessionsTable.id, id), eq(cashSessionsTable.status, "open")))
+          .returning();
+        if (!closed) throw new Error("CASH_SESSION_NOT_OPEN");
 
-    const cashPaymentsResult = cashMethodId
-      ? await db
-          .select({ total: sum(paymentsTable.amount) })
-          .from(paymentsTable)
-          .where(
-            and(
-              eq(paymentsTable.cashSessionId, id),
-              eq(paymentsTable.paymentMethodId, cashMethodId),
-              eq(paymentsTable.status, "completed"),
-            ),
-          )
-      : [{ total: "0" }];
-
-    const cashSales = parseFloat(cashPaymentsResult[0]?.total ?? "0");
-
-    const movementsResult = await db
-      .select({ type: cashMovementsTable.movementType, total: sum(cashMovementsTable.amount) })
-      .from(cashMovementsTable)
-      .where(eq(cashMovementsTable.cashSessionId, id))
-      .groupBy(cashMovementsTable.movementType);
-
-    const CASH_IN_TYPES = ["in", "tip", "change_added", "correction"];
-    const CASH_OUT_TYPES = ["out", "supplier_payment"];
-    const movIn  = movementsResult.filter((m) => CASH_IN_TYPES.includes(m.type!)).reduce((a, m) => a + parseFloat(m.total ?? "0"), 0);
-    const movOut = movementsResult.filter((m) => CASH_OUT_TYPES.includes(m.type!)).reduce((a, m) => a + parseFloat(m.total ?? "0"), 0);
-
-    const expectedCash = (parseFloat(session.openingFloat) + cashSales + movIn - movOut).toFixed(2);
-    const difference   = (parseFloat(countedCash) - parseFloat(expectedCash)).toFixed(2);
-
-    // Require discrepancy reason for any non-zero difference
-    const diffAbs = Math.abs(parseFloat(difference));
-    if (diffAbs > 0.001 && !discrepancyReason?.trim()) {
-      res.status(422).json({
-        error: "Se requiere explicación para el descuadre",
-        expectedCash,
-        difference,
+        const requestKey = req.headers["idempotency-key"];
+        if (typeof requestKey === "string" && req.user?.id) {
+          await tx.insert(idempotencyKeysTable).values({
+            cacheKey: `${req.user.id}:${requestKey}`,
+            userId: req.user.id,
+            statusCode: 200,
+            response: closed,
+            expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1_000),
+          }).onConflictDoNothing();
+        }
+        return { closed, session, expectedCash, difference };
       });
-      return;
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : "";
+      if (reason === "CASH_SESSION_NOT_OPEN") {
+        res.status(404).json({ error: "Sesión no encontrada o ya cerrada" });
+        return;
+      }
+      if (reason.startsWith("CASH_DISCREPANCY:")) {
+        const [, expectedCash, difference] = reason.split(":");
+        res.status(422).json({
+          error: "Se requiere explicación para el descuadre",
+          expectedCash,
+          difference,
+        });
+        return;
+      }
+      throw error;
     }
 
-    const [closed] = await db
-      .update(cashSessionsTable)
-      .set({
-        status: "closed",
-        closedAt: new Date(),
-        expectedCash,
-        countedCash,
-        difference,
-        discrepancyReason: discrepancyReason ?? null,
-        closingNotes: closingNotes ?? null,
-        denominationBreakdown: denominationBreakdown ?? null,
-      })
-      .where(eq(cashSessionsTable.id, id))
-      .returning();
+    const { closed, session, expectedCash, difference } = result;
 
     await logDocumentAction({
       action: "close_cash_session",

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useLocation } from 'wouter';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -138,7 +138,10 @@ interface CloseWizardProps {
 
 function CloseWizard({ session, summary, onClose, onClosed }: CloseWizardProps) {
   const queryClient = useQueryClient();
-  const closeSession = useCloseCashSession();
+  const closeAttemptId = useRef(crypto.randomUUID());
+  const closeSession = useCloseCashSession({
+    request: { headers: { 'Idempotency-Key': closeAttemptId.current } },
+  });
 
   const [step, setStep] = useState(1); // 1=summary, 2=count, 3=confirm
   const [denomQtys, setDenomQtys] = useState<Record<string, number>>({});
@@ -201,6 +204,7 @@ function CloseWizard({ session, summary, onClose, onClosed }: CloseWizardProps) 
       });
       queryClient.invalidateQueries({ queryKey: getGetCurrentCashSessionQueryKey() });
       queryClient.invalidateQueries({ queryKey: getGetCashSessionHistoryQueryKey() });
+      closeAttemptId.current = crypto.randomUUID();
       onClosed(res.difference ?? '0', res.id);
     } catch (e: any) {
       const msg = e?.error ?? 'Error al cerrar caja';
@@ -445,6 +449,8 @@ function HistoryTab({ onViewReport, isAdmin, onReopen, isReopening }: HistoryTab
 export default function CashSession() {
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
+  const openAttemptId = useRef(crypto.randomUUID());
+  const movementAttemptId = useRef(crypto.randomUUID());
 
   const [tab, setTab] = useState<'session' | 'history'>('session');
   const [employeeName, setEmployeeName] = useState('');
@@ -485,8 +491,12 @@ export default function CashSession() {
     { query: { enabled: !!session?.id, queryKey: getGetCashSessionSummaryQueryKey(session?.id || '') } }
   );
 
-  const openSession    = useOpenCashSession();
-  const addMovement    = useAddCashMovement();
+  const openSession    = useOpenCashSession({
+    request: { headers: { 'Idempotency-Key': openAttemptId.current } },
+  });
+  const addMovement    = useAddCashMovement({
+    request: { headers: { 'Idempotency-Key': movementAttemptId.current } },
+  });
   const reopenSession  = useReopenCashSession();
 
   // Open form state
@@ -664,6 +674,7 @@ export default function CashSession() {
                     { data: { openingFloat, terminalName: finalTerminal, blindClose, notes: openingNotes || undefined } },
                     {
                       onSuccess: () => {
+                        openAttemptId.current = crypto.randomUUID();
                         localStorage.setItem('cashTerminal', finalTerminal);
                         setStoredTerminal(finalTerminal);
                         const tp = { terminal: finalTerminal };
@@ -699,6 +710,7 @@ export default function CashSession() {
       { id: session.id, data: { movementType: movType as AddCashMovementInputMovementType, amount: movAmount, reason: movReason } },
       {
         onSuccess: () => {
+          movementAttemptId.current = crypto.randomUUID();
           setMovAmount(''); setMovReason('');
           queryClient.invalidateQueries({ queryKey: getGetCashSessionSummaryQueryKey(session.id) });
           toast.success('Movimiento registrado');

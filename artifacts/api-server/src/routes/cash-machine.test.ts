@@ -713,10 +713,10 @@ describe("14. Settlement integration — order closure after device completada",
     expect(settleOrderIfFullyPaid).not.toHaveBeenCalled();
   });
 
-  it("does NOT call settleOrderIfFullyPaid when tx already in terminal state", async () => {
+  it("reconciles an already completed transaction after a prior process interruption", async () => {
     vi.mocked(settleOrderIfFullyPaid).mockClear();
 
-    // tx is already completada — early-return path
+    // tx is already completada — recovery/reconciliation path
     const txId = "tx-settle-004";
     mockState.selectRows = [{
       ...BASE_TX, id: txId, status: "completada",
@@ -725,7 +725,7 @@ describe("14. Settlement integration — order closure after device completada",
 
     const res = await request(app).get(`/api/cash-machine/payments/${txId}`);
     expect(res.status).toBe(200);
-    expect(settleOrderIfFullyPaid).not.toHaveBeenCalled();
+    expect(settleOrderIfFullyPaid).toHaveBeenCalledOnce();
   });
 
   it("emits tables:refresh socket event when order is settled", async () => {

@@ -175,6 +175,10 @@ router.post("/fichaje/public/clock", publicClockLimiter, idempotency, async (req
       employeeId,
       deviceId: device.id,
       action,
+      idempotencyKey: typeof req.headers["idempotency-key"] === "string"
+        ? req.headers["idempotency-key"]
+        : undefined,
+      idempotencyUserId: req.user?.id ?? "anon",
     }));
   } catch (error) {
     const authError = error instanceof ClockAuthorizationError

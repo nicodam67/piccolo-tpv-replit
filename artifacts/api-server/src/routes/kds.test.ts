@@ -57,6 +57,12 @@ vi.mock("@workspace/db", async (importOriginal) => {
 
   return {
     ...actual,
+    pool: {
+      connect: async () => ({
+        query: async () => ({ rows: [] }),
+        release: () => {},
+      }),
+    },
     db: {
       select:  () => makeChain(() => mockState.selectRows),
       selectDistinct: () => makeChain(() => mockState.selectRows),
