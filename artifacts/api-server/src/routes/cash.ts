@@ -1,5 +1,4 @@
 import { Router, type IRouter } from "express";
-import { appendFileSync } from "node:fs";
 import { db } from "@workspace/db";
 import {
   cashSessionsTable,
@@ -12,6 +11,7 @@ import {
   tipsTable,
   paymentVoidsTable,
   ticketsTable,
+  documentAuditLogTable,
 } from "@workspace/db";
 import { eq, and, or, desc, sum, sql, inArray, isNull } from "drizzle-orm";
 import type { TaxBreakdownItem } from "../lib/tax";
@@ -66,10 +66,6 @@ router.post(
       notes?: string;
     };
 
-    // #region agent log
-    appendFileSync("/opt/cursor/logs/debug.log", JSON.stringify({ hypothesisId: "A", location: "cash.ts:open-entry", message: "cash open request entered", data: { terminalName, role: req.user?.role }, timestamp: Date.now() }) + "\n");
-    // #endregion
-
     const openResult = await db.transaction(async (tx) => {
       // Serialize only sessions competing for this terminal. The check and
       // insert must share the transaction protected by this lock.
@@ -87,20 +83,12 @@ router.post(
         )
         .limit(1);
 
-      // #region agent log
-      appendFileSync("/opt/cursor/logs/debug.log", JSON.stringify({ hypothesisId: "A", location: "cash.ts:open-check", message: "cash open uniqueness check completed", data: { terminalName, existing: Boolean(existing), existingId: existing?.id ?? null }, timestamp: Date.now() }) + "\n");
-      // #endregion
-
       if (existing) return { existing, session: null };
 
       const [session] = await tx
         .insert(cashSessionsTable)
         .values({ employeeId, openingFloat, terminalName, blindClose, notes: notes ?? null, status: "open" })
         .returning();
-
-      // #region agent log
-      appendFileSync("/opt/cursor/logs/debug.log", JSON.stringify({ hypothesisId: "A", location: "cash.ts:open-insert", message: "cash session inserted", data: { terminalName, sessionId: session.id }, timestamp: Date.now() }) + "\n");
-      // #endregion
 
       return { existing: null, session };
     });
@@ -765,10 +753,6 @@ router.post(
     const employeeId = (req as any).user?.id as string;
     const { paymentId, reason } = req.body as { paymentId: string; reason: string };
 
-    // #region agent log
-    appendFileSync("/opt/cursor/logs/debug.log", JSON.stringify({ hypothesisId: "B", location: "cash.ts:void-entry", message: "void payment request entered", data: { sessionId, paymentId, role: req.user?.role }, timestamp: Date.now() }) + "\n");
-    // #endregion
-
     if (!reason?.trim() || reason.trim().length < 5) {
       res.status(400).json({ error: "Se requiere motivo detallado para la anulación" });
       return;
@@ -790,10 +774,6 @@ router.post(
         .select()
         .from(cashSessionsTable)
         .where(eq(cashSessionsTable.id, sessionId));
-
-      // #region agent log
-      appendFileSync("/opt/cursor/logs/debug.log", JSON.stringify({ hypothesisId: "B", location: "cash.ts:void-preflight", message: "void preflight completed", data: { paymentId, paymentStatus: payment.status, sessionStatus: session?.status ?? null }, timestamp: Date.now() }) + "\n");
-      // #endregion
 
       await tx
         .update(paymentsTable)
@@ -834,6 +814,17 @@ router.post(
         })
         .returning();
 
+      await tx.insert(documentAuditLogTable).values({
+        action: "void_payment",
+        documentType: "ticket",
+        documentId: paymentId,
+        employeeId,
+        employeeName: (req as any).user?.name ?? "",
+        terminal: session?.terminalName ?? "",
+        amount: payment.amount,
+        details: `Anulación: ${reason}`,
+      });
+
       return { status: "voided" as const, payment, session, voidRecord };
     });
 
@@ -846,22 +837,7 @@ router.post(
       return;
     }
 
-    const { payment, session, voidRecord: result } = transactionResult;
-
-    // #region agent log
-    appendFileSync("/opt/cursor/logs/debug.log", JSON.stringify({ hypothesisId: "B", location: "cash.ts:void-effects", message: "void transaction effects committed", data: { paymentId, voidId: result.id, counterMovementId: result.counterMovementId }, timestamp: Date.now() }) + "\n");
-    // #endregion
-
-    await logDocumentAction({
-      action: "void_payment",
-      documentType: "ticket",
-      documentId: paymentId,
-      employeeId,
-      employeeName: (req as any).user?.name ?? "",
-      terminal: session?.terminalName ?? "",
-      amount: payment.amount,
-      details: `Anulación: ${reason}`,
-    });
+    const { voidRecord: result } = transactionResult;
 
     res.status(201).json(result);
   },

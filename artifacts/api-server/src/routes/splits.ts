@@ -1,5 +1,4 @@
 import { Router, type IRouter } from "express";
-import { appendFileSync } from "node:fs";
 import { db } from "@workspace/db";
 import {
   splitGroupsTable,
@@ -74,10 +73,6 @@ router.get("/orders/:id/splits", requireAuth, async (req, res): Promise<void> =>
 // Body: { groups: [{ label, items: [{ orderItemId, quantity }] }] }
 router.post("/orders/:id/splits", requireAuth, requirePermission(PERMISSIONS.payments.split), async (req, res): Promise<void> => {
   const orderId = req.params.id as string;
-
-  // #region agent log
-  appendFileSync("/opt/cursor/logs/debug.log", JSON.stringify({ hypothesisId: "C", location: "splits.ts:create-entry", message: "split creation authorization passed", data: { orderId, role: req.user?.role }, timestamp: Date.now() }) + "\n");
-  // #endregion
 
   const [order] = await db.select().from(ordersTable).where(eq(ordersTable.id, orderId));
   if (!order) {
@@ -169,10 +164,6 @@ router.put(
   async (req, res): Promise<void> => {
     const groupId = req.params.groupId as string;
     const { paymentId } = req.body as { paymentId: string };
-
-    // #region agent log
-    appendFileSync("/opt/cursor/logs/debug.log", JSON.stringify({ hypothesisId: "C", location: "splits.ts:pay-entry", message: "split payment authorization passed", data: { groupId, hasPaymentId: Boolean(paymentId), role: req.user?.role }, timestamp: Date.now() }) + "\n");
-    // #endregion
 
     const [group] = await db
       .select()

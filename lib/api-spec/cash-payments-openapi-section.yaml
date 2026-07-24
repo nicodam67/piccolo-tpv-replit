@@ -163,8 +163,10 @@
       summary: Void a payment that has not already been voided, with an audit reason
       security: [{ bearerAuth: [] }, { cookieAuth: [] }]
       x-roles: [admin]
+      x-idempotency: optional
       parameters:
         - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: Idempotency-Key, in: header, required: false, schema: { type: string, minLength: 8, maxLength: 200 } }
       requestBody:
         required: true
         content: { application/json: { schema: { $ref: "#/components/schemas/CashPaymentsVoidInput" } } }
@@ -194,7 +196,7 @@
       tags: [payments, cash-payments, phase61-cash-payments]
       summary: Get order totals, payments and remaining balance
       security: [{ bearerAuth: [] }, { cookieAuth: [] }]
-      x-roles: [authenticated]
+      x-roles: [admin, manager, encargado, cashier]
       parameters:
         - { name: orderId, in: path, required: true, schema: { type: string, format: uuid } }
       responses:
@@ -260,7 +262,7 @@
       tags: [cash-payments, phase61-cash-payments]
       summary: Create or replace unpaid split groups
       security: [{ bearerAuth: [] }, { cookieAuth: [] }]
-      x-roles: [authenticated]
+      x-roles: [admin, manager, encargado, cashier]
       parameters:
         - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
       requestBody:
@@ -270,6 +272,7 @@
         "201": { description: Created split groups, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/CashPaymentsCreatedSplitGroup" } } } } }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
 
@@ -279,7 +282,7 @@
       tags: [cash-payments, phase61-cash-payments]
       summary: Link an optional payment and mark one split group paid
       security: [{ bearerAuth: [] }, { cookieAuth: [] }]
-      x-roles: [authenticated]
+      x-roles: [admin, manager, encargado, waiter, cashier]
       parameters:
         - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
         - { name: groupId, in: path, required: true, schema: { type: string, format: uuid } }
@@ -289,6 +292,7 @@
       responses:
         "200": { description: Paid split group, content: { application/json: { schema: { $ref: "#/components/schemas/CashPaymentsSplitGroup" } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
 
   /payments/{id}/tip:

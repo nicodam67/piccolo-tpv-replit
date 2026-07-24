@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { api } from '../lib/api-client';
 import { ApiClientError } from '../lib/api-errors';
+import { hasPermission, PERMISSIONS } from '../lib/permissions';
 import { useScrollGuard } from '../hooks/use-scroll-guard';
 import {
   clearCashMachineCommand,
   loadOrCreateCashMachineCommand,
   saveCashMachineCommand,
+  shouldClearCashMachineCommand,
 } from '../lib/cash-machine-command';
 import { ManagerPinModal } from '../components/auth/ManagerPinModal';
 import { useManagerAuth } from '../hooks/use-manager-auth';
@@ -992,8 +994,9 @@ interface CashMachinePaymentModalProps {
 function CashMachinePaymentModal({ orderId, amount, terminal, onSuccess, onCancel }: CashMachinePaymentModalProps) {
   const amountText = fmt(amount);
   const terminalName = terminal ?? 'Caja principal';
-  const [paymentCommand] = useState(() =>
+  const [commandResolution] = useState(() =>
     loadOrCreateCashMachineCommand(orderId, amountText, terminalName));
+  const paymentCommand = commandResolution.command;
   const cancelPayment = useCancelCashMachinePayment();
   const [txId, setTxId]             = useState<string | null>(null);
   const [txStatus, setTxStatus]     = useState<string>('pending');
@@ -1026,7 +1029,7 @@ function CashMachinePaymentModal({ orderId, amount, terminal, onSuccess, onCance
           setTimeout(() => onSuccessRef.current(), 1200);
         } else if (['error', 'cancelada', 'tiempo_agotado', 'intervencion_manual', 'conciliacion_pendiente'].includes(tx.status)) {
           if (intervalRef.current) clearInterval(intervalRef.current);
-          if (['error', 'cancelada', 'tiempo_agotado'].includes(tx.status)) {
+          if (shouldClearCashMachineCommand(tx.status)) {
             clearCashMachineCommand(paymentCommand);
           }
           setErrMsg((tx as any).deviceError ?? 'La transacción no se completó.');
@@ -1057,6 +1060,13 @@ function CashMachinePaymentModal({ orderId, amount, terminal, onSuccess, onCance
   useEffect(() => {
     const init = async () => {
       try {
+        if (commandResolution.status === 'blocked') {
+          setErrMsg(
+            'Existe otro cobro físico pendiente para este pedido. '
+            + 'Resuélvelo o cancélalo antes de iniciar uno con otro importe o terminal.',
+          );
+          return;
+        }
         if (paymentCommand.transactionId) {
           setTxId(paymentCommand.transactionId);
           startPolling(paymentCommand.transactionId);
@@ -1537,10 +1547,12 @@ export default function Payment() {
                   <Percent size={14} /> Descuento
                 </button>
               )}
-              <button onClick={() => setShowSplit(true)}
-                className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-secondary text-muted-foreground font-bold rounded-xl text-xs hover:text-primary hover:border-primary border border-border transition-colors">
-                <Scissors size={14} /> Dividir
-              </button>
+              {hasPermission(userRole, PERMISSIONS.payments.split) && (
+                <button onClick={() => setShowSplit(true)}
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-secondary text-muted-foreground font-bold rounded-xl text-xs hover:text-primary hover:border-primary border border-border transition-colors">
+                  <Scissors size={14} /> Dividir
+                </button>
+              )}
               {!isPaid && (
                 <button onClick={() => setShowFacturaModal(true)}
                   className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-secondary text-muted-foreground font-bold rounded-xl text-xs hover:text-primary hover:border-primary border border-border transition-colors">
