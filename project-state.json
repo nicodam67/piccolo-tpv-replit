@@ -1,0 +1,74 @@
+{
+  "version": 1,
+  "lastDelivery": 45,
+  "lastSummary": "Reservations core contratado y preparado para migrar hooks.",
+  "domains": [
+    {
+      "name": "Orders / Tables / Rooms / KDS",
+      "status": "consolidated",
+      "contracts": "49/49",
+      "hooksMigrated": 19,
+      "notes": "Generado mediante phase1-floor; seis archivos consumen 24 hooks generados."
+    },
+    {
+      "name": "Documents",
+      "status": "consolidated",
+      "contracts": "18/18",
+      "hooksMigrated": 18,
+      "notes": "Plantillas, impresoras documentales, facturas, clientes fiscales, reimpresiones y auditoría."
+    },
+    {
+      "name": "Reservations core",
+      "status": "contracted",
+      "contracts": "8/8",
+      "hooksMigrated": 0,
+      "notes": "Cinco hooks históricos están preparados para migrarse. Lista de espera, turnos y depósitos son dominios separados."
+    }
+  ],
+  "architecturalDecisions": [
+    "Los contratos OpenAPI se completan y prueban por dominio antes de migrar hooks.",
+    "Orval genera clientes aislados por dominio consolidado; la regeneración global destructiva permanece deshabilitada.",
+    "La poda AST elimina duplicados históricos solo después de migrar todos sus consumidores.",
+    "Los barrels de compatibilidad tipados preservan la API pública del paquete raíz.",
+    "Se documenta el comportamiento runtime existente sin cambiar silenciosamente reglas de negocio.",
+    "Solo se reaudita el dominio afectado salvo dependencia compartida demostrada."
+  ],
+  "pending": [
+    "Migrar los cinco hooks de Reservations al cliente generado.",
+    "Contratar y migrar por dominios los 115 hooks todavía sin contrato.",
+    "Contratar por separado lista de espera, turnos, depósitos y agregados Director de reservas.",
+    "Completar la certificación física de impresoras, KDS, TPV, NFC, NAS y S3."
+  ],
+  "validationPolicy": {
+    "docs": "Solo whitespace, consistencia y determinismo.",
+    "domain": "Typecheck de paquetes afectados, pruebas y codegen del dominio.",
+    "shared": "Typecheck/lint global y build de paquetes afectados, más regresiones focalizadas.",
+    "phase": "Build global, API PostgreSQL completa, E2E, restore y auditorías."
+  },
+  "deliveries": [
+    {
+      "number": 41,
+      "summary": "Contratos OpenAPI de sala, mesas, pedidos y KDS completados."
+    },
+    {
+      "number": 42,
+      "summary": "Hooks manuales del dominio floor sustituidos por clientes generados."
+    },
+    {
+      "number": 43,
+      "summary": "Migración Documents detenida hasta completar contratos."
+    },
+    {
+      "number": 43.1,
+      "summary": "Contratos Documents completados y certificados."
+    },
+    {
+      "number": 44,
+      "summary": "Hooks manuales Documents sustituidos por clientes generados."
+    },
+    {
+      "number": 45,
+      "summary": "Reservations core seleccionado y contratado."
+    }
+  ]
+}
