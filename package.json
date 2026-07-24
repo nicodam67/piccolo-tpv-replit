@@ -7,6 +7,7 @@
     "build": "pnpm run typecheck && pnpm -r --if-present run build",
     "lint": "eslint . --max-warnings=0",
     "codegen:phase1:check": "node scripts/check-phase1-codegen.mjs",
+    "codegen:documents:check": "node scripts/check-documents-codegen.mjs",
     "migrate:phase1-hooks": "node scripts/migrate-floor-generated-hooks.mjs",
     "typecheck:libs": "tsc --build",
     "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck"
