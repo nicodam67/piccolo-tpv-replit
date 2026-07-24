@@ -1,8 +1,8 @@
 {
   "totals": {
     "filesWithHttp": 233,
-    "generatedHookExports": 182,
-    "historicalManualHooks": 141,
+    "generatedHookExports": 164,
+    "historicalManualHooks": 123,
     "uncontractedManualHooks": 120,
     "fetchCalls": 84,
     "customFetchCalls": 84,
@@ -11,10 +11,11 @@
     "manualFilesPending": 95,
     "justifiedAdapterFiles": 9,
     "phase1ConsumerFiles": 6,
-    "phase1MigratedHooks": 24
+    "phase1MigratedHooks": 24,
+    "documentsConsumerFiles": 4,
+    "documentsMigratedHooks": 15
   },
   "historicalManualHooks": [
-    "useActivateDocumentTemplate",
     "useAddDiscount",
     "useAddSubrecipeItem",
     "useAddTip",
@@ -29,19 +30,14 @@
     "useCreateAdminProduct",
     "useCreateAdminVerifactuRecord",
     "useCreateCashMachineRefund",
-    "useCreateClient",
     "useCreateCrmClient",
     "useCreateCrmGiftCard",
     "useCreateCrmPromotion",
-    "useCreateDocumentTemplate",
     "useCreateGoodsReceipt",
-    "useCreateInvoice",
     "useCreateOrderSplits",
-    "useCreatePrinterConfig",
     "useCreateProductFormatFull",
     "useCreatePurchaseOrder",
     "useCreateRecipeLine",
-    "useCreateReprint",
     "useCreateReservation",
     "useCreateStockMovement",
     "useCreateSubcategory",
@@ -52,15 +48,12 @@
     "useDeleteAdminModifier",
     "useDeleteAdminModifierGroup",
     "useDeleteAdminProduct",
-    "useDeleteDocumentTemplate",
-    "useDeletePrinterConfig",
     "useDeleteProductFormat",
     "useDeleteRecipeLine",
     "useDeleteReservation",
     "useDeleteSubcategory",
     "useDeleteSubrecipe",
     "useDeleteSubrecipeItem",
-    "useDuplicateDocumentTemplate",
     "useGetAdminBranding",
     "useGetAdminCategories",
     "useGetAdminCostAlerts",
@@ -92,7 +85,6 @@
     "useGetCashSessionHistory",
     "useGetCashSessionReport",
     "useGetCashSessionXReport",
-    "useGetClients",
     "useGetCrmClient",
     "useGetCrmClientHistory",
     "useGetCrmClients",
@@ -100,13 +92,9 @@
     "useGetCrmLoyaltyConfig",
     "useGetCrmPromotions",
     "useGetCrmReports",
-    "useGetDocumentAuditLog",
-    "useGetDocumentTemplates",
-    "useGetInvoice",
     "useGetOrderDiscounts",
     "useGetOrderSplits",
     "useGetPaymentMethods",
-    "useGetPrinterConfigs",
     "useGetProductAvailability",
     "useGetProductFormats",
     "useGetProductRecipe",
@@ -123,7 +111,6 @@
     "usePatchReservation",
     "usePayWithCrmGiftCard",
     "useRechargeCrmGiftCard",
-    "useRectifyInvoice",
     "useRedeemCrmPoints",
     "useReopenCashSession",
     "useRetryAdminVerifactuRecord",
@@ -141,11 +128,8 @@
     "useUpdateAdminVerifactuConfig",
     "useUpdateBusinessConfig",
     "useUpdateCashMachineConfig",
-    "useUpdateClient",
     "useUpdateCrmClient",
     "useUpdateCrmLoyaltyConfig",
-    "useUpdateDocumentTemplate",
-    "useUpdatePrinterConfig",
     "useUpdateProductFormatFull",
     "useUpdateProductFormatTaxRate",
     "useUpdateRecipeLine",
@@ -2898,6 +2882,45 @@
         "useMergeTables",
         "useSeparateTable",
         "useTransferWaiter"
+      ]
+    }
+  ],
+  "documentsConsumers": [
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/documentos.tsx",
+      "hooks": [
+        "useGetDocumentTemplates",
+        "useCreateDocumentTemplate",
+        "useUpdateDocumentTemplate",
+        "useActivateDocumentTemplate",
+        "useDuplicateDocumentTemplate",
+        "useDeleteDocumentTemplate",
+        "useGetPrinterConfigs",
+        "useCreatePrinterConfig",
+        "useUpdatePrinterConfig",
+        "useDeletePrinterConfig",
+        "useGetDocumentAuditLog"
+      ]
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/payment.tsx",
+      "hooks": [
+        "useGetClients",
+        "useCreateInvoice",
+        "useCreateClient"
+      ]
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/prefactura.tsx",
+      "hooks": [
+        "useGetDocumentTemplates"
+      ]
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/ticket.tsx",
+      "hooks": [
+        "useGetDocumentTemplates",
+        "useCreateReprint"
       ]
     }
   ]

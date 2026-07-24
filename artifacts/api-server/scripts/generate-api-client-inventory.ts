@@ -15,14 +15,20 @@ function walk(directory: string): string[] {
 }
 
 const files = roots.flatMap(walk).filter((file) => /\.(?:ts|tsx|js)$/.test(file));
-const phase1Consumers = files.flatMap((file) => {
-  const source = fs.readFileSync(file, "utf8");
-  if (!source.includes("@workspace/api-client-react/phase1")) return [];
-  const imports = [...source.matchAll(/import\s*\{([^}]*)\}\s*from\s*['"]@workspace\/api-client-react\/phase1['"]/g)]
-    .flatMap((match) => match[1]!.split(",").map((name) => name.trim()))
-    .filter((name) => /^use[A-Z]/.test(name));
-  return [{ file: path.relative(root, file), hooks: imports }];
-});
+function generatedConsumers(subpath: string) {
+  return files.flatMap((file) => {
+    const source = fs.readFileSync(file, "utf8");
+    const moduleName = `@workspace/api-client-react/${subpath}`;
+    if (!source.includes(moduleName)) return [];
+    const escaped = moduleName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const imports = [...source.matchAll(new RegExp(`import\\s*\\{([^}]*)\\}\\s*from\\s*['"]${escaped}['"]`, "g"))]
+      .flatMap((match) => match[1]!.split(",").map((name) => name.trim()))
+      .filter((name) => /^use[A-Z]/.test(name));
+    return [{ file: path.relative(root, file), hooks: imports }];
+  });
+}
+const phase1Consumers = generatedConsumers("phase1");
+const documentsConsumers = generatedConsumers("documents");
 const rows = files.flatMap((file) => {
   const source = fs.readFileSync(file, "utf8");
   const mechanisms = {
@@ -74,6 +80,8 @@ const totals = {
   justifiedAdapterFiles: rows.filter((row) => row.classification === "justified-adapter").length,
   phase1ConsumerFiles: phase1Consumers.length,
   phase1MigratedHooks: new Set(phase1Consumers.flatMap((row) => row.hooks)).size,
+  documentsConsumerFiles: documentsConsumers.length,
+  documentsMigratedHooks: new Set(documentsConsumers.flatMap((row) => row.hooks)).size,
 };
 const report = {
   totals,
@@ -81,6 +89,7 @@ const report = {
   uncontractedManualHooks: uncontractedManualHooks.sort(),
   consumers: rows,
   phase1Consumers,
+  documentsConsumers,
 };
 fs.writeFileSync(
   path.join(root, "artifacts/api-client-inventory.json"),
@@ -112,6 +121,8 @@ Inventario automático acumulado de clientes API.
 
 - Hooks migrados al cliente parcial de Entrega 41: ${totals.phase1MigratedHooks}
 - Archivos consumidores migrados: ${totals.phase1ConsumerFiles}
+- Hooks migrados al cliente Documents: ${totals.documentsMigratedHooks}
+- Archivos consumidores Documents: ${totals.documentsConsumerFiles}
 - Eliminados por evidencia de obsolescencia: 0
 - Adaptadores conservados: ${totals.justifiedAdapterFiles}
 - Pendientes: ${totals.manualFilesPending}
