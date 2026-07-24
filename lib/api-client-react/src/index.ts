@@ -5,5 +5,6 @@ export * from "./documents-compat";
 export * from "./reservations-compat";
 export * from "./branding-compat";
 export * from "./crm-compat";
+export * from "./wallet-compat";
 export { customFetch, setBaseUrl, setAuthTokenGetter, ApiError } from "./custom-fetch";
 export type { AuthTokenGetter } from "./custom-fetch";

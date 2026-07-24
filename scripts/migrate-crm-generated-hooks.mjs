@@ -16,10 +16,6 @@ const allowedOperations = [
   "validateCrmPromotion",
   "createCrmPromotion",
   "getCrmPromotions",
-  "rechargeCrmGiftCard",
-  "payWithCrmGiftCard",
-  "createCrmGiftCard",
-  "getCrmGiftCards",
   "redeemCrmPoints",
   "issueCrmPoints",
   "updateCrmClient",
@@ -38,10 +34,6 @@ const legacySchemaNames = new Set([
   "CrmLoyaltyPoint",
   "IssueCrmPointsInput",
   "RedeemCrmPointsInput",
-  "CrmGiftCard",
-  "CreateCrmGiftCardInput",
-  "RechargeCrmGiftCardInput",
-  "PayWithCrmGiftCardInput",
   "CrmPromotion",
   "CreateCrmPromotionInput",
   "ValidateCrmPromotionInput",
@@ -49,7 +41,6 @@ const legacySchemaNames = new Set([
   "CrmClientHistory",
   "CrmReports",
   "GetCrmClientsParams",
-  "GetCrmGiftCardsParams",
 ]);
 
 const schemaExportNames = new Set([
@@ -67,18 +58,12 @@ const schemaExportNames = new Set([
   "IssueCrmPointsInput",
   "RedeemCrmPointsInput",
   "RedeemCrmPointsResult",
-  "CrmGiftCard",
-  "CreateCrmGiftCardInput",
-  "RechargeCrmGiftCardInput",
-  "PayWithCrmGiftCardInput",
-  "PayWithCrmGiftCardResult",
   "CrmPromotion",
   "CreateCrmPromotionInput",
   "ValidateCrmPromotionInput",
   "ValidateCrmPromotionResult",
   "CrmReports",
   "GetCrmClientsParams",
-  "GetCrmGiftCardsParams",
 ]);
 
 function declarations(statement) {
