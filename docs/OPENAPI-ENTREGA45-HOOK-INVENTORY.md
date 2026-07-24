@@ -67,3 +67,23 @@ hooks seleccionados.
 Las ocho operaciones quedan aisladas bajo el tag `phase45-reservations`, con cliente generado
 determinista y pruebas contractuales. El dominio queda preparado para migrar sus cinco hooks en
 una entrega posterior; no se migra ningún hook en Entrega 45.
+
+## Validación final
+
+- Cobertura core Reservations: 8/8 endpoints.
+- OpenAPI global: 98 operaciones.
+- Pruebas API PostgreSQL: 677/677.
+- E2E: 26/26.
+- Codegen Reservations ejecutado dos veces con hash idéntico.
+- TypeScript, ESLint y builds: correctos.
+- Auditoría de rutas y dependencias productivas: correctas.
+
+## Riesgos fuera de alcance
+
+- `waiting-list`, `service-shifts`, depósitos y agregados Director no forman parte del núcleo
+  seleccionado y continúan sin contrato.
+- El backend no implementa idempotencia, FSM estricta de status ni validación de capacidad de
+  turnos; el contrato documenta ese comportamiento sin modificarlo.
+- Quedan 115 hooks sin contrato en otros dominios.
+
+El núcleo Reservations queda listo para migrar sus cinco hooks manuales en la siguiente entrega.
