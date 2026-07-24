@@ -4,21 +4,23 @@
 // Do NOT use plain fetch() here — it won't include the auth token.
 
 import type { QrBranding } from './types';
-import { customFetch, ApiError } from '@workspace/api-client-react';
+import {
+  getAdminQrBranding,
+  putAdminQrBranding,
+  customFetch,
+  ApiError,
+} from '@workspace/api-client-react';
+import type { UpdateQrBrandingInput } from '@workspace/api-client-react';
 
 // ── Branding ──────────────────────────────────────────────────────────────────
 
 export async function fetchQrBranding(): Promise<QrBranding> {
-  const data = await customFetch<QrBranding | null>('/api/admin/qr-branding');
-  return data ?? ({} as QrBranding);
+  const data = await getAdminQrBranding();
+  return (data ?? {}) as QrBranding;
 }
 
 export async function saveQrBranding(data: Partial<QrBranding>): Promise<void> {
-  await customFetch('/api/admin/qr-branding', {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  });
+  await putAdminQrBranding(data as UpdateQrBrandingInput);
 }
 
 // ── Types ─────────────────────────────────────────────────────────────────────
