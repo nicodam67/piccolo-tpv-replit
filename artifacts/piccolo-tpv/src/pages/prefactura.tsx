@@ -4,11 +4,13 @@ import { useQueryClient } from '@tanstack/react-query';
 import {
   useGetOrderPaymentSummary,
   useGetBusinessConfig,
-  useGetDocumentTemplates,
   getGetOrderPaymentSummaryQueryKey,
   getGetBusinessConfigQueryKey,
-  getGetDocumentTemplatesQueryKey,
 } from '@workspace/api-client-react';
+import {
+  useGetDocumentTemplates,
+  getGetDocumentTemplatesQueryKey,
+} from '@workspace/api-client-react/documents';
 import {
   useCreatePrefacturaPrint,
   useGetPrefacturaStatus,

@@ -16,9 +16,6 @@ import { toast } from 'sonner';
 import {
   useGetOrderPaymentSummary,
   useAddPayment,
-  useGetClients,
-  useCreateInvoice,
-  useCreateClient,
   useGetCurrentCashSession,
   useGetPaymentMethods,
   useAddTip,
@@ -30,19 +27,24 @@ import {
   useCancelCashMachinePayment,
   useGetCashMachineStatus,
   getGetOrderPaymentSummaryQueryKey,
-  getGetClientsQueryKey,
   getGetCurrentCashSessionQueryKey,
   getGetPaymentMethodsQueryKey,
   getGetOrderSplitsQueryKey,
   type AddPaymentInputMethodCode,
-  type Invoice,
-  type Client,
-  type CreateClientInput,
   type PaymentMethod,
   type SplitGroupWithItems,
   type SplitGroupItemDetail,
   type CashMachineTransaction,
 } from '@workspace/api-client-react';
+import {
+  useGetClients,
+  useCreateInvoice,
+  useCreateClient,
+  getGetClientsQueryKey,
+  type Invoice,
+  type Client,
+  type CreateClientInput,
+} from '@workspace/api-client-react/documents';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 function fmt(n: number | string) { return parseFloat(String(n)).toFixed(2); }
