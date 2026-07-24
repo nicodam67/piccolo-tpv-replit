@@ -3,12 +3,14 @@ import { useParams, useLocation } from 'wouter';
 import {
   useGetOrderTicket,
   useGetBusinessConfig,
-  useGetDocumentTemplates,
-  useCreateReprint,
   getGetOrderTicketQueryKey,
   getGetBusinessConfigQueryKey,
-  getGetDocumentTemplatesQueryKey,
 } from '@workspace/api-client-react';
+import {
+  useGetDocumentTemplates,
+  useCreateReprint,
+  getGetDocumentTemplatesQueryKey,
+} from '@workspace/api-client-react/documents';
 import type { TaxBreakdownItem } from '@workspace/api-client-react';
 import { Loader2, ChevronLeft, Printer, Mail, RefreshCw, Download } from 'lucide-react';
 import { toast } from 'sonner';
