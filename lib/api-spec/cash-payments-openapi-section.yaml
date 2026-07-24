@@ -1,0 +1,563 @@
+# phase61-cash-payments — splice under paths in openapi.yaml
+# Contract-only: runtime-backed cash sessions, payments, split bills, tips and cash-machine operations.
+
+  /payment-methods:
+    get:
+      operationId: listCashPaymentMethods
+      tags: [cash-payments, phase61-cash-payments]
+      summary: List active payment methods visible to the TPV
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [authenticated]
+      responses:
+        "200":
+          description: Active methods; cash_machine is hidden while its module is disabled
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/CashPaymentsMethod" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /cash-sessions/open:
+    post:
+      operationId: openCashPaymentsSession
+      tags: [cash, cash-payments, phase61-cash-payments]
+      summary: Open one cash session for a terminal
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [manager, admin]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/CashPaymentsOpenSessionInput" } } }
+      responses:
+        "201": { description: Session opened, content: { application/json: { schema: { $ref: "#/components/schemas/CashPaymentsSession" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /cash-sessions/current:
+    get:
+      operationId: getCurrentCashPaymentsSession
+      tags: [cash, cash-payments, phase61-cash-payments]
+      summary: Get the latest open session, optionally for one terminal
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [authenticated]
+      parameters:
+        - { name: terminal, in: query, required: false, schema: { type: string } }
+      responses:
+        "200":
+          description: Current session or JSON null when no session is open
+          content:
+            application/json:
+              schema:
+                anyOf:
+                  - { $ref: "#/components/schemas/CashPaymentsSessionWithEmployee" }
+                  - { type: "null" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /cash-sessions/{id}/movements:
+    post:
+      operationId: createCashPaymentMovement
+      tags: [cash, cash-payments, phase61-cash-payments]
+      summary: Record a manual cash movement in an open session
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [manager, admin]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/CashPaymentsCreateMovementInput" } } }
+      responses:
+        "201": { description: Movement recorded, content: { application/json: { schema: { $ref: "#/components/schemas/CashPaymentsMovement" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /cash-sessions/{id}/close:
+    post:
+      operationId: closeCashPaymentsSession
+      tags: [cash, cash-payments, phase61-cash-payments]
+      summary: Count and close an open cash session
+      description: Idempotency-Key is supported but not required by runtime; successful replays are returned with Idempotency-Replayed.
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [manager, admin]
+      x-idempotency: optional
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: Idempotency-Key, in: header, required: false, schema: { type: string, minLength: 8, maxLength: 200 } }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/CashPaymentsCloseSessionInput" } } }
+      responses:
+        "200": { description: Session closed or replayed, headers: { Idempotency-Replayed: { schema: { type: string, enum: ["true"] } } }, content: { application/json: { schema: { $ref: "#/components/schemas/CashPaymentsSession" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { description: A material discrepancy requires a reason, content: { application/json: { schema: { $ref: "#/components/schemas/ErrorResponse" } } } }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /cash-sessions/{id}/summary:
+    get:
+      operationId: getCashPaymentsSessionSummary
+      tags: [cash, cash-payments, phase61-cash-payments]
+      summary: Get payment totals and cash movements for a session
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [manager, admin]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: Session summary, content: { application/json: { schema: { $ref: "#/components/schemas/CashPaymentsSessionSummary" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /cash-sessions/{id}/report:
+    get:
+      operationId: getCashPaymentsSessionReport
+      tags: [cash-payments, phase61-cash-payments]
+      summary: Get the Z report for a cash session, whether open or closed
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [manager, admin]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: Cash-session Z report, content: { application/json: { schema: { $ref: "#/components/schemas/CashPaymentsZReport" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /cash-sessions/{id}/x-report:
+    get:
+      operationId: getCashPaymentsSessionXReport
+      tags: [cash-payments, phase61-cash-payments]
+      summary: Get a provisional X report without closing the session
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [manager, admin]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: Provisional report, content: { application/json: { schema: { $ref: "#/components/schemas/CashPaymentsXReport" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /cash-sessions/{id}/reopen:
+    post:
+      operationId: reopenCashPaymentsSession
+      tags: [cash-payments, phase61-cash-payments]
+      summary: Reopen a previously closed cash session
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: Reopened session, content: { application/json: { schema: { $ref: "#/components/schemas/CashPaymentsSession" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /cash-sessions/{id}/void-payment:
+    post:
+      operationId: voidCashSessionPayment
+      tags: [cash-payments, phase61-cash-payments]
+      summary: Void a payment that has not already been voided, with an audit reason
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/CashPaymentsVoidInput" } } }
+      responses:
+        "201": { description: Payment void record, content: { application/json: { schema: { $ref: "#/components/schemas/CashPaymentsVoid" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /cash-sessions/history:
+    get:
+      operationId: listCashPaymentsSessionHistory
+      tags: [cash-payments, phase61-cash-payments]
+      summary: List the 50 latest cash sessions
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [manager, admin]
+      responses:
+        "200": { description: Cash session history, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/CashPaymentsSessionHistoryItem" } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /orders/{orderId}/payment-summary:
+    get:
+      operationId: getOrderCashPaymentSummary
+      tags: [payments, cash-payments, phase61-cash-payments]
+      summary: Get order totals, payments and remaining balance
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [authenticated]
+      parameters:
+        - { name: orderId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: Payment summary, content: { application/json: { schema: { $ref: "#/components/schemas/CashPaymentsOrderSummary" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /orders/{orderId}/payments:
+    post:
+      operationId: createOrderCashPayment
+      tags: [payments, cash-payments, phase61-cash-payments]
+      summary: Record one partial or final order payment
+      description: Multiple calls implement partial and mixed payment. Cash overpayment is capped to the outstanding balance and change is returned.
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [waiter, cashier, encargado, manager, admin]
+      x-idempotency: optional
+      parameters:
+        - { name: orderId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: Idempotency-Key, in: header, required: false, schema: { type: string, minLength: 8, maxLength: 200 } }
+        - { name: x-terminal-name, in: header, required: false, schema: { type: string } }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/CashPaymentsCreateOrderPaymentInput" } } }
+      responses:
+        "200": { description: Idempotent replay detected after settlement, headers: { Idempotency-Replayed: { schema: { type: string, enum: ["true"] } } }, content: { application/json: { schema: { $ref: "#/components/schemas/CashPaymentsResult" } } } }
+        "201": { description: Payment recorded, headers: { Idempotency-Replayed: { schema: { type: string, enum: ["true"] } } }, content: { application/json: { schema: { $ref: "#/components/schemas/CashPaymentsResult" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "429": { description: Payment rate limit exceeded, content: { application/json: { schema: { $ref: "#/components/schemas/ErrorResponse" } } } }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /orders/{orderId}/ticket:
+    get:
+      operationId: getOrderCashPaymentTicket
+      tags: [payments, cash-payments, phase61-cash-payments]
+      summary: Get the ticket created when an order becomes fully paid
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [authenticated]
+      parameters:
+        - { name: orderId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: Issued ticket and payment lines, content: { application/json: { schema: { $ref: "#/components/schemas/CashPaymentsTicket" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /orders/{id}/splits:
+    get:
+      operationId: listOrderCashPaymentSplits
+      tags: [cash-payments, phase61-cash-payments]
+      summary: List split groups and their paid amounts
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [authenticated]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: Split groups, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/CashPaymentsSplitGroup" } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      operationId: createOrderCashPaymentSplits
+      tags: [cash-payments, phase61-cash-payments]
+      summary: Create or replace unpaid split groups
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [authenticated]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/CashPaymentsCreateSplitsInput" } } }
+      responses:
+        "201": { description: Created split groups, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/CashPaymentsCreatedSplitGroup" } } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /orders/{id}/splits/{groupId}/pay:
+    put:
+      operationId: markOrderCashPaymentSplitPaid
+      tags: [cash-payments, phase61-cash-payments]
+      summary: Link an optional payment and mark one split group paid
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [authenticated]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: groupId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/CashPaymentsMarkSplitPaidInput" } } }
+      responses:
+        "200": { description: Paid split group, content: { application/json: { schema: { $ref: "#/components/schemas/CashPaymentsSplitGroup" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /payments/{id}/tip:
+    post:
+      operationId: createCashPaymentTip
+      tags: [cash-payments, phase61-cash-payments]
+      summary: Add a cash or card tip to an existing payment
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [authenticated]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/CashPaymentsCreateTipInput" } } }
+      responses:
+        "201": { description: Tip recorded, content: { application/json: { schema: { $ref: "#/components/schemas/CashPaymentsTip" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /orders/{id}/tips:
+    get:
+      operationId: listOrderCashPaymentTips
+      tags: [cash-payments, phase61-cash-payments]
+      summary: List tips attached to an order
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [authenticated]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: Order tips, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/CashPaymentsTip" } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /admin/cash-machine/config:
+    get:
+      operationId: getCashPaymentsMachineConfig
+      tags: [cash-payments, phase61-cash-payments]
+      summary: Read safe cash-machine configuration without credentials
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      responses:
+        "200": { description: Cash-machine configuration, content: { application/json: { schema: { $ref: "#/components/schemas/CashPaymentsMachineConfig" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    put:
+      operationId: upsertCashPaymentsMachineConfig
+      tags: [cash-payments, phase61-cash-payments]
+      summary: Create or update cash-machine configuration
+      description: The simulator cannot be enabled in production; no real hardware adapter is currently implemented.
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      x-provider-status: simulator-only-fail-closed-in-production
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/CashPaymentsUpdateMachineConfigInput" } } }
+      responses:
+        "200": { description: Existing configuration updated, content: { application/json: { schema: { $ref: "#/components/schemas/CashPaymentsMachineConfig" } } } }
+        "201": { description: Configuration created, content: { application/json: { schema: { $ref: "#/components/schemas/CashPaymentsMachineConfig" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /admin/cash-machine/test-connection:
+    post:
+      operationId: testCashPaymentsMachineConnection
+      tags: [cash-payments, phase61-cash-payments]
+      summary: Test the configured cash-machine adapter
+      description: X-Simulator-Scenario is honored only outside production.
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      x-provider-status: simulator-only-fail-closed-in-production
+      parameters:
+        - { name: X-Simulator-Scenario, in: header, required: false, schema: { type: string } }
+      responses:
+        "200": { description: Connection test succeeded, content: { application/json: { schema: { $ref: "#/components/schemas/CashPaymentsMachineConnectionResult" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { description: Adapter unavailable or test failed, content: { application/json: { schema: { $ref: "#/components/schemas/CashPaymentsMachineConnectionResult" } } } }
+
+  /admin/cash-machine/status:
+    get:
+      operationId: getCashPaymentsMachineStatus
+      tags: [cash-payments, phase61-cash-payments]
+      summary: Get cash-machine device status
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [manager, admin]
+      x-provider-status: simulator-only-fail-closed-in-production
+      responses:
+        "200": { description: Device status, content: { application/json: { schema: { $ref: "#/components/schemas/CashPaymentsMachineStatus" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /admin/cash-machine/cash-levels:
+    get:
+      operationId: getCashPaymentsMachineCashLevels
+      tags: [cash-payments, phase61-cash-payments]
+      summary: Get denomination levels reported by the cash machine
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [manager, admin]
+      x-provider-status: simulator-only-fail-closed-in-production
+      responses:
+        "200": { description: Cash levels, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/CashPaymentsMachineCashLevel" } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /cash-machine/payments:
+    post:
+      operationId: startCashPaymentsMachinePayment
+      tags: [cash-payments, phase61-cash-payments]
+      summary: Start a physical cash-machine payment
+      description: Requires an enabled non-production simulator; production fails closed because no hardware adapter exists.
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [waiter, cashier, encargado, manager, admin]
+      x-idempotency: required
+      x-provider-status: simulator-only-fail-closed-in-production
+      parameters:
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 8, maxLength: 200 } }
+        - { name: X-Simulator-Scenario, in: header, required: false, schema: { type: string } }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/CashPaymentsStartMachinePaymentInput" } } }
+      responses:
+        "201": { description: Physical payment started, headers: { Idempotency-Replayed: { schema: { type: string, enum: ["true"] } } }, content: { application/json: { schema: { $ref: "#/components/schemas/CashPaymentsMachineCommandResult" } } } }
+        "202": { description: Start outcome requires recovery or reconciliation, headers: { Idempotency-Replayed: { schema: { type: string, enum: ["true"] } } }, content: { application/json: { schema: { $ref: "#/components/schemas/CashPaymentsMachineCommandResult" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /cash-machine/payments/{id}:
+    get:
+      operationId: getCashPaymentsMachinePayment
+      tags: [cash-payments, phase61-cash-payments]
+      summary: Poll a physical payment and settle its order when completed
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [waiter, cashier, encargado, manager, admin]
+      x-provider-status: simulator-only-fail-closed-in-production
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: Current or terminal transaction state, content: { application/json: { schema: { $ref: "#/components/schemas/CashPaymentsMachinePaymentPollResult" } } } }
+        "202": { description: Recovery or reconciliation remains pending, content: { application/json: { schema: { $ref: "#/components/schemas/CashPaymentsMachinePaymentPollResult" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /cash-machine/payments/{id}/cancel:
+    post:
+      operationId: cancelCashPaymentsMachinePayment
+      tags: [cash-payments, phase61-cash-payments]
+      summary: Cancel a non-terminal physical payment
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [waiter, cashier, encargado, manager, admin]
+      x-provider-status: simulator-only-fail-closed-in-production
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: Cancelled transaction, content: { application/json: { schema: { $ref: "#/components/schemas/CashPaymentsMachineCommandResult" } } } }
+        "202": { description: Device result unknown and reconciliation is required, content: { application/json: { schema: { $ref: "#/components/schemas/CashPaymentsMachineCommandResult" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /cash-machine/payments/{id}/reconcile:
+    post:
+      operationId: reconcileCashPaymentsMachinePayment
+      tags: [cash-payments, phase61-cash-payments]
+      summary: Resume a transaction whose physical outcome is unknown
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [manager, admin]
+      x-provider-status: simulator-only-fail-closed-in-production
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: Refund reconciliation completed, content: { application/json: { schema: { $ref: "#/components/schemas/CashPaymentsMachineCommandResult" } } } }
+        "202": { description: Payment recovery resumed or physical result remains unknown, content: { application/json: { schema: { $ref: "#/components/schemas/CashPaymentsMachineCommandResult" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { description: Refund reconciliation reached an error state, content: { application/json: { schema: { $ref: "#/components/schemas/CashPaymentsMachineCommandResult" } } } }
+
+  /cash-machine/refunds:
+    post:
+      operationId: createCashPaymentsMachineRefund
+      tags: [cash-payments, phase61-cash-payments]
+      summary: Request a physical cash-machine refund
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [manager, admin]
+      x-idempotency: required
+      x-provider-status: simulator-only-fail-closed-in-production
+      parameters:
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 8, maxLength: 200 } }
+        - { name: X-Simulator-Scenario, in: header, required: false, schema: { type: string } }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/CashPaymentsMachineRefundInput" } } }
+      responses:
+        "201": { description: Refund completed, headers: { Idempotency-Replayed: { schema: { type: string, enum: ["true"] } } }, content: { application/json: { schema: { $ref: "#/components/schemas/CashPaymentsMachineCommandResult" } } } }
+        "202": { description: Refund requires reconciliation, headers: { Idempotency-Replayed: { schema: { type: string, enum: ["true"] } } }, content: { application/json: { schema: { $ref: "#/components/schemas/CashPaymentsMachineCommandResult" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { description: Device rejected the refund, headers: { Idempotency-Replayed: { schema: { type: string, enum: ["true"] } } }, content: { application/json: { schema: { $ref: "#/components/schemas/CashPaymentsMachineCommandResult" } } } }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /cash-machine/transactions:
+    get:
+      operationId: listCashPaymentsMachineTransactions
+      tags: [cash-payments, phase61-cash-payments]
+      summary: List the cash-machine transaction ledger
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [manager, admin]
+      parameters:
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+        - { name: offset, in: query, required: false, schema: { type: integer, minimum: 0, default: 0 } }
+      responses:
+        "200": { description: Transaction log page as a bare array, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/CashPaymentsMachineTransactionLedgerRow" } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /cash-sessions/{id}/cash-machine-summary:
+    get:
+      operationId: getCashPaymentsMachineSessionSummary
+      tags: [cash-payments, phase61-cash-payments]
+      summary: Reconcile TPV and device totals for one cash session
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [manager, admin]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: Device reconciliation summary, content: { application/json: { schema: { $ref: "#/components/schemas/CashPaymentsMachineSessionSummary" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /reports/payments:
+    get:
+      operationId: getCashPaymentsMethodReport
+      tags: [cash-payments, phase61-cash-payments]
+      summary: Aggregate completed payments by method
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [manager, admin]
+      parameters:
+        - { name: from, in: query, required: false, schema: { type: string, format: date } }
+        - { name: to, in: query, required: false, schema: { type: string, format: date } }
+      responses:
+        "200": { description: Payment method totals, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/CashPaymentsMethodReportRow" } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /reports/cash:
+    get:
+      operationId: getCashPaymentsSessionReportList
+      tags: [cash-payments, phase61-cash-payments]
+      summary: List cash sessions and movement totals for a date range
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [manager, admin]
+      parameters:
+        - { name: from, in: query, required: false, schema: { type: string, format: date } }
+        - { name: to, in: query, required: false, schema: { type: string, format: date } }
+      responses:
+        "200": { description: Cash session report rows, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/CashPaymentsSessionReportRow" } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }

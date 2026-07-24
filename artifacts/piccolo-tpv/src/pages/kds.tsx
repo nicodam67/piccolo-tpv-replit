@@ -7,14 +7,16 @@ import { toast } from 'sonner';
 import { History, RefreshCw, AlertTriangle, X, Clock, CheckCircle, ShieldCheck, Search, Flame } from 'lucide-react';
 import {
   useGetKdsTasks,
-  useUpdateKitchenTaskStatus,
   useMarkOrderPase,
-  useResendKitchenTask,
-  useGetKdsHistory,
   getGetKdsTasksQueryKey,
-  getGetKdsHistoryQueryKey,
   type KitchenTask,
 } from '@workspace/api-client-react';
+import {
+  useUpdateKitchenTaskStatus,
+  useResendKitchenTask,
+  useGetKdsHistory,
+  getGetKdsHistoryQueryKey,
+} from '@workspace/api-client-react/phase1';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 

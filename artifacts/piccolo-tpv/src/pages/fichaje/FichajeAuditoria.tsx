@@ -4,7 +4,8 @@
  */
 import { useState, useEffect } from "react";
 import { Shield, RefreshCw, Clock, Search } from "lucide-react";
-import { api } from "../../lib/api-client";
+import { getFichajeAuditLog } from "@workspace/api-client-react/timeclock";
+import type { FichajeAuditEntry } from "@workspace/api-client-react/timeclock";
 
 interface AuditEntry {
   id: string;
@@ -58,8 +59,8 @@ export default function FichajeAuditoria() {
 
   function load() {
     setLoading(true);
-    api.get<AuditEntry[]>(`/api/fichaje/audit?limit=${limit}`)
-      .then(d => setEntries(Array.isArray(d) ? d : []))
+    getFichajeAuditLog({ limit: String(limit) })
+      .then(d => setEntries(Array.isArray(d) ? d as AuditEntry[] : []))
       .catch(() => setEntries([]))
       .finally(() => setLoading(false));
   }

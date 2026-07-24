@@ -7,7 +7,7 @@ import {
   useUpdateAdminProductTaxRate,
   useUpdateProductFormatTaxRate,
   getGetAdminProductsQueryKey,
-} from '@workspace/api-client-react';
+} from '@workspace/api-client-react/catalog-admin';
 import { ArrowLeft, Percent, ChevronDown, ChevronRight, Receipt, Search, X } from 'lucide-react';
 
 const TAX_RATES = [4, 10, 21] as const;

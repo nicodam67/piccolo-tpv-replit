@@ -1,24 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Upload, FileText, CheckCircle, AlertTriangle, Clock } from "lucide-react";
-import { api } from "../../lib/api-client";
-
-interface ImportResult {
-  success: boolean;
-  imported: number;
-  skipped: number;
-  errors: Array<{ row: number; message: string }>;
-}
-
-interface HistoryItem {
-  id: string;
-  filename: string;
-  rowsTotal: number;
-  rowsImported: number;
-  rowsSkipped: number;
-  rowsErrored: number;
-  importedByName: string;
-  createdAt: string;
-}
+import { getTimeclockImportHistory, importTimeclockAnviz } from "@workspace/api-client-react/timeclock";
+import type { AnvizImportResult, TimeclockImportHistoryItem } from "@workspace/api-client-react/timeclock";
 
 function parseAnvizCSV(text: string): Array<{ anvizId: string; clockIn: string; clockOut?: string }> {
   const lines = text.split("\n").filter(l => l.trim());
@@ -47,13 +30,13 @@ function parseAnvizCSV(text: string): Array<{ anvizId: string; clockIn: string; 
 export default function FichajeImportarAnviz() {
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<Array<{ anvizId: string; clockIn: string; clockOut?: string }>>([]);
-  const [result, setResult] = useState<ImportResult | null>(null);
+  const [result, setResult] = useState<AnvizImportResult | null>(null);
   const [importing, setImporting] = useState(false);
-  const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [history, setHistory] = useState<TimeclockImportHistoryItem[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     function loadHistory() {
-      api.get<HistoryItem[]>("/api/fichaje/import/history")
+      getTimeclockImportHistory()
         .then(d => setHistory(Array.isArray(d) ? d : [])).catch(() => {});
     }
     loadHistory();
@@ -79,7 +62,7 @@ export default function FichajeImportarAnviz() {
     setImporting(true);
     const text = await file.text();
     const rows = parseAnvizCSV(text);
-    const res = await api.post<ImportResult>("/api/fichaje/import/anviz", { rows, filename: file.name });
+    const res = await importTimeclockAnviz({ rows, filename: file.name });
     setResult(res);
     setImporting(false);
     setFile(null);

@@ -5,6 +5,7 @@
 import { useState, useEffect } from "react";
 import { Calendar, ChevronLeft, ChevronRight, Plus, X } from "lucide-react";
 import { api } from "../../lib/api-client";
+import { createTimeclockShift, deleteTimeclockShift, getTimeclockShifts } from "@workspace/api-client-react/timeclock";
 
 interface Shift {
   id: string;
@@ -53,7 +54,13 @@ function NewShiftModal({ employees, defaultDate, onClose, onSaved }: {
     if (!form.employeeId) return;
     setSaving(true);
     try {
-      await api.post("/api/fichaje/shifts", form);
+      await createTimeclockShift({
+        employeeId: form.employeeId,
+        shiftDate: form.date,
+        startTime: form.startTime,
+        endTime: form.endTime,
+        notes: form.notes || undefined,
+      });
       onSaved();
     } catch {
       setSaving(false);
@@ -118,8 +125,16 @@ export default function FichajePlanificacion() {
 
   function load() {
     setLoading(true);
-    api.get<Shift[]>(`/api/fichaje/shifts?from=${from}&to=${to}`)
-      .then(d => setShifts(Array.isArray(d) ? d : []))
+    getTimeclockShifts({ from, to })
+      .then(d => setShifts(d.map(s => ({
+        id: s.id,
+        employeeId: s.employeeId,
+        employeeName: s.employeeName,
+        date: s.shiftDate,
+        startTime: s.startTime,
+        endTime: s.endTime,
+        notes: s.notes ?? null,
+      }))))
       .catch(() => setShifts([]))
       .finally(() => setLoading(false));
   }
@@ -131,7 +146,7 @@ export default function FichajePlanificacion() {
   useEffect(() => { load(); }, [from, to]);
 
   async function deleteShift(id: string) {
-    await api.delete?.(`/api/fichaje/shifts/${id}`).catch(() => {});
+    await deleteTimeclockShift(id).catch(() => {});
     load();
   }
 
