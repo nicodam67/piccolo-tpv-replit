@@ -17,12 +17,26 @@ import {
   offlineQueueTable,
   printersTable,
   directorAlertsTable,
+  backupAuditLogTable,
+  backupDestinationsTable,
 } from "@workspace/db";
 import { eq, and, lte, desc, gte, sql } from "drizzle-orm";
-import crypto from "node:crypto";
+import {
+  BACKUP_FORMAT_VERSION,
+  backupArtifactChecksum,
+  createDatabaseSnapshot,
+  encryptBackup,
+} from "./backup-core";
+import {
+  purgeBackupArtifact,
+  uploadBackupArtifact,
+  verifyBackupArtifact,
+  type BackupArtifact,
+  type BackupDestination,
+} from "./backup-destinations";
 
 const POLL_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
-const APP_VERSION = "1.0.0";
+const APP_VERSION = "1.2.0";
 let workerTimer: ReturnType<typeof setInterval> | null = null;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -53,50 +67,6 @@ async function tryLogDirectorAlert(
   } catch {
     // directorAlertsTable may not exist — fall back to tech_events only
   }
-}
-
-function deriveKey(): Buffer {
-  const secret = process.env["SESSION_SECRET"];
-  if (!secret) {
-    throw new Error("SESSION_SECRET no está configurado — no se pueden cifrar las copias automáticas");
-  }
-  return crypto.scryptSync(secret, "piccolo-backup-salt-v1", 32);
-}
-
-function encrypt(plaintext: string): { iv: string; ciphertext: string } {
-  const key = deriveKey();
-  const iv = crypto.randomBytes(16);
-  const cipher = crypto.createCipheriv("aes-256-cbc", key, iv);
-  const encrypted = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
-  return { iv: iv.toString("hex"), ciphertext: encrypted.toString("base64") };
-}
-
-function sha256(data: string): string {
-  return crypto.createHash("sha256").update(data).digest("hex");
-}
-
-/** Full dump — same payload shape as manual backups so auto-backups are restorable */
-async function fullDump(): Promise<{ tables: Record<string, unknown[]>; rowCounts: Record<string, number> }> {
-  const tableNames = [
-    "employees", "zones", "tables_", "orders", "order_items", "payments",
-    "tickets", "cash_sessions", "cash_movements", "reservations",
-    "categories", "products", "modifiers", "ingredients", "stock_levels",
-    "suppliers", "crm_clients", "crm_loyalty_points", "crm_gift_cards",
-    "kitchen_tasks", "printers", "print_queue",
-  ];
-
-  const tables: Record<string, unknown[]> = {};
-  const rowCounts: Record<string, number> = {};
-
-  for (const t of tableNames) {
-    try {
-      const result = await db.execute(sql.raw(`SELECT * FROM "${t}" LIMIT 50000`)) as { rows: unknown[] };
-      const rows = result.rows ?? [];
-      tables[t] = rows;
-      rowCounts[t] = rows.length;
-    } catch { /* table may not exist yet — skip */ }
-  }
-  return { tables, rowCounts };
 }
 
 function computeNextRun(schedule: {
@@ -131,21 +101,51 @@ function computeNextRun(schedule: {
 
 // ─── Run a scheduled backup ───────────────────────────────────────────────────
 async function runScheduledBackup(schedule: typeof backupSchedulesTable.$inferSelect): Promise<void> {
+  const [destination] = schedule.destinationId
+    ? await db.select().from(backupDestinationsTable).where(and(
+        eq(backupDestinationsTable.id, schedule.destinationId),
+        eq(backupDestinationsTable.active, true),
+      )).limit(1)
+    : [];
   const [record] = await db.insert(backupRecordsTable).values({
     type: "auto",
     backupType: schedule.backupType,
     appVersion: APP_VERSION,
     status: "pending",
     scheduleId: schedule.id,
+    destinationId: destination?.id ?? null,
     notes: `Copia automática: ${schedule.name}`,
     createdByName: "Sistema",
   }).returning();
 
   try {
-    const { tables, rowCounts } = await fullDump();
-    const payload = JSON.stringify({ version: APP_VERSION, createdAt: new Date().toISOString(), tables });
-    const { iv, ciphertext } = encrypt(payload);
-    const hash = sha256(ciphertext);
+    if (!destination) throw new Error("La copia programada no tiene un destino externo activo");
+    const { payload, rowCounts } = await createDatabaseSnapshot(APP_VERSION);
+    const { iv, ciphertext } = encryptBackup(JSON.stringify(payload));
+    const hash = backupArtifactChecksum({
+      formatVersion: BACKUP_FORMAT_VERSION,
+      appVersion: APP_VERSION,
+      iv,
+      ciphertext,
+    });
+    const artifact: BackupArtifact = {
+      formatVersion: BACKUP_FORMAT_VERSION,
+      appVersion: APP_VERSION,
+      backupId: record.id,
+      createdAt: payload.createdAt,
+      iv,
+      ciphertext,
+      checksum: hash,
+    };
+    const externalRef = await uploadBackupArtifact(
+      destination as unknown as BackupDestination,
+      artifact,
+    );
+    if (!await verifyBackupArtifact(
+      destination as unknown as BackupDestination,
+      externalRef,
+      hash,
+    )) throw new Error("Verificación externa fallida");
 
     await db.update(backupRecordsTable).set({
       status: "valid",
@@ -153,10 +153,12 @@ async function runScheduledBackup(schedule: typeof backupSchedulesTable.$inferSe
       encryptionIv: iv,
       integrityHash: hash,
       sizeBytes: Buffer.byteLength(ciphertext, "base64"),
-      tablesIncluded: Object.keys(rowCounts),
+      tablesIncluded: payload.manifest,
       recordCounts: rowCounts,
       verified: true,
       verifiedAt: new Date(),
+      destinationId: destination.id,
+      preAction: externalRef,
     }).where(eq(backupRecordsTable.id, record.id));
 
     await db.update(backupSchedulesTable).set({
@@ -167,10 +169,21 @@ async function runScheduledBackup(schedule: typeof backupSchedulesTable.$inferSe
     }).where(eq(backupSchedulesTable.id, schedule.id));
 
     await logTechEvent("info", "backup", `Copia programada completada: ${schedule.name}`, { backupId: record.id });
+    await db.insert(backupAuditLogTable).values({
+      backupId: record.id,
+      action: "scheduled_created",
+      result: "ok",
+      details: { scheduleId: schedule.id, rowCounts, destinationId: destination.id, externalRef },
+      employeeName: "sistema",
+    }).catch(() => {});
 
     // Enforce retention: delete oldest excess backups from this schedule
     if (schedule.retention > 0) {
-      const backups = await db.select({ id: backupRecordsTable.id })
+      const backups = await db.select({
+        id: backupRecordsTable.id,
+        destinationId: backupRecordsTable.destinationId,
+        preAction: backupRecordsTable.preAction,
+      })
         .from(backupRecordsTable)
         .where(and(
           eq(backupRecordsTable.scheduleId, schedule.id),
@@ -180,6 +193,12 @@ async function runScheduledBackup(schedule: typeof backupSchedulesTable.$inferSe
 
       const toDelete = backups.slice(schedule.retention);
       for (const b of toDelete) {
+        if (b.destinationId === destination.id && b.preAction) {
+          await purgeBackupArtifact(
+            destination as unknown as BackupDestination,
+            b.preAction,
+          ).catch(() => {});
+        }
         await db.delete(backupRecordsTable).where(eq(backupRecordsTable.id, b.id)).catch(() => {});
       }
     }
@@ -191,6 +210,13 @@ async function runScheduledBackup(schedule: typeof backupSchedulesTable.$inferSe
       lastError: String(err),
       nextRunAt: computeNextRun(schedule),
     }).where(eq(backupSchedulesTable.id, schedule.id));
+    await db.insert(backupAuditLogTable).values({
+      backupId: record.id,
+      action: "scheduled_created",
+      result: "error",
+      details: { scheduleId: schedule.id, error: String(err) },
+      employeeName: "sistema",
+    }).catch(() => {});
 
     await logTechEvent("critical", "backup", `Copia programada fallida: ${schedule.name} — ${String(err)}`, { scheduleId: schedule.id });
     await tryLogDirectorAlert("Copia de seguridad fallida", `La copia programada "${schedule.name}" ha fallado: ${String(err)}`, "critical", "sistema");

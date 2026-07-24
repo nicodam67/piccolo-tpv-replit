@@ -14,6 +14,14 @@ import {
 import { toast } from "sonner";
 
 import { api } from '../lib/api-client';
+import {
+  useGetReservations,
+  useCreateReservation,
+  usePatchReservation,
+  useDeleteReservation,
+  useArriveReservation,
+  getGetReservationsQueryKey,
+} from '@workspace/api-client-react/reservations';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Reservation {
@@ -312,6 +320,8 @@ function ReservationModal({ initial, zones, tables, onClose, onSaved }: {
   const [selectedClient, setSelectedClient] = useState<CrmClient | null>(null);
   const [suggesting, setSuggesting] = useState(false);
   const [suggestions, setSuggestions] = useState<TableRow[]>([]);
+  const createReservation = useCreateReservation();
+  const patchReservation = usePatchReservation();
 
   const f = (k: keyof Reservation, v: unknown) => setForm(p => ({ ...p, [k]: v }));
 
@@ -349,16 +359,19 @@ function ReservationModal({ initial, zones, tables, onClose, onSaved }: {
     try {
       const payload = {
         ...form,
+        fecha: form.fecha,
+        hora: form.hora,
+        nombre: form.nombre.trim(),
         zonaPreferida: form.zonaPreferida || null,
         ocasion: form.ocasion || null,
         mesaId: form.mesaId || null,
         clientId: form.clientId || null,
       };
       if (isEdit) {
-        await api.patch(`/api/reservations/${initial!.id}`, payload);
+        await patchReservation.mutateAsync({ id: initial!.id!, data: payload });
         toast.success("Reserva actualizada");
       } else {
-        await api.post("/api/reservations", payload);
+        await createReservation.mutateAsync({ data: payload });
         toast.success("Reserva creada");
       }
       onSaved(); onClose();
@@ -645,25 +658,17 @@ function WaitingModal({ zones, onClose, onSaved }: { zones: Zone[]; onClose: () 
 
 // ─── Week View ────────────────────────────────────────────────────────────────
 function WeekView({ weekStart, onDayClick }: { weekStart: string; onDayClick: (d: string) => void }) {
-  const [counts, setCounts] = useState<Record<string, { total: number; active: number; pax: number }>>({});
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    setLoading(true);
-    const weekEnd = addDays(weekStart, 6);
-    api.get(`/api/reservations?from=${weekStart}&to=${weekEnd}`)
-      .then((data: Reservation[]) => {
-        const map: Record<string, { total: number; active: number; pax: number }> = {};
-        for (const r of data ?? []) {
-          if (!map[r.fecha]) map[r.fecha] = { total: 0, active: 0, pax: 0 };
-          map[r.fecha].total++;
-          if (!TERMINAL.includes(r.status)) { map[r.fecha].active++; map[r.fecha].pax += r.personas; }
-        }
-        setCounts(map);
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, [weekStart]);
+  const weekEnd = addDays(weekStart, 6);
+  const { data = [], isLoading: loading } = useGetReservations({ from: weekStart, to: weekEnd });
+  const counts = useMemo(() => {
+    const map: Record<string, { total: number; active: number; pax: number }> = {};
+    for (const r of data) {
+      if (!map[r.fecha]) map[r.fecha] = { total: 0, active: 0, pax: 0 };
+      map[r.fecha].total++;
+      if (!TERMINAL.includes(r.status)) { map[r.fecha].active++; map[r.fecha].pax += r.personas; }
+    }
+    return map;
+  }, [data]);
 
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
   const todayStr = today();
@@ -707,11 +712,9 @@ export default function Reservations() {
   const [tab, setTab] = useState<Tab>("dia");
   const [date, setDate] = useState(today());
   const [weekStart, setWeekStart] = useState(monday(today()));
-  const [reservations, setReservations] = useState<Reservation[]>([]);
   const [waiting, setWaiting] = useState<WaitingEntry[]>([]);
   const [zones, setZones] = useState<Zone[]>([]);
   const [tables, setTables] = useState<TableRow[]>([]);
-  const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [editRes, setEditRes] = useState<Reservation | null>(null);
   const [showCreate, setShowCreate] = useState(false);
@@ -723,15 +726,26 @@ export default function Reservations() {
     try { return JSON.parse(localStorage.getItem("employee") ?? "{}").role ?? ""; } catch { return ""; }
   })();
   const isManager = ["admin","manager","encargado"].includes(employeeRole);
+  const {
+    data: reservationRows = [],
+    isLoading: loading,
+    isError: reservationsError,
+    refetch: refetchReservations,
+  } = useGetReservations({ date }, {
+    query: {
+      queryKey: getGetReservationsQueryKey({ date }),
+      refetchInterval: 60_000,
+      refetchOnWindowFocus: true,
+    },
+  });
+  const reservations: Reservation[] = reservationRows;
+  const arriveReservation = useArriveReservation();
+  const patchReservation = usePatchReservation();
+  const deleteReservation = useDeleteReservation();
 
   const loadReservations = useCallback(async () => {
-    setLoading(true);
-    try {
-      const data = await api.get(`/api/reservations?date=${date}`);
-      setReservations(Array.isArray(data) ? data : []);
-    } catch { toast.error("No se pudo cargar las reservas"); }
-    finally { setLoading(false); }
-  }, [date]);
+    await refetchReservations();
+  }, [refetchReservations]);
 
   const loadWaiting = useCallback(async () => {
     try {
@@ -752,12 +766,8 @@ export default function Reservations() {
   }, []);
 
   useEffect(() => {
-    loadReservations();
-    const interval = setInterval(loadReservations, 60_000);
-    const onVis = () => { if (!document.hidden) loadReservations(); };
-    document.addEventListener("visibilitychange", onVis);
-    return () => { clearInterval(interval); document.removeEventListener("visibilitychange", onVis); };
-  }, [loadReservations]);
+    if (reservationsError) toast.error("No se pudo cargar las reservas");
+  }, [reservationsError]);
 
   useEffect(() => { loadWaiting(); loadMeta(); }, [loadWaiting, loadMeta]);
   useEffect(() => {
@@ -768,7 +778,7 @@ export default function Reservations() {
   const handleArrive = async (r: Reservation) => {
     setBusyId(r.id);
     try {
-      const result = await api.post<{ tableOpened?: boolean }>(`/api/reservations/${r.id}/arrive`, { openTable: !!r.mesaId });
+      const result = await arriveReservation.mutateAsync({ id: r.id, data: { openTable: !!r.mesaId } });
       toast.success(`${r.nombre} marcado como llegado`);
       if (result?.tableOpened) toast.success("Mesa abierta automáticamente");
       loadReservations();
@@ -779,7 +789,7 @@ export default function Reservations() {
   const handleStatusChange = async (r: Reservation, status: string) => {
     setBusyId(r.id);
     try {
-      await api.patch(`/api/reservations/${r.id}`, { status });
+      await patchReservation.mutateAsync({ id: r.id, data: { status } });
       loadReservations();
     } catch (e: any) { toast.error(e.message); }
     finally { setBusyId(null); }
@@ -789,7 +799,7 @@ export default function Reservations() {
     if (!confirm(`¿Eliminar reserva de ${r.nombre}?`)) return;
     setBusyId(r.id);
     try {
-      await api.delete(`/api/reservations/${r.id}`);
+      await deleteReservation.mutateAsync({ id: r.id });
       toast.success("Reserva eliminada");
       loadReservations();
     } catch (e: any) { toast.error(e.message); }

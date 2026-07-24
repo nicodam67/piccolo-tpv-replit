@@ -11,6 +11,10 @@ import {
 import {
   useGetBusinessConfig,
   useUpdateBusinessConfig,
+  getGetBusinessConfigQueryKey,
+  type BusinessConfig,
+} from '@workspace/api-client-react';
+import {
   useGetDocumentTemplates,
   useCreateDocumentTemplate,
   useUpdateDocumentTemplate,
@@ -22,15 +26,13 @@ import {
   useUpdatePrinterConfig,
   useDeletePrinterConfig,
   useGetDocumentAuditLog,
-  getGetBusinessConfigQueryKey,
   getGetDocumentTemplatesQueryKey,
   getGetPrinterConfigsQueryKey,
   getGetDocumentAuditLogQueryKey,
-  type BusinessConfig,
   type DocumentTemplate,
   type PrinterConfig,
   type DocumentAuditEntry,
-} from '@workspace/api-client-react';
+} from '@workspace/api-client-react/documents';
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 type Tab = 'establecimiento' | 'plantillas' | 'impresoras' | 'auditoria';

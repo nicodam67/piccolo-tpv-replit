@@ -74,7 +74,9 @@ export default function TabletHome({ onSelectEmployee, onNfcIdentified, deviceTo
   useEffect(() => {
     function load() {
       setLoading(true);
-      fetch(`${BASE}/api/fichaje/public/employees?deviceToken=${encodeURIComponent(deviceToken)}`)
+      fetch(`${BASE}/api/fichaje/public/employees`, {
+        headers: { "X-Device-Token": deviceToken },
+      })
         .then(r => r.ok ? r.json() : [])
         .then((data: { id: string; name: string }[]) =>
           setEmployees(data.map(e => ({ ...e, initials: toInitials(e.name) })))
