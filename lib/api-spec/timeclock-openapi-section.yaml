@@ -200,7 +200,7 @@
     get:
       operationId: getTimeclockRecordBreaks
       tags: [timeclock, phase56-timeclock]
-      summary: List breaks for a time record
+      summary: List breaks for an owned time record (administrative roles may access any record)
       security: [{ bearerAuth: [] }, { cookieAuth: [] }]
       x-roles: [authenticated]
       parameters: [{ $ref: "#/components/parameters/Id" }]
@@ -211,6 +211,8 @@
             application/json:
               schema: { type: array, items: { $ref: "#/components/schemas/TimeclockBreak" } }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
         "503": { $ref: "#/components/responses/ServiceUnavailable" }
 
   /fichaje/shifts:

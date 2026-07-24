@@ -354,6 +354,43 @@ router.put(
 
 router.get("/fichaje/records/:id/breaks", requireAuth, async (req, res): Promise<void> => {
   const recordId = req.params.id as string;
+  const user = req.user!;
+  const [actors, records] = await Promise.all([
+    db
+      .select({
+        id: employeesTable.id,
+        role: employeesTable.role,
+        active: employeesTable.active,
+      })
+      .from(employeesTable)
+      .where(eq(employeesTable.id, user.id))
+      .limit(1),
+    db
+      .select({
+        employeeId: timeRecordsTable.employeeId,
+      })
+      .from(timeRecordsTable)
+      .where(eq(timeRecordsTable.id, recordId))
+      .limit(1),
+  ]);
+
+  const actor = actors[0];
+  if (!actor?.active) {
+    res.status(403).json({ error: "No tienes permisos para realizar esta acción" });
+    return;
+  }
+
+  const record = records[0];
+  const administrativeRoles = ["admin", "manager", "encargado"];
+  const hasAdministrativeAccess =
+    administrativeRoles.includes(user.role) && administrativeRoles.includes(actor.role);
+
+  // Return the same response for unknown and foreign records to prevent enumeration.
+  if (!record || (!hasAdministrativeAccess && record.employeeId !== actor.id)) {
+    res.status(404).json({ error: "Registro no encontrado" });
+    return;
+  }
+
   const breaks = await db
     .select()
     .from(breaksTable)

@@ -94,6 +94,12 @@ describe("timeclock OpenAPI metadata", () => {
     expect(mobileStatus.responses["200"].content["application/json"].schema.$ref)
       .toBe("#/components/schemas/TimeclockMobileClockStatus");
   });
+
+  it("documents record-break ownership denials without resource disclosure", () => {
+    const breaks = spec.paths["/fichaje/records/{id}/breaks"].get;
+    expect(Object.keys(breaks.responses).sort()).toEqual(["200", "401", "403", "404", "503"]);
+    expect(breaks.summary).toContain("owned time record");
+  });
 });
 
 describeWithDatabase("timeclock OpenAPI integration contract", () => {

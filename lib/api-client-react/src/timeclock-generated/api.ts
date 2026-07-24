@@ -793,7 +793,7 @@ export const getGetTimeclockRecordBreaksUrl = (id: string,) => {
 }
 
 /**
- * @summary List breaks for a time record
+ * @summary List breaks for an owned time record (administrative roles may access any record)
  */
 export const getTimeclockRecordBreaks = async (id: string, options?: RequestInit): Promise<TimeclockBreak[]> => {
 
@@ -817,7 +817,7 @@ export const getGetTimeclockRecordBreaksQueryKey = (id: string,) => {
     }
 
 
-export const getGetTimeclockRecordBreaksQueryOptions = <TData = Awaited<ReturnType<typeof getTimeclockRecordBreaks>>, TError = ErrorType<UnauthorizedResponse | ServiceUnavailableResponse>>(id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTimeclockRecordBreaks>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getGetTimeclockRecordBreaksQueryOptions = <TData = Awaited<ReturnType<typeof getTimeclockRecordBreaks>>, TError = ErrorType<UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | ServiceUnavailableResponse>>(id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTimeclockRecordBreaks>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
@@ -836,14 +836,14 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 }
 
 export type GetTimeclockRecordBreaksQueryResult = NonNullable<Awaited<ReturnType<typeof getTimeclockRecordBreaks>>>
-export type GetTimeclockRecordBreaksQueryError = ErrorType<UnauthorizedResponse | ServiceUnavailableResponse>
+export type GetTimeclockRecordBreaksQueryError = ErrorType<UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | ServiceUnavailableResponse>
 
 
 /**
- * @summary List breaks for a time record
+ * @summary List breaks for an owned time record (administrative roles may access any record)
  */
 
-export function useGetTimeclockRecordBreaks<TData = Awaited<ReturnType<typeof getTimeclockRecordBreaks>>, TError = ErrorType<UnauthorizedResponse | ServiceUnavailableResponse>>(
+export function useGetTimeclockRecordBreaks<TData = Awaited<ReturnType<typeof getTimeclockRecordBreaks>>, TError = ErrorType<UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | ServiceUnavailableResponse>>(
  id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTimeclockRecordBreaks>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
