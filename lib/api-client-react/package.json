@@ -11,7 +11,8 @@
     "./branding": "./src/branding-generated/index.ts",
     "./crm": "./src/crm-generated/index.ts",
     "./wallet": "./src/wallet-generated/index.ts",
-    "./delivery": "./src/delivery-compat.ts"
+    "./delivery": "./src/delivery-compat.ts",
+    "./timeclock": "./src/timeclock-compat.ts"
   },
   "dependencies": {
     "@tanstack/react-query": "catalog:"

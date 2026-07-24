@@ -19,8 +19,18 @@ import TabletPinKeypad from "./TabletPinKeypad";
 import TabletEmployeeStatus from "./TabletEmployeeStatus";
 import TabletConfirmation from "./TabletConfirmation";
 import { useInactivityReset } from "./useInactivityReset";
-
-const BASE = (import.meta as unknown as { env: { BASE_URL: string } }).env.BASE_URL.replace(/\/$/, "");
+import {
+  deviceTokenRequest,
+  getTabletDevice,
+  getTimeclockPublicEmployeeStatus,
+  idempotencyRequest,
+  mergeRequest,
+  pingTabletDevice,
+  postTabletClock,
+  registerTabletDevice,
+  verifyTabletPin,
+  ApiError,
+} from "@workspace/api-client-react/timeclock";
 const TOKEN_KEY = "piccolo_tablet_token";
 const APP_VERSION = "1.0.0";
 
@@ -57,6 +67,14 @@ function toInitials(name: string) {
   return name.split(" ").slice(0, 2).map(w => w[0]?.toUpperCase() ?? "").join("");
 }
 
+function toClockStatus(status: { status: ClockStatus["status"]; record?: { id: string; clockIn: string } | null; activeBreak?: { id: string; breakStart: string } | null }): ClockStatus {
+  return {
+    status: status.status,
+    record: status.record ?? null,
+    activeBreak: status.activeBreak ?? null,
+  };
+}
+
 export default function TabletApp() {
   // ── Device registration state ──────────────────────────────────────────────
   const [deviceToken, setDeviceToken] = useState<string | null>(null);
@@ -87,22 +105,15 @@ export default function TabletApp() {
     if (!token) { setDeviceStatus("unregistered"); return; }
     setDeviceToken(token);
 
-    fetch(`${BASE}/api/tablet/device`, {
-      headers: { "X-Device-Token": token },
-    })
-      .then(r => r.ok ? r.json() : null)
+    getTabletDevice(deviceTokenRequest(token))
       .then(data => {
-        if (!data) { localStorage.removeItem(TOKEN_KEY); setDeviceStatus("unregistered"); return; }
         if (data.status === "revoked") { setDeviceStatus("revoked"); return; }
         setDeviceStatus("ok");
-        fetch(`${BASE}/api/tablet/device/ping`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "X-Device-Token": token },
-          body: JSON.stringify({ appVersion: APP_VERSION }),
-        }).catch(() => {});
+        pingTabletDevice({ appVersion: APP_VERSION }, deviceTokenRequest(token)).catch(() => {});
       })
       .catch(() => {
-        if (token) { setDeviceToken(token); setDeviceStatus("ok"); }
+        localStorage.removeItem(TOKEN_KEY);
+        setDeviceStatus("unregistered");
       });
   }, []);
 
@@ -111,22 +122,19 @@ export default function TabletApp() {
     if (!regForm.name.trim()) return;
     setRegistering(true);
     try {
-      const r = await fetch(`${BASE}/api/tablet/register`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: regForm.name, location: regForm.location, pairingCode: regForm.pairingCode }),
+      const { deviceToken: token } = await registerTabletDevice({
+        name: regForm.name,
+        location: regForm.location,
+        pairingCode: regForm.pairingCode,
       });
-      if (!r.ok) {
-        const err = await r.json().catch(() => ({ error: "Error al registrar" }));
-        alert(err.error ?? "Error al registrar");
-        return;
-      }
-      const { deviceToken: token } = await r.json();
       localStorage.setItem(TOKEN_KEY, token);
       setDeviceToken(token);
       setDeviceStatus("ok");
     } catch (e) {
-      alert("No se pudo registrar: " + String(e));
+      const msg = e instanceof ApiError && e.data && typeof e.data === "object" && "error" in e.data
+        ? String((e.data as { error?: string }).error)
+        : "Error al registrar";
+      alert(msg);
     } finally {
       setRegistering(false);
     }
@@ -147,12 +155,8 @@ export default function TabletApp() {
   async function onEmployeeSelected(emp: Employee) {
     setSelectedEmployee(emp);
     try {
-      const r = await fetch(
-        `${BASE}/api/fichaje/public/my-status/${emp.id}`,
-        { headers: { "X-Device-Token": deviceToken ?? "" } },
-      );
-      if (r.ok) setClockStatus(await r.json());
-      else setClockStatus({ status: "out", record: null, activeBreak: null });
+      const status = await getTimeclockPublicEmployeeStatus(emp.id, deviceTokenRequest(deviceToken ?? ""));
+      setClockStatus(toClockStatus(status));
     } catch {
       setClockStatus({ status: "out", record: null, activeBreak: null });
     }
@@ -170,48 +174,54 @@ export default function TabletApp() {
   // ── PIN submitted ──────────────────────────────────────────────────────────
   async function onPinSubmit(pin: string): Promise<PinResult> {
     if (!selectedEmployee || !deviceToken) return { ok: false };
-    const r = await fetch(`${BASE}/api/tablet/verify-pin`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ employeeId: selectedEmployee.id, pin, deviceToken }),
-    });
-    const data: PinResult = await r.json();
-    if (r.ok && data.ok) {
-      setClockProofs(data.proofs ?? null);
-      const sr = await fetch(
-        `${BASE}/api/fichaje/public/my-status/${selectedEmployee.id}`,
-        { headers: { "X-Device-Token": deviceToken } },
-      );
-      if (sr.ok) setClockStatus(await sr.json());
-      setScreen("status");
+    try {
+      const data = await verifyTabletPin({
+        employeeId: selectedEmployee.id,
+        pin,
+        deviceToken,
+      });
+      if (data.ok) {
+        setClockProofs(data.proofs ?? null);
+        const status = await getTimeclockPublicEmployeeStatus(selectedEmployee.id, deviceTokenRequest(deviceToken));
+        setClockStatus(toClockStatus(status));
+        setScreen("status");
+      }
+      return data as PinResult;
+    } catch (e) {
+      if (e instanceof ApiError) {
+        return (e.data ?? { ok: false, error: e.message }) as PinResult;
+      }
+      return { ok: false };
     }
-    return data;
   }
 
   // ── Clock action ───────────────────────────────────────────────────────────
   async function onAction(action: Action) {
     if (!selectedEmployee || !deviceToken || !clockProofs?.[action]) return;
-    const idem = `${selectedEmployee.id}-${action}-${new Date().toISOString().slice(0, 16)}`;
-    const r = await fetch(`${BASE}/api/tablet/clock`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Idempotency-Key": idem },
-      body: JSON.stringify({
-        employeeId: selectedEmployee.id,
-        action,
-        deviceToken,
-        proof: clockProofs[action],
-      }),
-    });
-    const data = await r.json();
-    if (r.ok && data.success) {
-      setClockProofs(null);
-      const rawTime = data.serverTime ?? new Date().toISOString();
-      const t = new Date(rawTime).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
-      setConfirmation({ action: ACTION_LABELS[action], time: t, name: selectedEmployee.name });
-      setScreen("confirmation");
-      setTimeout(resetToHome, 5000);
-    } else {
-      alert(data.error ?? "Error al fichar");
+    try {
+      const idem = `${selectedEmployee.id}-${action}-${new Date().toISOString().slice(0, 16)}`;
+      const data = await postTabletClock(
+        {
+          employeeId: selectedEmployee.id,
+          action,
+          deviceToken,
+          proof: clockProofs[action],
+        },
+        mergeRequest(idempotencyRequest(idem)),
+      );
+      if (data.success) {
+        setClockProofs(null);
+        const rawTime = data.serverTime ?? new Date().toISOString();
+        const t = new Date(rawTime).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
+        setConfirmation({ action: ACTION_LABELS[action], time: t, name: selectedEmployee.name });
+        setScreen("confirmation");
+        setTimeout(resetToHome, 5000);
+      }
+    } catch (e) {
+      const msg = e instanceof ApiError && e.data && typeof e.data === "object" && "error" in e.data
+        ? String((e.data as { error?: string }).error)
+        : "Error al fichar";
+      alert(msg);
     }
   }
 

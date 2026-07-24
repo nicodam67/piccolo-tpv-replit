@@ -12,8 +12,12 @@ import { useState, useEffect, useCallback } from "react";
 import { Search, Wifi, WifiOff, Nfc, KeyRound, WifiOff as NfcOff, AlertCircle } from "lucide-react";
 import { useTabletClock } from "./useTabletClock";
 import { useNfc } from "./useNfc";
-
-const BASE = (import.meta as unknown as { env: { BASE_URL: string } }).env.BASE_URL.replace(/\/$/, "");
+import {
+  deviceTokenRequest,
+  getTimeclockPublicEmployees,
+  postTimeclockNfcIdentify,
+} from "@workspace/api-client-react/timeclock";
+import { ApiError } from "@workspace/api-client-react/timeclock";
 
 interface Employee {
   id: string;
@@ -74,11 +78,8 @@ export default function TabletHome({ onSelectEmployee, onNfcIdentified, deviceTo
   useEffect(() => {
     function load() {
       setLoading(true);
-      fetch(`${BASE}/api/fichaje/public/employees`, {
-        headers: { "X-Device-Token": deviceToken },
-      })
-        .then(r => r.ok ? r.json() : [])
-        .then((data: { id: string; name: string }[]) =>
+      getTimeclockPublicEmployees(deviceTokenRequest(deviceToken))
+        .then(data =>
           setEmployees(data.map(e => ({ ...e, initials: toInitials(e.name) })))
         )
         .catch(() => {})
@@ -103,17 +104,7 @@ export default function TabletHome({ onSelectEmployee, onNfcIdentified, deviceTo
     setNfcIdentifying(true);
     setNfcError(null);
     try {
-      const r = await fetch(`${BASE}/api/fichaje/public/nfc/identify`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ rawToken: uid, deviceToken }),
-      });
-      const data = await r.json();
-      if (!r.ok) {
-        setNfcError(data.error ?? "Error al identificar la tarjeta");
-        setTimeout(() => setNfcError(null), 4000);
-        return;
-      }
+      const data = await postTimeclockNfcIdentify({ rawToken: uid, deviceToken });
       const emp: Employee = {
         id: data.employeeId,
         name: data.employeeName,
@@ -121,13 +112,18 @@ export default function TabletHome({ onSelectEmployee, onNfcIdentified, deviceTo
       };
       const clockStatus: NfcClockStatus = {
         status: data.currentStatus,
-        record: data.record,
-        activeBreak: data.activeBreak,
+        record: data.record ?? null,
+        activeBreak: data.activeBreak ?? null,
         proofs: data.proofs,
       };
       onNfcIdentified(emp, clockStatus);
-    } catch {
-      setNfcError("Error de red al identificar la tarjeta");
+    } catch (err) {
+      const message = err instanceof ApiError
+        ? (typeof err.data === "object" && err.data && "error" in (err.data as object)
+          ? String((err.data as { error?: string }).error)
+          : err.message)
+        : "Error de red al identificar la tarjeta";
+      setNfcError(message);
       setTimeout(() => setNfcError(null), 4000);
     } finally {
       setNfcIdentifying(false);

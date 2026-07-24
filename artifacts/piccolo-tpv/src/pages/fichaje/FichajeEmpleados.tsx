@@ -8,6 +8,12 @@
 import { useState, useEffect, useCallback } from "react";
 import { Plus, Search, Users, Edit, Power, Key, Nfc, Trash2, CheckCircle, XCircle, Clock, AlertCircle } from "lucide-react";
 import { api } from "../../lib/api-client";
+import {
+  assignTimeclockNfcCard,
+  getTimeclockNfcCards,
+  revokeTimeclockNfcCard,
+} from "@workspace/api-client-react/timeclock";
+import type { NfcCardBrief } from "@workspace/api-client-react/timeclock";
 import { useNfc } from "./tablet/useNfc";
 
 interface FichajeEmployee {
@@ -19,15 +25,7 @@ interface FichajeEmployee {
   anvizId?: string;
 }
 
-interface NfcCard {
-  id: string;
-  alias: string | null;
-  status: "active" | "revoked";
-  lastUsedAt: string | null;
-  assignedAt: string;
-  revokedAt: string | null;
-  revokedReason: string | null;
-}
+interface NfcCard extends NfcCardBrief {}
 
 // ─── NFC Card Management Modal ────────────────────────────────────────────────
 function NfcCardsModal({
@@ -54,7 +52,7 @@ function NfcCardsModal({
 
   const loadCards = useCallback(() => {
     setLoading(true);
-    api.get<NfcCard[]>(`/api/fichaje/nfc/cards/${employee.id}`)
+    getTimeclockNfcCards(employee.id)
       .then(d => setCards(Array.isArray(d) ? d : []))
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -82,10 +80,10 @@ function NfcCardsModal({
     nfc.stopScanning();
     setAssigning(true);
     try {
-      await api.post("/api/fichaje/nfc/cards", {
+      await assignTimeclockNfcCard({
         employeeId: employee.id,
         rawToken: uid,
-        alias: alias.trim() || null,
+        alias: alias.trim() || undefined,
       });
       flash(`Tarjeta asignada correctamente a ${employee.name}`);
       setAlias("");
@@ -101,7 +99,7 @@ function NfcCardsModal({
   async function revokeCard() {
     if (!revokeTarget) return;
     try {
-      await api.post(`/api/fichaje/nfc/cards/${revokeTarget.id}/revoke`, {
+      await revokeTimeclockNfcCard(revokeTarget.id, {
         reason: revokeReason.trim() || "Revocada por administrador",
       });
       flash("Tarjeta revocada");
