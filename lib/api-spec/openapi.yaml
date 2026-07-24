@@ -2297,6 +2297,170 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "503": { $ref: "#/components/responses/ServiceUnavailable" }
 
+  /reservations:
+    get:
+      operationId: getReservations
+      tags: [reservations, phase45-reservations]
+      summary: List reservations ordered by date and time
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [authenticated]
+      parameters:
+        - { in: query, name: date, schema: { type: string } }
+        - { in: query, name: from, schema: { type: string } }
+        - { in: query, name: to, schema: { type: string } }
+        - { in: query, name: status, schema: { type: string }, description: Unknown values are ignored by the current handler. }
+        - { in: query, name: clientId, schema: { type: string } }
+      responses:
+        "200":
+          description: Reservations with optional CRM and table joins
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/ReservationListItem" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+    post:
+      operationId: createReservation
+      tags: [reservations, phase45-reservations]
+      summary: Create a pending reservation
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [authenticated]
+      x-idempotent: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateReservationInput" }
+      responses:
+        "201":
+          description: Created reservation
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Reservation" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /reservations/suggest-table:
+    get:
+      operationId: suggestReservationTable
+      tags: [reservations, phase45-reservations]
+      summary: Suggest up to five available tables for a reservation time window
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [authenticated]
+      parameters:
+        - { in: query, name: fecha, required: true, schema: { type: string } }
+        - { in: query, name: hora, required: true, schema: { type: string } }
+        - { in: query, name: duracion, schema: { type: integer, default: 90 } }
+        - { in: query, name: personas, schema: { type: integer, default: 2 } }
+        - { in: query, name: zona, schema: { type: string } }
+      responses:
+        "200":
+          description: Ranked table suggestions
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuggestTableResponse" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /reservations/{id}:
+    get:
+      operationId: getReservation
+      tags: [reservations, phase45-reservations]
+      summary: Get a reservation with its status history
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [authenticated]
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200":
+          description: Reservation detail
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ReservationDetail" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+    patch:
+      operationId: patchReservation
+      tags: [reservations, phase45-reservations]
+      summary: Partially update a reservation and optionally its status
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [authenticated]
+      x-idempotent: false
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateReservationInput" }
+      responses:
+        "200":
+          description: Updated reservation
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Reservation" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+    delete:
+      operationId: deleteReservation
+      tags: [reservations, phase45-reservations]
+      summary: Delete a reservation
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [manager, admin]
+      x-idempotent: false
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "204": { description: Reservation deleted }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /reservations/{id}/arrive:
+    post:
+      operationId: arriveReservation
+      tags: [reservations, phase45-reservations]
+      summary: Mark a reservation as arrived and optionally open its assigned table
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [authenticated]
+      x-idempotent: false
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ArriveReservationInput" }
+      responses:
+        "200":
+          description: Arrival result and order prefill
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ArriveReservationResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /reservations/{id}/history:
+    get:
+      operationId: getReservationHistory
+      tags: [reservations, phase45-reservations]
+      summary: Get reservation status transitions
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [authenticated]
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200":
+          description: Status history ordered by change time
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/ReservationStatusHistory" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
   /tables/occupation-summary:
     get:
       operationId: getOccupationSummary
@@ -2720,6 +2884,10 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: piccolo_session
 
   parameters:
     Id:
@@ -3875,6 +4043,183 @@ components:
           type: integer
           minimum: 0
       required: [page, pageSize, total]
+
+    ReservationStatus:
+      type: string
+      enum: [pendiente, confirmada, recordatorio_enviado, cliente_avisado, cliente_llegado, sentada, en_espera, cancelada_cliente, cancelada_restaurante, no_presentado, finalizada]
+
+    Reservation:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        fecha: { type: string }
+        hora: { type: string }
+        nombre: { type: string }
+        telefono: { type: string }
+        email: { type: string }
+        personas: { type: integer }
+        clientId: { type: string, format: uuid, nullable: true }
+        shiftId: { type: string, format: uuid, nullable: true }
+        zonaPreferida: { type: string, nullable: true }
+        mesaId: { type: string, format: uuid, nullable: true }
+        duracionMinutos: { type: integer }
+        idioma: { type: string }
+        alergias: { type: string }
+        trona: { type: boolean }
+        accesibilidad: { type: boolean }
+        mascota: { type: boolean }
+        ocasion: { type: string, nullable: true }
+        canal: { type: string }
+        recordatorioEnviado: { type: boolean }
+        confirmacionRequerida: { type: boolean }
+        notes: { type: string }
+        notasInternas: { type: string }
+        status: { $ref: "#/components/schemas/ReservationStatus" }
+        createdBy: { type: string, format: uuid, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        isDemo: { type: boolean }
+      required: [id, fecha, hora, nombre, telefono, email, personas, clientId, shiftId, zonaPreferida, mesaId, duracionMinutos, idioma, alergias, trona, accesibilidad, mascota, ocasion, canal, recordatorioEnviado, confirmacionRequerida, notes, notasInternas, status, createdBy, createdAt, updatedAt, isDemo]
+
+    ReservationListItem:
+      allOf:
+        - $ref: "#/components/schemas/Reservation"
+        - type: object
+          properties:
+            clientNombre: { type: string, nullable: true }
+            clientApellidos: { type: string, nullable: true }
+            clientEmail: { type: string, nullable: true }
+            clientTelefono: { type: string, nullable: true }
+            mesaNumero: { type: string, nullable: true }
+          required: [clientNombre, clientApellidos, clientEmail, clientTelefono, mesaNumero]
+
+    ReservationStatusHistory:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        reservationId: { type: string, format: uuid }
+        statusFrom: { type: string }
+        statusTo: { type: string }
+        changedBy: { type: string, format: uuid, nullable: true }
+        changedAt: { type: string, format: date-time }
+        notes: { type: string }
+      required: [id, reservationId, statusFrom, statusTo, changedBy, changedAt, notes]
+
+    ReservationDetail:
+      allOf:
+        - $ref: "#/components/schemas/Reservation"
+        - type: object
+          properties:
+            clientNombre: { type: string, nullable: true }
+            mesaNumero: { type: string, nullable: true }
+            history:
+              type: array
+              items: { $ref: "#/components/schemas/ReservationStatusHistory" }
+          required: [clientNombre, mesaNumero, history]
+
+    CreateReservationInput:
+      type: object
+      properties:
+        fecha: { type: string }
+        hora: { type: string }
+        nombre: { type: string, minLength: 1 }
+        telefono: { type: string }
+        email: { type: string }
+        personas: { type: integer }
+        clientId: { type: string, nullable: true }
+        shiftId: { type: string, nullable: true }
+        zonaPreferida: { type: string, nullable: true }
+        mesaId: { type: string, nullable: true }
+        duracionMinutos: { type: integer }
+        idioma: { type: string }
+        alergias: { type: string }
+        trona: { type: boolean }
+        accesibilidad: { type: boolean }
+        mascota: { type: boolean }
+        ocasion: { type: string, nullable: true }
+        canal: { type: string }
+        confirmacionRequerida: { type: boolean }
+        notes: { type: string }
+        notasInternas: { type: string }
+      required: [fecha, hora, nombre]
+
+    UpdateReservationInput:
+      type: object
+      properties:
+        fecha: { type: string }
+        hora: { type: string }
+        nombre: { type: string }
+        telefono: { type: string }
+        email: { type: string }
+        personas: { type: integer }
+        clientId: { type: string, nullable: true }
+        shiftId: { type: string, nullable: true }
+        zonaPreferida: { type: string, nullable: true }
+        mesaId: { type: string, nullable: true }
+        duracionMinutos: { type: integer }
+        idioma: { type: string }
+        alergias: { type: string }
+        trona: { type: boolean }
+        accesibilidad: { type: boolean }
+        mascota: { type: boolean }
+        ocasion: { type: string, nullable: true }
+        canal: { type: string }
+        confirmacionRequerida: { type: boolean }
+        recordatorioEnviado: { type: boolean }
+        notes: { type: string }
+        notasInternas: { type: string }
+        status: { type: string, description: Unknown values are ignored by the current handler. }
+        statusNotes: { type: string }
+
+    TableSuggestion:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        tableNumber: { type: string }
+        capacity: { type: integer }
+        status: { type: string }
+        zoneId: { type: string, format: uuid }
+        zoneName: { type: string, nullable: true }
+        score: { type: integer }
+      required: [id, tableNumber, capacity, status, zoneId, zoneName, score]
+
+    SuggestTableResponse:
+      type: object
+      properties:
+        suggestions:
+          type: array
+          maxItems: 5
+          items: { $ref: "#/components/schemas/TableSuggestion" }
+        busyTableCount: { type: integer }
+      required: [suggestions, busyTableCount]
+
+    ArriveReservationInput:
+      type: object
+      properties:
+        openTable: { type: boolean, default: false }
+
+    ArriveReservationResponse:
+      type: object
+      properties:
+        reservation: { $ref: "#/components/schemas/Reservation" }
+        tableOpened:
+          type: object
+          nullable: true
+          properties:
+            tableId: { type: string, format: uuid }
+            orderId: { type: string, format: uuid }
+          required: [tableId, orderId]
+        prefill:
+          type: object
+          properties:
+            guestCount: { type: integer }
+            clientName: { type: string }
+            notes: { type: string }
+            mesaId: { type: string, format: uuid, nullable: true }
+            alergias: { type: string }
+            trona: { type: boolean }
+          required: [guestCount, clientName, notes, mesaId, alergias, trona]
+      required: [reservation, tableOpened, prefill]
 
     OccupationSummary:
       type: object
