@@ -5,7 +5,7 @@ import {
   ingredientsTable,
   stockMovementsTable,
 } from "@workspace/db";
-import { eq, and, desc, gte, lte, sum } from "drizzle-orm";
+import { eq, and, desc, gte, lte, sum, sql } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
 
 const router: IRouter = Router();
@@ -112,6 +112,9 @@ router.post("/admin/waste-records", requireAuth, requireRole("admin"), async (re
   const user = (req as any).user;
 
   await db.transaction(async (tx) => {
+    await tx.select({ id: ingredientsTable.id }).from(ingredientsTable)
+      .where(eq(ingredientsTable.id, ingredientId))
+      .for("update");
     // Insert waste record
     await tx.insert(wasteRecordsTable).values({
       ingredientId,
@@ -128,7 +131,7 @@ router.post("/admin/waste-records", requireAuth, requireRole("admin"), async (re
     await tx
       .update(ingredientsTable)
       .set({
-        currentStock: `GREATEST(0, (current_stock)::numeric - ${qty}::numeric)` as any,
+        currentStock: sql`GREATEST(0, (${ingredientsTable.currentStock})::numeric - ${qty}::numeric)`,
         updatedAt: new Date(),
       })
       .where(eq(ingredientsTable.id, ingredientId));

@@ -129,6 +129,7 @@ describeWithDatabase("POST /api/delivery-orders — delivery", () => {
     const res = await request(app)
       .post("/api/delivery-orders")
       .set(authHeaders(token))
+      .set("Idempotency-Key", "delivery-test-create-001")
       .send({
         channel: "phone",
         deliveryType: "delivery",
@@ -161,6 +162,7 @@ describeWithDatabase("POST /api/delivery-orders — takeaway", () => {
     const res = await request(app)
       .post("/api/delivery-orders")
       .set(authHeaders(token))
+      .set("Idempotency-Key", "delivery-test-create-002")
       .send({
         channel: "phone",
         deliveryType: "takeaway",
@@ -187,6 +189,7 @@ describeWithDatabase("PATCH /api/delivery-orders/:id — status history", () => 
     const res = await request(app)
       .post("/api/delivery-orders")
       .set(authHeaders(token))
+      .set("Idempotency-Key", "delivery-test-create-out-of-zone")
       .send({
         channel: "phone", deliveryType: "delivery",
         clientName: "History Test", clientPhone: "699000002",
@@ -270,6 +273,7 @@ describeWithDatabase("POST /api/delivery-orders — out-of-zone", () => {
     const res = await request(app)
       .post("/api/delivery-orders")
       .set(authHeaders(token))
+      .set("Idempotency-Key", "delivery-test-out-of-zone")
       .send({
         channel: "phone", deliveryType: "delivery",
         clientName: "Out-of-zone Test", clientPhone: "699000099",

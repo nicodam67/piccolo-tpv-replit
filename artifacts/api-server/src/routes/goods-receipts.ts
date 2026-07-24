@@ -222,7 +222,9 @@ router.post("/admin/goods-receipts", requireAuth, requireRole("admin"), async (r
       // Only update stock for actually received quantity (not rejected)
       const qtyAccepted = Math.max(0, qtyReceived - qtyRejected);
       if (qtyAccepted > 0) {
-        const [ingredient] = await tx.select().from(ingredientsTable).where(eq(ingredientsTable.id, item.ingredientId));
+        const [ingredient] = await tx.select().from(ingredientsTable)
+          .where(eq(ingredientsTable.id, item.ingredientId))
+          .for("update");
         if (ingredient) {
           const oldStock = parseFloat(ingredient.currentStock ?? "0");
           // Use running weighted average as the base (falls back to purchaseCost for legacy rows)

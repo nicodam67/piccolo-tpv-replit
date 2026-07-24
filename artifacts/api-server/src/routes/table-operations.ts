@@ -120,6 +120,21 @@ router.post("/tables/merge", requireAuth, requireRole("manager", "admin"), async
       .where(and(inArray(restaurantTablesTable.id, tableIds), eq(restaurantTablesTable.active, true)));
 
     if (tables.length !== tableIds.length) return { error: "Una o más mesas no encontradas", status: 404 };
+    if (tables.some((table) => !["free", "reserved", "occupied"].includes(table.status))) {
+      return { error: "No se pueden unir mesas bloqueadas o pendientes de limpieza", status: 409 };
+    }
+    const activeOrders = await tx.select({ status: ordersTable.status })
+      .from(ordersTable)
+      .where(and(
+        inArray(ordersTable.tableId, tableIds),
+        inArray(ordersTable.status, ["open", "sent", "ready", "served", "bill_requested"]),
+      ));
+    const matchingActiveOrders = activeOrders.filter((order) =>
+      ["open", "sent", "ready", "served", "bill_requested"].includes(order.status)
+    );
+    if (matchingActiveOrders.some((order) => order.status !== "open")) {
+      return { error: "No se pueden unir mesas con comandas enviadas o pendientes de cobro", status: 409 };
+    }
 
     const hostTableId = tableIds[0] as string;
     const mergeGroupId = hostTableId; // use host table id as group key

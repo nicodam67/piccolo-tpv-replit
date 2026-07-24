@@ -6,6 +6,17 @@
     "preinstall": "sh -c 'rm -f package-lock.json yarn.lock; case \"$npm_config_user_agent\" in pnpm/*) ;; *) echo \"Use pnpm instead\" >&2; exit 1 ;; esac'",
     "build": "pnpm run typecheck && pnpm -r --if-present run build",
     "lint": "eslint . --max-warnings=0",
+    "codegen:phase1:check": "node scripts/check-phase1-codegen.mjs",
+    "codegen:documents:check": "node scripts/check-documents-codegen.mjs",
+    "codegen:reservations:check": "node scripts/check-reservations-codegen.mjs",
+    "codegen:branding:check": "node scripts/check-branding-codegen.mjs",
+    "codegen:crm:check": "node scripts/check-crm-codegen.mjs",
+    "codegen:wallet:check": "node scripts/check-wallet-codegen.mjs",
+    "migrate:phase1-hooks": "node scripts/migrate-floor-generated-hooks.mjs",
+    "migrate:documents-hooks": "node scripts/migrate-documents-generated-hooks.mjs",
+    "migrate:reservations-hooks": "node scripts/migrate-reservations-generated-hooks.mjs",
+    "migrate:branding-hooks": "node scripts/migrate-branding-generated-hooks.mjs",
+    "migrate:crm-hooks": "node scripts/migrate-crm-generated-hooks.mjs",
     "typecheck:libs": "tsc --build",
     "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck"
   },
@@ -21,5 +32,12 @@
     "prettier": "^3.9.5",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.65.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "fast-uri": "^3.1.4",
+      "js-yaml": "^4.3.0",
+      "uuid": ">=11.1.1"
+    }
   }
 }
