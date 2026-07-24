@@ -10,6 +10,7 @@
     "codegen:documents:check": "node scripts/check-documents-codegen.mjs",
     "codegen:reservations:check": "node scripts/check-reservations-codegen.mjs",
     "codegen:branding:check": "node scripts/check-branding-codegen.mjs",
+    "codegen:crm:check": "node scripts/check-crm-codegen.mjs",
     "migrate:phase1-hooks": "node scripts/migrate-floor-generated-hooks.mjs",
     "migrate:documents-hooks": "node scripts/migrate-documents-generated-hooks.mjs",
     "migrate:reservations-hooks": "node scripts/migrate-reservations-generated-hooks.mjs",

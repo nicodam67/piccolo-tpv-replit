@@ -1,0 +1,1024 @@
+# phase49-crm — splice under paths in openapi.yaml
+# Tags: crm, phase49-crm on all operations
+# CRM_STAFF = [waiter, cashier, manager, admin]
+
+  /crm/clients:
+    get:
+      operationId: getCrmClients
+      tags: [crm, phase49-crm]
+      summary: Search or list CRM clients
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [waiter, cashier, manager, admin]
+      parameters:
+        - { in: query, name: q, schema: { type: string }, description: "Search by name, surname, phone or email" }
+        - { in: query, name: limit, schema: { type: integer, default: 50, maximum: 200 } }
+      responses:
+        "200":
+          description: Matching clients
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/CrmClient" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+    post:
+      operationId: createCrmClient
+      tags: [crm, phase49-crm]
+      summary: Create a new CRM client
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [waiter, cashier, manager, admin]
+      x-idempotent: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateCrmClientInput" }
+      responses:
+        "201":
+          description: Created client
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CrmClient" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409":
+          description: Duplicate phone or email
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CrmClientConflictError" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /crm/clients/{id}:
+    get:
+      operationId: getCrmClient
+      tags: [crm, phase49-crm]
+      summary: Get a CRM client by id
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [waiter, cashier, manager, admin]
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200":
+          description: Client detail
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CrmClient" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+    patch:
+      operationId: updateCrmClient
+      tags: [crm, phase49-crm]
+      summary: Partially update a CRM client
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [manager, admin]
+      x-idempotent: false
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateCrmClientInput" }
+      responses:
+        "200":
+          description: Updated client
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CrmClient" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /crm/clients/{id}/history:
+    get:
+      operationId: getCrmClientHistory
+      tags: [crm, phase49-crm]
+      summary: Get aggregated client history (orders, reservations, points, gift cards)
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [waiter, cashier, manager, admin]
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200":
+          description: Client history bundle
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CrmClientHistory" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /crm/loyalty/config:
+    get:
+      operationId: getCrmLoyaltyConfig
+      tags: [crm, phase49-crm]
+      summary: Get loyalty program configuration
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [manager, admin]
+      responses:
+        "200":
+          description: Loyalty config singleton
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CrmLoyaltyConfig" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+    put:
+      operationId: updateCrmLoyaltyConfig
+      tags: [crm, phase49-crm]
+      summary: Update loyalty program configuration
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      x-idempotent: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateCrmLoyaltyConfigInput" }
+      responses:
+        "200":
+          description: Updated loyalty config
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CrmLoyaltyConfig" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /crm/clients/{id}/points:
+    get:
+      operationId: getCrmClientPoints
+      tags: [crm, phase49-crm]
+      summary: List loyalty point movements for a client
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [waiter, cashier, manager, admin]
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200":
+          description: Point ledger entries
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/CrmLoyaltyPoint" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /crm/clients/{id}/points/issue:
+    post:
+      operationId: issueCrmPoints
+      tags: [crm, phase49-crm]
+      summary: Manually issue loyalty points to a client
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [manager, admin]
+      x-idempotent: false
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/IssueCrmPointsInput" }
+      responses:
+        "201":
+          description: Point movement created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CrmLoyaltyPoint" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /crm/clients/{id}/points/redeem:
+    post:
+      operationId: redeemCrmPoints
+      tags: [crm, phase49-crm]
+      summary: Redeem loyalty points from a client balance
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [waiter, cashier, manager, admin]
+      x-idempotent: false
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RedeemCrmPointsInput" }
+      responses:
+        "200":
+          description: Redemption result
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RedeemCrmPointsResult" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /crm/gift-cards:
+    get:
+      operationId: getCrmGiftCards
+      tags: [crm, phase49-crm]
+      summary: List gift cards
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [manager, admin]
+      parameters:
+        - { in: query, name: q, schema: { type: string }, description: Filter by card code }
+      responses:
+        "200":
+          description: Gift cards
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/CrmGiftCard" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+    post:
+      operationId: createCrmGiftCard
+      tags: [crm, phase49-crm]
+      summary: Create a new gift card
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [manager, admin]
+      x-idempotent: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateCrmGiftCardInput" }
+      responses:
+        "201":
+          description: Created gift card
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CrmGiftCard" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /crm/gift-cards/lookup:
+    get:
+      operationId: lookupCrmGiftCard
+      tags: [crm, phase49-crm]
+      summary: Look up a gift card by code (POS balance check)
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [waiter, cashier, manager, admin]
+      parameters:
+        - { in: query, name: codigo, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Gift card found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CrmGiftCard" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /crm/gift-cards/pay:
+    post:
+      operationId: payWithCrmGiftCard
+      tags: [crm, phase49-crm]
+      summary: Pay with a gift card at POS
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [waiter, cashier, manager, admin]
+      x-idempotent: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PayWithCrmGiftCardInput" }
+      responses:
+        "200":
+          description: Payment applied
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PayWithCrmGiftCardResult" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /crm/gift-cards/{id}:
+    get:
+      operationId: getCrmGiftCard
+      tags: [crm, phase49-crm]
+      summary: Get gift card detail with transaction history
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [manager, admin]
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200":
+          description: Gift card and transactions
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CrmGiftCardDetail" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /crm/gift-cards/{id}/recharge:
+    post:
+      operationId: rechargeCrmGiftCard
+      tags: [crm, phase49-crm]
+      summary: Recharge a gift card balance
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [manager, admin]
+      x-idempotent: false
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RechargeCrmGiftCardInput" }
+      responses:
+        "200":
+          description: Updated gift card
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CrmGiftCard" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /crm/gift-cards/{id}/block:
+    post:
+      operationId: blockCrmGiftCard
+      tags: [crm, phase49-crm]
+      summary: Toggle block/unblock on a gift card
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [manager, admin]
+      x-idempotent: false
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200":
+          description: Updated gift card state
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CrmGiftCard" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /crm/promotions:
+    get:
+      operationId: getCrmPromotions
+      tags: [crm, phase49-crm]
+      summary: List promotions
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [waiter, cashier, manager, admin]
+      responses:
+        "200":
+          description: Promotions
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/CrmPromotion" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+    post:
+      operationId: createCrmPromotion
+      tags: [crm, phase49-crm]
+      summary: Create a promotion
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [manager, admin]
+      x-idempotent: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateCrmPromotionInput" }
+      responses:
+        "201":
+          description: Created promotion
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CrmPromotion" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /crm/promotions/validate:
+    post:
+      operationId: validateCrmPromotion
+      tags: [crm, phase49-crm]
+      summary: Validate whether a promotion applies to an order amount
+      description: Returns valid=false with reason and descuento=0 when not applicable; promo is always included.
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [waiter, cashier, manager, admin]
+      x-idempotent: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ValidateCrmPromotionInput" }
+      responses:
+        "200":
+          description: Validation outcome
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ValidateCrmPromotionResult" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /crm/promotions/use:
+    post:
+      operationId: useCrmPromotion
+      tags: [crm, phase49-crm]
+      summary: Record a promotion/coupon use
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [waiter, cashier, manager, admin]
+      x-idempotent: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UseCrmPromotionInput" }
+      responses:
+        "201":
+          description: Coupon use recorded
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CrmCouponUse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /crm/promotions/{id}:
+    patch:
+      operationId: updateCrmPromotion
+      tags: [crm, phase49-crm]
+      summary: Partially update a promotion
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [manager, admin]
+      x-idempotent: false
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateCrmPromotionInput" }
+      responses:
+        "200":
+          description: Updated promotion
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CrmPromotion" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+    delete:
+      operationId: deleteCrmPromotion
+      tags: [crm, phase49-crm]
+      summary: Delete a promotion
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      x-idempotent: false
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "204": { description: Promotion deleted }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /admin/crm/reports:
+    get:
+      operationId: getCrmReports
+      tags: [crm, phase49-crm]
+      summary: CRM summary reports (admin)
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      responses:
+        "200":
+          description: CRM reports bundle
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CrmReports" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /admin/crm/audit:
+    get:
+      operationId: getCrmAudit
+      tags: [crm, phase49-crm]
+      summary: CRM audit log entries
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      parameters:
+        - { in: query, name: limit, schema: { type: integer, default: 100, maximum: 500 } }
+        - { in: query, name: clientId, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Audit log rows
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/CrmAuditLog" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /crm/loyalty/levels:
+    get:
+      operationId: getCrmLoyaltyLevels
+      tags: [crm, phase49-crm]
+      summary: List loyalty tiers
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [waiter, cashier, manager, admin]
+      responses:
+        "200":
+          description: Loyalty levels ordered by rank
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/CrmLoyaltyLevel" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+    post:
+      operationId: createCrmLoyaltyLevel
+      tags: [crm, phase49-crm]
+      summary: Create a loyalty tier
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [manager, admin]
+      x-idempotent: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateCrmLoyaltyLevelInput" }
+      responses:
+        "201":
+          description: Created loyalty level
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CrmLoyaltyLevel" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /crm/loyalty/levels/{id}:
+    patch:
+      operationId: updateCrmLoyaltyLevel
+      tags: [crm, phase49-crm]
+      summary: Partially update a loyalty tier
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [manager, admin]
+      x-idempotent: false
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateCrmLoyaltyLevelInput" }
+      responses:
+        "200":
+          description: Updated loyalty level
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CrmLoyaltyLevel" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+    delete:
+      operationId: deleteCrmLoyaltyLevel
+      tags: [crm, phase49-crm]
+      summary: Delete a loyalty tier
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      x-idempotent: false
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "204": { description: Loyalty level deleted }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /crm/auto/review-levels:
+    post:
+      operationId: reviewCrmLevels
+      tags: [crm, phase49-crm]
+      summary: Recalculate loyalty levels for all active clients
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      x-idempotent: false
+      responses:
+        "200":
+          description: Review result
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CrmReviewLevelsResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /crm/clients/{id}/wallet:
+    get:
+      operationId: getCrmClientWallet
+      tags: [crm, phase49-crm]
+      summary: Get client wallet with recent transactions
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [waiter, cashier, manager, admin]
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200":
+          description: Wallet detail
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CrmWalletDetail" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /crm/clients/{id}/wallet/add:
+    post:
+      operationId: addCrmWalletBalance
+      tags: [crm, phase49-crm]
+      summary: Add balance to a client wallet
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [manager, admin]
+      x-idempotent: false
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WalletAddInput" }
+      responses:
+        "200":
+          description: Updated wallet
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CrmWallet" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /crm/clients/{id}/wallet/pay:
+    post:
+      operationId: payWithCrmWallet
+      tags: [crm, phase49-crm]
+      summary: Pay using client wallet balance
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [waiter, cashier, manager, admin]
+      x-idempotent: false
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WalletPayInput" }
+      responses:
+        "200":
+          description: Payment result
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WalletPayResult" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /crm/clients/{id}/wallet/adjust:
+    post:
+      operationId: adjustCrmWallet
+      tags: [crm, phase49-crm]
+      summary: Manually adjust client wallet balance (admin)
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      x-idempotent: false
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WalletAdjustInput" }
+      responses:
+        "200":
+          description: Updated wallet
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CrmWallet" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /crm/clients/{id}/consents:
+    get:
+      operationId: getCrmClientConsents
+      tags: [crm, phase49-crm]
+      summary: List consent records for a client
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [waiter, cashier, manager, admin]
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200":
+          description: Consent history
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/CrmConsent" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+    post:
+      operationId: createCrmConsent
+      tags: [crm, phase49-crm]
+      summary: Record or update a consent for a client
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [waiter, cashier, manager, admin]
+      x-idempotent: false
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateCrmConsentInput" }
+      responses:
+        "201":
+          description: Consent recorded
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CrmConsent" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /crm/clients/{id}/expiring-points:
+    get:
+      operationId: getCrmExpiringPoints
+      tags: [crm, phase49-crm]
+      summary: List points expiring within a window for a client
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [waiter, cashier, manager, admin]
+      parameters:
+        - { $ref: "#/components/parameters/Id" }
+        - { in: query, name: days, schema: { type: integer, default: 7 } }
+      responses:
+        "200":
+          description: Expiring points summary
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CrmExpiringPointsResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /crm/auto/expire-points:
+    post:
+      operationId: expireCrmPoints
+      tags: [crm, phase49-crm]
+      summary: Force expiry of overdue loyalty points (cron-style)
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      x-idempotent: false
+      responses:
+        "200":
+          description: Expiry batch result
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CrmExpirePointsResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /crm/campaigns:
+    get:
+      operationId: getCrmCampaigns
+      tags: [crm, phase49-crm]
+      summary: List marketing campaigns
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [manager, admin]
+      responses:
+        "200":
+          description: Campaigns
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/CrmCampaign" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+    post:
+      operationId: createCrmCampaign
+      tags: [crm, phase49-crm]
+      summary: Create a marketing campaign
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [manager, admin]
+      x-idempotent: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateCrmCampaignInput" }
+      responses:
+        "201":
+          description: Created campaign
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CrmCampaign" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /crm/campaigns/{id}:
+    patch:
+      operationId: updateCrmCampaign
+      tags: [crm, phase49-crm]
+      summary: Partially update a campaign
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [manager, admin]
+      x-idempotent: false
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateCrmCampaignInput" }
+      responses:
+        "200":
+          description: Updated campaign
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CrmCampaign" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+    delete:
+      operationId: deleteCrmCampaign
+      tags: [crm, phase49-crm]
+      summary: Delete a campaign and its send records
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      x-idempotent: false
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "204": { description: Campaign deleted }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /crm/campaigns/{id}/sends:
+    get:
+      operationId: getCrmCampaignSends
+      tags: [crm, phase49-crm]
+      summary: List per-client send records for a campaign
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [manager, admin]
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200":
+          description: Campaign sends
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/CrmCampaignSend" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /crm/campaigns/{id}/send:
+    post:
+      operationId: sendCrmCampaign
+      tags: [crm, phase49-crm]
+      summary: Resolve segment and dispatch a campaign
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [manager, admin]
+      x-idempotent: false
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200":
+          description: Send batch result
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CrmCampaignSendResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /crm/segment/preview:
+    post:
+      operationId: previewCrmSegment
+      tags: [crm, phase49-crm]
+      summary: Preview how many clients match segment criteria
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [manager, admin]
+      x-idempotent: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+              description: Segment criteria (gastoMinimo, inactivoDias, nivelId, etc.)
+      responses:
+        "200":
+          description: Segment preview
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CrmSegmentPreviewResult" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /crm/segment/export:
+    get:
+      operationId: exportCrmSegment
+      tags: [crm, phase49-crm]
+      summary: Export clients matching segment query filters
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [manager, admin]
+      parameters:
+        - { in: query, name: nivelId, schema: { type: string, format: uuid } }
+        - { in: query, name: inactivoDias, schema: { type: integer } }
+        - { in: query, name: puntosMinimos, schema: { type: integer } }
+        - { in: query, name: gastoMinimo, schema: { type: string } }
+        - { in: query, name: visitasMinimas, schema: { type: integer } }
+        - { in: query, name: cumpleanosEsteMes, schema: { type: boolean } }
+      responses:
+        "200":
+          description: Matching clients
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/CrmSegmentClientSummary" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /crm/demo-data:
+    post:
+      operationId: createCrmDemoData
+      tags: [crm, phase49-crm]
+      summary: Seed representative CRM demo data
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      x-idempotent: false
+      responses:
+        "201":
+          description: Demo data created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CrmDemoDataResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+    delete:
+      operationId: deleteCrmDemoData
+      tags: [crm, phase49-crm]
+      summary: Remove all demo-flagged CRM rows
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      x-idempotent: false
+      responses:
+        "200":
+          description: Demo data removed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CrmDemoDataDeleteResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /admin/crm/reports/extended:
+    get:
+      operationId: getCrmExtendedReports
+      tags: [crm, phase49-crm]
+      summary: Extended CRM reports (levels, wallet, campaigns, points)
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [manager, admin]
+      responses:
+        "200":
+          description: Extended reports bundle
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CrmExtendedReports" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
