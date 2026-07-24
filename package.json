@@ -11,6 +11,7 @@
     "codegen:reservations:check": "node scripts/check-reservations-codegen.mjs",
     "migrate:phase1-hooks": "node scripts/migrate-floor-generated-hooks.mjs",
     "migrate:documents-hooks": "node scripts/migrate-documents-generated-hooks.mjs",
+    "migrate:reservations-hooks": "node scripts/migrate-reservations-generated-hooks.mjs",
     "typecheck:libs": "tsc --build",
     "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck"
   },
