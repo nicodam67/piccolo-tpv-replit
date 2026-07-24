@@ -15,6 +15,7 @@
     "migrate:documents-hooks": "node scripts/migrate-documents-generated-hooks.mjs",
     "migrate:reservations-hooks": "node scripts/migrate-reservations-generated-hooks.mjs",
     "migrate:branding-hooks": "node scripts/migrate-branding-generated-hooks.mjs",
+    "migrate:crm-hooks": "node scripts/migrate-crm-generated-hooks.mjs",
     "typecheck:libs": "tsc --build",
     "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck"
   },

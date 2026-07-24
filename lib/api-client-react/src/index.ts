@@ -4,5 +4,6 @@ export * from "./phase1-compat";
 export * from "./documents-compat";
 export * from "./reservations-compat";
 export * from "./branding-compat";
+export * from "./crm-compat";
 export { customFetch, setBaseUrl, setAuthTokenGetter, ApiError } from "./custom-fetch";
 export type { AuthTokenGetter } from "./custom-fetch";
