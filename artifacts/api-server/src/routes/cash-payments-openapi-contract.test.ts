@@ -161,7 +161,9 @@ describe("Cash & Payments focused runtime contract evidence", () => {
     expect(paymentUiSource).toContain("loadOrCreateCashMachineCommand");
     expect(paymentUiSource).toContain("paymentCommand.transactionId");
     expect(paymentUiSource).not.toContain("useRef(crypto.randomUUID())");
-    expect(machineCommandSource).toContain("sessionStorage");
-    expect(machineCommandSource).toContain("stored");
+    expect(machineCommandSource).toContain("localStorage");
+    expect(machineCommandSource).toContain("CASH_MACHINE_COMMAND_TTL_MS");
+    expect(machineCommandSource).toContain("'blocked'");
+    expect(paymentUiSource.match(/startCashMachinePaymentRequest\(/g)).toHaveLength(1);
   });
 });

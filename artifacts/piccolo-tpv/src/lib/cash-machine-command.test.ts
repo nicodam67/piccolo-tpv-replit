@@ -123,6 +123,7 @@ describe('cash-machine pending command recovery', () => {
     assert.equal(shouldClearCashMachineCommand('intervencion_manual'), false);
     assert.equal(shouldClearCashMachineCommand('conciliacion_pendiente'), false);
     assert.equal(shouldClearCashMachineCommand('esperando_efectivo'), false);
+    assert.equal(shouldClearCashMachineCommand('503'), false);
   });
 
   it('keeps the pending key after a timeout until a definitive result clears it', () => {

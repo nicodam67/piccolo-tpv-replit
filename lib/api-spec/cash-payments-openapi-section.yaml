@@ -171,7 +171,7 @@
         required: true
         content: { application/json: { schema: { $ref: "#/components/schemas/CashPaymentsVoidInput" } } }
       responses:
-        "201": { description: Payment void record, content: { application/json: { schema: { $ref: "#/components/schemas/CashPaymentsVoid" } } } }
+        "201": { description: Payment void record or replay, headers: { Idempotency-Replayed: { schema: { type: string, enum: ["true"] } } }, content: { application/json: { schema: { $ref: "#/components/schemas/CashPaymentsVoid" } } } }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }

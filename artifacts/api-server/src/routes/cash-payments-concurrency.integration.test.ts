@@ -133,15 +133,17 @@ describeWithDatabase("Cash & Payments PostgreSQL concurrency", () => {
       DROP TABLE IF EXISTS entrega63_targets;
       DROP TABLE IF EXISTS entrega63_probe;
     `);
-    await pool.end();
   });
 
   it("serializes two real concurrent openings for the same terminal", async () => {
     const terminalName = `${terminalPrefix}OPEN`;
-    const responses = await Promise.all([
+    const responsesPromise = Promise.all([
       request(app).post("/api/cash-sessions/open").set(auth()).send({ terminalName, openingFloat: "100.00" }),
       request(app).post("/api/cash-sessions/open").set(auth()).send({ terminalName, openingFloat: "100.00" }),
     ]);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    await expectTwoConcurrentDatabaseBackends();
+    const responses = await responsesPromise;
 
     expect(responses.map((response) => response.status).sort()).toEqual([201, 409]);
     const sessions = await pool.query(
@@ -168,7 +170,7 @@ describeWithDatabase("Cash & Payments PostgreSQL concurrency", () => {
       [fixture.paymentId],
     );
 
-    const responses = await Promise.all([
+    const responsesPromise = Promise.all([
       request(app)
         .post(`/api/cash-sessions/${fixture.sessionId}/void-payment`)
         .set(auth())
@@ -180,6 +182,9 @@ describeWithDatabase("Cash & Payments PostgreSQL concurrency", () => {
         .set("Idempotency-Key", "e63-void-command-b")
         .send({ paymentId: fixture.paymentId, reason: "Anulación concurrente E63" }),
     ]);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    await expectTwoConcurrentDatabaseBackends();
+    const responses = await responsesPromise;
 
     expect(responses.map((response) => response.status).sort()).toEqual([201, 409]);
     await expectSingleVoidEffects(fixture);
@@ -308,4 +313,19 @@ async function expectSingleVoidEffects(fixture: {
     [fixture.paymentId],
   );
   expect(audits.rowCount).toBe(1);
+}
+
+async function expectTwoConcurrentDatabaseBackends() {
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const active = await pool.query<{ pid: number }>(`
+      SELECT DISTINCT pid
+      FROM pg_stat_activity
+      WHERE datname = current_database()
+        AND pid <> pg_backend_pid()
+        AND state = 'active'
+    `);
+    if (active.rows.length >= 2) return;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error("Expected two concurrent PostgreSQL backend connections");
 }
