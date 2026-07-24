@@ -11,6 +11,10 @@
     "codegen:reservations:check": "node scripts/check-reservations-codegen.mjs",
     "migrate:phase1-hooks": "node scripts/migrate-floor-generated-hooks.mjs",
     "migrate:documents-hooks": "node scripts/migrate-documents-generated-hooks.mjs",
+    "state:update": "node scripts/update-project-state.mjs",
+    "state:check": "node scripts/update-project-state.mjs --check",
+    "validate:change": "node scripts/validate-change.mjs",
+    "delivery:finish": "node scripts/finish-delivery.mjs",
     "typecheck:libs": "tsc --build",
     "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck"
   },
