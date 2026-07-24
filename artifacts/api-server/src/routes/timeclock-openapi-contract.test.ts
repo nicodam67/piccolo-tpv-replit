@@ -5,7 +5,13 @@ import request from "supertest";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import OpenAPIResponseValidator from "openapi-response-validator";
-import { db, employeesTable, fichajeSettingsTable } from "@workspace/db";
+import {
+  breaksTable,
+  db,
+  employeesTable,
+  fichajeSettingsTable,
+  timeRecordsTable,
+} from "@workspace/db";
 import { eq } from "drizzle-orm";
 import app from "../app";
 
@@ -13,6 +19,8 @@ const describeWithDatabase = process.env.RUN_DB_INTEGRATION_TESTS === "1" ? desc
 const root = path.resolve(import.meta.dirname, "../../../..");
 const spec = parse(fs.readFileSync(path.join(root, "lib/api-spec/openapi.yaml"), "utf8")) as any;
 const employeeId = "56000000-0000-4000-8000-000000000001";
+const recordId = "56010000-0000-4000-8000-000000000001";
+const breakId = "56020000-0000-4000-8000-000000000001";
 let adminToken = "";
 let waiterToken = "";
 
@@ -111,12 +119,26 @@ describeWithDatabase("timeclock OpenAPI integration contract", () => {
     await db.insert(employeesTable).values({
       id: employeeId, name: "Timeclock Contract Admin", role: "admin", active: true,
     }).onConflictDoNothing();
+    await db.insert(timeRecordsTable).values({
+      id: recordId,
+      employeeId,
+      clockIn: new Date(),
+      source: "manual",
+      isManual: true,
+      createdBy: employeeId,
+    }).onConflictDoNothing();
+    await db.insert(breaksTable).values({
+      id: breakId,
+      recordId,
+      breakStart: new Date(),
+    }).onConflictDoNothing();
     const secret = process.env.SESSION_SECRET!;
     adminToken = jwt.sign({ id: employeeId, name: "Admin", role: "admin", jti: "timeclock-admin" }, secret);
     waiterToken = jwt.sign({ id: employeeId, name: "Waiter", role: "waiter", jti: "timeclock-waiter" }, secret);
   });
 
   afterAll(async () => {
+    await db.delete(timeRecordsTable).where(eq(timeRecordsTable.id, recordId));
     await db.delete(employeesTable).where(eq(employeesTable.id, employeeId));
   });
 
