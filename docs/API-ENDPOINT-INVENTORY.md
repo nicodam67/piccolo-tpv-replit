@@ -5,8 +5,8 @@ Generado automáticamente. No usar la ausencia de consumidores como evidencia de
 ## Totales
 
 - Endpoints detectados: 622
-- Documentados: 90
-- Sin documentar: 532
+- Documentados: 98
+- Sin documentar: 524
 - Duplicados: 0
 - Obsoletos explícitos: 14
 
@@ -518,14 +518,6 @@ Generado automáticamente. No usar la ausencia de consumidores como evidencia de
 | GET | `/reports/top-products` | reports | active-and-used | 2 |
 | GET | `/reports/vat` | reports | active-and-used | 2 |
 | GET | `/reports/voids` | reports | active-and-used | 2 |
-| GET | `/reservations` | reservations | active-and-used | 8 |
-| POST | `/reservations` | reservations | active-and-used | 8 |
-| DELETE | `/reservations/:id` | reservations | active-and-used | 8 |
-| GET | `/reservations/:id` | reservations | active-and-used | 8 |
-| PATCH | `/reservations/:id` | reservations | active-and-used | 8 |
-| POST | `/reservations/:id/arrive` | reservations | active-and-used | 8 |
-| GET | `/reservations/:id/history` | reservations | active-and-used | 8 |
-| GET | `/reservations/suggest-table` | reservations | active-and-used | 2 |
 | GET | `/service-shifts` | service-shifts | active-and-used | 3 |
 | POST | `/service-shifts` | service-shifts | active-and-used | 3 |
 | DELETE | `/service-shifts/:id` | service-shifts | active-and-used | 3 |
