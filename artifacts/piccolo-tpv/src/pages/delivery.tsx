@@ -7,7 +7,7 @@
  *  - Repartidores: Estado y asignación de couriers
  *  - Nuevo: Formulario de pedido manual (teléfono/mostrador)
  */
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useLocation } from "wouter";
 import {
   ChevronLeft, Plus, RefreshCw, Phone, MapPin, Clock, Truck,
@@ -17,23 +17,25 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { api } from '../lib/api-client';
+import {
+  assignOnlineOrderCourier,
+  confirmOnlineOrder,
+  createDeliveryOrder,
+  getCouriers,
+  getDeliveryOrders,
+  patchCourier,
+  patchDeliveryOrder,
+  settleCourier,
+} from '@workspace/api-client-react/delivery';
+import type { CourierSafe, DeliveryOrderListItem } from '@workspace/api-client-react/delivery';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
-interface DeliveryOrder {
-  id: string; orderNumber: string; status: string; channel: string;
-  deliveryType: string; clientName: string; clientPhone: string;
-  estimatedReadyAt: string | null; scheduledAt: string | null;
-  deliveryFee: string; onlinePaymentStatus: string; courierId: string | null;
-  notes: string; createdAt: string; total: string;
+type DeliveryOrder = DeliveryOrderListItem & {
+  orderNumber: string;
   address: { street: string; number: string; floor?: string; city: string; postalCode: string; notes?: string } | null;
   courier: { id: string; name: string; phone: string; status: string } | null;
-  rejectionReason?: string | null;
-}
-interface Courier {
-  id: string; name: string; phone: string; status: string; token: string;
-  vehicleType?: string; plate?: string; zonaHabitual?: string;
-  earnedCashPending?: string; earnedCardPending?: string; totalDeliveries?: number;
-}
+};
+type Courier = CourierSafe & { token?: string };
 interface Zone { id: string; name: string; }
 interface Product { id: string; name: string; price: string; active: boolean; outOfStock: boolean; }
 
@@ -65,14 +67,14 @@ const KANBAN_COLS = [
 ];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-function fmtTime(ts: string | null) {
+function fmtTime(ts: string | null | undefined) {
   if (!ts) return "—";
   return new Date(ts).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
 }
 function minutesSince(ts: string) {
   return Math.round((Date.now() - new Date(ts).getTime()) / 60000);
 }
-function urgencyColor(mins: number, estimatedReadyAt: string | null): string {
+function urgencyColor(mins: number, estimatedReadyAt: string | null | undefined): string {
   if (!estimatedReadyAt) return mins > 60 ? "text-red-400" : mins > 30 ? "text-orange-400" : "text-muted-foreground";
   const remaining = Math.round((new Date(estimatedReadyAt).getTime() - Date.now()) / 60000);
   return remaining < 0 ? "text-red-400" : remaining < 10 ? "text-orange-400" : "text-green-400";
@@ -91,7 +93,7 @@ function OrderCard({ order, couriers, onRefresh, busy, onBusy }: {
   const changeStatus = async (status: string) => {
     onBusy(order.id);
     try {
-      await api.patch(`/api/delivery-orders/${order.id}`, { status });
+      await patchDeliveryOrder(order.id, { status });
       toast.success("Estado actualizado");
       onRefresh();
     } catch (e: any) { toast.error(e.message); }
@@ -101,7 +103,7 @@ function OrderCard({ order, couriers, onRefresh, busy, onBusy }: {
   const confirm = async () => {
     onBusy(order.id);
     try {
-      await api.post(`/api/online-orders/${order.id}/confirm`, {});
+      await confirmOnlineOrder(order.id, {});
       toast.success("Pedido confirmado");
       onRefresh();
     } catch (e: any) { toast.error(e.message); }
@@ -111,7 +113,7 @@ function OrderCard({ order, couriers, onRefresh, busy, onBusy }: {
   const assignCourier = async (courierId: string) => {
     onBusy(order.id);
     try {
-      await api.post(`/api/online-orders/${order.id}/assign-courier`, { courierId });
+      await assignOnlineOrderCourier(order.id, { courierId });
       toast.success("Repartidor asignado");
       setShowAssign(false); onRefresh();
     } catch (e: any) { toast.error(e.message); }
@@ -233,7 +235,7 @@ function CourierPanel({ couriers, activeOrders, onRefresh }: {
   const updateStatus = async (id: string, status: string) => {
     setBusyId(id);
     try {
-      await api.patch(`/api/admin/couriers/${id}`, { status });
+      await patchCourier(id, { status });
       toast.success("Estado actualizado");
       onRefresh();
     } catch (e: any) { toast.error(e.message); }
@@ -243,7 +245,7 @@ function CourierPanel({ couriers, activeOrders, onRefresh }: {
   const doSettle = async (id: string) => {
     setBusyId(id);
     try {
-      await api.post(`/api/admin/couriers/${id}/settle`, {
+      await settleCourier(id, {
         tips: parseFloat(settlementForm.tips) || 0,
         expenses: parseFloat(settlementForm.expenses) || 0,
         differences: parseFloat(settlementForm.differences) || 0,
@@ -317,7 +319,7 @@ function CourierPanel({ couriers, activeOrders, onRefresh }: {
                   className="px-2 py-1 bg-secondary rounded-lg text-[10px] text-muted-foreground hover:text-foreground transition-colors border border-border">
                   Liquidar
                 </button>
-                <a href={`/driver/${c.id}#token=${encodeURIComponent(c.token)}`} target="_blank" rel="noreferrer"
+                <a href={`/driver/${c.id}#token=${encodeURIComponent(c.token ?? "")}`} target="_blank" rel="noreferrer"
                   className="px-2 py-1 bg-primary/10 text-primary rounded-lg text-[10px] hover:bg-primary/20 transition-colors border border-primary/30">
                   Ver vista
                 </a>
@@ -363,6 +365,7 @@ function CourierPanel({ couriers, activeOrders, onRefresh }: {
 function NewOrderForm({ couriers, zones, onCreated }: {
   couriers: Courier[]; zones: Zone[]; onCreated: () => void;
 }) {
+  const idempotencyKey = useRef(crypto.randomUUID());
   const [form, setForm] = useState({
     deliveryType: "takeaway", channel: "phone",
     clientName: "", clientPhone: "",
@@ -437,7 +440,15 @@ function NewOrderForm({ couriers, zones, onCreated }: {
       if (form.courierId) body.courierId = form.courierId;
       if (form.scheduledAt) body.scheduledAt = new Date(form.scheduledAt).toISOString();
 
-      const result = await api.post<{ orderNumber: string }>("/api/delivery-orders", body);
+      const result = await createDeliveryOrder(body, {
+        headers: { "Idempotency-Key": idempotencyKey.current },
+      });
+      if (!form.scheduledAt && result.requiresKitchenSend) {
+        await api.post(`/api/orders/${result.id}/send`, {}, {
+          headers: { "Idempotency-Key": `${idempotencyKey.current}:send` },
+        });
+      }
+      idempotencyKey.current = crypto.randomUUID();
       toast.success(`Pedido ${result.orderNumber} creado`);
       setForm({ deliveryType: "takeaway", channel: "phone", clientName: "", clientPhone: "", street: "", number: "", floor: "", postalCode: "", city: "", addrNotes: "", notes: "", paymentMethod: "on_arrival", courierId: "", scheduledAt: "", overrideDeliveryFee: "" });
       setItems([]); setZoneInfo(null); onCreated();
@@ -608,11 +619,13 @@ export default function DeliveryPage() {
   const load = useCallback(async () => {
     try {
       const [ordData, courierData] = await Promise.all([
-        api.get(`/api/delivery-orders?${filterStatus === "active" ? "" : `status=${filterStatus}`}`).catch(() => []),
-        api.get("/api/admin/couriers").catch(() => []),
+        getDeliveryOrders(
+          filterStatus === "active" ? undefined : { status: filterStatus },
+        ).catch(() => []),
+        getCouriers().catch(() => []),
       ]);
-      setOrders(Array.isArray(ordData) ? ordData : []);
-      setCouriers(Array.isArray(courierData) ? courierData : []);
+      setOrders(Array.isArray(ordData) ? ordData as DeliveryOrder[] : []);
+      setCouriers(Array.isArray(courierData) ? courierData as Courier[] : []);
     } catch { /* silent */ }
     finally { setLoading(false); }
   }, [filterStatus]);

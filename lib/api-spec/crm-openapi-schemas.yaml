@@ -1,0 +1,1038 @@
+# phase49-crm — splice under components.schemas in openapi.yaml
+
+    CrmClient:
+      type: object
+      description: CRM customer master record (crm_clients)
+      properties:
+        id: { type: string, format: uuid }
+        nombre: { type: string }
+        apellidos: { type: string }
+        telefono: { type: string }
+        email: { type: string }
+        fechaNacimiento: { type: string, format: date, nullable: true }
+        direccion: { type: string }
+        observaciones: { type: string }
+        activo: { type: boolean }
+        rgpdConsentimiento: { type: boolean }
+        rgpdFecha: { type: string, format: date-time, nullable: true }
+        totalGasto: { type: string }
+        totalVisitas: { type: integer }
+        ultimaVisita: { type: string, format: date-time, nullable: true }
+        puntosSaldo: { type: integer }
+        idioma: { type: string }
+        mesaFavoritaId: { type: string, format: uuid, nullable: true }
+        zonaFavorita: { type: string, nullable: true }
+        rgpdMarketing: { type: boolean }
+        notasInternas: { type: string }
+        flagNoPresentado: { type: boolean }
+        bloqueoOnline: { type: boolean }
+        cancelaciones: { type: integer }
+        noPresentados: { type: integer }
+        numCliente: { type: integer, nullable: true }
+        qrToken: { type: string, nullable: true }
+        nivelId: { type: string, format: uuid, nullable: true }
+        nivelNombre: { type: string }
+        saldoMonedero: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+      required:
+        - id
+        - nombre
+        - apellidos
+        - telefono
+        - email
+        - direccion
+        - observaciones
+        - activo
+        - rgpdConsentimiento
+        - totalGasto
+        - totalVisitas
+        - puntosSaldo
+        - idioma
+        - rgpdMarketing
+        - notasInternas
+        - flagNoPresentado
+        - bloqueoOnline
+        - cancelaciones
+        - noPresentados
+        - nivelNombre
+        - saldoMonedero
+        - createdAt
+        - updatedAt
+
+    CreateCrmClientInput:
+      type: object
+      properties:
+        nombre: { type: string }
+        apellidos: { type: string }
+        telefono: { type: string }
+        email: { type: string }
+        fechaNacimiento: { type: string, format: date }
+        direccion: { type: string }
+        observaciones: { type: string }
+        rgpdConsentimiento: { type: boolean }
+      required: [nombre]
+
+    UpdateCrmClientInput:
+      type: object
+      properties:
+        nombre: { type: string }
+        apellidos: { type: string }
+        telefono: { type: string }
+        email: { type: string }
+        fechaNacimiento: { type: string, format: date, nullable: true }
+        direccion: { type: string }
+        observaciones: { type: string }
+        activo: { type: boolean }
+        rgpdConsentimiento: { type: boolean }
+
+    CrmClientConflictError:
+      type: object
+      properties:
+        error: { type: string }
+        clienteExistente:
+          type: object
+          properties:
+            id: { type: string, format: uuid }
+            nombre: { type: string }
+          required: [id, nombre]
+      required: [error, clienteExistente]
+
+    CrmClientHistoryOrderSummary:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        createdAt: { type: string, format: date-time }
+        status: { type: string }
+      required: [id, createdAt, status]
+
+    CrmClientHistoryStats:
+      type: object
+      properties:
+        totalGasto: { type: number }
+        totalVisitas: { type: integer }
+        ticketMedio: { type: number }
+        puntosSaldo: { type: integer }
+        ultimaVisita: { type: string, format: date-time, nullable: true }
+      required: [totalGasto, totalVisitas, ticketMedio, puntosSaldo]
+
+    CrmClientHistory:
+      type: object
+      properties:
+        client: { $ref: "#/components/schemas/CrmClient" }
+        orders:
+          type: array
+          items: { $ref: "#/components/schemas/CrmClientHistoryOrderSummary" }
+        reservations:
+          type: array
+          items: { type: object, additionalProperties: true }
+        points:
+          type: array
+          items: { $ref: "#/components/schemas/CrmLoyaltyPoint" }
+        giftCards:
+          type: array
+          items: { $ref: "#/components/schemas/CrmGiftCard" }
+        stats: { $ref: "#/components/schemas/CrmClientHistoryStats" }
+      required: [client, orders, reservations, points, giftCards, stats]
+
+    CrmLoyaltyConfig:
+      type: object
+      description: Singleton loyalty configuration (crm_loyalty_config)
+      properties:
+        id: { type: string, format: uuid }
+        activo: { type: boolean }
+        puntosPorEuro: { type: string }
+        valorPunto: { type: string }
+        caducidadDias: { type: integer }
+        canjeMinimo: { type: integer }
+        bonificacionesCategorias:
+          type: object
+          additionalProperties: { type: number }
+        puntosExtraCumpleanos: { type: integer }
+        puntosExtraPrimeraCompra: { type: integer }
+        puntosExtraReserva: { type: integer }
+        puntosExtraRecogida: { type: integer }
+        puntosExtraOnline: { type: integer }
+        reglasPorProducto:
+          type: object
+          additionalProperties: true
+        canjeMaxPorOperacion: { type: integer }
+        caducidadAvisoDias: { type: integer }
+        nivelesActivos: { type: boolean }
+        monederoActivo: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+      required:
+        - id
+        - activo
+        - puntosPorEuro
+        - valorPunto
+        - caducidadDias
+        - canjeMinimo
+        - bonificacionesCategorias
+        - puntosExtraCumpleanos
+        - puntosExtraPrimeraCompra
+        - puntosExtraReserva
+        - puntosExtraRecogida
+        - puntosExtraOnline
+        - reglasPorProducto
+        - canjeMaxPorOperacion
+        - caducidadAvisoDias
+        - nivelesActivos
+        - monederoActivo
+        - createdAt
+        - updatedAt
+
+    UpdateCrmLoyaltyConfigInput:
+      type: object
+      properties:
+        activo: { type: boolean }
+        puntosPorEuro: { type: string }
+        valorPunto: { type: string }
+        caducidadDias: { type: integer }
+        canjeMinimo: { type: integer }
+        bonificacionesCategorias:
+          type: object
+          additionalProperties: { type: number }
+        puntosExtraCumpleanos: { type: integer }
+        puntosExtraPrimeraCompra: { type: integer }
+        puntosExtraReserva: { type: integer }
+        puntosExtraRecogida: { type: integer }
+        puntosExtraOnline: { type: integer }
+        reglasPorProducto:
+          type: object
+          additionalProperties: true
+        canjeMaxPorOperacion: { type: integer }
+        caducidadAvisoDias: { type: integer }
+        nivelesActivos: { type: boolean }
+        monederoActivo: { type: boolean }
+
+    CrmLoyaltyPoint:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        clientId: { type: string, format: uuid }
+        tipo:
+          type: string
+          enum: [emision, canje, expiracion, ajuste_positivo, ajuste_negativo]
+        puntos: { type: integer }
+        saldoAnterior: { type: integer }
+        saldoPosterior: { type: integer }
+        descripcion: { type: string }
+        orderId: { type: string, format: uuid, nullable: true }
+        campaniaId: { type: string, format: uuid, nullable: true }
+        empleadoId: { type: string, format: uuid, nullable: true }
+        empleadoNombre: { type: string }
+        expiraEn: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+      required:
+        - id
+        - clientId
+        - tipo
+        - puntos
+        - saldoAnterior
+        - saldoPosterior
+        - descripcion
+        - empleadoNombre
+        - createdAt
+
+    IssueCrmPointsInput:
+      type: object
+      properties:
+        puntos: { type: integer }
+        descripcion: { type: string }
+      required: [puntos]
+
+    RedeemCrmPointsInput:
+      type: object
+      properties:
+        puntos: { type: integer }
+        orderId: { type: string, format: uuid }
+      required: [puntos]
+
+    RedeemCrmPointsResult:
+      type: object
+      properties:
+        valorEuros: { type: number }
+        saldoPosterior: { type: integer }
+      required: [valorEuros, saldoPosterior]
+
+    CrmGiftCard:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        codigo: { type: string }
+        saldoInicial: { type: string }
+        saldoActual: { type: string }
+        clientId: { type: string, format: uuid, nullable: true }
+        estado:
+          type: string
+          enum: [activa, bloqueada, consumida, caducada]
+        fechaCaducidad: { type: string, format: date-time, nullable: true }
+        notas: { type: string }
+        empleadoId: { type: string, format: uuid, nullable: true }
+        empleadoNombre: { type: string }
+        beneficiarioEmail: { type: string }
+        beneficiarioNombre: { type: string }
+        mensajePersonalizado: { type: string }
+        tipoEntrega: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+      required:
+        - id
+        - codigo
+        - saldoInicial
+        - saldoActual
+        - estado
+        - notas
+        - empleadoNombre
+        - beneficiarioEmail
+        - beneficiarioNombre
+        - mensajePersonalizado
+        - tipoEntrega
+        - createdAt
+        - updatedAt
+
+    CrmGiftCardTransaction:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        giftCardId: { type: string, format: uuid }
+        orderId: { type: string, format: uuid, nullable: true }
+        tipo:
+          type: string
+          enum: [emision, recarga, pago, bloqueo, desbloqueo, caducidad, devolucion]
+        importe: { type: string }
+        saldoAnterior: { type: string }
+        saldoPosterior: { type: string }
+        empleadoId: { type: string, format: uuid, nullable: true }
+        empleadoNombre: { type: string }
+        notas: { type: string }
+        createdAt: { type: string, format: date-time }
+      required:
+        - id
+        - giftCardId
+        - tipo
+        - importe
+        - saldoAnterior
+        - saldoPosterior
+        - empleadoNombre
+        - notas
+        - createdAt
+
+    CrmGiftCardDetail:
+      type: object
+      properties:
+        card: { $ref: "#/components/schemas/CrmGiftCard" }
+        transactions:
+          type: array
+          items: { $ref: "#/components/schemas/CrmGiftCardTransaction" }
+      required: [card, transactions]
+
+    CreateCrmGiftCardInput:
+      type: object
+      properties:
+        saldo: { type: string }
+        clientId: { type: string, format: uuid }
+        fechaCaducidad: { type: string, format: date-time }
+        notas: { type: string }
+        beneficiarioEmail: { type: string }
+        beneficiarioNombre: { type: string }
+        mensajePersonalizado: { type: string }
+        tipoEntrega: { type: string }
+      required: [saldo]
+
+    RechargeCrmGiftCardInput:
+      type: object
+      properties:
+        importe: { type: string }
+      required: [importe]
+
+    PayWithCrmGiftCardInput:
+      type: object
+      properties:
+        codigo: { type: string }
+        importe: { type: string }
+        orderId: { type: string, format: uuid }
+      required: [codigo, importe]
+
+    PayWithCrmGiftCardResult:
+      type: object
+      properties:
+        card: { $ref: "#/components/schemas/CrmGiftCard" }
+        pagado: { type: string }
+        saldoRestante: { type: string }
+      required: [card, pagado, saldoRestante]
+
+    CrmPromotion:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        nombre: { type: string }
+        descripcion: { type: string }
+        tipo:
+          type: string
+          enum:
+            - descuento_fijo
+            - descuento_porcentual
+            - 2x1
+            - 3x2
+            - menu_promocional
+            - envio_gratis
+            - producto_gratis
+        valor: { type: string }
+        codigo: { type: string }
+        activo: { type: boolean }
+        fechaInicio: { type: string, format: date-time, nullable: true }
+        fechaFin: { type: string, format: date-time, nullable: true }
+        diasSemana:
+          type: array
+          items: { type: integer }
+        horaInicio: { type: string }
+        horaFin: { type: string }
+        categoriaIds:
+          type: array
+          items: { type: string }
+        productIds:
+          type: array
+          items: { type: string }
+        montoMinimo: { type: string }
+        usoMaximo: { type: integer }
+        usoActual: { type: integer }
+        usoMaximoPorCliente: { type: integer }
+        canal: { type: string }
+        compatible: { type: boolean }
+        codigoUnico: { type: boolean }
+        productoGratisId: { type: string, format: uuid, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+      required:
+        - id
+        - nombre
+        - descripcion
+        - tipo
+        - valor
+        - codigo
+        - activo
+        - diasSemana
+        - horaInicio
+        - horaFin
+        - categoriaIds
+        - productIds
+        - montoMinimo
+        - usoMaximo
+        - usoActual
+        - usoMaximoPorCliente
+        - canal
+        - compatible
+        - codigoUnico
+        - createdAt
+        - updatedAt
+
+    CreateCrmPromotionInput:
+      type: object
+      properties:
+        nombre: { type: string }
+        tipo: { type: string }
+        valor: { type: string }
+        descripcion: { type: string }
+        codigo: { type: string }
+        activo: { type: boolean }
+        fechaInicio: { type: string, format: date-time }
+        fechaFin: { type: string, format: date-time }
+        diasSemana:
+          type: array
+          items: { type: integer }
+        horaInicio: { type: string }
+        horaFin: { type: string }
+        categoriaIds:
+          type: array
+          items: { type: string }
+        productIds:
+          type: array
+          items: { type: string }
+        montoMinimo: { type: string }
+        usoMaximo: { type: integer }
+        usoMaximoPorCliente: { type: integer }
+        canal: { type: string }
+        compatible: { type: boolean }
+        codigoUnico: { type: boolean }
+        productoGratisId: { type: string, format: uuid }
+      required: [nombre, tipo]
+
+    UpdateCrmPromotionInput:
+      type: object
+      properties:
+        nombre: { type: string }
+        descripcion: { type: string }
+        tipo: { type: string }
+        valor: { type: string }
+        codigo: { type: string }
+        activo: { type: boolean }
+        fechaInicio: { type: string, format: date-time, nullable: true }
+        fechaFin: { type: string, format: date-time, nullable: true }
+        diasSemana:
+          type: array
+          items: { type: integer }
+        horaInicio: { type: string }
+        horaFin: { type: string }
+        categoriaIds:
+          type: array
+          items: { type: string }
+        productIds:
+          type: array
+          items: { type: string }
+        montoMinimo: { type: string }
+        usoMaximo: { type: integer }
+
+    ValidateCrmPromotionInput:
+      type: object
+      properties:
+        promoId: { type: string, format: uuid }
+        codigo: { type: string }
+        orderAmount: { type: number }
+      required: [orderAmount]
+
+    ValidateCrmPromotionResult:
+      type: object
+      description: Always returned with HTTP 200; check valid before applying discount
+      properties:
+        valid: { type: boolean }
+        reason: { type: string }
+        descuento: { type: number }
+        promo: { $ref: "#/components/schemas/CrmPromotion" }
+      required: [valid, descuento, promo]
+
+    CrmLoyaltyLevel:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        nombre: { type: string }
+        descripcion: { type: string }
+        orden: { type: integer }
+        requisitosGasto: { type: string }
+        requisitosVisitas: { type: integer }
+        multiplicadorPuntos: { type: string }
+        descuentoPct: { type: string }
+        beneficios:
+          type: array
+          items: { type: string }
+        color: { type: string }
+        icono: { type: string }
+        activo: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+      required:
+        - id
+        - nombre
+        - descripcion
+        - orden
+        - requisitosGasto
+        - requisitosVisitas
+        - multiplicadorPuntos
+        - descuentoPct
+        - beneficios
+        - color
+        - icono
+        - activo
+        - createdAt
+        - updatedAt
+
+    CreateCrmLoyaltyLevelInput:
+      type: object
+      properties:
+        nombre: { type: string }
+        descripcion: { type: string }
+        orden: { type: integer }
+        requisitosGasto: { type: string }
+        requisitosVisitas: { type: integer }
+        multiplicadorPuntos: { type: string }
+        descuentoPct: { type: string }
+        beneficios:
+          type: array
+          items: { type: string }
+        color: { type: string }
+        icono: { type: string }
+      required: [nombre]
+
+    UpdateCrmLoyaltyLevelInput:
+      type: object
+      properties:
+        nombre: { type: string }
+        descripcion: { type: string }
+        orden: { type: integer }
+        requisitosGasto: { type: string }
+        requisitosVisitas: { type: integer }
+        multiplicadorPuntos: { type: string }
+        descuentoPct: { type: string }
+        beneficios:
+          type: array
+          items: { type: string }
+        color: { type: string }
+        icono: { type: string }
+        activo: { type: boolean }
+
+    CrmReviewLevelsResult:
+      type: object
+      properties:
+        updated: { type: integer }
+      required: [updated]
+
+    CrmWallet:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        clientId: { type: string, format: uuid }
+        saldoReal: { type: string }
+        saldoPromo: { type: string }
+        saldoCompensacion: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+      required:
+        - id
+        - clientId
+        - saldoReal
+        - saldoPromo
+        - saldoCompensacion
+        - createdAt
+        - updatedAt
+
+    CrmWalletTransaction:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        clientId: { type: string, format: uuid }
+        tipo:
+          type: string
+          enum: [recarga, pago, devolucion, compensacion, promo, ajuste, caducidad]
+        subtipo: { type: string }
+        importe: { type: string }
+        saldoAnterior: { type: string }
+        saldoPosterior: { type: string }
+        descripcion: { type: string }
+        orderId: { type: string, format: uuid, nullable: true }
+        empleadoId: { type: string, format: uuid, nullable: true }
+        empleadoNombre: { type: string }
+        createdAt: { type: string, format: date-time }
+      required:
+        - id
+        - clientId
+        - tipo
+        - subtipo
+        - importe
+        - saldoAnterior
+        - saldoPosterior
+        - descripcion
+        - empleadoNombre
+        - createdAt
+
+    CrmWalletDetail:
+      type: object
+      properties:
+        wallet: { $ref: "#/components/schemas/CrmWallet" }
+        transactions:
+          type: array
+          items: { $ref: "#/components/schemas/CrmWalletTransaction" }
+      required: [wallet, transactions]
+
+    WalletAddInput:
+      type: object
+      properties:
+        importe: { type: string }
+        subtipo:
+          type: string
+          enum: [real, promo, compensacion]
+          default: promo
+        descripcion: { type: string }
+      required: [importe]
+
+    WalletPayInput:
+      type: object
+      properties:
+        importe: { type: string }
+        orderId: { type: string, format: uuid }
+        subtipo:
+          type: string
+          enum: [real, promo, compensacion]
+          default: promo
+      required: [importe]
+
+    WalletPayResult:
+      type: object
+      properties:
+        wallet: { $ref: "#/components/schemas/CrmWallet" }
+        pagado: { type: string }
+      required: [wallet, pagado]
+
+    WalletAdjustInput:
+      type: object
+      properties:
+        importe: { type: string }
+        subtipo:
+          type: string
+          enum: [real, promo, compensacion]
+          default: promo
+        descripcion: { type: string }
+      required: [importe]
+
+    CrmConsent:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        clientId: { type: string, format: uuid }
+        tipo:
+          type: string
+          enum:
+            - operativo
+            - marketing_email
+            - marketing_sms
+            - marketing_whatsapp
+            - perfilado
+            - fidelizacion
+        valor: { type: boolean }
+        canalOrigen: { type: string }
+        textoAceptado: { type: string }
+        versionLegal: { type: string }
+        ip: { type: string }
+        revocadoEn: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+      required:
+        - id
+        - clientId
+        - tipo
+        - valor
+        - canalOrigen
+        - textoAceptado
+        - versionLegal
+        - ip
+        - createdAt
+
+    CreateCrmConsentInput:
+      type: object
+      properties:
+        tipo: { type: string }
+        valor: { type: boolean }
+        canalOrigen: { type: string }
+        textoAceptado: { type: string }
+        versionLegal: { type: string }
+      required: [tipo, valor]
+
+    CrmExpiringPointsResponse:
+      type: object
+      properties:
+        rows:
+          type: array
+          items: { $ref: "#/components/schemas/CrmLoyaltyPoint" }
+        totalExpiring: { type: integer }
+        days: { type: integer }
+      required: [rows, totalExpiring, days]
+
+    CrmExpirePointsResult:
+      type: object
+      properties:
+        clientesAfectados: { type: integer }
+        puntosExpirados: { type: integer }
+      required: [clientesAfectados, puntosExpirados]
+
+    CrmCouponUse:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        promotionId: { type: string, format: uuid }
+        clientId: { type: string, format: uuid, nullable: true }
+        orderId: { type: string, format: uuid, nullable: true }
+        usedAt: { type: string, format: date-time }
+      required: [id, promotionId, usedAt]
+
+    UseCrmPromotionInput:
+      type: object
+      properties:
+        promotionId: { type: string, format: uuid }
+        clientId: { type: string, format: uuid }
+        orderId: { type: string, format: uuid }
+      required: [promotionId]
+
+    CrmCampaign:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        nombre: { type: string }
+        descripcion: { type: string }
+        tipo:
+          type: string
+          enum: [manual, automatica, cumpleanos, inactividad, puntos_caducidad]
+        estado:
+          type: string
+          enum: [borrador, programada, enviando, completada, pausada]
+        canal:
+          type: string
+          enum: [email, sms, whatsapp, web, ticket, cupon_cuenta]
+        asunto: { type: string }
+        contenido: { type: string }
+        segmento:
+          type: object
+          additionalProperties: true
+        fechaEnvio: { type: string, format: date-time, nullable: true }
+        fechaFin: { type: string, format: date-time, nullable: true }
+        totalDestinatarios: { type: integer }
+        totalEnviados: { type: integer }
+        totalEntregados: { type: integer }
+        totalFallidos: { type: integer }
+        totalUsados: { type: integer }
+        promotionId: { type: string, format: uuid, nullable: true }
+        empleadoId: { type: string, format: uuid, nullable: true }
+        empleadoNombre: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+      required:
+        - id
+        - nombre
+        - descripcion
+        - tipo
+        - estado
+        - canal
+        - asunto
+        - contenido
+        - segmento
+        - totalDestinatarios
+        - totalEnviados
+        - totalEntregados
+        - totalFallidos
+        - totalUsados
+        - empleadoNombre
+        - createdAt
+        - updatedAt
+
+    CreateCrmCampaignInput:
+      type: object
+      properties:
+        nombre: { type: string }
+        descripcion: { type: string }
+        tipo: { type: string }
+        canal: { type: string }
+        asunto: { type: string }
+        contenido: { type: string }
+        segmento:
+          type: object
+          additionalProperties: true
+        fechaEnvio: { type: string, format: date-time }
+        promotionId: { type: string, format: uuid }
+      required: [nombre]
+
+    UpdateCrmCampaignInput:
+      type: object
+      properties:
+        nombre: { type: string }
+        descripcion: { type: string }
+        tipo: { type: string }
+        estado: { type: string }
+        canal: { type: string }
+        asunto: { type: string }
+        contenido: { type: string }
+        segmento:
+          type: object
+          additionalProperties: true
+        fechaEnvio: { type: string, format: date-time, nullable: true }
+        fechaFin: { type: string, format: date-time, nullable: true }
+        promotionId: { type: string, format: uuid, nullable: true }
+
+    CrmCampaignSend:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        campaignId: { type: string, format: uuid }
+        clientId: { type: string, format: uuid }
+        estado:
+          type: string
+          enum: [pendiente, enviado, entregado, fallido, usado, baja]
+        canal: { type: string }
+        enviadoEn: { type: string, format: date-time, nullable: true }
+        fallidoEn: { type: string, format: date-time, nullable: true }
+        error: { type: string, nullable: true }
+        usadoEn: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+      required: [id, campaignId, clientId, estado, canal, createdAt]
+
+    CrmCampaignSendResult:
+      type: object
+      properties:
+        destinatarios: { type: integer }
+        enviados: { type: integer }
+      required: [destinatarios, enviados]
+
+    CrmSegmentClientSummary:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        nombre: { type: string }
+        email: { type: string }
+        telefono: { type: string }
+        totalGasto: { type: string }
+        totalVisitas: { type: integer }
+        ultimaVisita: { type: string, format: date-time, nullable: true }
+        puntosSaldo: { type: integer }
+      required: [id, nombre, email, telefono, totalGasto, totalVisitas, puntosSaldo]
+
+    CrmSegmentPreviewResult:
+      type: object
+      properties:
+        total: { type: integer }
+        muestra:
+          type: array
+          items: { $ref: "#/components/schemas/CrmSegmentClientSummary" }
+      required: [total, muestra]
+
+    CrmDemoDataItem:
+      type: object
+      properties:
+        tabla: { type: string }
+        rowId: { type: string, format: uuid }
+      required: [tabla, rowId]
+
+    CrmDemoDataResult:
+      type: object
+      properties:
+        created: { type: integer }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/CrmDemoDataItem" }
+      required: [created, items]
+
+    CrmDemoDataDeleteResult:
+      type: object
+      properties:
+        deleted: { type: integer }
+      required: [deleted]
+
+    CrmReportsClientStats:
+      type: object
+      properties:
+        total: { type: integer }
+        activos: { type: integer }
+        nuevos30d: { type: integer }
+        inactivos90d: { type: integer }
+        gastoTotal: { type: number }
+      required: [total, activos, nuevos30d, inactivos90d, gastoTotal]
+
+    CrmReportsTopClient:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        nombre: { type: string }
+        apellidos: { type: string }
+        totalGasto: { type: string }
+        totalVisitas: { type: integer }
+        puntosSaldo: { type: integer }
+      required: [id, nombre, apellidos, totalGasto, totalVisitas, puntosSaldo]
+
+    CrmReportsPointsStats:
+      type: object
+      properties:
+        totalEmitidos: { type: integer }
+        totalCanjeados: { type: integer }
+      required: [totalEmitidos, totalCanjeados]
+
+    CrmReportsGiftCardStats:
+      type: object
+      properties:
+        totalActivas: { type: integer }
+        totalConsumidas: { type: integer }
+        saldoTotal: { type: string, nullable: true }
+      required: [totalActivas, totalConsumidas]
+
+    CrmReportsPromotionStats:
+      type: object
+      properties:
+        totalPromociones: { type: integer }
+        activas: { type: integer }
+        totalUsos: { type: string, nullable: true }
+      required: [totalPromociones, activas]
+
+    CrmReports:
+      type: object
+      properties:
+        clientes: { $ref: "#/components/schemas/CrmReportsClientStats" }
+        topClientes:
+          type: array
+          items: { $ref: "#/components/schemas/CrmReportsTopClient" }
+        puntos: { $ref: "#/components/schemas/CrmReportsPointsStats" }
+        tarjetasRegalo: { $ref: "#/components/schemas/CrmReportsGiftCardStats" }
+        promociones: { $ref: "#/components/schemas/CrmReportsPromotionStats" }
+      required: [clientes, topClientes, puntos, tarjetasRegalo, promociones]
+
+    CrmExtendedReportsLevelDistribution:
+      type: object
+      properties:
+        nivelNombre: { type: string }
+        count: { type: integer }
+      required: [nivelNombre, count]
+
+    CrmExtendedReportsLevelStats:
+      type: object
+      properties:
+        totalNiveles: { type: integer }
+      required: [totalNiveles]
+
+    CrmExtendedReportsWalletStats:
+      type: object
+      properties:
+        clientesConMonedero: { type: integer }
+        totalSaldoReal: { type: string, nullable: true }
+        totalSaldoPromo: { type: string, nullable: true }
+      required: [clientesConMonedero]
+
+    CrmExtendedReportsCampaignStats:
+      type: object
+      properties:
+        total: { type: integer }
+        enviadas: { type: integer }
+      required: [total, enviadas]
+
+    CrmExtendedReportsPoints30d:
+      type: object
+      properties:
+        emitidos: { type: integer }
+        canjeados: { type: integer }
+        expirados: { type: integer }
+      required: [emitidos, canjeados, expirados]
+
+    CrmExtendedReports:
+      type: object
+      properties:
+        niveles:
+          type: object
+          properties:
+            stats: { $ref: "#/components/schemas/CrmExtendedReportsLevelStats" }
+            distribucion:
+              type: array
+              items: { $ref: "#/components/schemas/CrmExtendedReportsLevelDistribution" }
+          required: [stats, distribucion]
+        monedero: { $ref: "#/components/schemas/CrmExtendedReportsWalletStats" }
+        campañas: { $ref: "#/components/schemas/CrmExtendedReportsCampaignStats" }
+        puntosProximosACaducar30d: { type: number }
+        puntos30d: { $ref: "#/components/schemas/CrmExtendedReportsPoints30d" }
+      required: [niveles, monedero, campañas, puntosProximosACaducar30d, puntos30d]
+
+    CrmAuditLog:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        accion: { type: string }
+        clientId: { type: string, format: uuid, nullable: true }
+        entidadTipo: { type: string }
+        entidadId: { type: string, format: uuid, nullable: true }
+        empleadoId: { type: string, format: uuid, nullable: true }
+        empleadoNombre: { type: string }
+        terminal: { type: string }
+        datos:
+          type: object
+          nullable: true
+          additionalProperties: true
+        createdAt: { type: string, format: date-time }
+      required:
+        - id
+        - accion
+        - entidadTipo
+        - empleadoNombre
+        - terminal
+        - createdAt

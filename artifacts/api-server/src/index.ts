@@ -12,6 +12,9 @@ import { startPrintWorker } from "./lib/print-worker";
 import { startBackupWorker } from "./lib/backup-worker";
 import { startVerifactuWorker } from "./lib/verifactu-worker";
 import { verifyMigrations } from "@workspace/db";
+import { validateApiEnvironment } from "./lib/env";
+
+validateApiEnvironment(process.env);
 
 const rawPort = process.env["PORT"];
 
