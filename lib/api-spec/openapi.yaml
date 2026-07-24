@@ -30,6 +30,8 @@ tags:
     description: Business configuration
   - name: documents
     description: Document templates, invoices, printers, and audit log
+  - name: branding
+    description: Public and admin branding for QR carta
 
 paths:
   /healthz:
@@ -2461,6 +2463,100 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "503": { $ref: "#/components/responses/ServiceUnavailable" }
 
+  /public/branding:
+    get:
+      operationId: getPublicBranding
+      tags: [branding, phase47-branding]
+      summary: Get public QR carta branding (no authentication required)
+      description: Returns branding for the public carta. In production, responds with 503 when business configuration has not been seeded.
+      responses:
+        "200":
+          description: Public branding payload with legacy compatibility fields
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PublicBrandingResponse" }
+        "503":
+          description: QR carta is not configured in production
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/QrNotConfiguredError" }
+
+  /admin/branding:
+    get:
+      operationId: getAdminBranding
+      tags: [branding, phase47-branding]
+      summary: Get admin branding settings for the legacy carta editor
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      responses:
+        "200":
+          description: Admin branding settings
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminBranding" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+    patch:
+      operationId: patchAdminBranding
+      tags: [branding, phase47-branding]
+      summary: Partially update admin branding settings
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      x-idempotent: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BrandingInput" }
+      responses:
+        "200":
+          description: Updated admin branding settings
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminBranding" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /admin/qr-branding:
+    get:
+      operationId: getAdminQrBranding
+      tags: [branding, phase47-branding]
+      summary: Get full QR branding settings for the admin editor
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      responses:
+        "200":
+          description: Full QR branding document
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/QrBranding" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+    put:
+      operationId: putAdminQrBranding
+      tags: [branding, phase47-branding]
+      summary: Replace QR branding settings
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      x-idempotent: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateQrBrandingInput" }
+      responses:
+        "200":
+          description: Branding saved successfully
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/QrBrandingOkResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
   /tables/occupation-summary:
     get:
       operationId: getOccupationSummary
@@ -4850,3 +4946,219 @@ components:
         reason: { type: string }
         createdAt: { type: string, format: date-time }
       required: [id, documentId, documentType, employeeId, employeeName, reason, createdAt]
+
+    OpeningHoursDay:
+      type: object
+      properties:
+        open: { type: string }
+        close: { type: string }
+        open2: { type: string }
+        close2: { type: string }
+      required: [open, close]
+
+    OpeningHours:
+      type: object
+      additionalProperties:
+        $ref: "#/components/schemas/OpeningHoursDay"
+      description: Weekday keys such as mon, tue, wed, thu, fri, sat, sun.
+
+    AdminBranding:
+      type: object
+      properties:
+        nombreComercial: { type: string }
+        tagline: { type: string }
+        heroImageUrl: { type: string }
+        heroVideoUrl: { type: string }
+        address: { type: string }
+        phone: { type: string }
+        foundedYear: { type: integer, nullable: true }
+        openingHours: { $ref: "#/components/schemas/OpeningHours", nullable: true }
+        cardLayout: { type: string }
+        accentColor: { type: string }
+        logoUrl: { type: string }
+      required: [nombreComercial, tagline, heroImageUrl, heroVideoUrl, address, phone, cardLayout, accentColor, logoUrl]
+
+    BrandingInput:
+      type: object
+      properties:
+        nombreComercial: { type: string }
+        tagline: { type: string }
+        heroImageUrl: { type: string }
+        heroVideoUrl: { type: string }
+        address: { type: string }
+        phone: { type: string }
+        foundedYear: { type: integer, nullable: true }
+        openingHours: { $ref: "#/components/schemas/OpeningHours", nullable: true }
+        cardLayout: { type: string }
+        accentColor: { type: string }
+        logoUrl: { type: string }
+
+    BrandingThemeColors:
+      type: object
+      properties:
+        primary: { type: string }
+        background: { type: string }
+        accent: { type: string }
+        infoTextColor: { type: string }
+        categoryCardBg: { type: string }
+        categoryCardText: { type: string }
+        callButtonBg: { type: string }
+        callButtonText: { type: string }
+        scheduleButtonBg: { type: string }
+        scheduleButtonText: { type: string }
+        heroTitleColor: { type: string }
+        heroTaglineColor: { type: string }
+        heroEstablishedColor: { type: string }
+        tapDetailsColor: { type: string }
+      additionalProperties: true
+
+    BrandingThemeFonts:
+      type: object
+      properties:
+        heading: { type: string }
+        body: { type: string }
+        headingColor: { type: string }
+        bodyColor: { type: string }
+
+    BrandingCardSettings:
+      type: object
+      properties:
+        showImage: { type: boolean }
+        showDescription: { type: boolean }
+        showTags: { type: boolean }
+        showAllergens: { type: boolean }
+        showPrice: { type: boolean }
+        showHalfPortion: { type: boolean }
+        showQuantity: { type: boolean }
+        layout: { type: string, enum: [grid, list, compact] }
+
+    QrShift:
+      type: object
+      properties:
+        open: { type: boolean }
+        openTime: { type: string }
+        closeTime: { type: string }
+      required: [open, openTime, closeTime]
+
+    QrDaySchedule:
+      type: object
+      properties:
+        day: { type: string }
+        shift1: { $ref: "#/components/schemas/QrShift" }
+        shift2: { $ref: "#/components/schemas/QrShift" }
+      required: [day, shift1, shift2]
+
+    PublicBrandingResponse:
+      type: object
+      properties:
+        restaurantName: { type: string }
+        tagline: { type: string }
+        heroImageUrl: { type: string }
+        heroVideoUrl: { type: string }
+        address: { type: string }
+        city: { type: string }
+        province: { type: string }
+        postalCode: { type: string }
+        country: { type: string }
+        phone: { type: string }
+        establishedYear: { type: integer, nullable: true }
+        openingHours: { $ref: "#/components/schemas/OpeningHours", nullable: true }
+        cardLayout: { type: string }
+        accentColor: { type: string }
+        logoUrl: { type: string }
+        themeColors: { $ref: "#/components/schemas/BrandingThemeColors", nullable: true }
+        themeFonts: { $ref: "#/components/schemas/BrandingThemeFonts", nullable: true }
+        cardSettings: { $ref: "#/components/schemas/BrandingCardSettings", nullable: true }
+        schedule:
+          type: array
+          items: { $ref: "#/components/schemas/QrDaySchedule" }
+          nullable: true
+        nombreComercial: { type: string }
+        foundedYear: { type: integer, nullable: true }
+      required:
+        - restaurantName
+        - tagline
+        - heroImageUrl
+        - heroVideoUrl
+        - address
+        - city
+        - province
+        - postalCode
+        - country
+        - phone
+        - cardLayout
+        - accentColor
+        - logoUrl
+        - nombreComercial
+
+    QrBranding:
+      type: object
+      properties:
+        restaurantName: { type: string }
+        tagline: { type: string }
+        heroImageUrl: { type: string }
+        heroVideoUrl: { type: string }
+        address: { type: string }
+        city: { type: string }
+        province: { type: string }
+        postalCode: { type: string }
+        country: { type: string }
+        phone: { type: string }
+        establishedYear: { type: string }
+        logoUrl: { type: string }
+        themeColors: { $ref: "#/components/schemas/BrandingThemeColors", nullable: true }
+        themeFonts: { $ref: "#/components/schemas/BrandingThemeFonts", nullable: true }
+        cardSettings: { $ref: "#/components/schemas/BrandingCardSettings", nullable: true }
+        schedule:
+          type: array
+          items: { $ref: "#/components/schemas/QrDaySchedule" }
+          nullable: true
+      required:
+        - restaurantName
+        - tagline
+        - heroImageUrl
+        - heroVideoUrl
+        - address
+        - city
+        - province
+        - postalCode
+        - country
+        - phone
+        - establishedYear
+        - logoUrl
+
+    UpdateQrBrandingInput:
+      type: object
+      properties:
+        restaurantName: { type: string }
+        tagline: { type: string }
+        heroImageUrl: { type: string }
+        heroVideoUrl: { type: string }
+        address: { type: string }
+        city: { type: string }
+        province: { type: string }
+        postalCode: { type: string }
+        country: { type: string }
+        phone: { type: string }
+        establishedYear: { type: string }
+        logoUrl: { type: string }
+        themeColors: { $ref: "#/components/schemas/BrandingThemeColors", nullable: true }
+        themeFonts: { $ref: "#/components/schemas/BrandingThemeFonts", nullable: true }
+        cardSettings: { $ref: "#/components/schemas/BrandingCardSettings", nullable: true }
+        schedule:
+          type: array
+          items: { $ref: "#/components/schemas/QrDaySchedule" }
+          nullable: true
+
+    QrBrandingOkResponse:
+      type: object
+      properties:
+        ok: { type: boolean }
+      required: [ok]
+
+    QrNotConfiguredError:
+      type: object
+      properties:
+        error: { type: string }
+        code: { type: string, enum: [QR_NOT_CONFIGURED] }
+      required: [error, code]
