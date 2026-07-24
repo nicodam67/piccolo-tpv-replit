@@ -220,7 +220,7 @@
   /crm/gift-cards:
     get:
       operationId: getCrmGiftCards
-      tags: [crm, phase49-crm]
+      tags: [crm, phase49-crm, phase51-wallet]
       summary: List gift cards
       security: [{ bearerAuth: [] }, { cookieAuth: [] }]
       x-roles: [manager, admin]
@@ -237,7 +237,7 @@
         "503": { $ref: "#/components/responses/ServiceUnavailable" }
     post:
       operationId: createCrmGiftCard
-      tags: [crm, phase49-crm]
+      tags: [crm, phase49-crm, phase51-wallet]
       summary: Create a new gift card
       security: [{ bearerAuth: [] }, { cookieAuth: [] }]
       x-roles: [manager, admin]
@@ -261,7 +261,7 @@
   /crm/gift-cards/lookup:
     get:
       operationId: lookupCrmGiftCard
-      tags: [crm, phase49-crm]
+      tags: [crm, phase49-crm, phase51-wallet]
       summary: Look up a gift card by code (POS balance check)
       security: [{ bearerAuth: [] }, { cookieAuth: [] }]
       x-roles: [waiter, cashier, manager, admin]
@@ -282,7 +282,7 @@
   /crm/gift-cards/pay:
     post:
       operationId: payWithCrmGiftCard
-      tags: [crm, phase49-crm]
+      tags: [crm, phase49-crm, phase51-wallet]
       summary: Pay with a gift card at POS
       security: [{ bearerAuth: [] }, { cookieAuth: [] }]
       x-roles: [waiter, cashier, manager, admin]
@@ -308,7 +308,7 @@
   /crm/gift-cards/{id}:
     get:
       operationId: getCrmGiftCard
-      tags: [crm, phase49-crm]
+      tags: [crm, phase49-crm, phase51-wallet]
       summary: Get gift card detail with transaction history
       security: [{ bearerAuth: [] }, { cookieAuth: [] }]
       x-roles: [manager, admin]
@@ -327,7 +327,7 @@
   /crm/gift-cards/{id}/recharge:
     post:
       operationId: rechargeCrmGiftCard
-      tags: [crm, phase49-crm]
+      tags: [crm, phase49-crm, phase51-wallet]
       summary: Recharge a gift card balance
       security: [{ bearerAuth: [] }, { cookieAuth: [] }]
       x-roles: [manager, admin]
@@ -354,7 +354,7 @@
   /crm/gift-cards/{id}/block:
     post:
       operationId: blockCrmGiftCard
-      tags: [crm, phase49-crm]
+      tags: [crm, phase49-crm, phase51-wallet]
       summary: Toggle block/unblock on a gift card
       security: [{ bearerAuth: [] }, { cookieAuth: [] }]
       x-roles: [manager, admin]
@@ -634,7 +634,7 @@
   /crm/clients/{id}/wallet:
     get:
       operationId: getCrmClientWallet
-      tags: [crm, phase49-crm]
+      tags: [crm, phase49-crm, phase51-wallet]
       summary: Get client wallet with recent transactions
       security: [{ bearerAuth: [] }, { cookieAuth: [] }]
       x-roles: [waiter, cashier, manager, admin]
@@ -652,7 +652,7 @@
   /crm/clients/{id}/wallet/add:
     post:
       operationId: addCrmWalletBalance
-      tags: [crm, phase49-crm]
+      tags: [crm, phase49-crm, phase51-wallet]
       summary: Add balance to a client wallet
       security: [{ bearerAuth: [] }, { cookieAuth: [] }]
       x-roles: [manager, admin]
@@ -678,7 +678,7 @@
   /crm/clients/{id}/wallet/pay:
     post:
       operationId: payWithCrmWallet
-      tags: [crm, phase49-crm]
+      tags: [crm, phase49-crm, phase51-wallet]
       summary: Pay using client wallet balance
       security: [{ bearerAuth: [] }, { cookieAuth: [] }]
       x-roles: [waiter, cashier, manager, admin]
@@ -704,7 +704,7 @@
   /crm/clients/{id}/wallet/adjust:
     post:
       operationId: adjustCrmWallet
-      tags: [crm, phase49-crm]
+      tags: [crm, phase49-crm, phase51-wallet]
       summary: Manually adjust client wallet balance (admin)
       security: [{ bearerAuth: [] }, { cookieAuth: [] }]
       x-roles: [admin]

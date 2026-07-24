@@ -9,6 +9,7 @@
     "codegen:reservations": "orval --config ./orval.reservations.config.ts",
     "codegen:branding": "orval --config ./orval.branding.config.ts",
     "codegen:crm": "orval --config ./orval.crm.config.ts",
+    "codegen:wallet": "orval --config ./orval.wallet.config.ts",
     "codegen:stamp": "sha256sum ../../lib/api-spec/openapi.yaml | awk '{print $1}' > .codegen-stamp && echo 'Stamp updated'"
   },
   "devDependencies": {
