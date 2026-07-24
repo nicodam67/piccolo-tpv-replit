@@ -5,6 +5,11 @@ import path from "node:path";
 
 const root = path.resolve(import.meta.dirname, "..");
 const output = path.join(root, "lib/api-client-react/src/branding-generated");
+const compatibilityFiles = [
+  path.join(root, "lib/api-client-react/src/generated/api.ts"),
+  path.join(root, "lib/api-client-react/src/generated/api.schemas.ts"),
+  path.join(root, "lib/api-client-react/src/branding-compat.ts"),
+];
 
 function digest() {
   const hash = createHash("sha256");
@@ -12,11 +17,19 @@ function digest() {
     hash.update(file);
     hash.update(fs.readFileSync(path.join(output, file)));
   }
+  for (const file of compatibilityFiles) {
+    hash.update(path.relative(root, file));
+    hash.update(fs.readFileSync(file));
+  }
   return hash.digest("hex");
 }
 
 function generate() {
   execFileSync("pnpm", ["--filter", "@workspace/api-spec", "run", "codegen:branding"], {
+    cwd: root,
+    stdio: "inherit",
+  });
+  execFileSync("node", ["scripts/migrate-branding-generated-hooks.mjs"], {
     cwd: root,
     stdio: "inherit",
   });

@@ -4225,35 +4225,3 @@ export function useGetCrmReports<TData = Awaited<ReturnType<typeof getCrmReports
   const query = useQuery({ queryKey, queryFn, ...options?.query }) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
   return withQueryKey(query, queryKey);
 }
-
-// ── Public Branding ──────────────────────────────────────────────────────────
-export const getPublicBranding = async (options?: RequestInit): Promise<import('./api.schemas').PublicBranding> =>
-  customFetch<import('./api.schemas').PublicBranding>('/api/public/branding', { ...options, method: 'GET' });
-export const getGetPublicBrandingQueryKey = () => [`/api/public/branding`] as const;
-export function useGetPublicBranding<TData = Awaited<ReturnType<typeof getPublicBranding>>, TError = ErrorType<ErrorResponse>>(options?: { query?: UseQueryOptions<Awaited<ReturnType<typeof getPublicBranding>>, TError, TData> }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-  const queryKey = getGetPublicBrandingQueryKey();
-  const queryFn: QueryFunction<Awaited<ReturnType<typeof getPublicBranding>>> = () => getPublicBranding();
-  const query = useQuery({ queryKey, queryFn, ...options?.query }) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
-  return withQueryKey(query, queryKey);
-}
-
-// ── Admin Branding ───────────────────────────────────────────────────────────
-export const getAdminBranding = async (options?: RequestInit): Promise<import('./api.schemas').PublicBranding> =>
-  customFetch<import('./api.schemas').PublicBranding>('/api/admin/branding', { ...options, method: 'GET' });
-export const getGetAdminBrandingQueryKey = () => [`/api/admin/branding`] as const;
-export function useGetAdminBranding<TData = Awaited<ReturnType<typeof getAdminBranding>>, TError = ErrorType<ErrorResponse>>(options?: { query?: UseQueryOptions<Awaited<ReturnType<typeof getAdminBranding>>, TError, TData> }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-  const queryKey = getGetAdminBrandingQueryKey();
-  const queryFn: QueryFunction<Awaited<ReturnType<typeof getAdminBranding>>> = () => getAdminBranding();
-  const query = useQuery({ queryKey, queryFn, ...options?.query }) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
-  return withQueryKey(query, queryKey);
-}
-
-export const patchAdminBranding = async (data: BodyType<import('./api.schemas').BrandingInput>, options?: RequestInit): Promise<import('./api.schemas').PublicBranding> =>
-  customFetch<import('./api.schemas').PublicBranding>('/api/admin/branding', { ...options, method: 'PATCH', headers: { 'Content-Type': 'application/json', ...options?.headers }, body: JSON.stringify(data) });
-export const getPatchAdminBrandingMutationOptions = <TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof patchAdminBranding>>, TError, { data: BodyType<import('./api.schemas').BrandingInput> }, TContext> }): UseMutationOptions<Awaited<ReturnType<typeof patchAdminBranding>>, TError, { data: BodyType<import('./api.schemas').BrandingInput> }, TContext> => {
-  const mutationFn: MutationFunction<Awaited<ReturnType<typeof patchAdminBranding>>, { data: BodyType<import('./api.schemas').BrandingInput> }> = ({ data }) => patchAdminBranding(data);
-  return { mutationFn, ...options?.mutation };
-};
-export function usePatchAdminBranding<TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof patchAdminBranding>>, TError, { data: BodyType<import('./api.schemas').BrandingInput> }, TContext> }): UseMutationResult<Awaited<ReturnType<typeof patchAdminBranding>>, TError, { data: BodyType<import('./api.schemas').BrandingInput> }, TContext> {
-  return useMutation(getPatchAdminBrandingMutationOptions(options));
-}
