@@ -1,0 +1,548 @@
+# phase54-delivery — splice under paths in openapi.yaml
+# Tags: delivery, phase54-delivery on all operations
+
+  /delivery-orders:
+    get:
+      operationId: getDeliveryOrders
+      tags: [delivery, phase54-delivery]
+      summary: List delivery and takeaway orders with filters
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [waiter, cashier, manager, admin]
+      parameters:
+        - { in: query, name: date, schema: { type: string, format: date }, description: Filter by calendar day (YYYY-MM-DD) }
+        - { in: query, name: from, schema: { type: string, format: date-time } }
+        - { in: query, name: to, schema: { type: string, format: date-time } }
+        - { in: query, name: status, schema: { type: string }, description: Skip filter when value is "all" }
+        - { in: query, name: courierId, schema: { type: string, format: uuid } }
+        - { in: query, name: type, schema: { type: string, enum: [delivery, takeaway] } }
+      responses:
+        "200":
+          description: Delivery orders (max 200)
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/DeliveryOrderListItem" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+    post:
+      operationId: createDeliveryOrder
+      tags: [delivery, phase54-delivery]
+      summary: Create a manual delivery or pickup order from the TPV
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [waiter, cashier, manager, admin]
+      x-idempotent: true
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: { type: string, minLength: 8, maxLength: 200 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateDeliveryOrderInput" }
+      responses:
+        "201":
+          description: Created delivery order
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DeliveryOrderCreated" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /delivery-orders/{id}:
+    get:
+      operationId: getDeliveryOrder
+      tags: [delivery, phase54-delivery]
+      summary: Get delivery order detail with items, history and address
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [waiter, cashier, manager, admin]
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200":
+          description: Delivery order detail
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DeliveryOrderDetail" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+    patch:
+      operationId: patchDeliveryOrder
+      tags: [delivery, phase54-delivery]
+      summary: Update delivery order status, courier or notes
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [waiter, cashier, manager, admin]
+      x-idempotent: false
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PatchDeliveryOrderInput" }
+      responses:
+        "200":
+          description: Updated order
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DeliveryOrderPatchResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /delivery-orders/{id}/history:
+    get:
+      operationId: getDeliveryOrderHistory
+      tags: [delivery, phase54-delivery]
+      summary: List status history for a delivery order
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [waiter, cashier, manager, admin]
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200":
+          description: Status history entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/DeliveryOrderStatusHistory" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /online-orders:
+    get:
+      operationId: getOnlineOrdersInbox
+      tags: [delivery, phase54-delivery]
+      summary: Online orders inbox for TPV staff
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [waiter, cashier, manager, admin]
+      parameters:
+        - { in: query, name: status, schema: { type: string }, description: Skip filter when value is "all" }
+        - { in: query, name: date, schema: { type: string, format: date } }
+      responses:
+        "200":
+          description: Online delivery/takeaway orders (max 100)
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/OnlineOrderInboxItem" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /online-orders/{id}/confirm:
+    post:
+      operationId: confirmOnlineOrder
+      tags: [delivery, phase54-delivery]
+      summary: Confirm an online order (manager)
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [manager, admin]
+      x-idempotent: false
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ConfirmOnlineOrderInput" }
+      responses:
+        "200":
+          description: Order confirmed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OnlineOrderConfirmResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /online-orders/{id}/reject:
+    post:
+      operationId: rejectOnlineOrder
+      tags: [delivery, phase54-delivery]
+      summary: Reject an online order with reason
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [manager, admin]
+      x-idempotent: false
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RejectOnlineOrderInput" }
+      responses:
+        "200":
+          description: Order rejected
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OnlineOrderRejectResult" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /online-orders/{id}/status:
+    patch:
+      operationId: patchOnlineOrderStatus
+      tags: [delivery, phase54-delivery]
+      summary: Change online order status
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [waiter, cashier, manager, admin]
+      x-idempotent: false
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PatchOnlineOrderStatusInput" }
+      responses:
+        "200":
+          description: Status updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OnlineOrderStatusResult" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /online-orders/{id}/payment-simulate:
+    post:
+      operationId: simulateOnlineOrderPayment
+      tags: [delivery, phase54-delivery]
+      summary: Simulate online payment approval (non-production)
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [waiter, cashier, manager, admin]
+      x-idempotent: false
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PaymentSimulateInput" }
+      responses:
+        "200":
+          description: Simulation result
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PaymentSimulateResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /online-orders/{id}/assign-courier:
+    post:
+      operationId: assignOnlineOrderCourier
+      tags: [delivery, phase54-delivery]
+      summary: Assign a courier to an online order
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [manager, admin]
+      x-idempotent: false
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AssignCourierInput" }
+      responses:
+        "200":
+          description: Courier assigned
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AssignCourierResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /online-orders/{id}/packaging-check:
+    post:
+      operationId: checkOnlineOrderPackaging
+      tags: [delivery, phase54-delivery]
+      summary: Mark packaging as checked for an online order
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [waiter, cashier, manager, admin]
+      x-idempotent: false
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200":
+          description: Packaging checked
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OkResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /admin/online-config:
+    get:
+      operationId: getAdminOnlineConfig
+      tags: [delivery, phase54-delivery]
+      summary: Get online delivery configuration with zones and couriers
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [manager, admin]
+      responses:
+        "200":
+          description: Online config bundle
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminOnlineConfigResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+    patch:
+      operationId: patchAdminOnlineConfig
+      tags: [delivery, phase54-delivery]
+      summary: Update online delivery configuration (admin only)
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      x-idempotent: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PatchOnlineConfigInput" }
+      responses:
+        "200":
+          description: Updated configuration (secrets masked)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OnlineOrdersConfigMasked" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /admin/delivery-zones:
+    get:
+      operationId: getDeliveryZones
+      tags: [delivery, phase54-delivery]
+      summary: List delivery zones
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [manager, admin]
+      responses:
+        "200":
+          description: Delivery zones
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/DeliveryZone" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+    post:
+      operationId: createDeliveryZone
+      tags: [delivery, phase54-delivery]
+      summary: Create a delivery zone
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [manager, admin]
+      x-idempotent: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateDeliveryZoneInput" }
+      responses:
+        "201":
+          description: Created zone
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DeliveryZone" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /admin/delivery-zones/{id}:
+    patch:
+      operationId: patchDeliveryZone
+      tags: [delivery, phase54-delivery]
+      summary: Partially update a delivery zone
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [manager, admin]
+      x-idempotent: false
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PatchDeliveryZoneInput" }
+      responses:
+        "200":
+          description: Updated zone
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DeliveryZone" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+    delete:
+      operationId: deleteDeliveryZone
+      tags: [delivery, phase54-delivery]
+      summary: Soft-delete a delivery zone
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [manager, admin]
+      x-idempotent: false
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200":
+          description: Zone disabled
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OkResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /admin/couriers:
+    get:
+      operationId: getCouriers
+      tags: [delivery, phase54-delivery]
+      summary: List active couriers (token stripped)
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [manager, admin]
+      responses:
+        "200":
+          description: Active couriers
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/CourierSafe" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+    post:
+      operationId: createCourier
+      tags: [delivery, phase54-delivery]
+      summary: Create a courier
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [manager, admin]
+      x-idempotent: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateCourierInput" }
+      responses:
+        "201":
+          description: Created courier
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CourierSafe" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /admin/couriers/{id}:
+    patch:
+      operationId: patchCourier
+      tags: [delivery, phase54-delivery]
+      summary: Partially update a courier
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [manager, admin]
+      x-idempotent: false
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PatchCourierInput" }
+      responses:
+        "200":
+          description: Updated courier
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CourierSafe" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+    delete:
+      operationId: deleteCourier
+      tags: [delivery, phase54-delivery]
+      summary: Soft-delete a courier
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [manager, admin]
+      x-idempotent: false
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200":
+          description: Courier disabled
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OkResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /admin/couriers/{id}/summary:
+    get:
+      operationId: getCourierSummary
+      tags: [delivery, phase54-delivery]
+      summary: Active shift summary for a courier
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [waiter, cashier, manager, admin]
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200":
+          description: Courier shift summary
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CourierAdminSummary" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /admin/couriers/{id}/settle:
+    post:
+      operationId: settleCourier
+      tags: [delivery, phase54-delivery]
+      summary: Close courier shift and create settlement
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [manager, admin]
+      x-idempotent: false
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SettleCourierInput" }
+      responses:
+        "200":
+          description: Settlement created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SettleCourierResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /admin/courier-settlements:
+    get:
+      operationId: getCourierSettlements
+      tags: [delivery, phase54-delivery]
+      summary: List courier settlements
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [manager, admin]
+      parameters:
+        - { in: query, name: courierId, schema: { type: string, format: uuid } }
+        - { in: query, name: from, schema: { type: string, format: date-time } }
+        - { in: query, name: to, schema: { type: string, format: date-time } }
+      responses:
+        "200":
+          description: Settlements (max 100)
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/CourierSettlementWithName" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }

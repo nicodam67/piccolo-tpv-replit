@@ -1,0 +1,813 @@
+# phase56-timeclock — splice under paths in openapi.yaml
+# Tags: timeclock, phase56-timeclock on all operations
+
+  /fichaje/public/employees:
+    get:
+      operationId: getTimeclockPublicEmployees
+      tags: [timeclock, phase56-timeclock]
+      summary: List active employees for tablet PIN selection
+      security: [{ deviceTokenAuth: [] }]
+      x-roles: [device]
+      responses:
+        "200":
+          description: Active employees (id and name only)
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/TimeclockEmployeeBrief" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /fichaje/public/clock-status:
+    get:
+      operationId: getTimeclockMobileClockStatus
+      tags: [timeclock, phase56-timeclock]
+      summary: Mobile clock availability (fail-closed; always disabled at runtime)
+      security: []
+      x-roles: [public]
+      responses:
+        "200":
+          description: Mobile clock status
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TimeclockMobileClockStatus" }
+
+  /fichaje/public/my-status/{employeeId}:
+    get:
+      operationId: getTimeclockPublicEmployeeStatus
+      tags: [timeclock, phase56-timeclock]
+      summary: Current clock state for an employee on a registered tablet
+      security: [{ deviceTokenAuth: [] }]
+      x-roles: [device]
+      parameters:
+        - name: employeeId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Employee clock status for today
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TimeclockEmployeeStatus" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /fichaje/public/clock:
+    post:
+      operationId: postTimeclockPublicClock
+      tags: [timeclock, phase56-timeclock]
+      summary: Clock in/out or break via public fichaje screen (proof required)
+      security: []
+      x-roles: [device]
+      x-device-credential: body
+      x-idempotent: optional
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema: { type: string, minLength: 8, maxLength: 200 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PublicClockInput" }
+      responses:
+        "200":
+          description: Clock action applied
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TimeclockClockResult" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /fichaje/public/nfc/identify:
+    post:
+      operationId: postTimeclockNfcIdentify
+      tags: [timeclock, phase56-timeclock]
+      summary: Identify employee by NFC card and issue clock proofs
+      security: []
+      x-roles: [device]
+      x-device-credential: body
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NfcIdentifyInput" }
+      responses:
+        "200":
+          description: Employee identified with ephemeral proofs
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NfcIdentifyResult" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429":
+          description: NFC anti-debounce (5s per card+device)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TimeclockRateLimitError" }
+
+  /fichaje/records:
+    get:
+      operationId: getTimeclockRecords
+      tags: [timeclock, phase56-timeclock]
+      summary: List time records (self; managers may filter by employeeId)
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [authenticated]
+      parameters:
+        - { in: query, name: from, schema: { type: string, format: date-time } }
+        - { in: query, name: to, schema: { type: string, format: date-time } }
+        - { in: query, name: employeeId, schema: { type: string, format: uuid }, description: Managers only }
+      responses:
+        "200":
+          description: Time records (max 500)
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/TimeclockRecordListItem" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /fichaje/records/today:
+    get:
+      operationId: getTimeclockRecordsToday
+      tags: [timeclock, phase56-timeclock]
+      summary: All employees clock status for today (managers)
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin, manager, encargado]
+      responses:
+        "200":
+          description: Today's records for all employees
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/TimeclockRecordListItem" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /fichaje/records/manual:
+    post:
+      operationId: createTimeclockManualRecord
+      tags: [timeclock, phase56-timeclock]
+      summary: Create a manual time record (managers)
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin, manager, encargado]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ManualRecordInput" }
+      responses:
+        "201":
+          description: Manual record created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TimeclockRecord" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /fichaje/records/{id}:
+    put:
+      operationId: updateTimeclockRecord
+      tags: [timeclock, phase56-timeclock]
+      summary: Correct a time record (creates time_corrections audit row)
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin, manager, encargado]
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateTimeclockRecordInput" }
+      responses:
+        "200":
+          description: Updated record
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TimeclockRecord" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /fichaje/records/{id}/breaks:
+    get:
+      operationId: getTimeclockRecordBreaks
+      tags: [timeclock, phase56-timeclock]
+      summary: List breaks for a time record
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [authenticated]
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200":
+          description: Breaks ordered by breakStart
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/TimeclockBreak" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /fichaje/shifts:
+    get:
+      operationId: getTimeclockShifts
+      tags: [timeclock, phase56-timeclock]
+      summary: List planned shifts (self; managers may filter by employeeId)
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [authenticated]
+      parameters:
+        - { in: query, name: from, schema: { type: string, format: date } }
+        - { in: query, name: to, schema: { type: string, format: date } }
+        - { in: query, name: employeeId, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Shifts
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/TimeclockShiftListItem" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+    post:
+      operationId: createTimeclockShift
+      tags: [timeclock, phase56-timeclock]
+      summary: Create a planned shift (managers)
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin, manager, encargado]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateTimeclockShiftInput" }
+      responses:
+        "201":
+          description: Shift created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TimeclockShift" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /fichaje/shifts/{id}:
+    put:
+      operationId: updateTimeclockShift
+      tags: [timeclock, phase56-timeclock]
+      summary: Update a planned shift
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin, manager, encargado]
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateTimeclockShiftInput" }
+      responses:
+        "200":
+          description: Updated shift
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TimeclockShift" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+    delete:
+      operationId: deleteTimeclockShift
+      tags: [timeclock, phase56-timeclock]
+      summary: Delete a planned shift
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin, manager, encargado]
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200":
+          description: Shift deleted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TimeclockSuccess" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /fichaje/absences:
+    get:
+      operationId: getTimeclockAbsences
+      tags: [timeclock, phase56-timeclock]
+      summary: List absences (self; managers may filter by employeeId and status)
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [authenticated]
+      parameters:
+        - { in: query, name: from, schema: { type: string, format: date } }
+        - { in: query, name: to, schema: { type: string, format: date } }
+        - { in: query, name: employeeId, schema: { type: string, format: uuid } }
+        - { in: query, name: status, schema: { type: string, enum: [pending, approved, rejected] } }
+      responses:
+        "200":
+          description: Absences
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/TimeclockAbsenceListItem" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+    post:
+      operationId: createTimeclockAbsence
+      tags: [timeclock, phase56-timeclock]
+      summary: Request an absence (non-managers create for self only)
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [authenticated]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateTimeclockAbsenceInput" }
+      responses:
+        "201":
+          description: Absence created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TimeclockAbsence" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /fichaje/absences/{id}/approve:
+    put:
+      operationId: approveTimeclockAbsence
+      tags: [timeclock, phase56-timeclock]
+      summary: Approve or reject an absence
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin, manager, encargado]
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ApproveTimeclockAbsenceInput" }
+      responses:
+        "200":
+          description: Absence updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TimeclockAbsence" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /fichaje/absences/{id}:
+    delete:
+      operationId: deleteTimeclockAbsence
+      tags: [timeclock, phase56-timeclock]
+      summary: Delete an absence (managers)
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin, manager, encargado]
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200":
+          description: Absence deleted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TimeclockSuccess" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /fichaje/reports/summary:
+    get:
+      operationId: getTimeclockReportSummary
+      tags: [timeclock, phase56-timeclock]
+      summary: Hours summary per employee for a date range
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin, manager, encargado]
+      parameters:
+        - { in: query, name: from, schema: { type: string, format: date-time } }
+        - { in: query, name: to, schema: { type: string, format: date-time } }
+        - { in: query, name: employeeId, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Per-employee totals (minutes computed from clockIn/clockOut)
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/TimeclockReportSummaryRow" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /fichaje/import/anviz:
+    post:
+      operationId: importTimeclockAnviz
+      tags: [timeclock, phase56-timeclock]
+      summary: Import pre-parsed Anviz rows (no direct hardware integration)
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin, manager]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AnvizImportInput" }
+      responses:
+        "200":
+          description: Import result with per-row errors
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AnvizImportResult" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /fichaje/import/history:
+    get:
+      operationId: getTimeclockImportHistory
+      tags: [timeclock, phase56-timeclock]
+      summary: CSV/Anviz import history (max 100)
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin, manager]
+      responses:
+        "200":
+          description: Import history
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/TimeclockImportHistoryItem" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /fichaje/settings:
+    get:
+      operationId: getFichajeSettings
+      tags: [timeclock, phase56-timeclock]
+      summary: Get fichaje module settings including timezone
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin, manager]
+      responses:
+        "200":
+          description: Settings row (empty object if unset)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FichajeSettings" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+    put:
+      operationId: updateFichajeSettings
+      tags: [timeclock, phase56-timeclock]
+      summary: Update fichaje settings (admin only)
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateFichajeSettingsInput" }
+      responses:
+        "200":
+          description: Updated settings
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FichajeSettings" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /fichaje/audit:
+    get:
+      operationId: getFichajeAuditLog
+      tags: [timeclock, phase56-timeclock]
+      summary: Fichaje audit log including corrections and NFC events
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin, manager]
+      parameters:
+        - { in: query, name: limit, schema: { type: string, default: "100" }, description: Max 500 }
+      responses:
+        "200":
+          description: Audit entries (performedByName from employees join)
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/FichajeAuditEntry" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /fichaje/nfc/cards:
+    post:
+      operationId: assignTimeclockNfcCard
+      tags: [timeclock, phase56-timeclock]
+      summary: Assign NFC card to employee (stores SHA-256 hash only)
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin, manager]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NfcCardAssignInput" }
+      responses:
+        "201":
+          description: Card assigned
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NfcCardCreated" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /fichaje/nfc/cards/{employeeId}:
+    get:
+      operationId: getTimeclockNfcCards
+      tags: [timeclock, phase56-timeclock]
+      summary: List NFC cards for an employee
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin, manager]
+      parameters:
+        - name: employeeId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: NFC cards (no token hash exposed)
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/NfcCardBrief" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /fichaje/nfc/cards/{id}:
+    patch:
+      operationId: patchTimeclockNfcCard
+      tags: [timeclock, phase56-timeclock]
+      summary: Update NFC card alias or status
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin, manager]
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NfcCardUpdateInput" }
+      responses:
+        "200":
+          description: Updated card
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NfcCardCreated" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /fichaje/nfc/cards/{id}/revoke:
+    post:
+      operationId: revokeTimeclockNfcCard
+      tags: [timeclock, phase56-timeclock]
+      summary: Revoke an NFC card
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin, manager]
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NfcCardRevokeInput" }
+      responses:
+        "200":
+          description: Card revoked
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TimeclockSuccess" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /fichaje/me:
+    get:
+      operationId: getFichajeMe
+      tags: [timeclock, phase56-timeclock]
+      summary: Current employee fichaje profile and clock status
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [authenticated]
+      responses:
+        "200":
+          description: Employee fichaje state for today
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FichajeMeResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /tablet/devices/pairing-code:
+    post:
+      operationId: createTabletPairingCode
+      tags: [timeclock, phase56-timeclock]
+      summary: Generate single-use tablet enrolment code (10 min TTL)
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin, manager]
+      responses:
+        "200":
+          description: Pairing code
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TabletPairingCode" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /tablet/devices:
+    get:
+      operationId: getTabletDevices
+      tags: [timeclock, phase56-timeclock]
+      summary: List registered tablet devices (deviceToken stripped)
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin, manager]
+      responses:
+        "200":
+          description: Tablet devices
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/TabletDeviceSafe" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /tablet/devices/{id}:
+    patch:
+      operationId: patchTabletDevice
+      tags: [timeclock, phase56-timeclock]
+      summary: Rename, relocate or revoke/activate a tablet device
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin, manager]
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                location: { type: string }
+                status: { type: string, enum: [active, revoked] }
+      responses:
+        "200":
+          description: Updated device
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TabletDeviceSafe" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+    delete:
+      operationId: revokeTabletDevice
+      tags: [timeclock, phase56-timeclock]
+      summary: Revoke tablet device (admin only)
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200":
+          description: Device revoked
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TimeclockSuccess" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /tablet/register:
+    post:
+      operationId: registerTabletDevice
+      tags: [timeclock, phase56-timeclock]
+      summary: Register tablet with admin pairing code (issues deviceToken once)
+      security: []
+      x-roles: [pairing]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TabletRegisterInput" }
+      responses:
+        "201":
+          description: Device registered
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TabletRegisterResult" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403":
+          description: Invalid or expired pairing code
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /tablet/device:
+    get:
+      operationId: getTabletDevice
+      tags: [timeclock, phase56-timeclock]
+      summary: Validate device token and return device info
+      security: [{ deviceTokenAuth: [] }]
+      x-roles: [device]
+      responses:
+        "200":
+          description: Device info
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TabletDeviceInfo" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /tablet/device/ping:
+    post:
+      operationId: pingTabletDevice
+      tags: [timeclock, phase56-timeclock]
+      summary: Heartbeat from tablet (updates lastSeenAt)
+      security: [{ deviceTokenAuth: [] }]
+      x-roles: [device]
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TabletPingInput" }
+      responses:
+        "200":
+          description: Ping acknowledged
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TabletPingResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /tablet/verify-pin:
+    post:
+      operationId: verifyTabletPin
+      tags: [timeclock, phase56-timeclock]
+      summary: Verify employee PIN and issue clock proofs (3 attempts, 5 min lockout)
+      security: []
+      x-roles: [device]
+      x-device-credential: body
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/VerifyPinInput" }
+      responses:
+        "200":
+          description: PIN verified with ephemeral proofs
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VerifyPinResult" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401":
+          description: Fail-closed PIN denial (generic message)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VerifyPinLockedError" }
+        "429":
+          description: PIN lockout active
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VerifyPinLockedError" }
+
+  /tablet/clock:
+    post:
+      operationId: postTabletClock
+      tags: [timeclock, phase56-timeclock]
+      summary: Clock action from trusted tablet (bypasses mobileClockEnabled)
+      security: []
+      x-roles: [device]
+      x-device-credential: body
+      x-idempotent: optional
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema: { type: string, minLength: 8, maxLength: 200 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TabletClockInput" }
+      responses:
+        "200":
+          description: Clock action applied
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TimeclockClockResult" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
