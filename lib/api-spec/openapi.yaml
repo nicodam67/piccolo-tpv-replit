@@ -1792,7 +1792,8 @@ paths:
   /documents/templates:
     get:
       operationId: getDocumentTemplates
-      tags: [documents]
+      tags: [documents, phase43-documents]
+      x-roles: [admin]
       summary: List document templates (admin)
       security:
         - bearerAuth: []
@@ -1810,9 +1811,13 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/DocumentTemplate"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
     post:
       operationId: createDocumentTemplate
-      tags: [documents]
+      tags: [documents, phase43-documents]
+      x-roles: [admin]
       summary: Create a document template (admin)
       security:
         - bearerAuth: []
@@ -1829,11 +1834,16 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DocumentTemplate"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
 
   /documents/templates/{id}:
     put:
       operationId: updateDocumentTemplate
-      tags: [documents]
+      tags: [documents, phase43-documents]
+      x-roles: [admin]
       summary: Update a document template (admin)
       security:
         - bearerAuth: []
@@ -1856,9 +1866,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DocumentTemplate"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
     delete:
       operationId: deleteDocumentTemplate
-      tags: [documents]
+      tags: [documents, phase43-documents]
+      x-roles: [admin]
       summary: Soft-delete a template (admin, cannot delete active)
       security:
         - bearerAuth: []
@@ -1879,11 +1894,17 @@ paths:
                   ok:
                     type: boolean
                 required: [ok]
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
 
   /documents/templates/{id}/activate:
     post:
       operationId: activateDocumentTemplate
-      tags: [documents]
+      tags: [documents, phase43-documents]
+      x-roles: [admin]
       summary: Set template as default (admin)
       security:
         - bearerAuth: []
@@ -1900,11 +1921,16 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DocumentTemplate"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
 
   /documents/templates/{id}/duplicate:
     post:
       operationId: duplicateDocumentTemplate
-      tags: [documents]
+      tags: [documents, phase43-documents]
+      x-roles: [admin]
       summary: Clone a template (admin)
       security:
         - bearerAuth: []
@@ -1921,11 +1947,16 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DocumentTemplate"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
 
   /documents/printers:
     get:
       operationId: getPrinterConfigs
-      tags: [documents]
+      tags: [documents, phase43-documents]
+      x-roles: [admin]
       summary: List printer configurations (admin)
       security:
         - bearerAuth: []
@@ -1938,9 +1969,13 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/PrinterConfig"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
     post:
       operationId: createPrinterConfig
-      tags: [documents]
+      tags: [documents, phase43-documents]
+      x-roles: [admin]
       summary: Create printer configuration (admin)
       security:
         - bearerAuth: []
@@ -1957,11 +1992,16 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PrinterConfig"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
 
   /documents/printers/{id}:
     put:
       operationId: updatePrinterConfig
-      tags: [documents]
+      tags: [documents, phase43-documents]
+      x-roles: [admin]
       summary: Update printer configuration (admin)
       security:
         - bearerAuth: []
@@ -1976,7 +2016,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/CreatePrinterConfigInput"
+              $ref: "#/components/schemas/UpdatePrinterConfigInput"
       responses:
         "200":
           description: Updated printer config
@@ -1984,9 +2024,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PrinterConfig"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
     delete:
       operationId: deletePrinterConfig
-      tags: [documents]
+      tags: [documents, phase43-documents]
+      x-roles: [admin]
       summary: Deactivate printer (admin)
       security:
         - bearerAuth: []
@@ -2007,11 +2052,15 @@ paths:
                   ok:
                     type: boolean
                 required: [ok]
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
 
   /documents/invoices:
     post:
       operationId: createInvoice
-      tags: [documents]
+      tags: [documents, phase43-documents]
+      x-roles: [admin, manager, encargado]
       summary: Issue a full fiscal invoice for an order
       security:
         - bearerAuth: []
@@ -2028,12 +2077,18 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Invoice"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
 
   /documents/invoices/{id}:
     get:
       operationId: getInvoice
-      tags: [documents]
-      summary: Get invoice by ID (admin)
+      tags: [documents, phase43-documents]
+      summary: Get invoice by ID
+      x-roles: [admin, manager]
       security:
         - bearerAuth: []
       parameters:
@@ -2065,11 +2120,16 @@ paths:
                           type: string
                       required: [productName, quantity, unitPrice]
                 required: [invoice, items]
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
 
   /documents/invoices/{id}/rectify:
     post:
       operationId: rectifyInvoice
-      tags: [documents]
+      tags: [documents, phase43-documents]
+      x-roles: [admin]
       summary: Create a rectificativa (admin)
       security:
         - bearerAuth: []
@@ -2098,11 +2158,18 @@ paths:
                   originalId:
                     type: string
                 required: [rectificativa, originalId]
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
 
   /documents/clients:
     get:
       operationId: getClients
-      tags: [documents]
+      tags: [documents, phase43-documents]
+      x-roles: [admin, manager]
       summary: List saved client data (admin/manager)
       security:
         - bearerAuth: []
@@ -2115,9 +2182,13 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Client"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
     post:
       operationId: createClient
-      tags: [documents]
+      tags: [documents, phase43-documents]
+      x-roles: [admin, manager]
       summary: Save client fiscal data (admin/manager)
       security:
         - bearerAuth: []
@@ -2134,11 +2205,16 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Client"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
 
   /documents/clients/{id}:
     put:
       operationId: updateClient
-      tags: [documents]
+      tags: [documents, phase43-documents]
+      x-roles: [admin, manager]
       summary: Update client fiscal data (admin/manager)
       security:
         - bearerAuth: []
@@ -2153,7 +2229,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/CreateClientInput"
+              $ref: "#/components/schemas/UpdateClientInput"
       responses:
         "200":
           description: Updated client
@@ -2161,11 +2237,16 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Client"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
 
   /documents/reprints:
     post:
       operationId: createReprint
-      tags: [documents]
+      tags: [documents, phase43-documents]
+      x-roles: [authenticated]
       summary: Record a document reprint (any authenticated user)
       security:
         - bearerAuth: []
@@ -2181,22 +2262,16 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  id:
-                    type: string
-                  documentId:
-                    type: string
-                  documentType:
-                    type: string
-                  createdAt:
-                    type: string
-                required: [id, documentId, documentType, createdAt]
+                $ref: "#/components/schemas/DocumentReprint"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
 
   /documents/audit:
     get:
       operationId: getDocumentAuditLog
-      tags: [documents]
+      tags: [documents, phase43-documents]
+      x-roles: [admin]
       summary: Paginated document audit log (admin)
       security:
         - bearerAuth: []
@@ -2205,10 +2280,12 @@ paths:
           name: page
           schema:
             type: integer
+            default: 1
         - in: query
           name: limit
           schema:
             type: integer
+            default: 50
       responses:
         "200":
           description: Audit log page
@@ -2216,6 +2293,9 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DocumentAuditLog"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
 
   /tables/occupation-summary:
     get:
@@ -2689,6 +2769,11 @@ components:
       content:
         application/json:
           schema: { $ref: "#/components/schemas/ErrorResponse" }
+    ServiceUnavailable:
+      description: Session or authorization verification is temporarily unavailable
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
 
   schemas:
     HealthStatus:
@@ -2703,6 +2788,7 @@ components:
       properties:
         id:
           type: string
+          format: uuid
         name:
           type: string
         role:
@@ -4029,6 +4115,7 @@ components:
       properties:
         id:
           type: string
+          format: uuid
         name:
           type: string
         documentType:
@@ -4041,11 +4128,18 @@ components:
           type: boolean
         config:
           type: object
+          additionalProperties: true
+        deletedAt:
+          type: string
+          format: date-time
+          nullable: true
         createdAt:
           type: string
+          format: date-time
         updatedAt:
           type: string
-      required: [id, name, documentType, printFormat, isDefault, isBuiltIn, config, createdAt, updatedAt]
+          format: date-time
+      required: [id, name, documentType, printFormat, isDefault, isBuiltIn, deletedAt, config, createdAt, updatedAt]
 
     CreateDocumentTemplateInput:
       type: object
@@ -4058,6 +4152,7 @@ components:
           type: string
         config:
           type: object
+          additionalProperties: true
       required: [name, documentType]
 
     UpdateDocumentTemplateInput:
@@ -4069,12 +4164,14 @@ components:
           type: string
         config:
           type: object
+          additionalProperties: true
 
     PrinterConfig:
       type: object
       properties:
         id:
           type: string
+          format: uuid
         name:
           type: string
         printerType:
@@ -4097,6 +4194,7 @@ components:
           type: boolean
         createdAt:
           type: string
+          format: date-time
       required: [id, name, printerType, paperWidth, location, documentType, copies, autoCut, cashDrawer, autoPrint, active, createdAt]
 
     CreatePrinterConfigInput:
@@ -4104,6 +4202,9 @@ components:
       properties:
         name:
           type: string
+        id:
+          type: string
+          format: uuid
         printerType:
           type: string
         paperWidth:
@@ -4120,31 +4221,70 @@ components:
           type: boolean
         autoPrint:
           type: boolean
+        active:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
       required: [name]
+
+    UpdatePrinterConfigInput:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        printerType: { type: string }
+        paperWidth: { type: integer }
+        location: { type: string }
+        documentType: { type: string }
+        copies: { type: integer }
+        autoCut: { type: boolean }
+        cashDrawer: { type: boolean }
+        autoPrint: { type: boolean }
+        active: { type: boolean }
+        createdAt: { type: string, format: date-time }
 
     Invoice:
       type: object
       properties:
         id:
           type: string
+          format: uuid
         serie:
           type: string
         invoiceNumber:
           type: integer
         issuedAt:
           type: string
+          format: date-time
+        operationDate:
+          type: string
+          format: date-time
+          nullable: true
         emisorNombre:
           type: string
         emisorNif:
           type: string
+        emisorDireccion: { type: string }
+        emisorCp: { type: string }
+        emisorPoblacion: { type: string }
+        emisorProvincia: { type: string }
+        emisorPais: { type: string }
         clientName:
           type: string
         clientNif:
           type: string
         clientEmail:
           type: string
+        clientAddress: { type: string }
+        clientCp: { type: string }
+        clientCity: { type: string }
+        clientProvince: { type: string }
+        clientCountry: { type: string }
+        clientPhone: { type: string }
         orderId:
           type: string
+          format: uuid
           nullable: true
         subtotal:
           type: string
@@ -4152,6 +4292,11 @@ components:
           type: string
         total:
           type: string
+        taxBreakdown:
+          type: array
+          nullable: true
+          items:
+            $ref: "#/components/schemas/TaxBreakdownItem"
         paymentMethod:
           type: string
         notes:
@@ -4162,8 +4307,29 @@ components:
           type: string
         originalInvoiceId:
           type: string
+          format: uuid
           nullable: true
-      required: [id, serie, issuedAt, emisorNombre, emisorNif, clientName, clientNif, subtotal, taxTotal, total, paymentMethod, status, verifactuStatus]
+        rectificationReason: { type: string }
+        verifactuResponse:
+          type: object
+          nullable: true
+          additionalProperties: true
+        employeeId:
+          type: string
+          format: uuid
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, serie, invoiceNumber, issuedAt, operationDate, emisorNombre, emisorNif, emisorDireccion, emisorCp, emisorPoblacion, emisorProvincia, emisorPais, clientName, clientNif, clientAddress, clientCp, clientCity, clientProvince, clientCountry, clientEmail, clientPhone, orderId, subtotal, taxTotal, total, taxBreakdown, paymentMethod, notes, status, originalInvoiceId, rectificationReason, verifactuStatus, verifactuResponse, employeeId, createdAt]
+
+    TaxBreakdownItem:
+      type: object
+      properties:
+        rate: { type: number, enum: [4, 10, 21] }
+        base: { $ref: "#/components/schemas/Money" }
+        cuota: { $ref: "#/components/schemas/Money" }
+      required: [rate, base, cuota]
 
     CreateInvoiceInput:
       type: object
@@ -4204,6 +4370,7 @@ components:
       properties:
         id:
           type: string
+          format: uuid
         name:
           type: string
         nif:
@@ -4224,11 +4391,15 @@ components:
           type: string
         createdAt:
           type: string
-      required: [id, name, createdAt]
+          format: date-time
+      required: [id, name, nif, address, cp, city, province, country, email, phone, createdAt]
 
     CreateClientInput:
       type: object
       properties:
+        id:
+          type: string
+          format: uuid
         name:
           type: string
         nif:
@@ -4247,13 +4418,32 @@ components:
           type: string
         phone:
           type: string
+        createdAt:
+          type: string
+          format: date-time
       required: [name]
+
+    UpdateClientInput:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        nif: { type: string }
+        address: { type: string }
+        cp: { type: string }
+        city: { type: string }
+        province: { type: string }
+        country: { type: string }
+        email: { type: string }
+        phone: { type: string }
+        createdAt: { type: string, format: date-time }
 
     DocumentAuditEntry:
       type: object
       properties:
         id:
           type: string
+          format: uuid
         action:
           type: string
         documentType:
@@ -4262,6 +4452,7 @@ components:
           type: string
         employeeId:
           type: string
+          format: uuid
           nullable: true
         employeeName:
           type: string
@@ -4276,6 +4467,7 @@ components:
           type: string
         createdAt:
           type: string
+          format: date-time
       required: [id, action, documentType, documentId, employeeName, terminal, printCount, details, createdAt]
 
     DocumentAuditLog:
@@ -4301,3 +4493,15 @@ components:
         reason:
           type: string
       required: [documentId, documentType]
+
+    DocumentReprint:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        documentId: { type: string }
+        documentType: { type: string }
+        employeeId: { type: string, format: uuid, nullable: true }
+        employeeName: { type: string }
+        reason: { type: string }
+        createdAt: { type: string, format: date-time }
+      required: [id, documentId, documentType, employeeId, employeeName, reason, createdAt]
