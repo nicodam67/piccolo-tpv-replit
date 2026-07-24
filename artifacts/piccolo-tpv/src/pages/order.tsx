@@ -9,26 +9,27 @@ import {
   FileText, RefreshCw, History, ChevronUp, Search, X as XIcon,
 } from 'lucide-react';
 import {
-  useGetTableOrder,
   useGetCategories,
   useGetCategoryProducts,
   useGetAdminProducts,
+  useGetProductModifiers,
+  useGetProductFormats,
+  getGetCategoryProductsQueryKey,
+  getGetAdminProductsQueryKey,
+} from '@workspace/api-client-react/catalog-admin';
+import type { Product, ProductFormat, ModifierGroup } from '@workspace/api-client-react/catalog-admin';
+import {
+  useGetTableOrder,
   useAddOrderItem,
   useDeleteOrderItem,
   useSendOrder,
   useGetUnreadNotifications,
   useMarkNotificationRead,
-  useGetProductModifiers,
-  useGetProductFormats,
   useGetProductAvailability,
   getGetTableOrderQueryKey,
-  getGetCategoryProductsQueryKey,
   getGetAllTablesQueryKey,
   getGetDashboardSummaryQueryKey,
   getGetUnreadNotificationsQueryKey,
-  type Product,
-  type ProductFormat,
-  type ModifierGroup,
 } from '@workspace/api-client-react';
 import {
   useUpdateOrder,

@@ -11,8 +11,8 @@ import {
   useUpdateAdminModifier,
   useDeleteAdminModifier,
   getGetAdminModifierGroupsQueryKey,
-} from '@workspace/api-client-react';
-import type { AdminModifierGroup } from '@workspace/api-client-react';
+} from '@workspace/api-client-react/catalog-admin';
+import type { AdminModifierGroup } from '@workspace/api-client-react/catalog-admin';
 import {
   ArrowLeft, Sliders, Plus, Pencil, Trash2, Check, X, ChevronDown, ChevronRight,
   ToggleLeft, ToggleRight, Search, Loader2,

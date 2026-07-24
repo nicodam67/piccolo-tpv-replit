@@ -34,7 +34,6 @@ describe("Reservations generated client compatibility", () => {
   });
 
   it("keeps unrelated manual domains intact", () => {
-    expect(legacy).toContain("useGetAdminCategories");
     expect(legacy).toContain("useGetBusinessConfig");
   });
 });

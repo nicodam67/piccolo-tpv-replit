@@ -26,7 +26,6 @@ describe("Documents generated client compatibility", () => {
 
   it("keeps unrelated manual domains intact", () => {
     expect(legacy).toContain("NEW ENDPOINTS ADDED MANUALLY");
-    expect(legacy).toContain("useGetAdminCategories");
     expect(legacy).toContain("useGetBusinessConfig");
   });
 });

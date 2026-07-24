@@ -27,6 +27,6 @@ describe("phase-one generated client compatibility", () => {
 
   it("keeps the remaining manual-domain boundary explicit for later phases", () => {
     expect(legacy).toContain("NEW ENDPOINTS ADDED MANUALLY");
-    expect(legacy).toContain("useGetAdminCategories");
+    expect(legacy).toContain("useGetBusinessConfig");
   });
 });

@@ -28,6 +28,7 @@ import {
   settleCourier,
 } from '@workspace/api-client-react/delivery';
 import type { CourierSafe, DeliveryOrderListItem } from '@workspace/api-client-react/delivery';
+import { searchCatalogProducts } from '@workspace/api-client-react/catalog-admin';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type DeliveryOrder = DeliveryOrderListItem & {
@@ -386,7 +387,7 @@ function NewOrderForm({ couriers, zones, onCreated }: {
     if (productSearch.length < 2) { setProductResults([]); return; }
     const t = setTimeout(async () => {
       try {
-        const data = await api.get(`/api/products?q=${encodeURIComponent(productSearch)}&limit=8`);
+        const data = await searchCatalogProducts({ q: productSearch, limit: 8 });
         setProductResults(Array.isArray(data) ? data.filter((p: Product) => p.active && !p.outOfStock) : []);
       } catch { /* ignore */ }
     }, 300);

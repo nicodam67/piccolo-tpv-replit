@@ -1,5 +1,4 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { api } from '../lib/api-client';
 import { useLocation } from 'wouter';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
@@ -14,18 +13,24 @@ import {
   useUpdateProductFormatFull,
   useDeleteProductFormat,
   useAssignProductModifierGroups,
+  useImportProducts,
+  downloadProductExport,
+  getGetAdminProductsQueryKey,
+  recalculateAndFetchProductAllergens,
+  allergenCodesForLegacyTextField,
+  patchProductSoldout,
+} from '@workspace/api-client-react/catalog-admin';
+import type { AdminProduct, AdminCategory, AdminModifierGroup, ProductFormat, CatalogTaxRate } from '@workspace/api-client-react/catalog-admin';
+import {
   useGetProductRecipe,
   useCreateRecipeLine,
   useUpdateRecipeLine,
   useDeleteRecipeLine,
   useGetAdminIngredients,
   useGetAdminSubrecipes,
-  useImportProducts,
-  downloadProductExport,
-  getGetAdminProductsQueryKey,
   getGetProductRecipeQueryKey,
 } from '@workspace/api-client-react';
-import type { AdminProduct, AdminCategory, AdminModifierGroup, ProductFormat, RecipeLine, Ingredient, Subrecipe } from '@workspace/api-client-react';
+import type { RecipeLine, Ingredient, Subrecipe } from '@workspace/api-client-react';
 import {
   ArrowLeft, Package, Plus, Search, X, Check, Pencil, Trash2,
   ChevronRight, Eye, EyeOff, Tag, Sliders, ImageIcon, Save,
@@ -269,11 +274,11 @@ function ProductSheet({
 
     try {
       if (isNew) {
-        await createProduct.mutateAsync({ data: { name: name.trim(), categoryId, price, cost: cost || undefined, taxRate, prepZone, tpvVisible, qrVisible, deliveryVisible, internalCode: internalCode || undefined, description: description || undefined, allergens, halfPortionPrice: halfPortionPrice || undefined, quantity: quantity || undefined, isVegetariano, isVegano, isSinGluten, isPicante } });
+        await createProduct.mutateAsync({ data: { name: name.trim(), categoryId, price, cost: cost || undefined, taxRate: taxRate as CatalogTaxRate, prepZone, tpvVisible, qrVisible, deliveryVisible, internalCode: internalCode || undefined, description: description || undefined, allergens, halfPortionPrice: halfPortionPrice || undefined, quantity: quantity || undefined, isVegetariano, isVegano, isSinGluten, isPicante } });
       } else {
         await updateProduct.mutateAsync({
           productId: product.id,
-          data: { name: name.trim(), categoryId, price, cost: cost || null, taxRate, prepZone, tpvVisible, qrVisible, deliveryVisible, active, internalCode: internalCode || null, description: description || null, allergens, imageUrl: imageUrl || null, halfPortionPrice: halfPortionPrice || null, quantity: quantity || null, isVegetariano, isVegano, isSinGluten, isPicante },
+          data: { name: name.trim(), categoryId, price, cost: cost || null, taxRate: taxRate as CatalogTaxRate, prepZone, tpvVisible, qrVisible, deliveryVisible, active, internalCode: internalCode || null, description: description || null, allergens, imageUrl: imageUrl || null, halfPortionPrice: halfPortionPrice || null, quantity: quantity || null, isVegetariano, isVegano, isSinGluten, isPicante },
         });
         // Assign modifier groups
         await assignGroups.mutateAsync({ productId: product.id, data: { modifierGroupIds: Array.from(selectedGroupIds) } });
@@ -888,14 +893,11 @@ function AllergenRecalcButton({ productId, onResult }: { productId: string; onRe
   const handle = async () => {
     setLoading(true);
     try {
-      // Trigger recalculation
-      await api.post(`/api/admin/products/${productId}/allergens/recalculate`, {});
-      // Fetch updated cache
-      const data = await api.get<{ allergenCode: string; type: string }[]>(`/api/admin/products/${productId}/allergens`);
-      if (data.length === 0) {
+      const data = await recalculateAndFetchProductAllergens(productId);
+      const list = allergenCodesForLegacyTextField(data);
+      if (!list) {
         toast.info('No se detectaron alérgenos en los ingredientes de esta receta');
       } else {
-        const list = data.map(a => a.allergenCode).join(', ');
         onResult(list);
         toast.success('Alérgenos actualizados desde los ingredientes');
       }
@@ -1031,7 +1033,7 @@ export default function ProductosPage() {
             <ProductCard key={p.id} product={p} onEdit={() => setEditingProduct(p)}
               onToggleSoldout={async (id, outOfStock) => {
                 try {
-                  await api.patch(`/api/admin/products/${id}/soldout`, { outOfStock });
+                  await patchProductSoldout(id, outOfStock);
                   qc.invalidateQueries({ queryKey: getGetAdminProductsQueryKey() });
                 } catch { /* ignore */ }
               }}
