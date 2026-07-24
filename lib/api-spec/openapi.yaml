@@ -44,6 +44,10 @@ tags:
     description: Employee timeclock (fichaje), tablet kiosk, PIN and NFC
   - name: phase56-timeclock
     description: Entrega 56 — fichaje domain contract scope
+  - name: catalog-admin
+    description: Catalog administration — categories, products, modifiers, allergens
+  - name: phase59-catalog-admin
+    description: Entrega 59 — catalog admin domain contract scope
 
 paths:
   /healthz:
@@ -814,55 +818,42 @@ paths:
 
   /categories:
     get:
-      operationId: getCategories
-      tags: [categories]
-      summary: Get all active categories
-      security:
-        - bearerAuth: []
+      operationId: getCatalogStaffCategories
+      tags: [categories, catalog-admin, phase59-catalog-admin]
+      summary: List active categories for staff TPV
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [authenticated]
       responses:
         "200":
-          description: List of categories
+          description: Active categories
           content:
             application/json:
               schema:
                 type: array
-                items:
-                  $ref: "#/components/schemas/Category"
-        "401":
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                items: { $ref: "#/components/schemas/CatalogStaffCategory" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
 
   /categories/{categoryId}/products:
     get:
-      operationId: getCategoryProducts
-      tags: [categories]
-      summary: Get active products for a category
-      security:
-        - bearerAuth: []
+      operationId: getCatalogStaffCategoryProducts
+      tags: [categories, catalog-admin, phase59-catalog-admin]
+      summary: List active TPV-visible products for a category
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [authenticated]
       parameters:
         - name: categoryId
           in: path
           required: true
-          schema:
-            type: string
+          schema: { type: string, format: uuid }
       responses:
         "200":
-          description: List of products
+          description: Products with formats and modifier flag
           content:
             application/json:
               schema:
                 type: array
-                items:
-                  $ref: "#/components/schemas/Product"
-        "401":
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                items: { $ref: "#/components/schemas/CatalogStaffCategoryProduct" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
 
   /orders/{orderId}/items:
     post:
@@ -1108,32 +1099,25 @@ paths:
 
   /products/{productId}/modifiers:
     get:
-      operationId: getProductModifiers
-      tags: [categories]
-      summary: Get modifier groups and options for a product
-      security:
-        - bearerAuth: []
+      operationId: getCatalogProductModifiers
+      tags: [categories, catalog-admin, phase59-catalog-admin]
+      summary: List modifier groups and options for a product
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [authenticated]
       parameters:
         - name: productId
           in: path
           required: true
-          schema:
-            type: string
+          schema: { type: string, format: uuid }
       responses:
         "200":
-          description: Modifier groups for the product
+          description: Modifier groups with options
           content:
             application/json:
               schema:
                 type: array
-                items:
-                  $ref: "#/components/schemas/ModifierGroup"
-        "401":
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                items: { $ref: "#/components/schemas/CatalogStaffModifierGroup" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
 
   /order-items/{itemId}/details:
     patch:
@@ -1333,120 +1317,97 @@ paths:
 
   /products/{productId}/formats:
     get:
-      operationId: getProductFormats
-      tags: [categories]
-      summary: Get active formats for a product
-      security:
-        - bearerAuth: []
+      operationId: getCatalogProductFormats
+      tags: [categories, catalog-admin, phase59-catalog-admin]
+      summary: List active formats for a product
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [authenticated]
       parameters:
         - name: productId
           in: path
           required: true
-          schema:
-            type: string
+          schema: { type: string, format: uuid }
       responses:
         "200":
-          description: List of formats
+          description: Product formats
           content:
             application/json:
               schema:
                 type: array
-                items:
-                  $ref: "#/components/schemas/ProductFormat"
-        "401":
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                items: { $ref: "#/components/schemas/CatalogProductFormat" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
     post:
-      operationId: createProductFormat
-      tags: [categories]
-      summary: Create a format for a product (admin only)
-      security:
-        - bearerAuth: []
+      operationId: createCatalogProductFormat
+      tags: [categories, catalog-admin, phase59-catalog-admin]
+      summary: Create a product format
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
       parameters:
         - name: productId
           in: path
           required: true
-          schema:
-            type: string
+          schema: { type: string, format: uuid }
       requestBody:
         required: true
         content:
           application/json:
-            schema:
-              $ref: "#/components/schemas/CreateProductFormatInput"
+            schema: { $ref: "#/components/schemas/CatalogCreateProductFormatInput" }
       responses:
         "201":
-          description: Format created
+          description: Created format
           content:
             application/json:
-              schema:
-                $ref: "#/components/schemas/ProductFormat"
-        "400":
-          description: Bad request
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "401":
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "403":
-          description: Forbidden
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+              schema: { $ref: "#/components/schemas/CatalogProductFormat" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
 
   /products/formats/{formatId}:
     patch:
-      operationId: updateProductFormat
-      tags: [categories]
-      summary: Update a product format (admin only)
-      security:
-        - bearerAuth: []
+      operationId: updateCatalogProductFormat
+      tags: [categories, catalog-admin, phase59-catalog-admin]
+      summary: Update a product format
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
       parameters:
         - name: formatId
           in: path
           required: true
-          schema:
-            type: string
+          schema: { type: string, format: uuid }
       requestBody:
         required: true
         content:
           application/json:
-            schema:
-              $ref: "#/components/schemas/UpdateProductFormatInput"
+            schema: { $ref: "#/components/schemas/CatalogUpdateProductFormatInput" }
       responses:
         "200":
-          description: Format updated
+          description: Updated format
           content:
             application/json:
-              schema:
-                $ref: "#/components/schemas/ProductFormat"
-        "404":
-          description: Not found
+              schema: { $ref: "#/components/schemas/CatalogProductFormat" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      operationId: deleteCatalogProductFormat
+      tags: [categories, catalog-admin, phase59-catalog-admin]
+      summary: Soft-archive a product format
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      parameters:
+        - name: formatId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Format archived
           content:
             application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "401":
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "403":
-          description: Forbidden
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+              schema: { $ref: "#/components/schemas/CatalogOkResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
 
   /orders/{orderId}/pase:
     post:
@@ -5368,6 +5329,875 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
         "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+
+  /admin/categories:
+    get:
+      operationId: getCatalogAdminCategories
+      tags: [catalog-admin, phase59-catalog-admin]
+      summary: List all categories with subcategories
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      responses:
+        "200":
+          description: Categories with nested subcategories
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/CatalogCategoryWithSubcategories" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      operationId: createCatalogAdminCategory
+      tags: [catalog-admin, phase59-catalog-admin]
+      summary: Create a category
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CatalogCreateCategoryInput" }
+      responses:
+        "201":
+          description: Created category
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogCategoryWithSubcategories" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/categories/sort:
+    patch:
+      operationId: sortCatalogAdminCategories
+      tags: [catalog-admin, phase59-catalog-admin]
+      summary: Bulk update category sort order
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CatalogSortOrderInput" }
+      responses:
+        "200":
+          description: Sort order updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogOkResult" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/categories/{id}:
+    patch:
+      operationId: updateCatalogAdminCategory
+      tags: [catalog-admin, phase59-catalog-admin]
+      summary: Update a category
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CatalogUpdateCategoryInput" }
+      responses:
+        "200":
+          description: Updated category
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogCategory" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      operationId: deleteCatalogAdminCategory
+      tags: [catalog-admin, phase59-catalog-admin]
+      summary: Soft-archive a category
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Category archived
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogOkResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/categories/{id}/translations:
+    patch:
+      operationId: updateCatalogAdminCategoryTranslations
+      tags: [catalog-admin, phase59-catalog-admin]
+      summary: Update category English translation
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [manager, admin]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CatalogCategoryTranslationsInput" }
+      responses:
+        "200":
+          description: Translations updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogCategoryTranslationsResult" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/subcategories:
+    post:
+      operationId: createCatalogAdminSubcategory
+      tags: [catalog-admin, phase59-catalog-admin]
+      summary: Create a subcategory
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CatalogCreateSubcategoryInput" }
+      responses:
+        "201":
+          description: Created subcategory
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogSubcategory" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/subcategories/sort:
+    patch:
+      operationId: sortCatalogAdminSubcategories
+      tags: [catalog-admin, phase59-catalog-admin]
+      summary: Bulk update subcategory sort order
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CatalogSortOrderInput" }
+      responses:
+        "200":
+          description: Sort order updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogOkResult" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/subcategories/{id}:
+    patch:
+      operationId: updateCatalogAdminSubcategory
+      tags: [catalog-admin, phase59-catalog-admin]
+      summary: Update a subcategory
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CatalogUpdateSubcategoryInput" }
+      responses:
+        "200":
+          description: Updated subcategory
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogSubcategory" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      operationId: deleteCatalogAdminSubcategory
+      tags: [catalog-admin, phase59-catalog-admin]
+      summary: Soft-archive a subcategory
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Subcategory archived
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogOkResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/products:
+    get:
+      operationId: getCatalogAdminProducts
+      tags: [catalog-admin, phase59-catalog-admin]
+      summary: List products with filters, formats and modifier groups
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      parameters:
+        - { in: query, name: categoryId, schema: { type: string, format: uuid } }
+        - { in: query, name: active, schema: { type: string, enum: ["true", "false"] } }
+        - { in: query, name: search, schema: { type: string } }
+      responses:
+        "200":
+          description: Product list
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/CatalogProduct" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      operationId: createCatalogAdminProduct
+      tags: [catalog-admin, phase59-catalog-admin]
+      summary: Create a product
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CatalogCreateProductInput" }
+      responses:
+        "201":
+          description: Created product
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogProduct" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/products/sort:
+    patch:
+      operationId: sortCatalogAdminProducts
+      tags: [catalog-admin, phase59-catalog-admin]
+      summary: Bulk update product sort order
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CatalogSortOrderInput" }
+      responses:
+        "200":
+          description: Sort order updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogOkResult" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/products/export:
+    get:
+      operationId: exportCatalogAdminProducts
+      tags: [catalog-admin, phase59-catalog-admin]
+      summary: Export products as CSV or XLSX
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      parameters:
+        - in: query
+          name: format
+          schema: { type: string, enum: [csv, xlsx], default: csv }
+      responses:
+        "200":
+          description: Product export file
+          content:
+            text/csv:
+              schema: { type: string, format: binary }
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema: { type: string, format: binary }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/products/import:
+    post:
+      operationId: importCatalogAdminProducts
+      tags: [catalog-admin, phase59-catalog-admin]
+      summary: Import products from XLSX file
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+              required: [file]
+      responses:
+        "200":
+          description: Import summary
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogProductImportResult" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/products/{productId}:
+    patch:
+      operationId: updateCatalogAdminProduct
+      tags: [catalog-admin, phase59-catalog-admin]
+      summary: Update a product
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      parameters:
+        - name: productId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CatalogUpdateProductInput" }
+      responses:
+        "200":
+          description: Updated product
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogProductDetail" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      operationId: deleteCatalogAdminProduct
+      tags: [catalog-admin, phase59-catalog-admin]
+      summary: Soft-archive a product
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      parameters:
+        - name: productId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Product archived
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogOkResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/products/{productId}/modifier-groups:
+    put:
+      operationId: setCatalogAdminProductModifierGroups
+      tags: [catalog-admin, phase59-catalog-admin]
+      summary: Replace all modifier group assignments for a product
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      parameters:
+        - name: productId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CatalogProductModifierGroupsInput" }
+      responses:
+        "200":
+          description: Modifier groups updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogOkResult" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/products/{id}/soldout:
+    patch:
+      operationId: patchCatalogAdminProductSoldout
+      tags: [catalog-admin, phase59-catalog-admin]
+      summary: Toggle product out-of-stock flag
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [manager, admin]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CatalogSoldoutInput" }
+      responses:
+        "200":
+          description: Sold-out flag updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogSoldoutResult" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/products/{id}/translations:
+    patch:
+      operationId: patchCatalogAdminProductTranslations
+      tags: [catalog-admin, phase59-catalog-admin]
+      summary: Update product English/Spanish translations
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [manager, admin]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CatalogProductTranslationsInput" }
+      responses:
+        "200":
+          description: Translations updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogProductTranslationsResult" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/product-availability-rules:
+    get:
+      operationId: getCatalogAdminProductAvailabilityRules
+      tags: [catalog-admin, phase59-catalog-admin]
+      summary: List product availability rules
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [manager, admin]
+      responses:
+        "200":
+          description: Availability rules
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/CatalogProductAvailabilityRule" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      operationId: createCatalogAdminProductAvailabilityRule
+      tags: [catalog-admin, phase59-catalog-admin]
+      summary: Create a product availability rule
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [manager, admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CatalogCreateProductAvailabilityRuleInput" }
+      responses:
+        "201":
+          description: Created rule
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogProductAvailabilityRule" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/product-availability-rules/{id}:
+    patch:
+      operationId: updateCatalogAdminProductAvailabilityRule
+      tags: [catalog-admin, phase59-catalog-admin]
+      summary: Update a product availability rule
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [manager, admin]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CatalogUpdateProductAvailabilityRuleInput" }
+      responses:
+        "200":
+          description: Updated rule
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogProductAvailabilityRule" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      operationId: deleteCatalogAdminProductAvailabilityRule
+      tags: [catalog-admin, phase59-catalog-admin]
+      summary: Delete a product availability rule
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [manager, admin]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Rule deleted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogOkResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/modifier-groups:
+    get:
+      operationId: getCatalogAdminModifierGroups
+      tags: [catalog-admin, phase59-catalog-admin]
+      summary: List modifier groups with modifiers
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      responses:
+        "200":
+          description: Modifier groups
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/CatalogModifierGroupWithModifiers" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      operationId: createCatalogAdminModifierGroup
+      tags: [catalog-admin, phase59-catalog-admin]
+      summary: Create a modifier group
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CatalogCreateModifierGroupInput" }
+      responses:
+        "201":
+          description: Created modifier group
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogModifierGroupWithModifiers" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/modifier-groups/{id}:
+    patch:
+      operationId: updateCatalogAdminModifierGroup
+      tags: [catalog-admin, phase59-catalog-admin]
+      summary: Update a modifier group
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CatalogUpdateModifierGroupInput" }
+      responses:
+        "200":
+          description: Updated modifier group
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogModifierGroup" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      operationId: deleteCatalogAdminModifierGroup
+      tags: [catalog-admin, phase59-catalog-admin]
+      summary: Soft-archive a modifier group
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Modifier group archived
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogOkResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/modifier-groups/{id}/modifiers:
+    post:
+      operationId: createCatalogAdminModifier
+      tags: [catalog-admin, phase59-catalog-admin]
+      summary: Add a modifier option to a group
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CatalogCreateModifierInput" }
+      responses:
+        "201":
+          description: Created modifier
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogModifier" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/modifiers/{id}:
+    patch:
+      operationId: updateCatalogAdminModifier
+      tags: [catalog-admin, phase59-catalog-admin]
+      summary: Update a modifier option
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CatalogUpdateModifierInput" }
+      responses:
+        "200":
+          description: Updated modifier
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogModifier" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      operationId: deleteCatalogAdminModifier
+      tags: [catalog-admin, phase59-catalog-admin]
+      summary: Soft-archive a modifier option
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Modifier archived
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogOkResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/allergens:
+    get:
+      operationId: getCatalogAdminAllergens
+      tags: [catalog-admin, phase59-catalog-admin]
+      summary: List EU allergen catalogue
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [authenticated]
+      responses:
+        "200":
+          description: Allergen catalogue entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/CatalogAllergen" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /admin/allergens/{code}:
+    get:
+      operationId: getCatalogAdminAllergen
+      tags: [catalog-admin, phase59-catalog-admin]
+      summary: Get a single allergen catalogue entry
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [authenticated]
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Allergen entry
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogAllergen" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/products/{id}/allergens:
+    get:
+      operationId: getCatalogAdminProductAllergens
+      tags: [catalog-admin, phase59-catalog-admin]
+      summary: Get product allergen cache and overrides
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [authenticated]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Product allergen cache, overrides and review flag
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogProductAllergensResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /admin/products/{id}/allergens/recalculate:
+    post:
+      operationId: recalculateCatalogAdminProductAllergens
+      tags: [catalog-admin, phase59-catalog-admin]
+      summary: Recalculate product allergens from recipe ingredients
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [manager, admin]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Recalculation complete
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogOkResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/products/{id}/allergens/override:
+    post:
+      operationId: createCatalogAdminProductAllergenOverride
+      tags: [catalog-admin, phase59-catalog-admin]
+      summary: Add a manual allergen override for a product
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CatalogProductAllergenOverrideInput" }
+      responses:
+        "200":
+          description: Override added
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogOkResult" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/products/{id}/allergens/override/{code}:
+    delete:
+      operationId: deleteCatalogAdminProductAllergenOverride
+      tags: [catalog-admin, phase59-catalog-admin]
+      summary: Remove a manual allergen override
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: code
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Override removed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogOkResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /products:
+    get:
+      operationId: searchCatalogProducts
+      tags: [catalog-admin, phase59-catalog-admin]
+      summary: Staff product search (delivery/pickup forms)
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [authenticated]
+      parameters:
+        - { in: query, name: q, schema: { type: string, default: "" } }
+        - { in: query, name: limit, schema: { type: integer, default: 20, maximum: 50 } }
+      responses:
+        "200":
+          description: Matching active products (max 50)
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/CatalogStaffProductSearchItem" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
 
 components:
   securitySchemes:
@@ -9536,3 +10366,573 @@ components:
         error: { type: string }
         retryAfterMs: { type: integer }
       required: [error]
+
+
+    CatalogOkResult:
+      type: object
+      properties:
+        ok: { type: boolean, enum: [true] }
+      required: [ok]
+
+    CatalogTaxRate:
+      type: integer
+      enum: [4, 10, 21]
+      description: Applicable VAT rate (Spain). Prices are VAT-inclusive.
+
+    CatalogTranslations:
+      type: object
+      additionalProperties:
+        type: object
+        properties:
+          name: { type: string }
+          description: { type: string }
+
+    CatalogSortOrderItem:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        sortOrder: { type: integer }
+      required: [id, sortOrder]
+
+    CatalogSortOrderInput:
+      type: object
+      properties:
+        order:
+          type: array
+          items: { $ref: "#/components/schemas/CatalogSortOrderItem" }
+      required: [order]
+
+    CatalogSubcategory:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        categoryId: { type: string, format: uuid }
+        name: { type: string }
+        sortOrder: { type: integer }
+        active: { type: boolean }
+      required: [id, categoryId, name, sortOrder, active]
+
+    CatalogCategory:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        sortOrder: { type: integer }
+        active: { type: boolean }
+        color: { type: string, nullable: true }
+        icon: { type: string, nullable: true }
+        nameEn: { type: string }
+        translations: { $ref: "#/components/schemas/CatalogTranslations", nullable: true }
+      required: [id, name, sortOrder, active, nameEn]
+
+    CatalogCategoryWithSubcategories:
+      allOf:
+        - { $ref: "#/components/schemas/CatalogCategory" }
+        - type: object
+          properties:
+            subcategories:
+              type: array
+              items: { $ref: "#/components/schemas/CatalogSubcategory" }
+          required: [subcategories]
+
+    CatalogCreateCategoryInput:
+      type: object
+      properties:
+        name: { type: string }
+        color: { type: string, nullable: true }
+        icon: { type: string, nullable: true }
+        sortOrder: { type: integer, default: 0 }
+      required: [name]
+
+    CatalogUpdateCategoryInput:
+      type: object
+      properties:
+        name: { type: string }
+        color: { type: string, nullable: true }
+        icon: { type: string, nullable: true }
+        active: { type: boolean }
+        sortOrder: { type: integer }
+        translations: { $ref: "#/components/schemas/CatalogTranslations" }
+
+    CatalogCreateSubcategoryInput:
+      type: object
+      properties:
+        categoryId: { type: string, format: uuid }
+        name: { type: string }
+        sortOrder: { type: integer, default: 0 }
+      required: [categoryId, name]
+
+    CatalogUpdateSubcategoryInput:
+      type: object
+      properties:
+        name: { type: string }
+        active: { type: boolean }
+        sortOrder: { type: integer }
+
+    CatalogStaffCategory:
+      type: object
+      description: Active category for staff TPV (id, name, sortOrder only)
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        sortOrder: { type: integer }
+      required: [id, name, sortOrder]
+
+    CatalogProductFormat:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        productId: { type: string, format: uuid }
+        name: { type: string }
+        price: { type: string, description: Numeric string from DB }
+        cost: { type: string, nullable: true, description: Numeric string from DB }
+        prepTime: { type: integer, nullable: true }
+        kdsDestination: { type: string, nullable: true }
+        sortOrder: { type: integer }
+        active: { type: boolean }
+        taxRate: { $ref: "#/components/schemas/CatalogTaxRate", nullable: true }
+      required: [id, productId, name, price, sortOrder, active]
+
+    CatalogCreateProductFormatInput:
+      type: object
+      properties:
+        name: { type: string }
+        price: { type: string, description: Numeric string }
+        cost: { type: string, nullable: true }
+        prepTime: { type: integer }
+        kdsDestination: { type: string }
+        sortOrder: { type: integer, default: 0 }
+        taxRate: { $ref: "#/components/schemas/CatalogTaxRate" }
+      required: [name, price]
+
+    CatalogUpdateProductFormatInput:
+      type: object
+      properties:
+        name: { type: string }
+        price: { type: string }
+        cost: { type: string, nullable: true }
+        prepTime: { type: integer, nullable: true }
+        kdsDestination: { type: string, nullable: true }
+        sortOrder: { type: integer }
+        active: { type: boolean }
+        taxRate: { $ref: "#/components/schemas/CatalogTaxRate", nullable: true }
+
+    CatalogProductModifierGroupRef:
+      type: object
+      properties:
+        productId: { type: string, format: uuid }
+        groupId: { type: string, format: uuid }
+        groupName: { type: string }
+        required: { type: boolean }
+      required: [productId, groupId, groupName, required]
+
+    CatalogProduct:
+      type: object
+      description: Admin product list item with nested formats and modifier groups
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        internalCode: { type: string, nullable: true }
+        description: { type: string, nullable: true }
+        price: { type: string, description: Numeric string from DB }
+        cost: { type: string, nullable: true }
+        taxRate: { $ref: "#/components/schemas/CatalogTaxRate" }
+        categoryId: { type: string, format: uuid }
+        subcategoryId: { type: string, format: uuid, nullable: true }
+        prepZone: { type: string }
+        active: { type: boolean }
+        tpvVisible: { type: boolean }
+        qrVisible: { type: boolean }
+        deliveryVisible: { type: boolean }
+        outOfStock: { type: boolean }
+        allergens: { type: string }
+        sortOrder: { type: integer }
+        imageUrl: { type: string, nullable: true }
+        videoUrl: { type: string, nullable: true }
+        halfPortionPrice: { type: string, nullable: true }
+        quantity: { type: string, nullable: true }
+        isVegetariano: { type: boolean }
+        isVegano: { type: boolean }
+        isSinGluten: { type: boolean }
+        isPicante: { type: boolean }
+        categoryName: { type: string }
+        formats:
+          type: array
+          items: { $ref: "#/components/schemas/CatalogProductFormat" }
+        modifierGroups:
+          type: array
+          items: { $ref: "#/components/schemas/CatalogProductModifierGroupRef" }
+      required: [id, name, price, taxRate, categoryId, prepZone, active, tpvVisible, qrVisible, deliveryVisible, outOfStock, allergens, sortOrder, categoryName, formats, modifierGroups]
+
+    CatalogProductDetail:
+      type: object
+      description: Full product row returned by create/update
+      properties:
+        id: { type: string, format: uuid }
+        categoryId: { type: string, format: uuid }
+        subcategoryId: { type: string, format: uuid, nullable: true }
+        name: { type: string }
+        internalCode: { type: string, nullable: true }
+        description: { type: string, nullable: true }
+        price: { type: string }
+        cost: { type: string, nullable: true }
+        imageUrl: { type: string, nullable: true }
+        videoUrl: { type: string, nullable: true }
+        prepZone: { type: string }
+        active: { type: boolean }
+        tpvVisible: { type: boolean }
+        qrVisible: { type: boolean }
+        deliveryVisible: { type: boolean }
+        outOfStock: { type: boolean }
+        allergens: { type: string }
+        sortOrder: { type: integer }
+        taxRate: { $ref: "#/components/schemas/CatalogTaxRate" }
+        halfPortionPrice: { type: string, nullable: true }
+        quantity: { type: string, nullable: true }
+        isVegetariano: { type: boolean }
+        isVegano: { type: boolean }
+        isSinGluten: { type: boolean }
+        isPicante: { type: boolean }
+        nameEn: { type: string }
+        descriptionEn: { type: string }
+        nameEs: { type: string }
+        descriptionEs: { type: string }
+        translations: { $ref: "#/components/schemas/CatalogTranslations", nullable: true }
+      required: [id, categoryId, name, price, prepZone, active, taxRate]
+
+    CatalogCreateProductInput:
+      type: object
+      properties:
+        categoryId: { type: string, format: uuid }
+        subcategoryId: { type: string, format: uuid }
+        name: { type: string }
+        internalCode: { type: string }
+        description: { type: string }
+        price: { type: string }
+        cost: { type: string }
+        prepZone: { type: string, default: "cocina" }
+        active: { type: boolean, default: true }
+        tpvVisible: { type: boolean, default: true }
+        qrVisible: { type: boolean, default: true }
+        deliveryVisible: { type: boolean, default: false }
+        taxRate: { $ref: "#/components/schemas/CatalogTaxRate", default: 10 }
+        sortOrder: { type: integer, default: 0 }
+        allergens: { type: string, default: "" }
+        halfPortionPrice: { type: string }
+        quantity: { type: string }
+        isVegetariano: { type: boolean, default: false }
+        isVegano: { type: boolean, default: false }
+        isSinGluten: { type: boolean, default: false }
+        isPicante: { type: boolean, default: false }
+      required: [categoryId, name, price]
+
+    CatalogUpdateProductInput:
+      type: object
+      properties:
+        categoryId: { type: string, format: uuid }
+        subcategoryId: { type: string, format: uuid, nullable: true }
+        name: { type: string }
+        internalCode: { type: string, nullable: true }
+        description: { type: string, nullable: true }
+        price: { type: string }
+        cost: { type: string, nullable: true }
+        prepZone: { type: string }
+        active: { type: boolean }
+        tpvVisible: { type: boolean }
+        qrVisible: { type: boolean }
+        deliveryVisible: { type: boolean }
+        outOfStock: { type: boolean }
+        taxRate: { $ref: "#/components/schemas/CatalogTaxRate" }
+        sortOrder: { type: integer }
+        allergens: { type: string }
+        imageUrl: { type: string, nullable: true }
+        videoUrl: { type: string, nullable: true }
+        halfPortionPrice: { type: string, nullable: true }
+        quantity: { type: string, nullable: true }
+        isVegetariano: { type: boolean }
+        isVegano: { type: boolean }
+        isSinGluten: { type: boolean }
+        isPicante: { type: boolean }
+        translations: { $ref: "#/components/schemas/CatalogTranslations" }
+
+    CatalogProductModifierGroupsInput:
+      type: object
+      properties:
+        modifierGroupIds:
+          type: array
+          items: { type: string, format: uuid }
+      required: [modifierGroupIds]
+
+    CatalogProductImportResult:
+      type: object
+      properties:
+        imported: { type: integer }
+        skipped: { type: integer }
+        errors:
+          type: array
+          items: { type: string }
+      required: [imported, skipped, errors]
+
+    CatalogStaffProductSearchItem:
+      type: object
+      description: Product row from GET /products staff search
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        price: { type: string }
+        taxRate: { $ref: "#/components/schemas/CatalogTaxRate" }
+        active: { type: boolean }
+        outOfStock: { type: boolean }
+        imageUrl: { type: string, nullable: true }
+        categoryId: { type: string, format: uuid }
+        tpvVisible: { type: boolean }
+        deliveryVisible: { type: boolean }
+      required: [id, name, price, taxRate, active, outOfStock, categoryId, tpvVisible, deliveryVisible]
+
+    CatalogStaffCategoryProduct:
+      type: object
+      description: Product with formats for staff category listing
+      properties:
+        id: { type: string, format: uuid }
+        categoryId: { type: string, format: uuid }
+        subcategoryId: { type: string, format: uuid, nullable: true }
+        name: { type: string }
+        price: { type: string }
+        taxRate: { $ref: "#/components/schemas/CatalogTaxRate" }
+        prepZone: { type: string }
+        tpvVisible: { type: boolean }
+        outOfStock: { type: boolean }
+        allergens: { type: string }
+        imageUrl: { type: string, nullable: true }
+        hasModifiers: { type: boolean }
+        formats:
+          type: array
+          items: { $ref: "#/components/schemas/CatalogProductFormat" }
+      required: [id, categoryId, name, price, taxRate, prepZone, tpvVisible, outOfStock, allergens, hasModifiers, formats]
+
+    CatalogModifier:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        groupId: { type: string, format: uuid }
+        name: { type: string }
+        priceDelta: { type: string, description: Numeric string from DB }
+        sortOrder: { type: integer }
+        active: { type: boolean }
+      required: [id, groupId, name, priceDelta, sortOrder, active]
+
+    CatalogModifierGroup:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        required: { type: boolean }
+        maxSelect: { type: integer }
+        sortOrder: { type: integer }
+        active: { type: boolean }
+      required: [id, name, required, maxSelect, sortOrder, active]
+
+    CatalogModifierGroupWithModifiers:
+      allOf:
+        - { $ref: "#/components/schemas/CatalogModifierGroup" }
+        - type: object
+          properties:
+            modifiers:
+              type: array
+              items: { $ref: "#/components/schemas/CatalogModifier" }
+          required: [modifiers]
+
+    CatalogCreateModifierGroupInput:
+      type: object
+      properties:
+        name: { type: string }
+        required: { type: boolean, default: false }
+        maxSelect: { type: integer, default: 1 }
+        sortOrder: { type: integer, default: 0 }
+      required: [name]
+
+    CatalogUpdateModifierGroupInput:
+      type: object
+      properties:
+        name: { type: string }
+        required: { type: boolean }
+        maxSelect: { type: integer }
+        active: { type: boolean }
+        sortOrder: { type: integer }
+
+    CatalogCreateModifierInput:
+      type: object
+      properties:
+        name: { type: string }
+        priceDelta: { type: string, default: "0" }
+        sortOrder: { type: integer, default: 0 }
+      required: [name]
+
+    CatalogUpdateModifierInput:
+      type: object
+      properties:
+        name: { type: string }
+        priceDelta: { type: string }
+        active: { type: boolean }
+        sortOrder: { type: integer }
+
+    CatalogStaffModifierOption:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        priceDelta: { type: string }
+      required: [id, name, priceDelta]
+
+    CatalogStaffModifierGroup:
+      type: object
+      description: Modifier group with options for staff product ordering
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        required: { type: boolean }
+        maxSelect: { type: integer }
+        modifiers:
+          type: array
+          items: { $ref: "#/components/schemas/CatalogStaffModifierOption" }
+      required: [id, name, required, maxSelect, modifiers]
+
+    CatalogSoldoutInput:
+      type: object
+      properties:
+        outOfStock: { type: boolean }
+      required: [outOfStock]
+
+    CatalogSoldoutResult:
+      type: object
+      properties:
+        ok: { type: boolean, enum: [true] }
+        outOfStock: { type: boolean }
+      required: [ok, outOfStock]
+
+    CatalogProductTranslationsInput:
+      type: object
+      properties:
+        nameEn: { type: string, default: "" }
+        descriptionEn: { type: string, default: "" }
+        nameEs: { type: string, default: "" }
+        descriptionEs: { type: string, default: "" }
+
+    CatalogProductTranslationsResult:
+      type: object
+      properties:
+        ok: { type: boolean, enum: [true] }
+        nameEn: { type: string }
+        descriptionEn: { type: string }
+      required: [ok, nameEn, descriptionEn]
+
+    CatalogCategoryTranslationsInput:
+      type: object
+      properties:
+        nameEn: { type: string, default: "" }
+
+    CatalogCategoryTranslationsResult:
+      type: object
+      properties:
+        ok: { type: boolean, enum: [true] }
+        nameEn: { type: string }
+      required: [ok, nameEn]
+
+    CatalogProductAvailabilityRule:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        productId: { type: string, format: uuid, nullable: true }
+        categoryId: { type: string, format: uuid, nullable: true }
+        label: { type: string }
+        daysOfWeek:
+          type: array
+          description: Day-of-week numbers 0=Sun … 6=Sat
+          items: { type: integer, minimum: 0, maximum: 6 }
+        timeFrom: { type: string, description: HH:mm }
+        timeTo: { type: string, description: HH:mm }
+        active: { type: boolean }
+        createdAt: { type: string, format: date-time }
+      required: [id, label, daysOfWeek, timeFrom, timeTo, active, createdAt]
+
+    CatalogCreateProductAvailabilityRuleInput:
+      type: object
+      properties:
+        productId: { type: string, format: uuid }
+        categoryId: { type: string, format: uuid }
+        label: { type: string, default: "" }
+        daysOfWeek:
+          type: array
+          items: { type: integer, minimum: 0, maximum: 6 }
+          default: [0, 1, 2, 3, 4, 5, 6]
+        timeFrom: { type: string, default: "00:00" }
+        timeTo: { type: string, default: "23:59" }
+        active: { type: boolean, default: true }
+
+    CatalogUpdateProductAvailabilityRuleInput:
+      type: object
+      properties:
+        productId: { type: string, format: uuid, nullable: true }
+        categoryId: { type: string, format: uuid, nullable: true }
+        label: { type: string }
+        daysOfWeek:
+          type: array
+          items: { type: integer, minimum: 0, maximum: 6 }
+        timeFrom: { type: string }
+        timeTo: { type: string }
+        active: { type: boolean }
+
+    CatalogAllergen:
+      type: object
+      description: EU Regulation 1169/2011 allergen catalogue entry
+      properties:
+        code: { type: string }
+        nameEs: { type: string }
+        nameEn: { type: string }
+        description: { type: string }
+        iconSlug: { type: string }
+        active: { type: boolean }
+        sortOrder: { type: string }
+      required: [code, nameEs, nameEn, description, iconSlug, active, sortOrder]
+
+    CatalogProductAllergenCacheEntry:
+      type: object
+      properties:
+        allergenCode: { type: string }
+        type: { type: string, enum: [contains, traces, cross_contamination] }
+        source: { type: string, enum: [ingredient, subrecipe, manual] }
+        needsReview: { type: boolean }
+        calculatedAt: { type: string, format: date-time }
+        allergenName: { type: string }
+        allergenNameEn: { type: string }
+        iconSlug: { type: string }
+      required: [allergenCode, type, source, needsReview, calculatedAt, allergenName, allergenNameEn, iconSlug]
+
+    CatalogProductAllergenOverride:
+      type: object
+      properties:
+        allergenCode: { type: string }
+        type: { type: string, enum: [contains, traces, cross_contamination] }
+        allergenName: { type: string }
+        iconSlug: { type: string }
+      required: [allergenCode, type, allergenName, iconSlug]
+
+    CatalogProductAllergensResponse:
+      type: object
+      properties:
+        cache:
+          type: array
+          items: { $ref: "#/components/schemas/CatalogProductAllergenCacheEntry" }
+        overrides:
+          type: array
+          items: { $ref: "#/components/schemas/CatalogProductAllergenOverride" }
+        needsReview: { type: boolean }
+      required: [cache, overrides, needsReview]
+
+    CatalogProductAllergenOverrideInput:
+      type: object
+      properties:
+        allergenCode: { type: string }
+        type: { type: string, enum: [contains, traces, cross_contamination] }
+        note: { type: string }
+      required: [allergenCode, type]
