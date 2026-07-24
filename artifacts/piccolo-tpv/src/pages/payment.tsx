@@ -23,9 +23,8 @@ import {
   useMarkSplitGroupPaid,
   useGetOrderSplits,
   startCashMachinePayment as startCashMachinePaymentRequest,
-  useGetCashMachinePayment,
+  getCashMachinePayment,
   useCancelCashMachinePayment,
-  useGetCashMachineStatus,
   getGetOrderPaymentSummaryQueryKey,
   getGetCurrentCashSessionQueryKey,
   getGetPaymentMethodsQueryKey,
@@ -35,7 +34,7 @@ import {
   type SplitGroupWithItems,
   type SplitGroupItemDetail,
   type CashMachineTransaction,
-} from '@workspace/api-client-react';
+} from '@workspace/api-client-react/cash-payments';
 import {
   useGetClients,
   useCreateInvoice,
@@ -1007,7 +1006,7 @@ function CashMachinePaymentModal({ orderId, amount, terminal, onSuccess, onCance
     if (intervalRef.current) clearInterval(intervalRef.current);
     intervalRef.current = setInterval(async () => {
       try {
-        const data = await api.get<{ transaction?: CashMachineTransaction; needsReconciliation?: boolean }>(`/api/cash-machine/payments/${id}`);
+        const data = await getCashMachinePayment(id);
         const tx = data?.transaction as CashMachineTransaction | undefined;
         if (!tx) return;
         setTxStatus(tx.status);

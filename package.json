@@ -21,6 +21,7 @@
     "migrate:crm-hooks": "node scripts/migrate-crm-generated-hooks.mjs",
     "migrate:wallet-hooks": "node scripts/migrate-wallet-generated-hooks.mjs",
     "migrate:catalog-admin-hooks": "node scripts/migrate-catalog-admin-generated-hooks.mjs",
+    "migrate:cash-payments-hooks": "node scripts/migrate-cash-payments-generated-hooks.mjs",
     "typecheck:libs": "tsc --build",
     "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck"
   },

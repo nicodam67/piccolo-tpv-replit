@@ -3,8 +3,10 @@ import { useParams, useLocation } from 'wouter';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   useGetOrderPaymentSummary,
-  useGetBusinessConfig,
   getGetOrderPaymentSummaryQueryKey,
+} from '@workspace/api-client-react/cash-payments';
+import {
+  useGetBusinessConfig,
   getGetBusinessConfigQueryKey,
 } from '@workspace/api-client-react';
 import {

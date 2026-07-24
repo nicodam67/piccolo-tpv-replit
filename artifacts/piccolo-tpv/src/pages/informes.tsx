@@ -14,6 +14,10 @@ import {
   Receipt, AlertTriangle, Star, Layers,
 } from 'lucide-react';
 import { customFetch } from '@workspace/api-client-react';
+import {
+  useGetCashPaymentsMethodReport,
+  useGetCashPaymentsSessionReportList,
+} from '@workspace/api-client-react/cash-payments';
 
 // ─── API helper ───────────────────────────────────────────────────────────────
 const api = (path: string) => customFetch(path) as Promise<unknown>;
@@ -485,11 +489,7 @@ function IvaTab({ from, to }: { from: string; to: string }) {
 
 // ─── TAB: Pagos ───────────────────────────────────────────────────────────────
 function PagosTab({ from, to }: { from: string; to: string }) {
-  type Row = { methodId: string; name: string; code: string; total: number; count: number };
-  const { data, isLoading } = useQuery<Row[]>({
-    queryKey: ['reports', 'payments', from, to],
-    queryFn: () => api(`/api/reports/payments?from=${from}&to=${to}`) as Promise<Row[]>,
-  });
+  const { data, isLoading } = useGetCashPaymentsMethodReport({ from, to });
   const grandTotal = data?.reduce((s, r) => s + r.total, 0) ?? 0;
 
   return (
@@ -539,15 +539,7 @@ function PagosTab({ from, to }: { from: string; to: string }) {
 
 // ─── TAB: Caja ────────────────────────────────────────────────────────────────
 function CajaTab({ from, to }: { from: string; to: string }) {
-  type Session = {
-    id: string; terminalName: string; employeeName: string; openedAt: string; closedAt: string | null;
-    status: string; openingFloat: number; expectedCash: number | null; countedCash: number | null;
-    difference: number | null; inMovements: number; outMovements: number;
-  };
-  const { data, isLoading } = useQuery<Session[]>({
-    queryKey: ['reports', 'cash', from, to],
-    queryFn: () => api(`/api/reports/cash?from=${from}&to=${to}`) as Promise<Session[]>,
-  });
+  const { data, isLoading } = useGetCashPaymentsSessionReportList({ from, to });
 
   return (
     <div className="space-y-4">
