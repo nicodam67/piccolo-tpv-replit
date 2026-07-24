@@ -29,6 +29,7 @@ function generatedConsumers(subpath: string) {
 }
 const phase1Consumers = generatedConsumers("phase1");
 const documentsConsumers = generatedConsumers("documents");
+const reservationsConsumers = generatedConsumers("reservations");
 const rows = files.flatMap((file) => {
   const source = fs.readFileSync(file, "utf8");
   const mechanisms = {
@@ -82,6 +83,8 @@ const totals = {
   phase1MigratedHooks: new Set(phase1Consumers.flatMap((row) => row.hooks)).size,
   documentsConsumerFiles: documentsConsumers.length,
   documentsMigratedHooks: new Set(documentsConsumers.flatMap((row) => row.hooks)).size,
+  reservationsConsumerFiles: reservationsConsumers.length,
+  reservationsMigratedHooks: new Set(reservationsConsumers.flatMap((row) => row.hooks)).size,
 };
 const report = {
   totals,
@@ -90,6 +93,7 @@ const report = {
   consumers: rows,
   phase1Consumers,
   documentsConsumers,
+  reservationsConsumers,
 };
 fs.writeFileSync(
   path.join(root, "artifacts/api-client-inventory.json"),
@@ -123,6 +127,8 @@ Inventario automático acumulado de clientes API.
 - Archivos consumidores migrados: ${totals.phase1ConsumerFiles}
 - Hooks migrados al cliente Documents: ${totals.documentsMigratedHooks}
 - Archivos consumidores Documents: ${totals.documentsConsumerFiles}
+- Hooks migrados al cliente Reservations: ${totals.reservationsMigratedHooks}
+- Archivos consumidores Reservations: ${totals.reservationsConsumerFiles}
 - Eliminados por evidencia de obsolescencia: 0
 - Adaptadores conservados: ${totals.justifiedAdapterFiles}
 - Pendientes: ${totals.manualFilesPending}

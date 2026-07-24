@@ -1,25 +1,26 @@
 {
   "totals": {
     "filesWithHttp": 233,
-    "generatedHookExports": 164,
-    "historicalManualHooks": 123,
+    "generatedHookExports": 159,
+    "historicalManualHooks": 118,
     "uncontractedManualHooks": 115,
     "fetchCalls": 84,
-    "customFetchCalls": 84,
-    "apiWrapperCalls": 205,
+    "customFetchCalls": 83,
+    "apiWrapperCalls": 198,
     "convexCalls": 95,
-    "manualFilesPending": 95,
+    "manualFilesPending": 94,
     "justifiedAdapterFiles": 9,
     "phase1ConsumerFiles": 6,
     "phase1MigratedHooks": 24,
     "documentsConsumerFiles": 4,
-    "documentsMigratedHooks": 15
+    "documentsMigratedHooks": 15,
+    "reservationsConsumerFiles": 2,
+    "reservationsMigratedHooks": 5
   },
   "historicalManualHooks": [
     "useAddDiscount",
     "useAddSubrecipeItem",
     "useAddTip",
-    "useArriveReservation",
     "useAssignProductModifierGroups",
     "useCancelAdminVerifactuRecord",
     "useCancelCashMachinePayment",
@@ -38,7 +39,6 @@
     "useCreateProductFormatFull",
     "useCreatePurchaseOrder",
     "useCreateRecipeLine",
-    "useCreateReservation",
     "useCreateStockMovement",
     "useCreateSubcategory",
     "useCreateSubrecipe",
@@ -50,7 +50,6 @@
     "useDeleteAdminProduct",
     "useDeleteProductFormat",
     "useDeleteRecipeLine",
-    "useDeleteReservation",
     "useDeleteSubcategory",
     "useDeleteSubrecipe",
     "useDeleteSubrecipeItem",
@@ -99,7 +98,6 @@
     "useGetProductFormats",
     "useGetProductRecipe",
     "useGetPublicBranding",
-    "useGetReservations",
     "useGetStockAlerts",
     "useGetStockMovements",
     "useGetStockReports",
@@ -108,7 +106,6 @@
     "useIssueCrmPoints",
     "useMarkSplitGroupPaid",
     "usePatchAdminBranding",
-    "usePatchReservation",
     "usePayWithCrmGiftCard",
     "useRechargeCrmGiftCard",
     "useRedeemCrmPoints",
@@ -570,12 +567,12 @@
       "file": "artifacts/piccolo-tpv/src/pages/admin-dashboard.tsx",
       "mechanisms": {
         "fetch": 0,
-        "customFetch": 1,
+        "customFetch": 0,
         "apiWrapper": 0,
-        "generatedHooks": 13,
+        "generatedHooks": 14,
         "convex": 0
       },
-      "classification": "manual-http-to-migrate"
+      "classification": "generated-client"
     },
     {
       "file": "artifacts/piccolo-tpv/src/pages/admin-datos-demo.tsx",
@@ -1990,8 +1987,8 @@
       "mechanisms": {
         "fetch": 0,
         "customFetch": 0,
-        "apiWrapper": 15,
-        "generatedHooks": 25,
+        "apiWrapper": 8,
+        "generatedHooks": 30,
         "convex": 0
       },
       "classification": "manual-http-to-migrate"
@@ -2916,6 +2913,24 @@
       "hooks": [
         "useGetDocumentTemplates",
         "useCreateReprint"
+      ]
+    }
+  ],
+  "reservationsConsumers": [
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/admin-dashboard.tsx",
+      "hooks": [
+        "useGetReservations"
+      ]
+    },
+    {
+      "file": "artifacts/piccolo-tpv/src/pages/reservations.tsx",
+      "hooks": [
+        "useGetReservations",
+        "useCreateReservation",
+        "usePatchReservation",
+        "useDeleteReservation",
+        "useArriveReservation"
       ]
     }
   ]

@@ -4,14 +4,14 @@ Inventario automático acumulado de clientes API.
 
 ## Totales iniciales
 
-- Hooks exportados por el cliente actual: 164
-- Hooks históricos añadidos manualmente: 123
+- Hooks exportados por el cliente actual: 159
+- Hooks históricos añadidos manualmente: 118
 - Hooks manuales sin operación equivalente en OpenAPI: 115
 - Llamadas `fetch`: 84
-- Llamadas `customFetch` directas: 84
-- Llamadas mediante wrapper `api`: 205
+- Llamadas `customFetch` directas: 83
+- Llamadas mediante wrapper `api`: 198
 - Llamadas Convex: 95
-- Archivos manuales pendientes: 95
+- Archivos manuales pendientes: 94
 
 ## Estado de migración
 
@@ -19,9 +19,11 @@ Inventario automático acumulado de clientes API.
 - Archivos consumidores migrados: 6
 - Hooks migrados al cliente Documents: 15
 - Archivos consumidores Documents: 4
+- Hooks migrados al cliente Reservations: 5
+- Archivos consumidores Reservations: 2
 - Eliminados por evidencia de obsolescencia: 0
 - Adaptadores conservados: 9
-- Pendientes: 95
+- Pendientes: 94
 
 No se migran llamadas hasta que su operación y tipos estén respaldados por OpenAPI; hacerlo antes
 solo trasladaría URLs sin crear un contrato fiable.
@@ -47,7 +49,6 @@ solo trasladaría URLs sin crear un contrato fiable.
 | `artifacts/piccolo-tpv/src/pages/admin-almacenes.tsx` | 4 | 0 | 0 |
 | `artifacts/piccolo-tpv/src/pages/admin-categorias-ingredientes.tsx` | 4 | 0 | 0 |
 | `artifacts/piccolo-tpv/src/pages/admin-cola-impresion.tsx` | 0 | 1 | 0 |
-| `artifacts/piccolo-tpv/src/pages/admin-dashboard.tsx` | 0 | 1 | 0 |
 | `artifacts/piccolo-tpv/src/pages/admin-impresoras.tsx` | 0 | 1 | 0 |
 | `artifacts/piccolo-tpv/src/pages/admin-instalacion-qr.tsx` | 0 | 0 | 1 |
 | `artifacts/piccolo-tpv/src/pages/admin-instalacion.tsx` | 0 | 5 | 0 |
@@ -130,7 +131,7 @@ solo trasladaría URLs sin crear un contrato fiable.
 | `artifacts/piccolo-tpv/src/pages/qr-menu/TabPrint.tsx` | 1 | 0 | 0 |
 | `artifacts/piccolo-tpv/src/pages/qr-menu/lib.ts` | 1 | 6 | 0 |
 | `artifacts/piccolo-tpv/src/pages/recepcion-mercancia.tsx` | 0 | 7 | 0 |
-| `artifacts/piccolo-tpv/src/pages/reservations.tsx` | 0 | 0 | 15 |
+| `artifacts/piccolo-tpv/src/pages/reservations.tsx` | 0 | 0 | 8 |
 | `artifacts/piccolo-tpv/src/pages/retirada-lote.tsx` | 0 | 0 | 2 |
 | `artifacts/piccolo-tpv/src/pages/revision-factura.tsx` | 0 | 6 | 0 |
 | `artifacts/piccolo-tpv/src/pages/setup/steps/SetupProduccion.tsx` | 1 | 0 | 0 |
