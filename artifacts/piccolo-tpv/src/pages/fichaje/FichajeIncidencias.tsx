@@ -4,17 +4,8 @@
  */
 import { useState, useEffect } from "react";
 import { AlertCircle, Clock, AlertTriangle, CheckCircle2, Search, RefreshCw } from "lucide-react";
-import { api } from "../../lib/api-client";
-
-interface TimeRecord {
-  id: string;
-  employeeId: string;
-  employeeName: string;
-  clockIn: string;
-  clockOut: string | null;
-  source: string;
-  isManual: boolean;
-}
+import { getTimeclockRecords } from "@workspace/api-client-react/timeclock";
+import type { TimeclockRecordListItem } from "@workspace/api-client-react/timeclock";
 
 type IncidenciaType = "open" | "long" | "manual" | "short";
 
@@ -39,7 +30,7 @@ function fmt(iso: string) {
   return new Date(iso).toLocaleString("es-ES", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
 
-function analyze(records: TimeRecord[]): Incidencia[] {
+function analyze(records: TimeclockRecordListItem[]): Incidencia[] {
   const now = Date.now();
   const results: Incidencia[] = [];
 
@@ -58,14 +49,14 @@ function analyze(records: TimeRecord[]): Incidencia[] {
     } else if (durationMin > 600) {
       results.push({
         id: r.id, type: "long", employeeName: r.employeeName,
-        clockIn: r.clockIn, clockOut: r.clockOut,
+        clockIn: r.clockIn, clockOut: r.clockOut ?? null,
         detail: `Turno de ${(durationMin / 60).toFixed(1)}h (límite recomendado: 10h).`,
         severity: "medium",
       });
     } else if (durationMin < 15 && r.clockOut) {
       results.push({
         id: r.id, type: "short", employeeName: r.employeeName,
-        clockIn: r.clockIn, clockOut: r.clockOut,
+        clockIn: r.clockIn, clockOut: r.clockOut ?? null,
         detail: `Turno de solo ${Math.round(durationMin)} minutos.`,
         severity: "low",
       });
@@ -74,7 +65,7 @@ function analyze(records: TimeRecord[]): Incidencia[] {
     if (r.isManual) {
       results.push({
         id: `${r.id}-manual`, type: "manual", employeeName: r.employeeName,
-        clockIn: r.clockIn, clockOut: r.clockOut,
+        clockIn: r.clockIn, clockOut: r.clockOut ?? null,
         detail: "Registro introducido manualmente por un administrador.",
         severity: "low",
       });
@@ -96,7 +87,7 @@ export default function FichajeIncidencias() {
 
   function load() {
     setLoading(true);
-    api.get<TimeRecord[]>(`/api/fichaje/records?from=${from}&to=${to}`)
+    getTimeclockRecords({ from: `${from}T00:00:00.000Z`, to: `${to}T23:59:59.999Z` })
       .then(d => setIncidencias(analyze(d)))
       .catch(() => setIncidencias([]))
       .finally(() => setLoading(false));

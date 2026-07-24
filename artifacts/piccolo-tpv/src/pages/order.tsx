@@ -18,26 +18,28 @@ import {
   useSendOrder,
   useGetUnreadNotifications,
   useMarkNotificationRead,
-  useUpdateOrder,
-  useUpdateOrderItem,
-  useDuplicateOrderItem,
   useGetProductModifiers,
   useGetProductFormats,
-  useGetPrefacturaStatus,
-  useGetOrderAudit,
   useGetProductAvailability,
   getGetTableOrderQueryKey,
   getGetCategoryProductsQueryKey,
   getGetAllTablesQueryKey,
   getGetDashboardSummaryQueryKey,
   getGetUnreadNotificationsQueryKey,
-  getGetPrefacturaStatusQueryKey,
-  getGetOrderAuditQueryKey,
   type Product,
   type ProductFormat,
   type ModifierGroup,
-  type AuditLogEntry,
 } from '@workspace/api-client-react';
+import {
+  useUpdateOrder,
+  useUpdateOrderItem,
+  useDuplicateOrderItem,
+  useGetPrefacturaStatus,
+  useGetOrderAudit,
+  getGetPrefacturaStatusQueryKey,
+  getGetOrderAuditQueryKey,
+  type AuditLogEntry,
+} from '@workspace/api-client-react/phase1';
 import { EditItemModal } from '../components/EditItemModal';
 import { EU_ALLERGENS, parseAllergens } from '../lib/allergens';
 import { useScrollGuard } from '../hooks/use-scroll-guard';

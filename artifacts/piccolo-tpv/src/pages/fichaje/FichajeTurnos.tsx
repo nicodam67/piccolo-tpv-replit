@@ -1,25 +1,21 @@
 import { useState, useEffect, useMemo } from "react";
 import { Plus, Trash2, Edit2, Calendar, Search, X } from "lucide-react";
 import { api } from "../../lib/api-client";
+import {
+  createTimeclockShift,
+  deleteTimeclockShift,
+  getTimeclockShifts,
+  updateTimeclockShift,
+} from "@workspace/api-client-react/timeclock";
+import type { CreateTimeclockShiftInput, TimeclockShiftListItem } from "@workspace/api-client-react/timeclock";
 
-interface Shift {
-  id: string;
-  employeeId: string;
-  employeeName: string;
-  shiftDate: string;
-  startTime: string;
-  endTime: string;
-  isSplit: boolean;
-  splitStartTime: string | null;
-  splitEndTime: string | null;
-  notes: string | null;
-}
+type FichajeShiftRow = TimeclockShiftListItem;
 
 interface Employee { id: string; name: string; }
 
 const emptyForm = { employeeId: "", shiftDate: "", startTime: "", endTime: "", isSplit: false, splitStartTime: "", splitEndTime: "", notes: "" };
 
-function ShiftModal({ shift, employees, onClose, onSaved }: { shift?: Shift; employees: Employee[]; onClose: () => void; onSaved: () => void }) {
+function ShiftModal({ shift, employees, onClose, onSaved }: { shift?: FichajeShiftRow; employees: Employee[]; onClose: () => void; onSaved: () => void }) {
   const [form, setForm] = useState(shift ? {
     employeeId: shift.employeeId, shiftDate: shift.shiftDate, startTime: shift.startTime,
     endTime: shift.endTime, isSplit: shift.isSplit, splitStartTime: shift.splitStartTime ?? "",
@@ -29,11 +25,20 @@ function ShiftModal({ shift, employees, onClose, onSaved }: { shift?: Shift; emp
 
   async function save() {
     setSaving(true);
-    const body = { ...form, splitStartTime: form.isSplit ? form.splitStartTime : null, splitEndTime: form.isSplit ? form.splitEndTime : null };
+    const body: CreateTimeclockShiftInput = {
+      employeeId: form.employeeId,
+      shiftDate: form.shiftDate,
+      startTime: form.startTime,
+      endTime: form.endTime,
+      isSplit: form.isSplit,
+      splitStartTime: form.isSplit ? form.splitStartTime : undefined,
+      splitEndTime: form.isSplit ? form.splitEndTime : undefined,
+      notes: form.notes || undefined,
+    };
     if (shift) {
-      await api.put(`/api/fichaje/shifts/${shift.id}`, body);
+      await updateTimeclockShift(shift.id, body);
     } else {
-      await api.post("/api/fichaje/shifts", body);
+      await createTimeclockShift(body);
     }
     setSaving(false);
     onSaved();
@@ -82,10 +87,10 @@ function ShiftModal({ shift, employees, onClose, onSaved }: { shift?: Shift; emp
 }
 
 export default function FichajeTurnos() {
-  const [shifts, setShifts] = useState<Shift[]>([]);
+  const [shifts, setShifts] = useState<FichajeShiftRow[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
-  const [modal, setModal] = useState<{ open: boolean; shift?: Shift }>({ open: false });
+  const [modal, setModal] = useState<{ open: boolean; shift?: FichajeShiftRow }>({ open: false });
   const [week, setWeek] = useState(() => new Date().toISOString().slice(0, 10));
   const [empSearch, setEmpSearch] = useState("");
 
@@ -102,8 +107,8 @@ export default function FichajeTurnos() {
   function load() {
     setLoading(true);
     const { from, to } = getWeekRange(week);
-    api.get<Shift[]>(`/api/fichaje/shifts?from=${from}&to=${to}`)
-      .then(d => setShifts(Array.isArray(d) ? d : []))
+    getTimeclockShifts({ from, to })
+      .then((d: TimeclockShiftListItem[]) => setShifts(Array.isArray(d) ? d : []))
       .finally(() => setLoading(false));
   }
 
@@ -122,7 +127,7 @@ export default function FichajeTurnos() {
 
   async function deleteShift(id: string) {
     if (!confirm("¿Eliminar este turno?")) return;
-    await api.delete(`/api/fichaje/shifts/${id}`);
+    await deleteTimeclockShift(id);
     load();
   }
 

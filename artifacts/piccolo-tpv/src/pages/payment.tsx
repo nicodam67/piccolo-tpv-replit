@@ -16,33 +16,35 @@ import { toast } from 'sonner';
 import {
   useGetOrderPaymentSummary,
   useAddPayment,
-  useGetClients,
-  useCreateInvoice,
-  useCreateClient,
   useGetCurrentCashSession,
   useGetPaymentMethods,
   useAddTip,
   useCreateOrderSplits,
   useMarkSplitGroupPaid,
   useGetOrderSplits,
-  useStartCashMachinePayment,
+  startCashMachinePayment as startCashMachinePaymentRequest,
   useGetCashMachinePayment,
   useCancelCashMachinePayment,
   useGetCashMachineStatus,
   getGetOrderPaymentSummaryQueryKey,
-  getGetClientsQueryKey,
   getGetCurrentCashSessionQueryKey,
   getGetPaymentMethodsQueryKey,
   getGetOrderSplitsQueryKey,
   type AddPaymentInputMethodCode,
-  type Invoice,
-  type Client,
-  type CreateClientInput,
   type PaymentMethod,
   type SplitGroupWithItems,
   type SplitGroupItemDetail,
   type CashMachineTransaction,
 } from '@workspace/api-client-react';
+import {
+  useGetClients,
+  useCreateInvoice,
+  useCreateClient,
+  getGetClientsQueryKey,
+  type Invoice,
+  type Client,
+  type CreateClientInput,
+} from '@workspace/api-client-react/documents';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 function fmt(n: number | string) { return parseFloat(String(n)).toFixed(2); }
@@ -984,7 +986,7 @@ interface CashMachinePaymentModalProps {
 }
 
 function CashMachinePaymentModal({ orderId, amount, terminal, onSuccess, onCancel }: CashMachinePaymentModalProps) {
-  const startPayment  = useStartCashMachinePayment();
+  const paymentAttemptKey = useRef(crypto.randomUUID());
   const cancelPayment = useCancelCashMachinePayment();
   const [txId, setTxId]             = useState<string | null>(null);
   const [txStatus, setTxStatus]     = useState<string>('pending');
@@ -996,8 +998,6 @@ function CashMachinePaymentModal({ orderId, amount, terminal, onSuccess, onCance
   // Capture onSuccess in a ref so the interval always calls the latest version
   const onSuccessRef = useRef(onSuccess);
   useEffect(() => { onSuccessRef.current = onSuccess; }, [onSuccess]);
-
-  const TERMINAL_STATUSES = ['completada', 'cancelada', 'tiempo_agotado', 'error', 'intervencion_manual'];
 
   /** Plain fetch so the closure always uses the correct transaction ID, avoiding
    *  stale-refetch issues that arise when the React Query hook is initialized before
@@ -1016,7 +1016,7 @@ function CashMachinePaymentModal({ orderId, amount, terminal, onSuccess, onCance
         if (tx.status === 'completada') {
           if (intervalRef.current) clearInterval(intervalRef.current);
           setTimeout(() => onSuccessRef.current(), 1200);
-        } else if (['error', 'cancelada', 'tiempo_agotado', 'intervencion_manual'].includes(tx.status)) {
+        } else if (['error', 'cancelada', 'tiempo_agotado', 'intervencion_manual', 'conciliacion_pendiente'].includes(tx.status)) {
           if (intervalRef.current) clearInterval(intervalRef.current);
           setErrMsg((tx as any).deviceError ?? 'La transacción no se completó.');
         }
@@ -1040,9 +1040,10 @@ function CashMachinePaymentModal({ orderId, amount, terminal, onSuccess, onCance
   useEffect(() => {
     const init = async () => {
       try {
-        const res = await startPayment.mutateAsync({
-          data: { orderId, amount: fmt(amount), terminalName: terminal ?? 'Caja principal' },
-        });
+        const res = await startCashMachinePaymentRequest(
+          { orderId, amount: fmt(amount), terminalName: terminal ?? 'Caja principal' },
+          { headers: { 'Idempotency-Key': paymentAttemptKey.current } },
+        );
         const id = (res as any)?.transaction?.id as string;
         if (!id) { setErrMsg('Error al iniciar pago.'); return; }
         setTxId(id);
@@ -1077,10 +1078,11 @@ function CashMachinePaymentModal({ orderId, amount, terminal, onSuccess, onCance
     cancelada:           { label: 'Cancelado',             color: 'text-muted-foreground', icon: <X size={32} className="text-muted-foreground" /> },
     tiempo_agotado:      { label: 'Tiempo agotado',        color: 'text-destructive',      icon: <X size={32} className="text-destructive" /> },
     intervencion_manual: { label: 'Intervención manual',   color: 'text-destructive',      icon: <X size={32} className="text-destructive" /> },
+    conciliacion_pendiente: { label: 'Pendiente de conciliación', color: 'text-amber-400', icon: <AlertCircle size={32} /> },
   };
 
   const meta = statusMeta[txStatus] ?? statusMeta.pending;
-  const TERMINAL = ['completada', 'cancelada', 'tiempo_agotado', 'error', 'intervencion_manual'];
+  const TERMINAL = ['completada', 'cancelada', 'tiempo_agotado', 'error', 'intervencion_manual', 'conciliacion_pendiente'];
   const isTerminal = TERMINAL.includes(txStatus);
 
   return (
@@ -1135,7 +1137,7 @@ function CashMachinePaymentModal({ orderId, amount, terminal, onSuccess, onCance
         )}
 
         {/* Close after error */}
-        {['error', 'cancelada', 'tiempo_agotado', 'intervencion_manual'].includes(txStatus) && (
+        {['error', 'cancelada', 'tiempo_agotado', 'intervencion_manual', 'conciliacion_pendiente'].includes(txStatus) && (
           <button onClick={onCancel}
             className="w-full py-3 bg-secondary text-foreground font-bold rounded-xl text-sm">
             Cerrar
