@@ -4,7 +4,12 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./phase1": "./src/phase1-generated/index.ts",
+    "./documents": "./src/documents-generated/index.ts",
+    "./reservations": "./src/reservations-generated/index.ts",
+    "./branding": "./src/branding-generated/index.ts",
+    "./crm": "./src/crm-generated/index.ts"
   },
   "dependencies": {
     "@tanstack/react-query": "catalog:"

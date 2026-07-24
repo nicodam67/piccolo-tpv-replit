@@ -32,6 +32,10 @@ interface MemEntry {
 
 const memCache = new Map<string, MemEntry>();
 
+export function invalidateIdempotencyCacheKey(cacheKey: string): void {
+  memCache.delete(cacheKey);
+}
+
 // Evict oldest entries when the cache fills up
 function evictIfNeeded() {
   if (memCache.size <= MAX_MEM_ENTRIES) return;

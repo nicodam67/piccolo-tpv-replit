@@ -3,7 +3,7 @@
  * KDS station management — /admin/kds-stations
  * CRUD for named KDS displays: zone type, IP, display URL, last ping.
  */
-import { useState, useEffect, useCallback } from 'react';
+import { useState } from 'react';
 import { useLocation } from 'wouter';
 import { toast } from 'sonner';
 import {
@@ -12,7 +12,14 @@ import {
   Server, Zap,
 } from 'lucide-react';
 
-import { api } from '../lib/api-client';
+import {
+  useGetKdsStations,
+  useCreateKdsStation,
+  useUpdateKdsStation,
+  useDeleteKdsStation,
+  usePingKdsStation,
+  type KdsStation,
+} from '@workspace/api-client-react/phase1';
 
 const ZONE_LABELS: Record<string, string> = {
   cocina:      'Cocina',
@@ -32,17 +39,6 @@ const ZONE_COLORS: Record<string, string> = {
   sin_partida: 'text-muted-foreground bg-secondary border-border',
 };
 
-interface KdsStation {
-  id: string;
-  name: string;
-  zoneType: string;
-  ip: string;
-  displayUrl: string | null;
-  notes: string | null;
-  lastPingAt: string | null;
-  active: boolean;
-}
-
 const EMPTY_FORM = {
   name: '', zoneType: 'cocina', ip: '', displayUrl: '', notes: '',
 };
@@ -57,22 +53,16 @@ function fmtDate(d: string | null | undefined) {
 
 export default function AdminKdsStations() {
   const [, setLocation] = useLocation();
-  const [stations, setStations] = useState<KdsStation[]>([]);
-  const [loading, setLoading] = useState(false);
+  const { data: stations = [], isLoading: loading, refetch: load } = useGetKdsStations();
+  const createStation = useCreateKdsStation();
+  const updateStation = useUpdateKdsStation();
+  const deleteStation = useDeleteKdsStation();
+  const pingStation = usePingKdsStation();
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<KdsStation | null>(null);
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [saving, setSaving] = useState(false);
   const [pinging, setPinging] = useState<string | null>(null);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      setStations(await api.get<KdsStation[]>('/api/admin/kds-stations'));
-    } finally { setLoading(false); }
-  }, []);
-
-  useEffect(() => { void load(); }, [load]);
 
   function openCreate() { setEditing(null); setForm({ ...EMPTY_FORM }); setShowModal(true); }
   function openEdit(s: KdsStation) {
@@ -87,9 +77,9 @@ export default function AdminKdsStations() {
     try {
       const body = { ...form, displayUrl: form.displayUrl || null, notes: form.notes || null };
       if (editing) {
-        await api.patch(`/api/admin/kds-stations/${editing.id}`, body);
+        await updateStation.mutateAsync({ id: editing.id, data: body });
       } else {
-        await api.post('/api/admin/kds-stations', body);
+        await createStation.mutateAsync({ data: body });
       }
       toast.success(editing ? 'Estación actualizada' : 'Estación creada');
       setShowModal(false);
@@ -100,7 +90,7 @@ export default function AdminKdsStations() {
   async function handleDelete(id: string, name: string) {
     if (!confirm(`¿Desactivar la estación "${name}"?`)) return;
     try {
-      await api.delete(`/api/admin/kds-stations/${id}`);
+      await deleteStation.mutateAsync({ id });
       toast.success('Estación desactivada');
       await load();
     } catch { toast.error('Error al desactivar'); }
@@ -109,7 +99,7 @@ export default function AdminKdsStations() {
   async function handlePing(id: string) {
     setPinging(id);
     try {
-      const d = await api.post<{ reachable: boolean; latencyMs: number }>(`/api/admin/kds-stations/${id}/ping`);
+      const d = await pingStation.mutateAsync({ id });
       toast[d.reachable ? 'success' : 'error'](
         d.reachable ? `Alcanzable · ${d.latencyMs}ms` : 'Sin respuesta',
       );
