@@ -4,7 +4,17 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./phase1": "./src/phase1-generated/index.ts",
+    "./documents": "./src/documents-generated/index.ts",
+    "./reservations": "./src/reservations-generated/index.ts",
+    "./branding": "./src/branding-generated/index.ts",
+    "./crm": "./src/crm-generated/index.ts",
+    "./wallet": "./src/wallet-generated/index.ts",
+    "./delivery": "./src/delivery-compat.ts",
+    "./timeclock": "./src/timeclock-compat.ts",
+    "./catalog-admin-generated": "./src/catalog-admin-generated/index.ts",
+    "./catalog-admin": "./src/catalog-admin-compat.ts"
   },
   "dependencies": {
     "@tanstack/react-query": "catalog:"

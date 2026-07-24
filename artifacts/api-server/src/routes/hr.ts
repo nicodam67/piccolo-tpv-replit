@@ -20,6 +20,7 @@ import {
   hrImportHistoryTable,
   timeRecordsTable,
   shiftsTable,
+  auditLogTable,
 } from "@workspace/db";
 import { eq, and, gte, lte, sql, inArray, isNull, not } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
@@ -38,6 +39,43 @@ function stripEconomic<T extends Record<string, unknown>>(emp: T, role: string):
   if (isManagerOrAdmin(role)) return emp;
   const { hourlyRate, monthlySalary, employerCostRate, ...rest } = emp as Record<string, unknown>;
   return rest as T;
+}
+
+const VALID_EMPLOYEE_ROLES = new Set([
+  "admin", "manager", "encargado", "employee", "waiter", "cashier", "kitchen", "delivery",
+]);
+const MANAGER_ASSIGNABLE_ROLES = new Set([
+  "encargado", "employee", "waiter", "cashier", "kitchen", "delivery",
+]);
+
+const MUTABLE_EMPLOYEE_FIELDS = new Set([
+  "name", "role", "active", "lastName", "employeeNumber", "email", "phone", "dni",
+  "address", "hireDate", "terminationDate", "empStatus", "positionId", "departmentId",
+  "workCenterId", "contractType", "weeklyHours", "hourlyRate", "monthlySalary",
+  "employerCostRate", "externalCode", "photoUrl", "emergencyContact", "empNotes",
+  "anvizId", "nfcId", "legacyFichajeId",
+]);
+
+async function auditEmployeeSecurity(
+  req: { user?: { id?: string; name?: string; role?: string } },
+  action: string,
+  details: string,
+) {
+  await db.insert(auditLogTable).values({
+    employeeId: req.user?.id ?? null,
+    employeeName: req.user?.name ?? "",
+    action,
+    details,
+  }).catch(() => {});
+}
+
+async function activeAdminCount(
+  executor: Pick<typeof db, "select">,
+): Promise<number> {
+  const [row] = await executor.select({ count: sql<number>`count(*)::int` })
+    .from(employeesTable)
+    .where(and(eq(employeesTable.role, "admin"), eq(employeesTable.active, true)));
+  return Number(row?.count ?? 0);
 }
 
 // ─── POSITIONS ────────────────────────────────────────────────────────────────
@@ -285,7 +323,16 @@ router.post("/hr/employees", requireAuth, requireRole("admin", "manager"), async
     const { pin, ...empData } = body as { pin?: string } & Partial<typeof employeesTable.$inferInsert>;
 
     if (!empData.name?.trim()) { res.status(400).json({ error: "El nombre es obligatorio" }); return; }
-    if (!empData.role) { res.status(400).json({ error: "El rol es obligatorio" }); return; }
+    if (typeof body.role !== "string") { res.status(400).json({ error: "El rol es obligatorio" }); return; }
+    if (!VALID_EMPLOYEE_ROLES.has(body.role)) {
+      res.status(400).json({ error: "Rol no válido" });
+      return;
+    }
+    if (req.user!.role !== "admin" && !MANAGER_ASSIGNABLE_ROLES.has(body.role)) {
+      await auditEmployeeSecurity(req, "employee_privilege_denied", `Manager intentó crear rol ${body.role}`);
+      res.status(403).json({ error: "Un manager solo puede crear roles subordinados" });
+      return;
+    }
 
     const [emp] = await db
       .insert(employeesTable)
@@ -328,6 +375,7 @@ router.post("/hr/employees", requireAuth, requireRole("admin", "manager"), async
         .onConflictDoUpdate({ target: employeePinsTable.employeeId, set: { pinHash: hash } });
     }
 
+    await auditEmployeeSecurity(req, "employee_created", `Empleado ${emp.id} creado con rol ${emp.role}`);
     res.status(201).json(emp);
   } catch (err) {
     console.error(err);
@@ -339,43 +387,131 @@ router.patch("/hr/employees/:id", requireAuth, requireRole("admin", "manager"), 
   const id = req.params.id as string;
   try {
     const body = req.body as Record<string, unknown>;
-    const { pin, ...updates } = body as { pin?: string } & Partial<typeof employeesTable.$inferInsert>;
-
-    const [updated] = await db
-      .update(employeesTable)
-      .set(updates as Partial<typeof employeesTable.$inferInsert>)
-      .where(eq(employeesTable.id, id))
-      .returning();
-
-    if (!updated) { res.status(404).json({ error: "Empleado no encontrado" }); return; }
-
-    if (pin !== undefined) {
-      const hash = await bcrypt.hash(pin, 10);
-      await db
-        .insert(employeePinsTable)
-        .values({ employeeId: id, pinHash: hash })
-        .onConflictDoUpdate({ target: employeePinsTable.employeeId, set: { pinHash: hash } });
+    const pin = typeof body.pin === "string" ? body.pin : undefined;
+    if ("pin" in body && typeof body.pin !== "string") {
+      res.status(400).json({ error: "PIN no válido" });
+      return;
+    }
+    if ("active" in body && typeof body.active !== "boolean") {
+      res.status(400).json({ error: "active debe ser booleano" });
+      return;
+    }
+    if ("role" in body && typeof body.role !== "string") {
+      res.status(400).json({ error: "Rol no válido" });
+      return;
+    }
+    if ("empStatus" in body && typeof body.empStatus !== "string") {
+      res.status(400).json({ error: "Estado no válido" });
+      return;
+    }
+    const updates = Object.fromEntries(
+      Object.entries(body).filter(([key]) => MUTABLE_EMPLOYEE_FIELDS.has(key)),
+    ) as Partial<typeof employeesTable.$inferInsert>;
+    if (updates.role !== undefined && !VALID_EMPLOYEE_ROLES.has(updates.role)) {
+      res.status(400).json({ error: "Rol no válido" });
+      return;
+    }
+    if (Object.keys(updates).length === 0 && pin === undefined) {
+      res.status(400).json({ error: "Sin cambios válidos" });
+      return;
     }
 
+    const updated = await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('employee-admin-management'))`);
+      const [target] = await tx.select().from(employeesTable)
+        .where(eq(employeesTable.id, id))
+        .for("update");
+      if (!target) throw new Error("EMPLOYEE_NOT_FOUND");
+
+      const actorIsAdmin = req.user!.role === "admin";
+      const changesOwnRole = id === req.user!.id
+        && updates.role !== undefined
+        && updates.role !== target.role;
+      if (!actorIsAdmin && (
+        ["admin", "manager"].includes(target.role)
+        || (updates.role !== undefined && !MANAGER_ASSIGNABLE_ROLES.has(updates.role))
+        || changesOwnRole
+      )) {
+        throw new Error("PRIVILEGE_ESCALATION");
+      }
+
+      const removesActiveAdmin = target.role === "admin" && target.active && (
+        (updates.role !== undefined && updates.role !== "admin")
+        || updates.active === false
+        || (typeof updates.empStatus === "string" && ["inactive", "suspended"].includes(updates.empStatus))
+      );
+      if (removesActiveAdmin && await activeAdminCount(tx) <= 1) {
+        throw new Error("LAST_ACTIVE_ADMIN");
+      }
+
+      const [employee] = await tx.update(employeesTable)
+        .set(updates)
+        .where(eq(employeesTable.id, id))
+        .returning();
+      if (pin !== undefined) {
+        const hash = await bcrypt.hash(pin, 10);
+        await tx.insert(employeePinsTable)
+          .values({ employeeId: id, pinHash: hash })
+          .onConflictDoUpdate({ target: employeePinsTable.employeeId, set: { pinHash: hash } });
+      }
+      return employee;
+    });
+    await auditEmployeeSecurity(req, "employee_updated", `Empleado ${id} actualizado`);
     res.json(updated);
   } catch (err) {
+    const reason = err instanceof Error ? err.message : "";
+    if (reason === "EMPLOYEE_NOT_FOUND") {
+      res.status(404).json({ error: "Empleado no encontrado" });
+      return;
+    }
+    if (reason === "PRIVILEGE_ESCALATION") {
+      await auditEmployeeSecurity(req, "employee_privilege_denied", `Intento de escalada sobre empleado ${id}`);
+      res.status(403).json({ error: "Un manager no puede gestionar administradores ni cambiar su propio rol" });
+      return;
+    }
+    if (reason === "LAST_ACTIVE_ADMIN") {
+      await auditEmployeeSecurity(req, "employee_privilege_denied", `Intento de eliminar el último administrador ${id}`);
+      res.status(409).json({ error: "No se puede desactivar ni degradar el último administrador activo" });
+      return;
+    }
     console.error(err);
     res.status(500).json({ error: "Error al actualizar empleado" });
   }
 });
 
-router.delete("/hr/employees/:id", requireAuth, requireRole("admin"), async (req, res) => {
+router.delete("/hr/employees/:id", requireAuth, requireRole("admin", "manager"), async (req, res) => {
   const id = req.params.id as string;
   try {
-    // Soft delete — set inactive + status suspended
-    const [updated] = await db
-      .update(employeesTable)
-      .set({ active: false, empStatus: "inactive" })
-      .where(eq(employeesTable.id, id))
-      .returning();
+    if (req.user!.role !== "admin") throw new Error("PRIVILEGE_ESCALATION");
+    const updated = await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('employee-admin-management'))`);
+      const [target] = await tx.select().from(employeesTable)
+        .where(eq(employeesTable.id, id))
+        .for("update");
+      if (!target) return null;
+      if (target.role === "admin" && target.active && await activeAdminCount(tx) <= 1) {
+        throw new Error("LAST_ACTIVE_ADMIN");
+      }
+      const [employee] = await tx.update(employeesTable)
+        .set({ active: false, empStatus: "inactive" })
+        .where(eq(employeesTable.id, id))
+        .returning();
+      return employee;
+    });
     if (!updated) { res.status(404).json({ error: "Empleado no encontrado" }); return; }
+    await auditEmployeeSecurity(req, "employee_deleted", `Empleado ${id} desactivado`);
     res.json({ ok: true });
   } catch (err) {
+    if (err instanceof Error && err.message === "PRIVILEGE_ESCALATION") {
+      await auditEmployeeSecurity(req, "employee_privilege_denied", `Manager intentó eliminar empleado ${id}`);
+      res.status(403).json({ error: "Solo un administrador puede eliminar empleados" });
+      return;
+    }
+    if (err instanceof Error && err.message === "LAST_ACTIVE_ADMIN") {
+      await auditEmployeeSecurity(req, "employee_privilege_denied", `Intento de eliminar el último administrador ${id}`);
+      res.status(409).json({ error: "No se puede eliminar el último administrador activo" });
+      return;
+    }
     console.error(err);
     res.status(500).json({ error: "Error al eliminar empleado" });
   }

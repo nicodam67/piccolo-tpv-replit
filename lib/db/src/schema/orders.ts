@@ -45,6 +45,12 @@ export const ordersTable = pgTable("orders", {
   packagingCheckedAt: timestamp("packaging_checked_at", { withTimezone: true }),
   /** Delivery fee charged for this order */
   deliveryFee: numeric("delivery_fee", { precision: 10, scale: 2 }).notNull().default("0"),
+  /** Online v2 tip, persisted as part of the atomic order */
+  tipAmount: numeric("tip_amount", { precision: 10, scale: 2 }).notNull().default("0"),
+  /** Durable key used to make public order creation idempotent */
+  idempotencyKey: text("idempotency_key"),
+  /** Active QR table session associated with the order */
+  tableSessionId: uuid("table_session_id"),
   /** True for simulation/demo data; safe to purge without touching real records */
   isDemo: boolean("is_demo").notNull().default(false),
 });

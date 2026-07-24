@@ -4,7 +4,8 @@
  */
 import { useState, useEffect } from "react";
 import { Coffee, ChevronDown, ChevronRight, Clock, Search } from "lucide-react";
-import { api } from "../../lib/api-client";
+import { getTimeclockRecordBreaks, getTimeclockRecords } from "@workspace/api-client-react/timeclock";
+import type { TimeclockBreak, TimeclockRecordListItem } from "@workspace/api-client-react/timeclock";
 
 interface Break {
   id: string;
@@ -13,16 +14,14 @@ interface Break {
   notes: string | null;
 }
 
-interface FichajeRecord {
-  id: string;
-  employeeId: string;
-  employeeName: string;
-  clockIn: string;
-  clockOut: string | null;
-}
+interface FichajeRecord extends TimeclockRecordListItem {}
 
 interface RecordWithBreaks extends FichajeRecord {
   breaks: Break[];
+}
+
+function mapBreak(b: TimeclockBreak): Break {
+  return { id: b.id, startedAt: b.breakStart, endedAt: b.breakEnd ?? null, notes: null };
 }
 
 function fmt(iso: string) {
@@ -44,16 +43,14 @@ export default function FichajePausas() {
 
   useEffect(() => {
     setLoading(true);
-    api.get<FichajeRecord[]>(`/api/fichaje/records?from=${from}&to=${to}`)
+    getTimeclockRecords({ from: `${from}T00:00:00.000Z`, to: `${to}T23:59:59.999Z` })
       .then(async recs => {
-        // Fetch breaks for each record
         const withBreaks = await Promise.all(
           recs.map(async r => {
-            const breaks = await api.get<Break[]>(`/api/fichaje/records/${r.id}/breaks`).catch(() => []);
-            return { ...r, breaks: Array.isArray(breaks) ? breaks : [] };
+            const breaks = await getTimeclockRecordBreaks(r.id).catch(() => [] as TimeclockBreak[]);
+            return { ...r, breaks: breaks.map(mapBreak) };
           })
         );
-        // Only show records that have at least one break
         setRecords(withBreaks.filter(r => r.breaks.length > 0));
       })
       .catch(() => setRecords([]))
