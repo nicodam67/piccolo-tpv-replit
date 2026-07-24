@@ -432,9 +432,11 @@ interface TableSessionRow {
 
 function TabQR() {
   const [sessions, setSessions] = useState<TableSessionRow[]>([]);
+  const [tables, setTables] = useState<Array<{ id: string; name: string }>>([]);
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
-  const [form, setForm] = useState({ tableLabel: '', zoneLabel: '' });
+  const [tableId, setTableId] = useState('');
+  const [generatedQr, setGeneratedQr] = useState<{ url: string; expiresAt: string } | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const menuBase = `${window.location.origin}${import.meta.env.BASE_URL.replace(/\/$/, '')}/menu`;
@@ -442,8 +444,12 @@ function TabQR() {
   const load = async () => {
     setLoading(true);
     try {
-      const data = await api('/api/admin/table-sessions?status=open') as TableSessionRow[];
+      const [data, tableRows] = await Promise.all([
+        api('/api/admin/table-sessions?status=open') as Promise<TableSessionRow[]>,
+        api('/api/tables') as Promise<Array<{ id: string; name: string }>>,
+      ]);
       setSessions(Array.isArray(data) ? data : []);
+      setTables(Array.isArray(tableRows) ? tableRows : []);
     } catch { /* ignore */ }
     finally { setLoading(false); }
   };
@@ -451,15 +457,16 @@ function TabQR() {
   useEffect(() => { load(); }, []);
 
   const createSession = async () => {
-    if (!form.tableLabel.trim()) return;
+    if (!tableId) return;
     setCreating(true);
     try {
-      const res = await apiJSON('/api/public/table-sessions', 'POST', {
-        tableLabel: form.tableLabel.trim(),
-        zoneLabel: form.zoneLabel.trim(),
-      }) as TableSessionRow;
-      setSessions(prev => [res, ...prev]);
-      setForm({ tableLabel: '', zoneLabel: '' });
+      const res = await api(`/api/admin/tables/${tableId}/qr-ticket`) as {
+        ticket: string; expiresAt: string;
+      };
+      setGeneratedQr({
+        url: `${menuBase}?ticket=${encodeURIComponent(res.ticket)}`,
+        expiresAt: res.expiresAt,
+      });
     } catch { toast.error('Error creando sesión'); }
     finally { setCreating(false); }
   };
@@ -491,23 +498,40 @@ function TabQR() {
       {/* Create session */}
       <div className="bg-zinc-800/60 border border-zinc-700 rounded-2xl p-4 space-y-3">
         <p className="text-xs font-black uppercase tracking-widest text-zinc-500">Generar QR para nueva sesión</p>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3">
           <div>
-            <label className={LABEL_STYLE}>Nombre de mesa *</label>
-            <input className={INPUT_STYLE} placeholder="Mesa 1" value={form.tableLabel}
-              onChange={e => setForm(p => ({ ...p, tableLabel: e.target.value }))} />
-          </div>
-          <div>
-            <label className={LABEL_STYLE}>Zona / Sala</label>
-            <input className={INPUT_STYLE} placeholder="Terraza" value={form.zoneLabel}
-              onChange={e => setForm(p => ({ ...p, zoneLabel: e.target.value }))} />
+            <label className={LABEL_STYLE}>Mesa *</label>
+            <select className={INPUT_STYLE} value={tableId} onChange={e => setTableId(e.target.value)}>
+              <option value="">Selecciona una mesa</option>
+              {tables.map(table => <option key={table.id} value={table.id}>{table.name}</option>)}
+            </select>
           </div>
         </div>
-        <button onClick={createSession} disabled={creating || !form.tableLabel.trim()}
+        <button onClick={createSession} disabled={creating || !tableId}
           className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-sm disabled:opacity-50 transition-colors">
           <QrCode size={16} /> {creating ? 'Generando…' : 'Generar QR'}
         </button>
       </div>
+
+      {generatedQr && (
+        <div className="bg-zinc-800 rounded-2xl p-4 flex gap-4 items-center">
+          <img
+            src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(generatedQr.url)}`}
+            alt="QR firmado"
+            width={96}
+            height={96}
+            className="rounded-lg bg-white p-1"
+          />
+          <div className="space-y-2">
+            <p className="text-sm font-bold">QR firmado listo para imprimir</p>
+            <p className="text-xs text-zinc-400">Válido hasta {new Date(generatedQr.expiresAt).toLocaleDateString('es-ES')}</p>
+            <button onClick={() => navigator.clipboard.writeText(generatedQr.url)}
+              className="text-xs px-3 py-2 rounded-lg bg-zinc-700 hover:bg-zinc-600">
+              Copiar URL firmada
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Sessions list */}
       <div className="space-y-3">

@@ -435,20 +435,6 @@ export interface AdminProduct {
   modifierGroups: { productId: string; groupId: string; groupName: string; required: boolean }[];
 }
 
-export interface PublicBranding {
-  nombreComercial: string;
-  tagline: string;
-  heroImageUrl: string;
-  heroVideoUrl: string;
-  address: string;
-  phone: string;
-  foundedYear?: number | null;
-  openingHours?: Record<string, { open: string; close: string; open2?: string; close2?: string }> | null;
-  cardLayout: string;
-  accentColor: string;
-  logoUrl: string;
-}
-
 export interface Subcategory {
   id: string;
   categoryId: string;
@@ -543,20 +529,6 @@ export interface UpdateProductInput {
   isVegano?: boolean;
   isSinGluten?: boolean;
   isPicante?: boolean;
-}
-
-export interface BrandingInput {
-  nombreComercial?: string;
-  tagline?: string;
-  heroImageUrl?: string;
-  heroVideoUrl?: string;
-  address?: string;
-  phone?: string;
-  foundedYear?: number | null;
-  openingHours?: Record<string, { open: string; close: string; open2?: string; close2?: string }> | null;
-  cardLayout?: string;
-  accentColor?: string;
-  logoUrl?: string;
 }
 
 export interface CreateProductFormatFullInput {
@@ -1639,7 +1611,6 @@ export type CashSessionHistoryItem = {
   blindClose: boolean;
   employeeName?: string | null;
 };
-
 
 
 // ─── Subrecipes ───────────────────────────────────────────────────────────────

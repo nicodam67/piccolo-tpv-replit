@@ -4,6 +4,10 @@
   "private": true,
   "scripts": {
     "codegen": "orval --config ./orval.config.ts && pnpm -w run typecheck:libs",
+    "codegen:phase1": "orval --config ./orval.phase1.config.ts",
+    "codegen:documents": "orval --config ./orval.documents.config.ts",
+    "codegen:reservations": "orval --config ./orval.reservations.config.ts",
+    "codegen:branding": "orval --config ./orval.branding.config.ts",
     "codegen:stamp": "sha256sum ../../lib/api-spec/openapi.yaml | awk '{print $1}' > .codegen-stamp && echo 'Stamp updated'"
   },
   "devDependencies": {
