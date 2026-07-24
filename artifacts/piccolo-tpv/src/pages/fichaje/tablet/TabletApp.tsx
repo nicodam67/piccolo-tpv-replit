@@ -87,15 +87,17 @@ export default function TabletApp() {
     if (!token) { setDeviceStatus("unregistered"); return; }
     setDeviceToken(token);
 
-    fetch(`${BASE}/api/tablet/device/${token}`)
+    fetch(`${BASE}/api/tablet/device`, {
+      headers: { "X-Device-Token": token },
+    })
       .then(r => r.ok ? r.json() : null)
       .then(data => {
         if (!data) { localStorage.removeItem(TOKEN_KEY); setDeviceStatus("unregistered"); return; }
         if (data.status === "revoked") { setDeviceStatus("revoked"); return; }
         setDeviceStatus("ok");
-        fetch(`${BASE}/api/tablet/device/${token}/ping`, {
+        fetch(`${BASE}/api/tablet/device/ping`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", "X-Device-Token": token },
           body: JSON.stringify({ appVersion: APP_VERSION }),
         }).catch(() => {});
       })
@@ -146,7 +148,8 @@ export default function TabletApp() {
     setSelectedEmployee(emp);
     try {
       const r = await fetch(
-        `${BASE}/api/fichaje/public/my-status/${emp.id}?deviceToken=${encodeURIComponent(deviceToken ?? "")}`,
+        `${BASE}/api/fichaje/public/my-status/${emp.id}`,
+        { headers: { "X-Device-Token": deviceToken ?? "" } },
       );
       if (r.ok) setClockStatus(await r.json());
       else setClockStatus({ status: "out", record: null, activeBreak: null });
@@ -176,7 +179,8 @@ export default function TabletApp() {
     if (r.ok && data.ok) {
       setClockProofs(data.proofs ?? null);
       const sr = await fetch(
-        `${BASE}/api/fichaje/public/my-status/${selectedEmployee.id}?deviceToken=${encodeURIComponent(deviceToken)}`,
+        `${BASE}/api/fichaje/public/my-status/${selectedEmployee.id}`,
+        { headers: { "X-Device-Token": deviceToken } },
       );
       if (sr.ok) setClockStatus(await sr.json());
       setScreen("status");

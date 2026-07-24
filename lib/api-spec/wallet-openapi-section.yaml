@@ -1,0 +1,248 @@
+# phase51-wallet — inventory of wallet/gift-card paths (tagged in openapi.yaml)
+  /crm/gift-cards:
+    get:
+      operationId: getCrmGiftCards
+      tags: [wallet, phase51-wallet]
+      summary: List gift cards
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [manager, admin]
+      parameters:
+        - { in: query, name: q, schema: { type: string }, description: Filter by card code }
+      responses:
+        "200":
+          description: Gift cards
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/CrmGiftCard" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+    post:
+      operationId: createCrmGiftCard
+      tags: [wallet, phase51-wallet]
+      summary: Create a new gift card
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [manager, admin]
+      x-idempotent: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateCrmGiftCardInput" }
+      responses:
+        "201":
+          description: Created gift card
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CrmGiftCard" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /crm/gift-cards/lookup:
+    get:
+      operationId: lookupCrmGiftCard
+      tags: [wallet, phase51-wallet]
+      summary: Look up a gift card by code (POS balance check)
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [waiter, cashier, manager, admin]
+      parameters:
+        - { in: query, name: codigo, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Gift card found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CrmGiftCard" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /crm/gift-cards/pay:
+    post:
+      operationId: payWithCrmGiftCard
+      tags: [wallet, phase51-wallet]
+      summary: Pay with a gift card at POS
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [waiter, cashier, manager, admin]
+      x-idempotent: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PayWithCrmGiftCardInput" }
+      responses:
+        "200":
+          description: Payment applied
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PayWithCrmGiftCardResult" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /crm/gift-cards/{id}:
+    get:
+      operationId: getCrmGiftCard
+      tags: [wallet, phase51-wallet]
+      summary: Get gift card detail with transaction history
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [manager, admin]
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200":
+          description: Gift card and transactions
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CrmGiftCardDetail" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /crm/gift-cards/{id}/recharge:
+    post:
+      operationId: rechargeCrmGiftCard
+      tags: [wallet, phase51-wallet]
+      summary: Recharge a gift card balance
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [manager, admin]
+      x-idempotent: false
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RechargeCrmGiftCardInput" }
+      responses:
+        "200":
+          description: Updated gift card
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CrmGiftCard" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /crm/gift-cards/{id}/block:
+    post:
+      operationId: blockCrmGiftCard
+      tags: [wallet, phase51-wallet]
+      summary: Toggle block/unblock on a gift card
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [manager, admin]
+      x-idempotent: false
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200":
+          description: Updated gift card state
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CrmGiftCard" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+  /crm/clients/{id}/wallet:
+    get:
+      operationId: getCrmClientWallet
+      tags: [wallet, phase51-wallet]
+      summary: Get client wallet with recent transactions
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [waiter, cashier, manager, admin]
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200":
+          description: Wallet detail
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CrmWalletDetail" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /crm/clients/{id}/wallet/add:
+    post:
+      operationId: addCrmWalletBalance
+      tags: [wallet, phase51-wallet]
+      summary: Add balance to a client wallet
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [manager, admin]
+      x-idempotent: false
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WalletAddInput" }
+      responses:
+        "200":
+          description: Updated wallet
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CrmWallet" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /crm/clients/{id}/wallet/pay:
+    post:
+      operationId: payWithCrmWallet
+      tags: [wallet, phase51-wallet]
+      summary: Pay using client wallet balance
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [waiter, cashier, manager, admin]
+      x-idempotent: false
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WalletPayInput" }
+      responses:
+        "200":
+          description: Payment result
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WalletPayResult" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /crm/clients/{id}/wallet/adjust:
+    post:
+      operationId: adjustCrmWallet
+      tags: [wallet, phase51-wallet]
+      summary: Manually adjust client wallet balance (admin)
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      x-idempotent: false
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WalletAdjustInput" }
+      responses:
+        "200":
+          description: Updated wallet
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CrmWallet" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }

@@ -1,0 +1,204 @@
+# phase51-wallet — schemas referenced by wallet/gift-card operations
+    CrmGiftCard:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        codigo: { type: string }
+        saldoInicial: { type: string }
+        saldoActual: { type: string }
+        clientId: { type: string, format: uuid, nullable: true }
+        estado:
+          type: string
+          enum: [activa, bloqueada, consumida, caducada]
+        fechaCaducidad: { type: string, format: date-time, nullable: true }
+        notas: { type: string }
+        empleadoId: { type: string, format: uuid, nullable: true }
+        empleadoNombre: { type: string }
+        beneficiarioEmail: { type: string }
+        beneficiarioNombre: { type: string }
+        mensajePersonalizado: { type: string }
+        tipoEntrega: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+      required:
+        - id
+        - codigo
+        - saldoInicial
+        - saldoActual
+        - estado
+        - notas
+        - empleadoNombre
+        - beneficiarioEmail
+        - beneficiarioNombre
+        - mensajePersonalizado
+        - tipoEntrega
+        - createdAt
+        - updatedAt
+
+    CrmGiftCardTransaction:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        giftCardId: { type: string, format: uuid }
+        orderId: { type: string, format: uuid, nullable: true }
+        tipo:
+          type: string
+          enum: [emision, recarga, pago, bloqueo, desbloqueo, caducidad, devolucion]
+        importe: { type: string }
+        saldoAnterior: { type: string }
+        saldoPosterior: { type: string }
+        empleadoId: { type: string, format: uuid, nullable: true }
+        empleadoNombre: { type: string }
+        notas: { type: string }
+        createdAt: { type: string, format: date-time }
+      required:
+        - id
+        - giftCardId
+        - tipo
+        - importe
+        - saldoAnterior
+        - saldoPosterior
+        - empleadoNombre
+        - notas
+        - createdAt
+
+    CrmGiftCardDetail:
+      type: object
+      properties:
+        card: { $ref: "#/components/schemas/CrmGiftCard" }
+        transactions:
+          type: array
+          items: { $ref: "#/components/schemas/CrmGiftCardTransaction" }
+      required: [card, transactions]
+
+    CreateCrmGiftCardInput:
+      type: object
+      properties:
+        saldo: { type: string }
+        clientId: { type: string, format: uuid }
+        fechaCaducidad: { type: string, format: date-time }
+        notas: { type: string }
+        beneficiarioEmail: { type: string }
+        beneficiarioNombre: { type: string }
+        mensajePersonalizado: { type: string }
+        tipoEntrega: { type: string }
+      required: [saldo]
+
+    RechargeCrmGiftCardInput:
+      type: object
+      properties:
+        importe: { type: string }
+      required: [importe]
+
+    PayWithCrmGiftCardInput:
+      type: object
+      properties:
+        codigo: { type: string }
+        importe: { type: string }
+        orderId: { type: string, format: uuid }
+      required: [codigo, importe]
+
+    PayWithCrmGiftCardResult:
+      type: object
+      properties:
+        card: { $ref: "#/components/schemas/CrmGiftCard" }
+        pagado: { type: string }
+        saldoRestante: { type: string }
+      required: [card, pagado, saldoRestante]
+    CrmWallet:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        clientId: { type: string, format: uuid }
+        saldoReal: { type: string }
+        saldoPromo: { type: string }
+        saldoCompensacion: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+      required:
+        - id
+        - clientId
+        - saldoReal
+        - saldoPromo
+        - saldoCompensacion
+        - createdAt
+        - updatedAt
+
+    CrmWalletTransaction:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        clientId: { type: string, format: uuid }
+        tipo:
+          type: string
+          enum: [recarga, pago, devolucion, compensacion, promo, ajuste, caducidad]
+        subtipo: { type: string }
+        importe: { type: string }
+        saldoAnterior: { type: string }
+        saldoPosterior: { type: string }
+        descripcion: { type: string }
+        orderId: { type: string, format: uuid, nullable: true }
+        empleadoId: { type: string, format: uuid, nullable: true }
+        empleadoNombre: { type: string }
+        createdAt: { type: string, format: date-time }
+      required:
+        - id
+        - clientId
+        - tipo
+        - subtipo
+        - importe
+        - saldoAnterior
+        - saldoPosterior
+        - descripcion
+        - empleadoNombre
+        - createdAt
+
+    CrmWalletDetail:
+      type: object
+      properties:
+        wallet: { $ref: "#/components/schemas/CrmWallet" }
+        transactions:
+          type: array
+          items: { $ref: "#/components/schemas/CrmWalletTransaction" }
+      required: [wallet, transactions]
+
+    WalletAddInput:
+      type: object
+      properties:
+        importe: { type: string }
+        subtipo:
+          type: string
+          enum: [real, promo, compensacion]
+          default: promo
+        descripcion: { type: string }
+      required: [importe]
+
+    WalletPayInput:
+      type: object
+      properties:
+        importe: { type: string }
+        orderId: { type: string, format: uuid }
+        subtipo:
+          type: string
+          enum: [real, promo, compensacion]
+          default: promo
+      required: [importe]
+
+    WalletPayResult:
+      type: object
+      properties:
+        wallet: { $ref: "#/components/schemas/CrmWallet" }
+        pagado: { type: string }
+      required: [wallet, pagado]
+
+    WalletAdjustInput:
+      type: object
+      properties:
+        importe: { type: string }
+        subtipo:
+          type: string
+          enum: [real, promo, compensacion]
+          default: promo
+        descripcion: { type: string }
+      required: [importe]
+

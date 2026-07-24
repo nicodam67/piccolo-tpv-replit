@@ -91,9 +91,19 @@ function ConfirmModal({ order, onClose, onDone }: { order: OnlineOrder; onClose:
   const handle = async () => {
     setLoading(true);
     try {
-      await apiJSON(`/api/online-orders/${order.id}/confirm`, 'POST', {
+      const confirmed = await apiJSON(`/api/online-orders/${order.id}/confirm`, 'POST', {
         estimatedReadyAt: readyAt ? new Date(readyAt).toISOString() : undefined,
-      });
+      }) as { requiresKitchenSend?: boolean };
+      if (confirmed.requiresKitchenSend) {
+        await api(`/api/orders/${order.id}/send`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Idempotency-Key': `online-confirm:${order.id}`,
+          },
+          body: JSON.stringify({}),
+        });
+      }
       toast.success(`Pedido ${order.orderNumber} confirmado`);
       onDone();
       onClose();
