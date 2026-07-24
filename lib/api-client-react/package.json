@@ -14,7 +14,8 @@
     "./delivery": "./src/delivery-compat.ts",
     "./timeclock": "./src/timeclock-compat.ts",
     "./catalog-admin-generated": "./src/catalog-admin-generated/index.ts",
-    "./catalog-admin": "./src/catalog-admin-compat.ts"
+    "./catalog-admin": "./src/catalog-admin-compat.ts",
+    "./cash-payments-generated": "./src/cash-payments-generated/index.ts"
   },
   "dependencies": {
     "@tanstack/react-query": "catalog:"

@@ -13,6 +13,7 @@
     "codegen:crm:check": "node scripts/check-crm-codegen.mjs",
     "codegen:wallet:check": "node scripts/check-wallet-codegen.mjs",
     "codegen:catalog-admin:check": "node scripts/check-catalog-admin-codegen.mjs",
+    "codegen:cash-payments:check": "node scripts/check-cash-payments-codegen.mjs",
     "migrate:phase1-hooks": "node scripts/migrate-floor-generated-hooks.mjs",
     "migrate:documents-hooks": "node scripts/migrate-documents-generated-hooks.mjs",
     "migrate:reservations-hooks": "node scripts/migrate-reservations-generated-hooks.mjs",
