@@ -5,7 +5,7 @@ import request from "supertest";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import OpenAPIResponseValidator from "openapi-response-validator";
-import { db, employeesTable } from "@workspace/db";
+import { db, employeesTable, fichajeSettingsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import app from "../app";
 
@@ -104,6 +104,10 @@ describe("timeclock OpenAPI metadata", () => {
 
 describeWithDatabase("timeclock OpenAPI integration contract", () => {
   beforeAll(async () => {
+    await db
+      .insert(fichajeSettingsTable)
+      .values({ id: 1 })
+      .onConflictDoNothing();
     await db.insert(employeesTable).values({
       id: employeeId, name: "Timeclock Contract Admin", role: "admin", active: true,
     }).onConflictDoNothing();
