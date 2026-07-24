@@ -36,6 +36,8 @@ interface SimTransaction {
 
 export class SimulatorAdapter implements CashMachineAdapter {
   private transactions = new Map<string, SimTransaction>();
+  private transactionsByReference = new Map<string, string>();
+  private refundedReferences = new Set<string>();
   private connected = true;
   private _nextScenario = "normal";
 
@@ -46,6 +48,8 @@ export class SimulatorAdapter implements CashMachineAdapter {
 
   reset() {
     this.transactions.clear();
+    this.transactionsByReference.clear();
+    this.refundedReferences.clear();
     this._nextScenario = "normal";
     this.connected = true;
   }
@@ -84,6 +88,13 @@ export class SimulatorAdapter implements CashMachineAdapter {
     if (!this.connected || this._nextScenario === "disconnected") {
       throw new Error("Simulator: device offline");
     }
+    const existingId = this.transactionsByReference.get(reference);
+    if (existingId) {
+      return {
+        deviceTransactionId: existingId,
+        status: this._getTxStatus(this.transactions.get(existingId)!),
+      };
+    }
     const deviceTransactionId = `SIM-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const scenario = process.env["CASH_MACHINE_SCENARIO"] ?? this._nextScenario;
     this._nextScenario = "normal"; // reset after use
@@ -95,6 +106,7 @@ export class SimulatorAdapter implements CashMachineAdapter {
       callCount: 0,
       cancelled: false,
     });
+    this.transactionsByReference.set(reference, deviceTransactionId);
 
     return { deviceTransactionId, status: "iniciando" };
   }
@@ -136,9 +148,11 @@ export class SimulatorAdapter implements CashMachineAdapter {
   }
 
   async refund(amount: string, reference: string): Promise<RefundResult> {
+    if (this.refundedReferences.has(reference)) return { status: "completada" };
     if (this._nextScenario === "refund_error") {
       return { status: "error", deviceError: "Simulator: refund mechanism jammed" };
     }
+    this.refundedReferences.add(reference);
     return { status: "completada" };
   }
 

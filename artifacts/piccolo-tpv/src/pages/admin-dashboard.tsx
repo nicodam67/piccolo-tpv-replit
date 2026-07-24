@@ -21,8 +21,8 @@ import {
   Zap,
   UtensilsCrossed as ForkIcon,
 } from 'lucide-react';
-import { useGetDashboardSummary, getGetDashboardSummaryQueryKey, customFetch } from '@workspace/api-client-react';
-import { useQuery } from '@tanstack/react-query';
+import { useGetDashboardSummary, getGetDashboardSummaryQueryKey } from '@workspace/api-client-react';
+import { useGetReservations, getGetReservationsQueryKey } from '@workspace/api-client-react/reservations';
 
 // ─── Module definitions ───────────────────────────────────────────────────────
 interface ModuleCard {
@@ -243,10 +243,8 @@ export default function AdminDashboard() {
 
   // Today's reservations count for the badge on Operaciones
   const todayDate = now.toISOString().slice(0, 10);
-  const { data: todayReservations = [] } = useQuery<{ id: string; status: string }[]>({
-    queryKey: ['reservations-today-badge', todayDate],
-    queryFn: () => customFetch(`/api/reservations?date=${todayDate}`),
-    refetchInterval: 60000,
+  const { data: todayReservations = [] } = useGetReservations({ date: todayDate }, {
+    query: { queryKey: getGetReservationsQueryKey({ date: todayDate }), refetchInterval: 60000 },
   });
   const reservasBadge = todayReservations.filter((r: { status: string }) => r.status !== 'cancelled' && r.status !== 'noshow').length;
 
