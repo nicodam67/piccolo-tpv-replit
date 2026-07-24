@@ -30,6 +30,8 @@ tags:
     description: Business configuration
   - name: documents
     description: Document templates, invoices, printers, and audit log
+  - name: branding
+    description: Public and admin branding for QR carta
 
 paths:
   /healthz:
@@ -585,6 +587,11 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Table has an active order
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
 
   /tables:
     get:
@@ -691,7 +698,7 @@ paths:
     post:
       operationId: closeTable
       tags: [tables]
-      summary: Close (free) an occupied table
+      summary: Move a service table to pending cleaning
       security:
         - bearerAuth: []
       parameters:
@@ -700,9 +707,18 @@ paths:
           required: true
           schema:
             type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                force: { type: boolean, default: false }
+                reason: { type: string, minLength: 3 }
       responses:
         "200":
-          description: Table closed
+          description: Table in pending-cleaning state
           content:
             application/json:
               schema:
@@ -713,12 +729,22 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing force-close permission
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
         "409":
           description: Table not occupied
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: A mandatory force-close reason was not supplied
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
 
   /tables/{tableId}/order:
     get:
@@ -866,10 +892,53 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
 
   /order-items/{itemId}:
+    patch:
+      operationId: updateOrderItem
+      tags: [orders, phase1-floor]
+      summary: Update quantity, notes, allergy or invitation flag on a line item
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: itemId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateOrderItemInput"
+      responses:
+        "200":
+          description: Item updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderItem"
+        "400":
+          description: Cannot change quantity of sent item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Item not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
     delete:
       operationId: deleteOrderItem
       tags: [orders]
-      summary: Delete a draft order item
+      summary: Delete a draft item or cancel a sent item with stock reversal
       security:
         - bearerAuth: []
       parameters:
@@ -880,7 +949,7 @@ paths:
             type: string
       responses:
         "204":
-          description: Item deleted
+          description: Draft item deleted or sent item cancelled
         "400":
           description: Item not in draft status
           content:
@@ -913,6 +982,11 @@ paths:
           required: true
           schema:
             type: string
+        - name: Idempotency-Key
+          in: header
+          required: false
+          description: Replays the stored successful response when the same user and key retry.
+          schema: { type: string, minLength: 1 }
       responses:
         "200":
           description: Order sent
@@ -932,6 +1006,16 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Order is already in billing or another conflicting state
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "503":
+          description: Required print-only dispatch could not be persisted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
 
   /kds/{zone}:
     get:
@@ -946,7 +1030,7 @@ paths:
           required: true
           schema:
             type: string
-            enum: [cocina, pizza, ensalada, barra, pase]
+            enum: [cocina, pizza, ensalada, barra, pase, sin_partida]
       responses:
         "200":
           description: Kitchen tasks for the zone
@@ -962,11 +1046,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "403": { $ref: "#/components/responses/Forbidden" }
 
   /kitchen-tasks/{taskId}/status:
     patch:
       operationId: updateKitchenTaskStatus
-      tags: [kds]
+      tags: [kds, phase1-floor]
       summary: Update status of a kitchen task
       security:
         - bearerAuth: []
@@ -988,7 +1073,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/KitchenTask"
+                $ref: "#/components/schemas/KitchenTaskRecord"
         "400":
           description: Invalid status
           content:
@@ -1001,6 +1086,13 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422":
+          description: Transition is not allowed by the preparation-zone state machine
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ValidationError" }
 
   /products/{productId}/modifiers:
     get:
@@ -1129,7 +1221,7 @@ paths:
   /orders/{orderId}:
     patch:
       operationId: updateOrder
-      tags: [orders]
+      tags: [orders, phase1-floor]
       summary: Update order guest count, notes or status
       security:
         - bearerAuth: []
@@ -1165,55 +1257,10 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
-  /order-items/{itemId}:
-    patch:
-      operationId: updateOrderItem
-      tags: [orders]
-      summary: Update quantity, notes, allergy or invitation flag on a line item
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: itemId
-          in: path
-          required: true
-          schema:
-            type: string
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/UpdateOrderItemInput"
-      responses:
-        "200":
-          description: Item updated
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/OrderItem"
-        "400":
-          description: Cannot change quantity of sent item
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "404":
-          description: Item not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "401":
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-
   /order-items/{itemId}/duplicate:
     post:
       operationId: duplicateOrderItem
-      tags: [orders]
+      tags: [orders, phase1-floor]
       summary: Duplicate a line item (copies product, format, modifiers)
       security:
         - bearerAuth: []
@@ -1246,7 +1293,7 @@ paths:
   /orders/{orderId}/audit:
     get:
       operationId: getOrderAudit
-      tags: [orders]
+      tags: [orders, phase1-floor]
       summary: Get audit log entries for an order
       security:
         - bearerAuth: []
@@ -1747,7 +1794,8 @@ paths:
   /documents/templates:
     get:
       operationId: getDocumentTemplates
-      tags: [documents]
+      tags: [documents, phase43-documents]
+      x-roles: [admin]
       summary: List document templates (admin)
       security:
         - bearerAuth: []
@@ -1765,9 +1813,13 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/DocumentTemplate"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
     post:
       operationId: createDocumentTemplate
-      tags: [documents]
+      tags: [documents, phase43-documents]
+      x-roles: [admin]
       summary: Create a document template (admin)
       security:
         - bearerAuth: []
@@ -1784,11 +1836,16 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DocumentTemplate"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
 
   /documents/templates/{id}:
     put:
       operationId: updateDocumentTemplate
-      tags: [documents]
+      tags: [documents, phase43-documents]
+      x-roles: [admin]
       summary: Update a document template (admin)
       security:
         - bearerAuth: []
@@ -1811,9 +1868,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DocumentTemplate"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
     delete:
       operationId: deleteDocumentTemplate
-      tags: [documents]
+      tags: [documents, phase43-documents]
+      x-roles: [admin]
       summary: Soft-delete a template (admin, cannot delete active)
       security:
         - bearerAuth: []
@@ -1834,11 +1896,17 @@ paths:
                   ok:
                     type: boolean
                 required: [ok]
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
 
   /documents/templates/{id}/activate:
     post:
       operationId: activateDocumentTemplate
-      tags: [documents]
+      tags: [documents, phase43-documents]
+      x-roles: [admin]
       summary: Set template as default (admin)
       security:
         - bearerAuth: []
@@ -1855,11 +1923,16 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DocumentTemplate"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
 
   /documents/templates/{id}/duplicate:
     post:
       operationId: duplicateDocumentTemplate
-      tags: [documents]
+      tags: [documents, phase43-documents]
+      x-roles: [admin]
       summary: Clone a template (admin)
       security:
         - bearerAuth: []
@@ -1876,11 +1949,16 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DocumentTemplate"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
 
   /documents/printers:
     get:
       operationId: getPrinterConfigs
-      tags: [documents]
+      tags: [documents, phase43-documents]
+      x-roles: [admin]
       summary: List printer configurations (admin)
       security:
         - bearerAuth: []
@@ -1893,9 +1971,13 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/PrinterConfig"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
     post:
       operationId: createPrinterConfig
-      tags: [documents]
+      tags: [documents, phase43-documents]
+      x-roles: [admin]
       summary: Create printer configuration (admin)
       security:
         - bearerAuth: []
@@ -1912,11 +1994,16 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PrinterConfig"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
 
   /documents/printers/{id}:
     put:
       operationId: updatePrinterConfig
-      tags: [documents]
+      tags: [documents, phase43-documents]
+      x-roles: [admin]
       summary: Update printer configuration (admin)
       security:
         - bearerAuth: []
@@ -1931,7 +2018,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/CreatePrinterConfigInput"
+              $ref: "#/components/schemas/UpdatePrinterConfigInput"
       responses:
         "200":
           description: Updated printer config
@@ -1939,9 +2026,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PrinterConfig"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
     delete:
       operationId: deletePrinterConfig
-      tags: [documents]
+      tags: [documents, phase43-documents]
+      x-roles: [admin]
       summary: Deactivate printer (admin)
       security:
         - bearerAuth: []
@@ -1962,11 +2054,15 @@ paths:
                   ok:
                     type: boolean
                 required: [ok]
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
 
   /documents/invoices:
     post:
       operationId: createInvoice
-      tags: [documents]
+      tags: [documents, phase43-documents]
+      x-roles: [admin, manager, encargado]
       summary: Issue a full fiscal invoice for an order
       security:
         - bearerAuth: []
@@ -1983,12 +2079,18 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Invoice"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
 
   /documents/invoices/{id}:
     get:
       operationId: getInvoice
-      tags: [documents]
-      summary: Get invoice by ID (admin)
+      tags: [documents, phase43-documents]
+      summary: Get invoice by ID
+      x-roles: [admin, manager]
       security:
         - bearerAuth: []
       parameters:
@@ -2020,11 +2122,16 @@ paths:
                           type: string
                       required: [productName, quantity, unitPrice]
                 required: [invoice, items]
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
 
   /documents/invoices/{id}/rectify:
     post:
       operationId: rectifyInvoice
-      tags: [documents]
+      tags: [documents, phase43-documents]
+      x-roles: [admin]
       summary: Create a rectificativa (admin)
       security:
         - bearerAuth: []
@@ -2053,11 +2160,18 @@ paths:
                   originalId:
                     type: string
                 required: [rectificativa, originalId]
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
 
   /documents/clients:
     get:
       operationId: getClients
-      tags: [documents]
+      tags: [documents, phase43-documents]
+      x-roles: [admin, manager]
       summary: List saved client data (admin/manager)
       security:
         - bearerAuth: []
@@ -2070,9 +2184,13 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Client"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
     post:
       operationId: createClient
-      tags: [documents]
+      tags: [documents, phase43-documents]
+      x-roles: [admin, manager]
       summary: Save client fiscal data (admin/manager)
       security:
         - bearerAuth: []
@@ -2089,11 +2207,16 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Client"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
 
   /documents/clients/{id}:
     put:
       operationId: updateClient
-      tags: [documents]
+      tags: [documents, phase43-documents]
+      x-roles: [admin, manager]
       summary: Update client fiscal data (admin/manager)
       security:
         - bearerAuth: []
@@ -2108,7 +2231,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/CreateClientInput"
+              $ref: "#/components/schemas/UpdateClientInput"
       responses:
         "200":
           description: Updated client
@@ -2116,11 +2239,16 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Client"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
 
   /documents/reprints:
     post:
       operationId: createReprint
-      tags: [documents]
+      tags: [documents, phase43-documents]
+      x-roles: [authenticated]
       summary: Record a document reprint (any authenticated user)
       security:
         - bearerAuth: []
@@ -2136,22 +2264,16 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  id:
-                    type: string
-                  documentId:
-                    type: string
-                  documentType:
-                    type: string
-                  createdAt:
-                    type: string
-                required: [id, documentId, documentType, createdAt]
+                $ref: "#/components/schemas/DocumentReprint"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
 
   /documents/audit:
     get:
       operationId: getDocumentAuditLog
-      tags: [documents]
+      tags: [documents, phase43-documents]
+      x-roles: [admin]
       summary: Paginated document audit log (admin)
       security:
         - bearerAuth: []
@@ -2160,10 +2282,12 @@ paths:
           name: page
           schema:
             type: integer
+            default: 1
         - in: query
           name: limit
           schema:
             type: integer
+            default: 50
       responses:
         "200":
           description: Audit log page
@@ -2171,6 +2295,684 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DocumentAuditLog"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /reservations:
+    get:
+      operationId: getReservations
+      tags: [reservations, phase45-reservations]
+      summary: List reservations ordered by date and time
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [authenticated]
+      parameters:
+        - { in: query, name: date, schema: { type: string } }
+        - { in: query, name: from, schema: { type: string } }
+        - { in: query, name: to, schema: { type: string } }
+        - { in: query, name: status, schema: { type: string }, description: Unknown values are ignored by the current handler. }
+        - { in: query, name: clientId, schema: { type: string } }
+      responses:
+        "200":
+          description: Reservations with optional CRM and table joins
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/ReservationListItem" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+    post:
+      operationId: createReservation
+      tags: [reservations, phase45-reservations]
+      summary: Create a pending reservation
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [authenticated]
+      x-idempotent: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateReservationInput" }
+      responses:
+        "201":
+          description: Created reservation
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Reservation" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /reservations/suggest-table:
+    get:
+      operationId: suggestReservationTable
+      tags: [reservations, phase45-reservations]
+      summary: Suggest up to five available tables for a reservation time window
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [authenticated]
+      parameters:
+        - { in: query, name: fecha, required: true, schema: { type: string } }
+        - { in: query, name: hora, required: true, schema: { type: string } }
+        - { in: query, name: duracion, schema: { type: integer, default: 90 } }
+        - { in: query, name: personas, schema: { type: integer, default: 2 } }
+        - { in: query, name: zona, schema: { type: string } }
+      responses:
+        "200":
+          description: Ranked table suggestions
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuggestTableResponse" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /reservations/{id}:
+    get:
+      operationId: getReservation
+      tags: [reservations, phase45-reservations]
+      summary: Get a reservation with its status history
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [authenticated]
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200":
+          description: Reservation detail
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ReservationDetail" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+    patch:
+      operationId: patchReservation
+      tags: [reservations, phase45-reservations]
+      summary: Partially update a reservation and optionally its status
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [authenticated]
+      x-idempotent: false
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateReservationInput" }
+      responses:
+        "200":
+          description: Updated reservation
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Reservation" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+    delete:
+      operationId: deleteReservation
+      tags: [reservations, phase45-reservations]
+      summary: Delete a reservation
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [manager, admin]
+      x-idempotent: false
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "204": { description: Reservation deleted }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /reservations/{id}/arrive:
+    post:
+      operationId: arriveReservation
+      tags: [reservations, phase45-reservations]
+      summary: Mark a reservation as arrived and optionally open its assigned table
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [authenticated]
+      x-idempotent: false
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ArriveReservationInput" }
+      responses:
+        "200":
+          description: Arrival result and order prefill
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ArriveReservationResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /reservations/{id}/history:
+    get:
+      operationId: getReservationHistory
+      tags: [reservations, phase45-reservations]
+      summary: Get reservation status transitions
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [authenticated]
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200":
+          description: Status history ordered by change time
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/ReservationStatusHistory" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /public/branding:
+    get:
+      operationId: getPublicBranding
+      tags: [branding, phase47-branding]
+      summary: Get public QR carta branding (no authentication required)
+      description: Returns branding for the public carta. In production, responds with 503 when business configuration has not been seeded.
+      responses:
+        "200":
+          description: Public branding payload with legacy compatibility fields
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PublicBrandingResponse" }
+        "503":
+          description: QR carta is not configured in production
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/QrNotConfiguredError" }
+
+  /admin/branding:
+    get:
+      operationId: getAdminBranding
+      tags: [branding, phase47-branding]
+      summary: Get admin branding settings for the legacy carta editor
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      responses:
+        "200":
+          description: Admin branding settings
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminBranding" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+    patch:
+      operationId: patchAdminBranding
+      tags: [branding, phase47-branding]
+      summary: Partially update admin branding settings
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      x-idempotent: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BrandingInput" }
+      responses:
+        "200":
+          description: Updated admin branding settings
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminBranding" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /admin/qr-branding:
+    get:
+      operationId: getAdminQrBranding
+      tags: [branding, phase47-branding]
+      summary: Get full QR branding settings for the admin editor
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      responses:
+        "200":
+          description: Full QR branding document
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/QrBranding" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+    put:
+      operationId: putAdminQrBranding
+      tags: [branding, phase47-branding]
+      summary: Replace QR branding settings
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      x-idempotent: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateQrBrandingInput" }
+      responses:
+        "200":
+          description: Branding saved successfully
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/QrBrandingOkResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /tables/occupation-summary:
+    get:
+      operationId: getOccupationSummary
+      tags: [tables, phase1-floor]
+      summary: Get current table occupation counters
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Aggregated occupation and reservation counters
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OccupationSummary" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /tables/{tableId}/history:
+    get:
+      operationId: getTableHistory
+      tags: [tables, phase1-floor]
+      summary: Get the chronological event history for a table
+      security: [{ bearerAuth: [] }]
+      x-roles: [manager, admin]
+      parameters:
+        - $ref: "#/components/parameters/TableId"
+      responses:
+        "200":
+          description: Table events ordered by creation time
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/TableEvent" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/alert-config:
+    get:
+      operationId: getAlertConfig
+      tags: [tables, phase1-floor]
+      summary: Get operational table alert thresholds
+      security: [{ bearerAuth: [] }]
+      x-roles: [manager, admin]
+      responses:
+        "200":
+          description: Existing or default-initialized alert configuration
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AlertConfig" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    patch:
+      operationId: patchAlertConfig
+      tags: [tables, phase1-floor]
+      summary: Update positive table alert thresholds
+      security: [{ bearerAuth: [] }]
+      x-roles: [admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateAlertConfigInput" }
+            example: { reservaProximaMin: 30, sinComandaMin: 15 }
+      responses:
+        "200":
+          description: Updated alert configuration
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AlertConfig" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /tables/{tableId}/clean:
+    post:
+      operationId: cleanTable
+      tags: [tables, phase1-floor]
+      summary: Mark a pending-cleaning table as free
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/TableId"
+      responses:
+        "200":
+          description: Freed table
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Table" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /tables/{tableId}/block:
+    post:
+      operationId: blockTable
+      tags: [tables, phase1-floor]
+      summary: Toggle a table between blocked and free
+      security: [{ bearerAuth: [] }]
+      x-roles: [manager, admin]
+      parameters:
+        - $ref: "#/components/parameters/TableId"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason: { type: string }
+            example: { reason: Mantenimiento }
+      responses:
+        "200":
+          description: Table after the toggle
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Table" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /tables/{tableId}/transfer:
+    post:
+      operationId: transferTable
+      tags: [tables, orders, phase1-floor]
+      summary: Move an open order to a free table atomically
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/TableId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TableIdInput" }
+      responses:
+        "200":
+          description: Transfer result
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TableTransferResult" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /tables/merge:
+    post:
+      operationId: mergeTables
+      tags: [tables, orders, phase1-floor]
+      summary: Merge at least two tables and consolidate their open orders
+      security: [{ bearerAuth: [] }]
+      x-roles: [manager, admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MergeTablesInput" }
+            example: { tableIds: [11111111-1111-4111-8111-111111111111, 22222222-2222-4222-8222-222222222222] }
+      responses:
+        "200":
+          description: Merge result
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MergeTablesResult" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /tables/{tableId}/separate:
+    post:
+      operationId: separateTable
+      tags: [tables, orders, phase1-floor]
+      summary: Separate all tables in an existing merge group
+      security: [{ bearerAuth: [] }]
+      x-roles: [manager, admin]
+      parameters:
+        - $ref: "#/components/parameters/TableId"
+      responses:
+        "200":
+          description: Group separated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /orders/{orderId}/move-items:
+    post:
+      operationId: moveItems
+      tags: [orders, tables, phase1-floor]
+      summary: Move selected order items to an order on another table
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/OrderId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MoveItemsInput" }
+      responses:
+        "200":
+          description: Item move result
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MoveItemsResult" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /tables/{tableId}/transfer-waiter:
+    post:
+      operationId: transferWaiter
+      tags: [tables, orders, phase1-floor]
+      summary: Reassign the open table order to another employee
+      security: [{ bearerAuth: [] }]
+      x-roles: [manager, admin]
+      parameters:
+        - $ref: "#/components/parameters/TableId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TransferWaiterInput" }
+      responses:
+        "200":
+          description: Waiter transfer result
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TransferWaiterResult" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /orders/{orderId}/prefactura/print:
+    post:
+      operationId: createPrefacturaPrint
+      tags: [orders, phase1-floor]
+      summary: Allocate or reuse a prefactura number and record a print
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/OrderId"
+      responses:
+        "201":
+          description: Prefactura print record
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PrefacturaPrintResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /orders/{orderId}/prefactura/status:
+    get:
+      operationId: getPrefacturaStatus
+      tags: [orders, phase1-floor]
+      summary: Get prefactura print status for an order
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/OrderId"
+      responses:
+        "200":
+          description: Prefactura status
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PrefacturaStatus" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /kds/history:
+    get:
+      operationId: getKdsHistory
+      tags: [kds, phase1-floor]
+      summary: Get terminal KDS tasks updated in the last eight hours
+      security: [{ bearerAuth: [] }]
+      x-roles: [admin, manager, encargado, waiter, kitchen]
+      responses:
+        "200":
+          description: At most 200 collected, served or cancelled tasks
+          content:
+            application/json:
+              schema: { type: array, maxItems: 200, items: { $ref: "#/components/schemas/KitchenTask" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /kitchen-tasks/{taskId}/resend:
+    post:
+      operationId: resendKitchenTask
+      tags: [kds, phase1-floor]
+      summary: Reset a non-terminal kitchen task to new
+      security: [{ bearerAuth: [] }]
+      x-roles: [admin, manager, encargado, waiter, kitchen]
+      parameters:
+        - $ref: "#/components/parameters/TaskId"
+      responses:
+        "200":
+          description: Reset task
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/KitchenTaskRecord" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /admin/kds-stations:
+    get:
+      operationId: getKdsStations
+      tags: [kds, phase1-floor]
+      summary: List configured KDS stations
+      security: [{ bearerAuth: [] }]
+      x-roles: [manager, admin]
+      responses:
+        "200":
+          description: KDS stations ordered by name
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/KdsStation" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      operationId: createKdsStation
+      tags: [kds, phase1-floor]
+      summary: Create a KDS station
+      security: [{ bearerAuth: [] }]
+      x-roles: [manager, admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateKdsStationInput" }
+            example: { name: Cocina principal, zoneType: cocina, ip: 192.0.2.10 }
+      responses:
+        "201":
+          description: Created station
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/KdsStation" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/kds-stations/{id}:
+    patch:
+      operationId: updateKdsStation
+      tags: [kds, phase1-floor]
+      summary: Partially update a KDS station
+      security: [{ bearerAuth: [] }]
+      x-roles: [manager, admin]
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateKdsStationInput" }
+      responses:
+        "200":
+          description: Updated station
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/KdsStation" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      operationId: deleteKdsStation
+      tags: [kds, phase1-floor]
+      summary: Soft-delete a KDS station
+      security: [{ bearerAuth: [] }]
+      x-roles: [manager, admin]
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: Station disabled
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { ok: { type: boolean, enum: [true] } }
+                required: [ok]
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/kds-stations/{id}/ping:
+    post:
+      operationId: pingKdsStation
+      tags: [kds, phase1-floor]
+      summary: Probe a KDS display URL or IP with a three-second timeout
+      security: [{ bearerAuth: [] }]
+      x-roles: [manager, admin]
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: Probe result
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/KdsPingResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/kds-zones/transitions:
+    get:
+      operationId: getKdsZoneTransitions
+      tags: [kds, phase1-floor]
+      summary: Get the KDS state machines used by every preparation zone
+      security: [{ bearerAuth: [] }]
+      x-roles: [manager, admin]
+      responses:
+        "200":
+          description: Zone transition maps
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/KdsTransitions" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
 
 components:
   securitySchemes:
@@ -2178,6 +2980,64 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: piccolo_session
+
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    TableId:
+      name: tableId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    OrderId:
+      name: orderId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    TaskId:
+      name: taskId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+
+  responses:
+    BadRequest:
+      description: Request validation failed
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    Unauthorized:
+      description: Authentication is required or invalid
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    Forbidden:
+      description: The authenticated user lacks the required role or permission
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    NotFound:
+      description: Requested resource was not found
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    Conflict:
+      description: Current resource state conflicts with the operation
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    ServiceUnavailable:
+      description: Session or authorization verification is temporarily unavailable
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
 
   schemas:
     HealthStatus:
@@ -2192,6 +3052,7 @@ components:
       properties:
         id:
           type: string
+          format: uuid
         name:
           type: string
         role:
@@ -2251,7 +3112,7 @@ components:
         capacity:
           type: integer
         status:
-          type: string
+          $ref: "#/components/schemas/TableStatus"
         x:
           type: integer
         y:
@@ -2284,7 +3145,19 @@ components:
         currentTotal:
           type: number
           nullable: true
-      required: [id, zoneId, name, capacity, status, x, y, width, height, shape, rotation, layout]
+        active:
+          type: boolean
+        guestCount:
+          type: integer
+          nullable: true
+        clientName:
+          type: string
+          nullable: true
+      required: [id, zoneId, name, capacity, status, x, y, width, height, shape, rotation, layout, active, currentOrderId, openedAt, employeeName, guestCount, clientName, currentTotal]
+
+    TableStatus:
+      type: string
+      enum: [free, reserved, occupied, pendiente_limpieza, bloqueada, out_of_service, comanda_abierta, prefactura_impresa, pendiente_cobro, parcialmente_cobrada, waiting, bill_requested]
 
     CanvasElement:
       type: object
@@ -2436,8 +3309,6 @@ components:
           type: string
         capacity:
           type: integer
-        status:
-          type: string
         x:
           type: integer
         y:
@@ -2464,7 +3335,13 @@ components:
           type: string
         tableId:
           type: string
+          format: uuid
+          nullable: true
         employeeId:
+          type: string
+          format: uuid
+          nullable: true
+        orderType:
           type: string
         status:
           type: string
@@ -2472,15 +3349,80 @@ components:
           type: integer
         notes:
           type: string
+        clientName:
+          type: string
+        clientId:
+          type: string
+          format: uuid
+          nullable: true
+        openedByTerminal:
+          type: string
         createdAt:
           type: string
+          format: date-time
         sentAt:
           type: string
+          format: date-time
+          nullable: true
+        channel:
+          type: string
+        deliveryType:
+          type: string
+        orderNumber:
+          type: string
+          nullable: true
+        scheduledAt:
+          type: string
+          format: date-time
+          nullable: true
+        estimatedReadyAt:
+          type: string
+          format: date-time
+          nullable: true
+        clientPhone:
+          type: string
+        deliveryAddressId:
+          type: string
+          format: uuid
+          nullable: true
+        courierId:
+          type: string
+          format: uuid
+          nullable: true
+        rejectionReason:
+          type: string
+          nullable: true
+        onlinePaymentRef:
+          type: string
+          nullable: true
+        onlinePaymentStatus:
+          type: string
+        packagingCheckedBy:
+          type: string
+          format: uuid
+          nullable: true
+        packagingCheckedAt:
+          type: string
+          format: date-time
+          nullable: true
+        deliveryFee:
+          $ref: "#/components/schemas/Money"
+        tipAmount:
+          $ref: "#/components/schemas/Money"
+        idempotencyKey:
+          type: string
+          nullable: true
+        tableSessionId:
+          type: string
+          format: uuid
+          nullable: true
+        isDemo:
+          type: boolean
         items:
           type: array
           items:
             $ref: "#/components/schemas/OrderItem"
-      required: [id, tableId, employeeId, status, createdAt]
+      required: [id, tableId, employeeId, orderType, status, guestCount, notes, clientName, openedByTerminal, createdAt, sentAt, channel, deliveryType, orderNumber, scheduledAt, estimatedReadyAt, clientPhone, deliveryAddressId, courierId, rejectionReason, onlinePaymentRef, onlinePaymentStatus, packagingCheckedBy, packagingCheckedAt, deliveryFee, tipAmount, idempotencyKey, tableSessionId, isDemo]
 
     TableWithOrder:
       type: object
@@ -2654,7 +3596,7 @@ components:
             $ref: "#/components/schemas/ProductFormat"
       required: [id, categoryId, name, price, prepZone]
 
-    KitchenTask:
+    KitchenTaskRecord:
       type: object
       properties:
         id:
@@ -2671,29 +3613,48 @@ components:
           type: integer
         status:
           type: string
+          enum: [new, preparing, in_oven, ready, collected, served, cancelled]
+        notes:
+          type: string
         allergyNote:
           type: string
         hasAllergy:
           type: boolean
-        tableName:
-          type: string
-        employeeName:
-          type: string
-        employeeId:
-          type: string
-        clientName:
-          type: string
         createdAt:
           type: string
+          format: date-time
         updatedAt:
           type: string
+          format: date-time
         readyAt:
           type: string
+          format: date-time
+          nullable: true
         collectedAt:
           type: string
+          format: date-time
+          nullable: true
         servedAt:
           type: string
-      required: [id, orderId, orderItemId, prepZone, productName, quantity, status, allergyNote, hasAllergy, tableName, employeeName, clientName, createdAt, updatedAt]
+          format: date-time
+          nullable: true
+        cancelledAt:
+          type: string
+          format: date-time
+          nullable: true
+      required: [id, orderId, orderItemId, prepZone, productName, quantity, status, notes, allergyNote, hasAllergy, createdAt, updatedAt, readyAt, collectedAt, servedAt, cancelledAt]
+
+    KitchenTask:
+      allOf:
+        - $ref: "#/components/schemas/KitchenTaskRecord"
+        - type: object
+          properties:
+            tableName: { type: string, nullable: true }
+            employeeName: { type: string, nullable: true }
+            employeeId: { type: string, format: uuid, nullable: true }
+            orderType: { type: string }
+            clientName: { type: string, nullable: true }
+          required: [tableName, employeeName, employeeId, orderType, clientName]
 
     AddOrderItemInput:
       type: object
@@ -2728,6 +3689,15 @@ components:
         guestCount:
           type: integer
           minimum: 1
+        clientName:
+          type: string
+        notes:
+          type: string
+        terminalName:
+          type: string
+        employeeId:
+          type: string
+          format: uuid
 
     UpdateOrderInput:
       type: object
@@ -3134,6 +4104,424 @@ components:
           type: string
       required: [error]
 
+    ValidationError:
+      type: object
+      properties:
+        error:
+          type: string
+        from:
+          type: string
+        to:
+          type: string
+        zone:
+          type: string
+        allowed:
+          type: array
+          items:
+            type: string
+      required: [error]
+
+    Money:
+      type: string
+      pattern: '^-?\d+\.\d{2}$'
+      example: "12.50"
+
+    Pagination:
+      type: object
+      properties:
+        page:
+          type: integer
+          minimum: 1
+        pageSize:
+          type: integer
+          minimum: 1
+        total:
+          type: integer
+          minimum: 0
+      required: [page, pageSize, total]
+
+    ReservationStatus:
+      type: string
+      enum: [pendiente, confirmada, recordatorio_enviado, cliente_avisado, cliente_llegado, sentada, en_espera, cancelada_cliente, cancelada_restaurante, no_presentado, finalizada]
+
+    Reservation:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        fecha: { type: string }
+        hora: { type: string }
+        nombre: { type: string }
+        telefono: { type: string }
+        email: { type: string }
+        personas: { type: integer }
+        clientId: { type: string, format: uuid, nullable: true }
+        shiftId: { type: string, format: uuid, nullable: true }
+        zonaPreferida: { type: string, nullable: true }
+        mesaId: { type: string, format: uuid, nullable: true }
+        duracionMinutos: { type: integer }
+        idioma: { type: string }
+        alergias: { type: string }
+        trona: { type: boolean }
+        accesibilidad: { type: boolean }
+        mascota: { type: boolean }
+        ocasion: { type: string, nullable: true }
+        canal: { type: string }
+        recordatorioEnviado: { type: boolean }
+        confirmacionRequerida: { type: boolean }
+        notes: { type: string }
+        notasInternas: { type: string }
+        status: { $ref: "#/components/schemas/ReservationStatus" }
+        createdBy: { type: string, format: uuid, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        isDemo: { type: boolean }
+      required: [id, fecha, hora, nombre, telefono, email, personas, clientId, shiftId, zonaPreferida, mesaId, duracionMinutos, idioma, alergias, trona, accesibilidad, mascota, ocasion, canal, recordatorioEnviado, confirmacionRequerida, notes, notasInternas, status, createdBy, createdAt, updatedAt, isDemo]
+
+    ReservationListItem:
+      allOf:
+        - $ref: "#/components/schemas/Reservation"
+        - type: object
+          properties:
+            clientNombre: { type: string, nullable: true }
+            clientApellidos: { type: string, nullable: true }
+            clientEmail: { type: string, nullable: true }
+            clientTelefono: { type: string, nullable: true }
+            mesaNumero: { type: string, nullable: true }
+          required: [clientNombre, clientApellidos, clientEmail, clientTelefono, mesaNumero]
+
+    ReservationStatusHistory:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        reservationId: { type: string, format: uuid }
+        statusFrom: { type: string }
+        statusTo: { type: string }
+        changedBy: { type: string, format: uuid, nullable: true }
+        changedAt: { type: string, format: date-time }
+        notes: { type: string }
+      required: [id, reservationId, statusFrom, statusTo, changedBy, changedAt, notes]
+
+    ReservationDetail:
+      allOf:
+        - $ref: "#/components/schemas/Reservation"
+        - type: object
+          properties:
+            clientNombre: { type: string, nullable: true }
+            mesaNumero: { type: string, nullable: true }
+            history:
+              type: array
+              items: { $ref: "#/components/schemas/ReservationStatusHistory" }
+          required: [clientNombre, mesaNumero, history]
+
+    CreateReservationInput:
+      type: object
+      properties:
+        fecha: { type: string }
+        hora: { type: string }
+        nombre: { type: string, minLength: 1 }
+        telefono: { type: string }
+        email: { type: string }
+        personas: { type: integer }
+        clientId: { type: string, nullable: true }
+        shiftId: { type: string, nullable: true }
+        zonaPreferida: { type: string, nullable: true }
+        mesaId: { type: string, nullable: true }
+        duracionMinutos: { type: integer }
+        idioma: { type: string }
+        alergias: { type: string }
+        trona: { type: boolean }
+        accesibilidad: { type: boolean }
+        mascota: { type: boolean }
+        ocasion: { type: string, nullable: true }
+        canal: { type: string }
+        confirmacionRequerida: { type: boolean }
+        notes: { type: string }
+        notasInternas: { type: string }
+      required: [fecha, hora, nombre]
+
+    UpdateReservationInput:
+      type: object
+      properties:
+        fecha: { type: string }
+        hora: { type: string }
+        nombre: { type: string }
+        telefono: { type: string }
+        email: { type: string }
+        personas: { type: integer }
+        clientId: { type: string, nullable: true }
+        shiftId: { type: string, nullable: true }
+        zonaPreferida: { type: string, nullable: true }
+        mesaId: { type: string, nullable: true }
+        duracionMinutos: { type: integer }
+        idioma: { type: string }
+        alergias: { type: string }
+        trona: { type: boolean }
+        accesibilidad: { type: boolean }
+        mascota: { type: boolean }
+        ocasion: { type: string, nullable: true }
+        canal: { type: string }
+        confirmacionRequerida: { type: boolean }
+        recordatorioEnviado: { type: boolean }
+        notes: { type: string }
+        notasInternas: { type: string }
+        status: { type: string, description: Unknown values are ignored by the current handler. }
+        statusNotes: { type: string }
+
+    TableSuggestion:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        tableNumber: { type: string }
+        capacity: { type: integer }
+        status: { type: string }
+        zoneId: { type: string, format: uuid }
+        zoneName: { type: string, nullable: true }
+        score: { type: integer }
+      required: [id, tableNumber, capacity, status, zoneId, zoneName, score]
+
+    SuggestTableResponse:
+      type: object
+      properties:
+        suggestions:
+          type: array
+          maxItems: 5
+          items: { $ref: "#/components/schemas/TableSuggestion" }
+        busyTableCount: { type: integer }
+      required: [suggestions, busyTableCount]
+
+    ArriveReservationInput:
+      type: object
+      properties:
+        openTable: { type: boolean, default: false }
+
+    ArriveReservationResponse:
+      type: object
+      properties:
+        reservation: { $ref: "#/components/schemas/Reservation" }
+        tableOpened:
+          type: object
+          nullable: true
+          properties:
+            tableId: { type: string, format: uuid }
+            orderId: { type: string, format: uuid }
+          required: [tableId, orderId]
+        prefill:
+          type: object
+          properties:
+            guestCount: { type: integer }
+            clientName: { type: string }
+            notes: { type: string }
+            mesaId: { type: string, format: uuid, nullable: true }
+            alergias: { type: string }
+            trona: { type: boolean }
+          required: [guestCount, clientName, notes, mesaId, alergias, trona]
+      required: [reservation, tableOpened, prefill]
+
+    OccupationSummary:
+      type: object
+      properties:
+        freeCount: { type: integer }
+        occupiedCount: { type: integer }
+        reservedCount: { type: integer }
+        pendingCleaningCount: { type: integer }
+        blockedCount: { type: integer }
+        currentGuests: { type: integer }
+        pendingReservations: { type: integer }
+        avgOccupationMinutes: { type: integer }
+      required: [freeCount, occupiedCount, reservedCount, pendingCleaningCount, blockedCount, currentGuests, pendingReservations, avgOccupationMinutes]
+
+    TableEvent:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        tableId: { type: string, format: uuid }
+        orderId: { type: string, format: uuid, nullable: true }
+        employeeId: { type: string, format: uuid, nullable: true }
+        employeeName: { type: string }
+        action: { type: string }
+        details: { type: string }
+        metadata:
+          type: object
+          nullable: true
+          additionalProperties: true
+          description: Event-specific metadata persisted as JSON by the existing event logger.
+        createdAt: { type: string, format: date-time }
+      required: [id, tableId, employeeName, action, details, createdAt]
+
+    AlertConfig:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        reservaProximaMin: { type: integer, minimum: 1 }
+        sinComandaMin: { type: integer, minimum: 1 }
+        prefacturaPendienteMin: { type: integer, minimum: 1 }
+        mesaSuciaMin: { type: integer, minimum: 1 }
+        updatedAt: { type: string, format: date-time }
+      required: [id, reservaProximaMin, sinComandaMin, prefacturaPendienteMin, mesaSuciaMin, updatedAt]
+
+    UpdateAlertConfigInput:
+      type: object
+      properties:
+        reservaProximaMin: { type: integer, minimum: 1 }
+        sinComandaMin: { type: integer, minimum: 1 }
+        prefacturaPendienteMin: { type: integer, minimum: 1 }
+        mesaSuciaMin: { type: integer, minimum: 1 }
+
+    SuccessResponse:
+      type: object
+      properties:
+        success: { type: boolean, enum: [true] }
+      required: [success]
+
+    KdsStation:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        zoneType: { type: string }
+        ip: { type: string }
+        displayUrl: { type: string, nullable: true }
+        notes: { type: string, nullable: true }
+        lastPingAt: { type: string, format: date-time, nullable: true }
+        active: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+      required: [id, name, zoneType, ip, active, createdAt, updatedAt]
+
+    CreateKdsStationInput:
+      type: object
+      properties:
+        name: { type: string, minLength: 1 }
+        zoneType: { type: string }
+        ip: { type: string }
+        displayUrl: { type: string, nullable: true }
+        notes: { type: string, nullable: true }
+      required: [name]
+
+    UpdateKdsStationInput:
+      type: object
+      properties:
+        name: { type: string }
+        zoneType: { type: string }
+        ip: { type: string }
+        displayUrl: { type: string, nullable: true }
+        notes: { type: string, nullable: true }
+        active: { type: boolean }
+
+    KdsTransitionMap:
+      type: object
+      properties:
+        new: { type: array, items: { type: string } }
+        preparing: { type: array, items: { type: string } }
+        in_oven: { type: array, items: { type: string } }
+        ready: { type: array, items: { type: string } }
+        collected: { type: array, items: { type: string } }
+        served: { type: array, items: { type: string } }
+        cancelled: { type: array, items: { type: string } }
+      required: [new, preparing, ready, collected, cancelled]
+
+    KdsTransitions:
+      type: object
+      properties:
+        cocina: { $ref: "#/components/schemas/KdsTransitionMap" }
+        pizza: { $ref: "#/components/schemas/KdsTransitionMap" }
+        ensalada: { $ref: "#/components/schemas/KdsTransitionMap" }
+        barra: { $ref: "#/components/schemas/KdsTransitionMap" }
+        pase: { $ref: "#/components/schemas/KdsTransitionMap" }
+        sin_partida: { $ref: "#/components/schemas/KdsTransitionMap" }
+      required: [cocina, pizza, ensalada, barra, pase, sin_partida]
+
+    TableIdInput:
+      type: object
+      properties:
+        targetTableId: { type: string, format: uuid }
+      required: [targetTableId]
+
+    MergeTablesInput:
+      type: object
+      properties:
+        tableIds:
+          type: array
+          minItems: 2
+          items: { type: string, format: uuid }
+      required: [tableIds]
+
+    MoveItemsInput:
+      type: object
+      properties:
+        itemIds:
+          type: array
+          minItems: 1
+          items: { type: string, format: uuid }
+        targetTableId: { type: string, format: uuid }
+      required: [itemIds, targetTableId]
+
+    TransferWaiterInput:
+      type: object
+      properties:
+        newEmployeeId: { type: string, format: uuid }
+        authorisedById: { type: string, format: uuid }
+      required: [newEmployeeId]
+
+    TableTransferResult:
+      type: object
+      properties:
+        success: { type: boolean, enum: [true] }
+        orderId: { type: string, format: uuid }
+      required: [success, orderId]
+
+    MergeTablesResult:
+      type: object
+      properties:
+        success: { type: boolean, enum: [true] }
+        mergeGroupId: { type: string, format: uuid }
+        hostOrderId: { type: string, format: uuid }
+      required: [success, mergeGroupId, hostOrderId]
+
+    MoveItemsResult:
+      type: object
+      properties:
+        success: { type: boolean, enum: [true] }
+        targetOrderId: { type: string, format: uuid }
+      required: [success, targetOrderId]
+
+    TransferWaiterResult:
+      type: object
+      properties:
+        success: { type: boolean, enum: [true] }
+        orderId: { type: string, format: uuid }
+        newEmployeeId: { type: string, format: uuid }
+      required: [success, orderId, newEmployeeId]
+
+    PrefacturaPrintResult:
+      type: object
+      properties:
+        prefacturaNumber: { type: integer }
+        prefacturaCode: { type: string, pattern: '^P-\d{4,}$', example: P-0001 }
+        isReprint: { type: boolean }
+        totalPrints: { type: integer, minimum: 1 }
+        amount: { $ref: "#/components/schemas/Money" }
+      required: [prefacturaNumber, prefacturaCode, isReprint, totalPrints, amount]
+
+    PrefacturaStatus:
+      type: object
+      properties:
+        hasPrinted: { type: boolean }
+        totalPrints: { type: integer, minimum: 0 }
+        prefacturaNumber: { type: integer, nullable: true }
+        prefacturaCode: { type: string, nullable: true }
+        lastPrintedAt: { type: string, format: date-time, nullable: true }
+      required: [hasPrinted, totalPrints, prefacturaNumber, prefacturaCode, lastPrintedAt]
+
+    KdsPingResult:
+      type: object
+      properties:
+        ok: { type: boolean, enum: [true] }
+        reachable: { type: boolean }
+        latencyMs: { type: integer, nullable: true }
+        target: { type: string, nullable: true }
+      required: [ok, reachable, latencyMs, target]
+
     BusinessConfig:
       type: object
       properties:
@@ -3168,6 +4556,7 @@ components:
       properties:
         id:
           type: string
+          format: uuid
         name:
           type: string
         documentType:
@@ -3180,11 +4569,18 @@ components:
           type: boolean
         config:
           type: object
+          additionalProperties: true
+        deletedAt:
+          type: string
+          format: date-time
+          nullable: true
         createdAt:
           type: string
+          format: date-time
         updatedAt:
           type: string
-      required: [id, name, documentType, printFormat, isDefault, isBuiltIn, config, createdAt, updatedAt]
+          format: date-time
+      required: [id, name, documentType, printFormat, isDefault, isBuiltIn, deletedAt, config, createdAt, updatedAt]
 
     CreateDocumentTemplateInput:
       type: object
@@ -3197,6 +4593,7 @@ components:
           type: string
         config:
           type: object
+          additionalProperties: true
       required: [name, documentType]
 
     UpdateDocumentTemplateInput:
@@ -3208,12 +4605,14 @@ components:
           type: string
         config:
           type: object
+          additionalProperties: true
 
     PrinterConfig:
       type: object
       properties:
         id:
           type: string
+          format: uuid
         name:
           type: string
         printerType:
@@ -3236,6 +4635,7 @@ components:
           type: boolean
         createdAt:
           type: string
+          format: date-time
       required: [id, name, printerType, paperWidth, location, documentType, copies, autoCut, cashDrawer, autoPrint, active, createdAt]
 
     CreatePrinterConfigInput:
@@ -3243,6 +4643,9 @@ components:
       properties:
         name:
           type: string
+        id:
+          type: string
+          format: uuid
         printerType:
           type: string
         paperWidth:
@@ -3259,31 +4662,70 @@ components:
           type: boolean
         autoPrint:
           type: boolean
+        active:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
       required: [name]
+
+    UpdatePrinterConfigInput:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        printerType: { type: string }
+        paperWidth: { type: integer }
+        location: { type: string }
+        documentType: { type: string }
+        copies: { type: integer }
+        autoCut: { type: boolean }
+        cashDrawer: { type: boolean }
+        autoPrint: { type: boolean }
+        active: { type: boolean }
+        createdAt: { type: string, format: date-time }
 
     Invoice:
       type: object
       properties:
         id:
           type: string
+          format: uuid
         serie:
           type: string
         invoiceNumber:
           type: integer
         issuedAt:
           type: string
+          format: date-time
+        operationDate:
+          type: string
+          format: date-time
+          nullable: true
         emisorNombre:
           type: string
         emisorNif:
           type: string
+        emisorDireccion: { type: string }
+        emisorCp: { type: string }
+        emisorPoblacion: { type: string }
+        emisorProvincia: { type: string }
+        emisorPais: { type: string }
         clientName:
           type: string
         clientNif:
           type: string
         clientEmail:
           type: string
+        clientAddress: { type: string }
+        clientCp: { type: string }
+        clientCity: { type: string }
+        clientProvince: { type: string }
+        clientCountry: { type: string }
+        clientPhone: { type: string }
         orderId:
           type: string
+          format: uuid
           nullable: true
         subtotal:
           type: string
@@ -3291,6 +4733,11 @@ components:
           type: string
         total:
           type: string
+        taxBreakdown:
+          type: array
+          nullable: true
+          items:
+            $ref: "#/components/schemas/TaxBreakdownItem"
         paymentMethod:
           type: string
         notes:
@@ -3301,8 +4748,29 @@ components:
           type: string
         originalInvoiceId:
           type: string
+          format: uuid
           nullable: true
-      required: [id, serie, issuedAt, emisorNombre, emisorNif, clientName, clientNif, subtotal, taxTotal, total, paymentMethod, status, verifactuStatus]
+        rectificationReason: { type: string }
+        verifactuResponse:
+          type: object
+          nullable: true
+          additionalProperties: true
+        employeeId:
+          type: string
+          format: uuid
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, serie, invoiceNumber, issuedAt, operationDate, emisorNombre, emisorNif, emisorDireccion, emisorCp, emisorPoblacion, emisorProvincia, emisorPais, clientName, clientNif, clientAddress, clientCp, clientCity, clientProvince, clientCountry, clientEmail, clientPhone, orderId, subtotal, taxTotal, total, taxBreakdown, paymentMethod, notes, status, originalInvoiceId, rectificationReason, verifactuStatus, verifactuResponse, employeeId, createdAt]
+
+    TaxBreakdownItem:
+      type: object
+      properties:
+        rate: { type: number, enum: [4, 10, 21] }
+        base: { $ref: "#/components/schemas/Money" }
+        cuota: { $ref: "#/components/schemas/Money" }
+      required: [rate, base, cuota]
 
     CreateInvoiceInput:
       type: object
@@ -3343,6 +4811,7 @@ components:
       properties:
         id:
           type: string
+          format: uuid
         name:
           type: string
         nif:
@@ -3363,11 +4832,15 @@ components:
           type: string
         createdAt:
           type: string
-      required: [id, name, createdAt]
+          format: date-time
+      required: [id, name, nif, address, cp, city, province, country, email, phone, createdAt]
 
     CreateClientInput:
       type: object
       properties:
+        id:
+          type: string
+          format: uuid
         name:
           type: string
         nif:
@@ -3386,13 +4859,32 @@ components:
           type: string
         phone:
           type: string
+        createdAt:
+          type: string
+          format: date-time
       required: [name]
+
+    UpdateClientInput:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        nif: { type: string }
+        address: { type: string }
+        cp: { type: string }
+        city: { type: string }
+        province: { type: string }
+        country: { type: string }
+        email: { type: string }
+        phone: { type: string }
+        createdAt: { type: string, format: date-time }
 
     DocumentAuditEntry:
       type: object
       properties:
         id:
           type: string
+          format: uuid
         action:
           type: string
         documentType:
@@ -3401,6 +4893,7 @@ components:
           type: string
         employeeId:
           type: string
+          format: uuid
           nullable: true
         employeeName:
           type: string
@@ -3415,6 +4908,7 @@ components:
           type: string
         createdAt:
           type: string
+          format: date-time
       required: [id, action, documentType, documentId, employeeName, terminal, printCount, details, createdAt]
 
     DocumentAuditLog:
@@ -3440,3 +4934,231 @@ components:
         reason:
           type: string
       required: [documentId, documentType]
+
+    DocumentReprint:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        documentId: { type: string }
+        documentType: { type: string }
+        employeeId: { type: string, format: uuid, nullable: true }
+        employeeName: { type: string }
+        reason: { type: string }
+        createdAt: { type: string, format: date-time }
+      required: [id, documentId, documentType, employeeId, employeeName, reason, createdAt]
+
+    OpeningHoursDay:
+      type: object
+      properties:
+        open: { type: string }
+        close: { type: string }
+        open2: { type: string }
+        close2: { type: string }
+      required: [open, close]
+
+    OpeningHours:
+      type: object
+      additionalProperties:
+        $ref: "#/components/schemas/OpeningHoursDay"
+      description: Weekday keys such as mon, tue, wed, thu, fri, sat, sun.
+
+    AdminBranding:
+      type: object
+      properties:
+        nombreComercial: { type: string }
+        tagline: { type: string }
+        heroImageUrl: { type: string }
+        heroVideoUrl: { type: string }
+        address: { type: string }
+        phone: { type: string }
+        foundedYear: { type: integer, nullable: true }
+        openingHours: { $ref: "#/components/schemas/OpeningHours", nullable: true }
+        cardLayout: { type: string }
+        accentColor: { type: string }
+        logoUrl: { type: string }
+      required: [nombreComercial, tagline, heroImageUrl, heroVideoUrl, address, phone, cardLayout, accentColor, logoUrl]
+
+    BrandingInput:
+      type: object
+      properties:
+        nombreComercial: { type: string }
+        tagline: { type: string }
+        heroImageUrl: { type: string }
+        heroVideoUrl: { type: string }
+        address: { type: string }
+        phone: { type: string }
+        foundedYear: { type: integer, nullable: true }
+        openingHours: { $ref: "#/components/schemas/OpeningHours", nullable: true }
+        cardLayout: { type: string }
+        accentColor: { type: string }
+        logoUrl: { type: string }
+
+    BrandingThemeColors:
+      type: object
+      properties:
+        primary: { type: string }
+        background: { type: string }
+        accent: { type: string }
+        infoTextColor: { type: string }
+        categoryCardBg: { type: string }
+        categoryCardText: { type: string }
+        callButtonBg: { type: string }
+        callButtonText: { type: string }
+        scheduleButtonBg: { type: string }
+        scheduleButtonText: { type: string }
+        heroTitleColor: { type: string }
+        heroTaglineColor: { type: string }
+        heroEstablishedColor: { type: string }
+        tapDetailsColor: { type: string }
+      additionalProperties: true
+
+    BrandingThemeFonts:
+      type: object
+      properties:
+        heading: { type: string }
+        body: { type: string }
+        headingColor: { type: string }
+        bodyColor: { type: string }
+
+    BrandingCardSettings:
+      type: object
+      properties:
+        showImage: { type: boolean }
+        showDescription: { type: boolean }
+        showTags: { type: boolean }
+        showAllergens: { type: boolean }
+        showPrice: { type: boolean }
+        showHalfPortion: { type: boolean }
+        showQuantity: { type: boolean }
+        layout: { type: string, enum: [grid, list, compact] }
+
+    QrShift:
+      type: object
+      properties:
+        open: { type: boolean }
+        openTime: { type: string }
+        closeTime: { type: string }
+      required: [open, openTime, closeTime]
+
+    QrDaySchedule:
+      type: object
+      properties:
+        day: { type: string }
+        shift1: { $ref: "#/components/schemas/QrShift" }
+        shift2: { $ref: "#/components/schemas/QrShift" }
+      required: [day, shift1, shift2]
+
+    PublicBrandingResponse:
+      type: object
+      properties:
+        restaurantName: { type: string }
+        tagline: { type: string }
+        heroImageUrl: { type: string }
+        heroVideoUrl: { type: string }
+        address: { type: string }
+        city: { type: string }
+        province: { type: string }
+        postalCode: { type: string }
+        country: { type: string }
+        phone: { type: string }
+        establishedYear: { type: integer, nullable: true }
+        openingHours: { $ref: "#/components/schemas/OpeningHours", nullable: true }
+        cardLayout: { type: string }
+        accentColor: { type: string }
+        logoUrl: { type: string }
+        themeColors: { $ref: "#/components/schemas/BrandingThemeColors", nullable: true }
+        themeFonts: { $ref: "#/components/schemas/BrandingThemeFonts", nullable: true }
+        cardSettings: { $ref: "#/components/schemas/BrandingCardSettings", nullable: true }
+        schedule:
+          type: array
+          items: { $ref: "#/components/schemas/QrDaySchedule" }
+          nullable: true
+        nombreComercial: { type: string }
+        foundedYear: { type: integer, nullable: true }
+      required:
+        - restaurantName
+        - tagline
+        - heroImageUrl
+        - heroVideoUrl
+        - address
+        - city
+        - province
+        - postalCode
+        - country
+        - phone
+        - cardLayout
+        - accentColor
+        - logoUrl
+        - nombreComercial
+
+    QrBranding:
+      type: object
+      properties:
+        restaurantName: { type: string }
+        tagline: { type: string }
+        heroImageUrl: { type: string }
+        heroVideoUrl: { type: string }
+        address: { type: string }
+        city: { type: string }
+        province: { type: string }
+        postalCode: { type: string }
+        country: { type: string }
+        phone: { type: string }
+        establishedYear: { type: string }
+        logoUrl: { type: string }
+        themeColors: { $ref: "#/components/schemas/BrandingThemeColors", nullable: true }
+        themeFonts: { $ref: "#/components/schemas/BrandingThemeFonts", nullable: true }
+        cardSettings: { $ref: "#/components/schemas/BrandingCardSettings", nullable: true }
+        schedule:
+          type: array
+          items: { $ref: "#/components/schemas/QrDaySchedule" }
+          nullable: true
+      required:
+        - restaurantName
+        - tagline
+        - heroImageUrl
+        - heroVideoUrl
+        - address
+        - city
+        - province
+        - postalCode
+        - country
+        - phone
+        - establishedYear
+        - logoUrl
+
+    UpdateQrBrandingInput:
+      type: object
+      properties:
+        restaurantName: { type: string }
+        tagline: { type: string }
+        heroImageUrl: { type: string }
+        heroVideoUrl: { type: string }
+        address: { type: string }
+        city: { type: string }
+        province: { type: string }
+        postalCode: { type: string }
+        country: { type: string }
+        phone: { type: string }
+        establishedYear: { type: string }
+        logoUrl: { type: string }
+        themeColors: { $ref: "#/components/schemas/BrandingThemeColors", nullable: true }
+        themeFonts: { $ref: "#/components/schemas/BrandingThemeFonts", nullable: true }
+        cardSettings: { $ref: "#/components/schemas/BrandingCardSettings", nullable: true }
+        schedule:
+          type: array
+          items: { $ref: "#/components/schemas/QrDaySchedule" }
+          nullable: true
+
+    QrBrandingOkResponse:
+      type: object
+      properties:
+        ok: { type: boolean }
+      required: [ok]
+
+    QrNotConfiguredError:
+      type: object
+      properties:
+        error: { type: string }
+        code: { type: string, enum: [QR_NOT_CONFIGURED] }
+      required: [error, code]

@@ -2,7 +2,9 @@
 
 import { action } from "./_generated/server";
 import { v } from "convex/values";
+import { ConvexError } from "convex/values";
 import OpenAI from "openai";
+import { api } from "./_generated/api";
 
 const LOCALES = ["en", "fr", "de", "ca", "es", "it", "nl", "ro"] as const;
 const LOCALE_NAMES: Record<string, string> = {
@@ -24,7 +26,11 @@ export const autoTranslate = action({
     description: v.optional(v.string()),
     locales: v.optional(v.array(v.string())), // if provided, only translate these locales
   },
-  handler: async (_ctx, args): Promise<TranslationMap> => {
+  handler: async (ctx, args): Promise<TranslationMap> => {
+    const me = await ctx.runQuery(api.adminAuth.getMe, {});
+    if (me?.role !== "admin") {
+      throw new ConvexError({ message: "Forbidden", code: "FORBIDDEN" });
+    }
     // Uses standard OpenAI API. Set OPENAI_API_KEY in Convex environment variables
     // (Convex dashboard → Settings → Environment Variables).
     const apiKey = process.env.OPENAI_API_KEY;
