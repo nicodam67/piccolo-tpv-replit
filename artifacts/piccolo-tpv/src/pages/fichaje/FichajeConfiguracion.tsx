@@ -1,21 +1,15 @@
 import { useState, useEffect } from "react";
 import { Settings, Save, CheckCircle } from "lucide-react";
-import { api } from "../../lib/api-client";
+import { getFichajeSettings, updateFichajeSettings } from "@workspace/api-client-react/timeclock";
+import type { FichajeSettings, UpdateFichajeSettingsInput } from "@workspace/api-client-react/timeclock";
+import { FichajeSettingsWeekStart } from "@workspace/api-client-react/timeclock";
 
-interface FichajeSettings {
-  companyName: string;
-  locale: string;
-  timezone: string;
-  weekStart: string;
-  mobileClockEnabled: boolean;
-  reportEmail: string;
-  reportDayOfWeek: number;
-}
+type SettingsForm = Omit<FichajeSettings, "id" | "updatedAt"> & Partial<Pick<FichajeSettings, "id" | "updatedAt">>;
 
 export default function FichajeConfiguracion() {
-  const [settings, setSettings] = useState<FichajeSettings>({
+  const [settings, setSettings] = useState<SettingsForm>({
     companyName: "Piccolo La Ràpita", locale: "es-ES", timezone: "Europe/Madrid",
-    weekStart: "monday", mobileClockEnabled: false, reportEmail: "", reportDayOfWeek: 1,
+    weekStart: FichajeSettingsWeekStart.monday, mobileClockEnabled: false, reportEmail: "", reportDayOfWeek: 1,
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -23,8 +17,13 @@ export default function FichajeConfiguracion() {
 
   useEffect(() => {
     function loadSettings() {
-      api.get<FichajeSettings>("/api/fichaje/settings")
-        .then(d => setSettings(s => ({ ...s, ...d, reportEmail: d.reportEmail ?? "" })))
+      getFichajeSettings()
+        .then(d => setSettings(s => ({
+          ...s,
+          ...d,
+          reportEmail: d.reportEmail ?? "",
+          reportDayOfWeek: d.reportDayOfWeek ?? 1,
+        })))
         .finally(() => setLoading(false));
     }
     loadSettings();
@@ -35,7 +34,16 @@ export default function FichajeConfiguracion() {
 
   async function save() {
     setSaving(true);
-    await api.put("/api/fichaje/settings", { ...settings, reportEmail: settings.reportEmail || null });
+    const payload: UpdateFichajeSettingsInput = {
+      companyName: settings.companyName,
+      locale: settings.locale,
+      timezone: settings.timezone,
+      weekStart: settings.weekStart,
+      mobileClockEnabled: settings.mobileClockEnabled,
+      reportEmail: settings.reportEmail || null,
+      reportDayOfWeek: settings.reportDayOfWeek ?? undefined,
+    };
+    await updateFichajeSettings(payload);
     setSaving(false);
     setSaved(true);
     setTimeout(() => setSaved(false), 3000);
@@ -80,7 +88,7 @@ export default function FichajeConfiguracion() {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Inicio de semana</label>
-              <select value={settings.weekStart} onChange={e => setSettings(s => ({ ...s, weekStart: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm">
+              <select value={settings.weekStart} onChange={e => setSettings(s => ({ ...s, weekStart: e.target.value as FichajeSettings["weekStart"] }))} className="w-full border rounded-lg px-3 py-2 text-sm">
                 <option value="monday">Lunes</option>
                 <option value="sunday">Domingo</option>
               </select>
@@ -111,12 +119,12 @@ export default function FichajeConfiguracion() {
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Email para informes semanales</label>
-              <input type="email" value={settings.reportEmail} onChange={e => setSettings(s => ({ ...s, reportEmail: e.target.value }))}
+              <input type="email" value={settings.reportEmail ?? ""} onChange={e => setSettings(s => ({ ...s, reportEmail: e.target.value }))}
                 placeholder="admin@piccolo.es" className="w-full border rounded-lg px-3 py-2 text-sm" />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Día del informe semanal</label>
-              <select value={settings.reportDayOfWeek} onChange={e => setSettings(s => ({ ...s, reportDayOfWeek: parseInt(e.target.value) }))} className="w-full border rounded-lg px-3 py-2 text-sm">
+              <select value={settings.reportDayOfWeek ?? 1} onChange={e => setSettings(s => ({ ...s, reportDayOfWeek: parseInt(e.target.value) }))} className="w-full border rounded-lg px-3 py-2 text-sm">
                 {["Lunes","Martes","Miércoles","Jueves","Viernes","Sábado","Domingo"].map((d, i) => (
                   <option key={i} value={i + 1}>{d}</option>
                 ))}

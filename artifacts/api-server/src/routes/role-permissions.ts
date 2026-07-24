@@ -108,6 +108,7 @@ export const PERMISSION_CATALOG: {
       { action: "edit_business",        label: "Editar datos del negocio",         defaultRoles: ["admin"] },
       { action: "edit_printers",        label: "Gestionar impresoras",             defaultRoles: ["admin","manager"] },
       { action: "edit_zones_tables",    label: "Gestionar zonas y mesas",          defaultRoles: ["admin","manager"] },
+      { action: "force_close_unpaid",   label: "Cerrar mesa sin cobrar",            defaultRoles: ["admin","manager"] },
       { action: "manage_roles",         label: "Gestionar permisos de roles",      defaultRoles: ["admin"] },
     ],
   },

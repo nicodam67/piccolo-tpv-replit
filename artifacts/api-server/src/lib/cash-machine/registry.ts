@@ -7,10 +7,22 @@
 import type { CashMachineAdapter } from "./adapter";
 import { SimulatorAdapter } from "./simulator";
 
+export class CashMachineConnectorUnavailableError extends Error {
+  constructor() {
+    super("Conector real de caja automática no configurado");
+  }
+}
+
 class AdapterRegistry {
   private _adapter: CashMachineAdapter | null = null;
 
   getAdapter(): CashMachineAdapter {
+    if (
+      process.env["NODE_ENV"] === "production"
+      && (!this._adapter || this._adapter instanceof SimulatorAdapter)
+    ) {
+      throw new CashMachineConnectorUnavailableError();
+    }
     if (!this._adapter) {
       this._adapter = new SimulatorAdapter();
     }
@@ -33,6 +45,9 @@ class AdapterRegistry {
 
   /** Set scenario for the simulator (no-op for real adapters) */
   setScenario(scenario: string) {
+    if (process.env["NODE_ENV"] === "production") {
+      throw new CashMachineConnectorUnavailableError();
+    }
     const adapter = this.getAdapter();
     if (adapter instanceof SimulatorAdapter) {
       (adapter as SimulatorAdapter).setNextScenario(scenario);
