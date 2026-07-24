@@ -7,7 +7,7 @@
  *  - Repartidores: Estado y asignación de couriers
  *  - Nuevo: Formulario de pedido manual (teléfono/mostrador)
  */
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useLocation } from "wouter";
 import {
   ChevronLeft, Plus, RefreshCw, Phone, MapPin, Clock, Truck,
@@ -363,6 +363,7 @@ function CourierPanel({ couriers, activeOrders, onRefresh }: {
 function NewOrderForm({ couriers, zones, onCreated }: {
   couriers: Courier[]; zones: Zone[]; onCreated: () => void;
 }) {
+  const idempotencyKey = useRef(crypto.randomUUID());
   const [form, setForm] = useState({
     deliveryType: "takeaway", channel: "phone",
     clientName: "", clientPhone: "",
@@ -437,7 +438,15 @@ function NewOrderForm({ couriers, zones, onCreated }: {
       if (form.courierId) body.courierId = form.courierId;
       if (form.scheduledAt) body.scheduledAt = new Date(form.scheduledAt).toISOString();
 
-      const result = await api.post<{ orderNumber: string }>("/api/delivery-orders", body);
+      const result = await api.post<{ id: string; orderNumber: string; requiresKitchenSend?: boolean }>("/api/delivery-orders", body, {
+        headers: { "Idempotency-Key": idempotencyKey.current },
+      });
+      if (!form.scheduledAt && result.requiresKitchenSend) {
+        await api.post(`/api/orders/${result.id}/send`, {}, {
+          headers: { "Idempotency-Key": `${idempotencyKey.current}:send` },
+        });
+      }
+      idempotencyKey.current = crypto.randomUUID();
       toast.success(`Pedido ${result.orderNumber} creado`);
       setForm({ deliveryType: "takeaway", channel: "phone", clientName: "", clientPhone: "", street: "", number: "", floor: "", postalCode: "", city: "", addrNotes: "", notes: "", paymentMethod: "on_arrival", courierId: "", scheduledAt: "", overrideDeliveryFee: "" });
       setItems([]); setZoneInfo(null); onCreated();
