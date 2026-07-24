@@ -2,6 +2,11 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { api } from '../lib/api-client';
 import { ApiClientError } from '../lib/api-errors';
 import { useScrollGuard } from '../hooks/use-scroll-guard';
+import {
+  clearCashMachineCommand,
+  loadOrCreateCashMachineCommand,
+  saveCashMachineCommand,
+} from '../lib/cash-machine-command';
 import { ManagerPinModal } from '../components/auth/ManagerPinModal';
 import { useManagerAuth } from '../hooks/use-manager-auth';
 import { useParams, useLocation, Link } from 'wouter';
@@ -985,7 +990,10 @@ interface CashMachinePaymentModalProps {
 }
 
 function CashMachinePaymentModal({ orderId, amount, terminal, onSuccess, onCancel }: CashMachinePaymentModalProps) {
-  const paymentAttemptKey = useRef(crypto.randomUUID());
+  const amountText = fmt(amount);
+  const terminalName = terminal ?? 'Caja principal';
+  const [paymentCommand] = useState(() =>
+    loadOrCreateCashMachineCommand(orderId, amountText, terminalName));
   const cancelPayment = useCancelCashMachinePayment();
   const [txId, setTxId]             = useState<string | null>(null);
   const [txStatus, setTxStatus]     = useState<string>('pending');
@@ -1014,9 +1022,13 @@ function CashMachinePaymentModal({ orderId, amount, terminal, onSuccess, onCance
         setChangeAmt(parseFloat(tx.changeDispensed ?? '0'));
         if (tx.status === 'completada') {
           if (intervalRef.current) clearInterval(intervalRef.current);
+          clearCashMachineCommand(paymentCommand);
           setTimeout(() => onSuccessRef.current(), 1200);
         } else if (['error', 'cancelada', 'tiempo_agotado', 'intervencion_manual', 'conciliacion_pendiente'].includes(tx.status)) {
           if (intervalRef.current) clearInterval(intervalRef.current);
+          if (['error', 'cancelada', 'tiempo_agotado'].includes(tx.status)) {
+            clearCashMachineCommand(paymentCommand);
+          }
           setErrMsg((tx as any).deviceError ?? 'La transacción no se completó.');
         }
       } catch (err) {
@@ -1030,6 +1042,12 @@ function CashMachinePaymentModal({ orderId, amount, terminal, onSuccess, onCance
             setErrMsg('El pago fue recibido por la máquina pero no se pudo liquidar el pedido. Avisa al encargado.');
             return;
           }
+          if (err.isNotFound) {
+            if (intervalRef.current) clearInterval(intervalRef.current);
+            clearCashMachineCommand(paymentCommand);
+            setErrMsg('La transacción pendiente ya no existe. Cierra y vuelve a iniciar el cobro.');
+            return;
+          }
         }
         // Network blips during polling are expected — swallow silently.
       }
@@ -1039,12 +1057,19 @@ function CashMachinePaymentModal({ orderId, amount, terminal, onSuccess, onCance
   useEffect(() => {
     const init = async () => {
       try {
+        if (paymentCommand.transactionId) {
+          setTxId(paymentCommand.transactionId);
+          startPolling(paymentCommand.transactionId);
+          return;
+        }
         const res = await startCashMachinePaymentRequest(
-          { orderId, amount: fmt(amount), terminalName: terminal ?? 'Caja principal' },
-          { headers: { 'Idempotency-Key': paymentAttemptKey.current } },
+          { orderId, amount: amountText, terminalName },
+          { headers: { 'Idempotency-Key': paymentCommand.key } },
         );
         const id = (res as any)?.transaction?.id as string;
         if (!id) { setErrMsg('Error al iniciar pago.'); return; }
+        paymentCommand.transactionId = id;
+        saveCashMachineCommand(paymentCommand);
         setTxId(id);
         setTxStatus((res as any)?.transaction?.status ?? 'pending');
         startPolling(id);   // pass id directly — no stale closure
@@ -1060,7 +1085,10 @@ function CashMachinePaymentModal({ orderId, amount, terminal, onSuccess, onCance
     if (!txId) { onCancel(); return; }
     setCancelling(true);
     try {
-      await cancelPayment.mutateAsync({ id: txId });
+      const cancelled = await cancelPayment.mutateAsync({ id: txId });
+      if ((cancelled as any)?.transaction?.status === 'cancelada') {
+        clearCashMachineCommand(paymentCommand);
+      }
     } catch {}
     if (intervalRef.current) clearInterval(intervalRef.current);
     onCancel();

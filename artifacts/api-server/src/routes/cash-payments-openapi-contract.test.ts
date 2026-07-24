@@ -10,6 +10,8 @@ const cashSource = fs.readFileSync(path.join(root, "artifacts/api-server/src/rou
 const paymentsSource = fs.readFileSync(path.join(root, "artifacts/api-server/src/routes/payments.ts"), "utf8");
 const machineSource = fs.readFileSync(path.join(root, "artifacts/api-server/src/routes/cash-machine.ts"), "utf8");
 const splitSource = fs.readFileSync(path.join(root, "artifacts/api-server/src/routes/splits.ts"), "utf8");
+const paymentUiSource = fs.readFileSync(path.join(root, "artifacts/piccolo-tpv/src/pages/payment.tsx"), "utf8");
+const machineCommandSource = fs.readFileSync(path.join(root, "artifacts/piccolo-tpv/src/lib/cash-machine-command.ts"), "utf8");
 
 type ContractOperation = {
   method: string;
@@ -59,6 +61,7 @@ describe("Cash & Payments OpenAPI metadata", () => {
   it("documents required versus optional Idempotency-Key exactly as runtime", () => {
     const byId = Object.fromEntries(operations.map(({ operation }) => [operation.operationId, operation]));
     expect(byId.closeCashPaymentsSession["x-idempotency"]).toBe("optional");
+    expect(byId.voidCashSessionPayment["x-idempotency"]).toBe("optional");
     expect(byId.createOrderCashPayment["x-idempotency"]).toBe("optional");
     expect(byId.startCashPaymentsMachinePayment["x-idempotency"]).toBe("required");
     expect(byId.createCashPaymentsMachineRefund["x-idempotency"]).toBe("required");
@@ -117,8 +120,10 @@ describe("Cash & Payments OpenAPI metadata", () => {
 });
 
 describe("Cash & Payments focused runtime contract evidence", () => {
-  it("guards opening, movement and closing with manager/admin RBAC", () => {
+  it("guards opening, movement and closing with manager/admin RBAC and terminal locks", () => {
     expect(cashSource).toContain('const CASH_MANAGER_ROLES = ["manager", "admin"]');
+    expect(cashSource).toContain('"cash-session:" + terminalName');
+    expect(cashSource).toContain('"cash-session:" + session.terminalName');
     expect(cashSource).toContain('res.status(409).json({');
     expect(cashSource).toContain('res.status(422).json({');
     expect(cashSource).toContain("idempotency,");
@@ -132,13 +137,17 @@ describe("Cash & Payments focused runtime contract evidence", () => {
     expect(paymentsSource).toContain('res.status(400).json({ error: "Importe inválido" })');
   });
 
-  it("preserves split semantics and does not claim route-level split RBAC", () => {
+  it("preserves split semantics and enforces granular payment permissions", () => {
     expect(splitSource).toContain("Máximo 8 grupos de división");
     expect(splitSource).toContain("requireAuth");
     expect(splitSource).not.toContain("requireRole");
-    const splitOps = operations.filter(({ pathname }) => pathname.includes("/splits"));
-    expect(splitOps.every(({ operation }) =>
-      operation["x-roles"].join(",") === "authenticated")).toBe(true);
+    expect(splitSource).toContain("requirePermission(PERMISSIONS.payments.split)");
+    expect(splitSource).toContain("requirePermission(PERMISSIONS.payments.create)");
+    expect(spec.paths["/orders/{id}/splits"].get["x-roles"]).toEqual(["authenticated"]);
+    expect(spec.paths["/orders/{id}/splits"].post["x-roles"])
+      .toEqual(["admin", "manager", "encargado", "cashier"]);
+    expect(spec.paths["/orders/{id}/splits/{groupId}/pay"].put["x-roles"])
+      .toEqual(["admin", "manager", "encargado", "waiter", "cashier"]);
   });
 
   it("requires idempotency for machine commands and fails closed when disabled", () => {
@@ -146,5 +155,13 @@ describe("Cash & Payments focused runtime contract evidence", () => {
     expect(machineSource).toContain('res.status(503).json({ error: "La caja automática no está habilitada" })');
     expect(machineSource).toContain("No se puede habilitar una caja simulada en producción");
     expect(machineSource).toContain("pg_advisory_xact_lock");
+  });
+
+  it("recovers an in-flight machine command across modal remounts", () => {
+    expect(paymentUiSource).toContain("loadOrCreateCashMachineCommand");
+    expect(paymentUiSource).toContain("paymentCommand.transactionId");
+    expect(paymentUiSource).not.toContain("useRef(crypto.randomUUID())");
+    expect(machineCommandSource).toContain("sessionStorage");
+    expect(machineCommandSource).toContain("stored");
   });
 });

@@ -1,4 +1,5 @@
 import { Router, type IRouter } from "express";
+import { appendFileSync } from "node:fs";
 import { db } from "@workspace/db";
 import {
   cashSessionsTable,
@@ -65,29 +66,53 @@ router.post(
       notes?: string;
     };
 
-    // Enforce unique open session per terminal
-    const [existing] = await db
-      .select()
-      .from(cashSessionsTable)
-      .where(
-        and(
-          eq(cashSessionsTable.status, "open"),
-          eq(cashSessionsTable.terminalName, terminalName),
-        ),
-      )
-      .limit(1);
+    // #region agent log
+    appendFileSync("/opt/cursor/logs/debug.log", JSON.stringify({ hypothesisId: "A", location: "cash.ts:open-entry", message: "cash open request entered", data: { terminalName, role: req.user?.role }, timestamp: Date.now() }) + "\n");
+    // #endregion
 
-    if (existing) {
+    const openResult = await db.transaction(async (tx) => {
+      // Serialize only sessions competing for this terminal. The check and
+      // insert must share the transaction protected by this lock.
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${"cash-session:" + terminalName}))`);
+
+      // Enforce unique open session per terminal
+      const [existing] = await tx
+        .select()
+        .from(cashSessionsTable)
+        .where(
+          and(
+            eq(cashSessionsTable.status, "open"),
+            eq(cashSessionsTable.terminalName, terminalName),
+          ),
+        )
+        .limit(1);
+
+      // #region agent log
+      appendFileSync("/opt/cursor/logs/debug.log", JSON.stringify({ hypothesisId: "A", location: "cash.ts:open-check", message: "cash open uniqueness check completed", data: { terminalName, existing: Boolean(existing), existingId: existing?.id ?? null }, timestamp: Date.now() }) + "\n");
+      // #endregion
+
+      if (existing) return { existing, session: null };
+
+      const [session] = await tx
+        .insert(cashSessionsTable)
+        .values({ employeeId, openingFloat, terminalName, blindClose, notes: notes ?? null, status: "open" })
+        .returning();
+
+      // #region agent log
+      appendFileSync("/opt/cursor/logs/debug.log", JSON.stringify({ hypothesisId: "A", location: "cash.ts:open-insert", message: "cash session inserted", data: { terminalName, sessionId: session.id }, timestamp: Date.now() }) + "\n");
+      // #endregion
+
+      return { existing: null, session };
+    });
+
+    if (openResult.existing) {
       res.status(409).json({
         error: `Ya hay una sesión abierta en "${terminalName}". Ciérrala primero.`,
       });
       return;
     }
 
-    const [session] = await db
-      .insert(cashSessionsTable)
-      .values({ employeeId, openingFloat, terminalName, blindClose, notes: notes ?? null, status: "open" })
-      .returning();
+    const session = openResult.session!;
 
     await logDocumentAction({
       action: "open_cash_session",
@@ -656,40 +681,63 @@ router.post(
       return;
     }
 
-    // Guard: block reopen if another session on the same terminal is already open
-    const [conflictingSession] = await db
-      .select({ id: cashSessionsTable.id })
-      .from(cashSessionsTable)
-      .where(
-        and(
-          eq(cashSessionsTable.terminalName, session.terminalName),
-          eq(cashSessionsTable.status, "open"),
-        ),
-      )
-      .limit(1);
+    const reopenResult = await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${"cash-session:" + session.terminalName}))`);
+      const [lockedSession] = await tx
+        .select()
+        .from(cashSessionsTable)
+        .where(eq(cashSessionsTable.id, id))
+        .for("update");
 
-    if (conflictingSession) {
+      if (!lockedSession || lockedSession.status === "open") {
+        return { status: "already-open" as const, reopened: null };
+      }
+
+      // Guard: block reopen if another session on the same terminal is already open
+      const [conflictingSession] = await tx
+        .select({ id: cashSessionsTable.id })
+        .from(cashSessionsTable)
+        .where(
+          and(
+            eq(cashSessionsTable.terminalName, lockedSession.terminalName),
+            eq(cashSessionsTable.status, "open"),
+          ),
+        )
+        .limit(1);
+
+      if (conflictingSession) {
+        return { status: "conflict" as const, reopened: null };
+      }
+
+      // Clear all closure-derived fields to avoid stale state
+      const [reopened] = await tx
+        .update(cashSessionsTable)
+        .set({
+          status: "open",
+          closedAt: null,
+          countedCash: null,
+          difference: null,
+          expectedCash: null,
+          discrepancyReason: null,
+          closingNotes: null,
+          denominationBreakdown: null,
+        })
+        .where(eq(cashSessionsTable.id, id))
+        .returning();
+      return { status: "reopened" as const, reopened };
+    });
+
+    if (reopenResult.status === "already-open") {
+      res.status(409).json({ error: "La sesión ya está abierta" });
+      return;
+    }
+    if (reopenResult.status === "conflict") {
       res.status(409).json({
         error: `El terminal "${session.terminalName}" ya tiene una sesión abierta. Ciérrala antes de reabrir esta.`,
       });
       return;
     }
-
-    // Clear all closure-derived fields to avoid stale state
-    const [reopened] = await db
-      .update(cashSessionsTable)
-      .set({
-        status: "open",
-        closedAt: null,
-        countedCash: null,
-        difference: null,
-        expectedCash: null,
-        discrepancyReason: null,
-        closingNotes: null,
-        denominationBreakdown: null,
-      })
-      .where(eq(cashSessionsTable.id, id))
-      .returning();
+    const reopened = reopenResult.reopened;
 
     await logDocumentAction({
       action: "reopen_cash_session",
@@ -711,44 +759,49 @@ router.post(
   "/cash-sessions/:id/void-payment",
   requireAuth,
   requireRole("admin"),
+  idempotency,
   async (req, res): Promise<void> => {
     const sessionId = req.params.id as string;
     const employeeId = (req as any).user?.id as string;
     const { paymentId, reason } = req.body as { paymentId: string; reason: string };
+
+    // #region agent log
+    appendFileSync("/opt/cursor/logs/debug.log", JSON.stringify({ hypothesisId: "B", location: "cash.ts:void-entry", message: "void payment request entered", data: { sessionId, paymentId, role: req.user?.role }, timestamp: Date.now() }) + "\n");
+    // #endregion
 
     if (!reason?.trim() || reason.trim().length < 5) {
       res.status(400).json({ error: "Se requiere motivo detallado para la anulación" });
       return;
     }
 
-    const [payment] = await db
-      .select()
-      .from(paymentsTable)
-      .where(eq(paymentsTable.id, paymentId));
+    const transactionResult = await db.transaction(async (tx) => {
+      // The payment row is the serialization point for all commands attempting
+      // to void this payment, independent of their idempotency key.
+      const [payment] = await tx
+        .select()
+        .from(paymentsTable)
+        .where(eq(paymentsTable.id, paymentId))
+        .for("update");
 
-    if (!payment) {
-      res.status(404).json({ error: "Pago no encontrado" });
-      return;
-    }
-    if (payment.status === "voided") {
-      res.status(409).json({ error: "Este pago ya ha sido anulado" });
-      return;
-    }
+      if (!payment) return { status: "not-found" as const };
+      if (payment.status === "voided") return { status: "already-voided" as const };
 
-    const [session] = await db
-      .select()
-      .from(cashSessionsTable)
-      .where(eq(cashSessionsTable.id, sessionId));
+      const [session] = await tx
+        .select()
+        .from(cashSessionsTable)
+        .where(eq(cashSessionsTable.id, sessionId));
 
-    // Mark payment as voided and create counter cash movement (for cash payments)
-    const result = await db.transaction(async (tx) => {
+      // #region agent log
+      appendFileSync("/opt/cursor/logs/debug.log", JSON.stringify({ hypothesisId: "B", location: "cash.ts:void-preflight", message: "void preflight completed", data: { paymentId, paymentStatus: payment.status, sessionStatus: session?.status ?? null }, timestamp: Date.now() }) + "\n");
+      // #endregion
+
       await tx
         .update(paymentsTable)
         .set({ status: "voided" })
         .where(eq(paymentsTable.id, paymentId));
 
       // Get method
-      const [method] = await db
+      const [method] = await tx
         .select({ code: paymentMethodsTable.code })
         .from(paymentMethodsTable)
         .where(eq(paymentMethodsTable.id, payment.paymentMethodId));
@@ -781,8 +834,23 @@ router.post(
         })
         .returning();
 
-      return voidRecord;
+      return { status: "voided" as const, payment, session, voidRecord };
     });
+
+    if (transactionResult.status === "not-found") {
+      res.status(404).json({ error: "Pago no encontrado" });
+      return;
+    }
+    if (transactionResult.status === "already-voided") {
+      res.status(409).json({ error: "Este pago ya ha sido anulado" });
+      return;
+    }
+
+    const { payment, session, voidRecord: result } = transactionResult;
+
+    // #region agent log
+    appendFileSync("/opt/cursor/logs/debug.log", JSON.stringify({ hypothesisId: "B", location: "cash.ts:void-effects", message: "void transaction effects committed", data: { paymentId, voidId: result.id, counterMovementId: result.counterMovementId }, timestamp: Date.now() }) + "\n");
+    // #endregion
 
     await logDocumentAction({
       action: "void_payment",

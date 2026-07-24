@@ -1255,7 +1255,7 @@ export const createOrderCashPaymentSplits = async (id: string,
 
 
 
-export const getCreateOrderCashPaymentSplitsMutationOptions = <TError = ErrorType<BadRequestResponse | UnauthorizedResponse | NotFoundResponse | ConflictResponse>,
+export const getCreateOrderCashPaymentSplitsMutationOptions = <TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | ConflictResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createOrderCashPaymentSplits>>, TError,{id: string;data: BodyType<CashPaymentsCreateSplitsInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof createOrderCashPaymentSplits>>, TError,{id: string;data: BodyType<CashPaymentsCreateSplitsInput>}, TContext> => {
 
@@ -1284,12 +1284,12 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type CreateOrderCashPaymentSplitsMutationResult = NonNullable<Awaited<ReturnType<typeof createOrderCashPaymentSplits>>>
     export type CreateOrderCashPaymentSplitsMutationBody = BodyType<CashPaymentsCreateSplitsInput>
-    export type CreateOrderCashPaymentSplitsMutationError = ErrorType<BadRequestResponse | UnauthorizedResponse | NotFoundResponse | ConflictResponse>
+    export type CreateOrderCashPaymentSplitsMutationError = ErrorType<BadRequestResponse | UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | ConflictResponse>
 
     /**
  * @summary Create or replace unpaid split groups
  */
-export const useCreateOrderCashPaymentSplits = <TError = ErrorType<BadRequestResponse | UnauthorizedResponse | NotFoundResponse | ConflictResponse>,
+export const useCreateOrderCashPaymentSplits = <TError = ErrorType<BadRequestResponse | UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | ConflictResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createOrderCashPaymentSplits>>, TError,{id: string;data: BodyType<CashPaymentsCreateSplitsInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof createOrderCashPaymentSplits>>,
@@ -1329,7 +1329,7 @@ export const markOrderCashPaymentSplitPaid = async (id: string,
 
 
 
-export const getMarkOrderCashPaymentSplitPaidMutationOptions = <TError = ErrorType<UnauthorizedResponse | NotFoundResponse>,
+export const getMarkOrderCashPaymentSplitPaidMutationOptions = <TError = ErrorType<UnauthorizedResponse | ForbiddenResponse | NotFoundResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof markOrderCashPaymentSplitPaid>>, TError,{id: string;groupId: string;data: BodyType<CashPaymentsMarkSplitPaidInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof markOrderCashPaymentSplitPaid>>, TError,{id: string;groupId: string;data: BodyType<CashPaymentsMarkSplitPaidInput>}, TContext> => {
 
@@ -1358,12 +1358,12 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type MarkOrderCashPaymentSplitPaidMutationResult = NonNullable<Awaited<ReturnType<typeof markOrderCashPaymentSplitPaid>>>
     export type MarkOrderCashPaymentSplitPaidMutationBody = BodyType<CashPaymentsMarkSplitPaidInput>
-    export type MarkOrderCashPaymentSplitPaidMutationError = ErrorType<UnauthorizedResponse | NotFoundResponse>
+    export type MarkOrderCashPaymentSplitPaidMutationError = ErrorType<UnauthorizedResponse | ForbiddenResponse | NotFoundResponse>
 
     /**
  * @summary Link an optional payment and mark one split group paid
  */
-export const useMarkOrderCashPaymentSplitPaid = <TError = ErrorType<UnauthorizedResponse | NotFoundResponse>,
+export const useMarkOrderCashPaymentSplitPaid = <TError = ErrorType<UnauthorizedResponse | ForbiddenResponse | NotFoundResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof markOrderCashPaymentSplitPaid>>, TError,{id: string;groupId: string;data: BodyType<CashPaymentsMarkSplitPaidInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof markOrderCashPaymentSplitPaid>>,
