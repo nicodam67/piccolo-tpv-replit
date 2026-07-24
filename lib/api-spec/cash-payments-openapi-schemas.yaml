@@ -1,0 +1,570 @@
+# phase61-cash-payments component schemas — append under components.schemas
+
+    CashPaymentsMethod:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        code: { type: string }
+        name: { type: string }
+        active: { type: boolean }
+        sortOrder: { type: integer }
+      required: [id, code, name, active, sortOrder]
+
+    CashPaymentsSessionStatus:
+      type: string
+      enum: [open, closed]
+
+    CashPaymentsSession:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        employeeId: { type: string, format: uuid }
+        openedAt: { type: string, format: date-time }
+        openingFloat: { type: string, pattern: '^-?\d+(\.\d+)?$' }
+        closedAt: { type: [string, "null"], format: date-time }
+        expectedCash: { type: [string, "null"] }
+        countedCash: { type: [string, "null"] }
+        difference: { type: [string, "null"] }
+        status: { $ref: "#/components/schemas/CashPaymentsSessionStatus" }
+        terminalName: { type: string }
+        blindClose: { type: boolean }
+        notes: { type: [string, "null"] }
+        discrepancyReason: { type: [string, "null"] }
+        closingNotes: { type: [string, "null"] }
+        isDemo: { type: boolean }
+        denominationBreakdown:
+          anyOf:
+            - { type: object, additionalProperties: { type: number } }
+            - { type: "null" }
+      required: [id, employeeId, openedAt, openingFloat, closedAt, expectedCash, countedCash, difference, status, terminalName, blindClose, notes, discrepancyReason, closingNotes, denominationBreakdown, isDemo]
+
+    CashPaymentsSessionWithEmployee:
+      allOf:
+        - { $ref: "#/components/schemas/CashPaymentsSession" }
+        - type: object
+          properties:
+            employeeName: { type: string }
+          required: [employeeName]
+
+    CashPaymentsOpenSessionInput:
+      type: object
+      properties:
+        openingFloat: { type: string, default: "0" }
+        terminalName: { type: string, default: Caja principal }
+        blindClose: { type: boolean, default: false }
+        notes: { type: string }
+
+    CashPaymentsMovementType:
+      type: string
+      enum: [in, out, supplier_payment, tip, change_added, correction]
+
+    CashPaymentsMovement:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        cashSessionId: { type: string, format: uuid }
+        movementType: { $ref: "#/components/schemas/CashPaymentsMovementType" }
+        amount: { type: string }
+        reason: { type: string }
+        employeeId: { type: string, format: uuid }
+        createdAt: { type: string, format: date-time }
+        employeeName: { type: [string, "null"] }
+      required: [id, cashSessionId, movementType, amount, reason, employeeId, createdAt]
+
+    CashPaymentsCreateMovementInput:
+      type: object
+      properties:
+        movementType: { $ref: "#/components/schemas/CashPaymentsMovementType" }
+        amount: { type: string }
+        reason: { type: string, minLength: 1 }
+      required: [movementType, amount, reason]
+
+    CashPaymentsCloseSessionInput:
+      type: object
+      properties:
+        countedCash: { type: string }
+        discrepancyReason: { type: string }
+        closingNotes: { type: string }
+        denominationBreakdown:
+          type: object
+          additionalProperties: { type: number }
+      required: [countedCash]
+
+    CashPaymentsSalesByMethod:
+      type: object
+      properties:
+        methodCode: { type: string }
+        methodName: { type: string }
+        total: { type: [string, "null"] }
+      required: [methodCode, methodName]
+
+    CashPaymentsSessionSummary:
+      type: object
+      properties:
+        session: { $ref: "#/components/schemas/CashPaymentsSessionWithEmployee" }
+        salesByMethod: { type: array, items: { $ref: "#/components/schemas/CashPaymentsSalesByMethod" } }
+        movements: { type: array, items: { $ref: "#/components/schemas/CashPaymentsMovement" } }
+      required: [session, salesByMethod, movements]
+
+    CashPaymentsVoidInput:
+      type: object
+      properties:
+        paymentId: { type: string, format: uuid }
+        reason: { type: string, minLength: 5 }
+      required: [paymentId, reason]
+
+    CashPaymentsVoid:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        originalPaymentId: { type: string, format: uuid }
+        reason: { type: string }
+        authorizedBy: { type: string, format: uuid }
+        cashSessionId: { type: [string, "null"], format: uuid }
+        counterMovementId: { type: [string, "null"], format: uuid }
+        createdAt: { type: string, format: date-time }
+      required: [id, originalPaymentId, reason, authorizedBy, cashSessionId, counterMovementId, createdAt]
+
+    CashPaymentsSessionHistoryItem:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        terminalName: { type: string }
+        openedAt: { type: string, format: date-time }
+        closedAt: { type: [string, "null"], format: date-time }
+        openingFloat: { type: string }
+        expectedCash: { type: [string, "null"] }
+        countedCash: { type: [string, "null"] }
+        difference: { type: [string, "null"] }
+        status: { $ref: "#/components/schemas/CashPaymentsSessionStatus" }
+        blindClose: { type: boolean }
+        employeeName: { type: [string, "null"] }
+      required: [id, terminalName, openedAt, closedAt, openingFloat, expectedCash, countedCash, difference, status, blindClose, employeeName]
+
+    CashPaymentsOrderSummaryItem:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        productName: { type: string }
+        quantity: { type: number }
+        unitPrice: { type: string }
+        lineTotal: { type: string }
+        taxRate: { type: number }
+      required: [id, productName, quantity, unitPrice, lineTotal]
+
+    CashPaymentsSummaryPayment:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        amount: { type: string }
+        status: { type: string, enum: [completed, voided] }
+        createdAt: { type: string, format: date-time }
+        methodCode: { type: string }
+        methodName: { type: string }
+      required: [id, amount, status, createdAt, methodCode, methodName]
+
+    CashPaymentsPayment:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        orderId: { type: string, format: uuid }
+        paymentMethodId: { type: string, format: uuid }
+        cashSessionId: { type: [string, "null"], format: uuid }
+        amount: { type: string }
+        status: { type: string, enum: [completed, voided] }
+        reference: { type: [string, "null"] }
+        employeeId: { type: string, format: uuid }
+        createdAt: { type: string, format: date-time }
+        isDemo: { type: boolean }
+      required: [id, orderId, paymentMethodId, cashSessionId, amount, status, reference, employeeId, createdAt, isDemo]
+
+    CashPaymentsOrderSummary:
+      type: object
+      properties:
+        order:
+          type: object
+          properties:
+            id: { type: string, format: uuid }
+            status: { type: string }
+            tableName: { type: [string, "null"] }
+            employeeName: { type: [string, "null"] }
+          required: [id, status]
+        items: { type: array, items: { $ref: "#/components/schemas/CashPaymentsOrderSummaryItem" } }
+        discount: { type: string }
+        taxBreakdown: { type: array, items: { $ref: "#/components/schemas/TaxBreakdownItem" } }
+        subtotal: { type: string }
+        taxTotal: { type: string }
+        total: { type: string }
+        paid: { type: string }
+        remaining: { type: string }
+        methods: { type: array, items: { $ref: "#/components/schemas/CashPaymentsMethod" } }
+        payments: { type: array, items: { $ref: "#/components/schemas/CashPaymentsSummaryPayment" } }
+      required: [order, items, taxBreakdown, subtotal, taxTotal, total, paid, remaining, methods, payments]
+
+    CashPaymentsCreateOrderPaymentInput:
+      type: object
+      properties:
+        methodCode:
+          type: string
+          description: Runtime-seeded method code; invitation additionally requires admin.
+          enum: [cash, card, bizum, transfer, cheque_rest, invitation, other, cash_machine]
+        amount: { type: string }
+        reference: { type: string }
+        terminal: { type: string }
+      required: [methodCode, amount]
+
+    CashPaymentsResult:
+      type: object
+      properties:
+        payment: { $ref: "#/components/schemas/CashPaymentsPayment" }
+        ticket:
+          anyOf:
+            - { $ref: "#/components/schemas/CashPaymentsTicketHeader" }
+            - { type: "null" }
+        change: { type: string }
+        newRemaining: { type: number }
+        idempotent: { type: boolean }
+      required: [payment, ticket, change, newRemaining]
+
+    CashPaymentsTicketHeader:
+      type: object
+      additionalProperties: true
+      properties:
+        id: { type: string, format: uuid }
+        orderId: { type: string, format: uuid }
+        ticketNumber: { type: integer }
+        subtotal: { type: string }
+        taxTotal: { type: string }
+        total: { type: string }
+        issuedAt: { type: string, format: date-time }
+      required: [id, orderId, ticketNumber, subtotal, taxTotal, total, issuedAt]
+
+    CashPaymentsTicket:
+      type: object
+      properties:
+        ticket: { $ref: "#/components/schemas/CashPaymentsTicketHeader" }
+        order: { type: object, additionalProperties: true }
+        items: { type: array, items: { type: object, additionalProperties: true } }
+        payments: { type: array, items: { type: object, additionalProperties: true } }
+        taxBreakdown: { type: array, items: { $ref: "#/components/schemas/TaxBreakdownItem" } }
+        employeeName: { type: [string, "null"] }
+      required: [ticket, order, items, payments, taxBreakdown, employeeName]
+
+    CashPaymentsSplitItem:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        orderItemId: { type: string, format: uuid }
+        quantity: { type: string }
+        productName: { type: string }
+        unitPrice: { type: string }
+        lineTotal: { type: string }
+      required: [orderItemId, quantity]
+
+    CashPaymentsSplitGroup:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        orderId: { type: string, format: uuid }
+        label: { type: string }
+        status: { type: string, enum: [open, paid] }
+        total: { type: string }
+        sortOrder: { type: integer }
+        createdAt: { type: string, format: date-time }
+        items: { type: array, items: { $ref: "#/components/schemas/CashPaymentsSplitItem" } }
+        paid: { type: string }
+      required: [id, orderId, label, status, total, sortOrder]
+
+    CashPaymentsCreatedSplitGroup:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        orderId: { type: string, format: uuid }
+        label: { type: string }
+        status: { type: string, enum: [open, paid] }
+        total: { type: string }
+        sortOrder: { type: integer }
+        createdAt: { type: string, format: date-time }
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              orderItemId: { type: string, format: uuid }
+              quantity: { type: number }
+            required: [orderItemId, quantity]
+      required: [id, orderId, label, status, total, sortOrder, createdAt, items]
+
+    CashPaymentsCreateSplitsInput:
+      type: object
+      properties:
+        groups:
+          type: array
+          minItems: 1
+          maxItems: 8
+          items:
+            type: object
+            properties:
+              label: { type: string }
+              total: { oneOf: [{ type: string }, { type: number }] }
+              items:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    orderItemId: { type: string, format: uuid }
+                    quantity: { type: number }
+                  required: [orderItemId, quantity]
+            required: [label, items]
+      required: [groups]
+
+    CashPaymentsMarkSplitPaidInput:
+      type: object
+      properties:
+        paymentId: { type: string, format: uuid }
+
+    CashPaymentsCreateTipInput:
+      type: object
+      properties:
+        amount: { type: string }
+        method: { type: string, enum: [cash, card], default: cash }
+      required: [amount]
+
+    CashPaymentsTip:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        paymentId: { type: string, format: uuid }
+        orderId: { type: string, format: uuid }
+        amount: { type: string }
+        method: { type: string, enum: [cash, card] }
+        cashSessionId: { type: [string, "null"], format: uuid }
+        createdAt: { type: string, format: date-time }
+      required: [id, paymentId, orderId, amount, method, createdAt]
+
+    CashPaymentsReportMovement:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        movementType: { $ref: "#/components/schemas/CashPaymentsMovementType" }
+        amount: { type: string }
+        reason: { type: string }
+        createdAt: { type: string, format: date-time }
+        employeeName: { type: [string, "null"] }
+      required: [id, movementType, amount, reason, createdAt]
+
+    CashPaymentsReportTip:
+      type: object
+      properties:
+        amount: { type: string }
+        method: { type: string, enum: [cash, card] }
+      required: [amount, method]
+
+    CashPaymentsReportVoid:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        reason: { type: string }
+        createdAt: { type: string, format: date-time }
+        originalPaymentId: { type: string, format: uuid }
+        employeeName: { type: [string, "null"] }
+      required: [id, reason, createdAt, originalPaymentId]
+
+    CashPaymentsZReport:
+      type: object
+      properties:
+        session: { $ref: "#/components/schemas/CashPaymentsSessionWithEmployee" }
+        salesByMethod: { type: array, items: { $ref: "#/components/schemas/CashPaymentsSalesByMethod" } }
+        movements: { type: array, items: { $ref: "#/components/schemas/CashPaymentsReportMovement" } }
+        tips: { type: array, items: { $ref: "#/components/schemas/CashPaymentsReportTip" } }
+        voids: { type: array, items: { $ref: "#/components/schemas/CashPaymentsReportVoid" } }
+        totalSales: { type: string }
+        totalTips: { type: string }
+        movIn: { type: string }
+        movOut: { type: string }
+        paymentsCount: { type: integer }
+        taxBreakdown: { type: array, items: { $ref: "#/components/schemas/TaxBreakdownItem" } }
+      required: [session, salesByMethod, movements, tips, voids, totalSales, totalTips, movIn, movOut, paymentsCount, taxBreakdown]
+
+    CashPaymentsXReport:
+      allOf:
+        - { $ref: "#/components/schemas/CashPaymentsZReport" }
+        - type: object
+          properties:
+            isProvisional: { type: boolean, const: true }
+          required: [isProvisional]
+
+    CashPaymentsMachineConfig:
+      type: object
+      description: Safe DTO; credentialKey is never returned.
+      properties:
+        id: { type: [string, "null"], format: uuid }
+        manufacturer: { type: string }
+        model: { type: string }
+        host: { type: string }
+        port: { type: integer }
+        connectionType: { type: string }
+        deviceId: { type: string }
+        timeoutMs: { type: integer }
+        enabled: { type: boolean }
+        hasCredential: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+      required: [id, manufacturer, model, host, port, connectionType, deviceId, timeoutMs, enabled, hasCredential]
+
+    CashPaymentsUpdateMachineConfigInput:
+      type: object
+      properties:
+        manufacturer: { type: string }
+        model: { type: string }
+        host: { type: string }
+        port: { type: integer }
+        connectionType: { type: string }
+        deviceId: { type: string }
+        credentialKey: { type: string, writeOnly: true }
+        timeoutMs: { type: integer }
+        enabled: { type: boolean }
+
+    CashPaymentsMachineConnectionResult:
+      type: object
+      properties:
+        ok: { type: boolean }
+        latencyMs: { type: number }
+        error: { type: string }
+      required: [ok]
+
+    CashPaymentsMachineStatus:
+      type: object
+      properties:
+        status: { type: string, enum: [connected, disconnected, busy, error, maintenance] }
+        busyWithTransactionId: { type: string }
+        jamDetected: { type: boolean }
+        doorOpen: { type: boolean }
+        maintenanceRequired: { type: boolean }
+        lastSeen: { type: string, format: date-time }
+        supportsCashLevels: { type: boolean }
+      required: [status, jamDetected, doorOpen, maintenanceRequired, lastSeen, supportsCashLevels]
+
+    CashPaymentsMachineCashLevel:
+      type: object
+      properties:
+        denomination: { type: number }
+        count: { type: integer }
+        isLow: { type: boolean }
+      required: [denomination, count, isLow]
+
+    CashPaymentsMachineTransactionStatus:
+      type: string
+      enum: [pending, iniciando, esperando_efectivo, efectivo_parcial, devolviendo_cambio, completada, cancelada, tiempo_agotado, error, intervencion_manual, conciliando, conciliacion_pendiente]
+
+    CashPaymentsMachineTransaction:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        orderId: { type: [string, "null"], format: uuid }
+        splitRef: { type: [string, "null"] }
+        transactionType: { type: string, enum: [payment, refund] }
+        amountRequested: { type: string }
+        amountReceived: { type: string }
+        changeDispensed: { type: string }
+        status: { $ref: "#/components/schemas/CashPaymentsMachineTransactionStatus" }
+        deviceTransactionId: { type: [string, "null"] }
+        deviceError: { type: [string, "null"] }
+        employeeId: { type: [string, "null"], format: uuid }
+        terminalName: { type: string }
+        deviceId: { type: string }
+        startedAt: { type: string, format: date-time }
+        completedAt: { type: [string, "null"], format: date-time }
+        createdAt: { type: string, format: date-time }
+      required: [id, orderId, splitRef, transactionType, amountRequested, amountReceived, changeDispensed, status, deviceTransactionId, deviceError, employeeId, terminalName, deviceId, startedAt, completedAt, createdAt]
+
+    CashPaymentsStartMachinePaymentInput:
+      type: object
+      properties:
+        orderId: { type: string, format: uuid }
+        amount: { type: string }
+        splitRef: { type: string }
+        terminalName: { type: string }
+      required: [amount]
+
+    CashPaymentsMachineRefundInput:
+      allOf:
+        - { $ref: "#/components/schemas/CashPaymentsStartMachinePaymentInput" }
+
+    CashPaymentsMachineCommandResult:
+      type: object
+      properties:
+        transaction: { $ref: "#/components/schemas/CashPaymentsMachineTransaction" }
+        recovering: { type: boolean }
+        reconciliationRequired: { type: boolean }
+        error: { type: string }
+      required: [transaction]
+
+    CashPaymentsMachinePaymentPollResult:
+      allOf:
+        - { $ref: "#/components/schemas/CashPaymentsMachineCommandResult" }
+        - type: object
+          properties:
+            settlement:
+              anyOf:
+                - { type: object, additionalProperties: true }
+                - { type: "null" }
+            needsReconciliation: { type: boolean }
+            error: { type: string }
+
+    CashPaymentsMachineTransactionLedgerRow:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        orderId: { type: [string, "null"], format: uuid }
+        transactionType: { type: string, enum: [payment, refund] }
+        amountRequested: { type: string }
+        amountReceived: { type: string }
+        changeDispensed: { type: string }
+        status: { $ref: "#/components/schemas/CashPaymentsMachineTransactionStatus" }
+        terminalName: { type: string }
+        startedAt: { type: string, format: date-time }
+        completedAt: { type: [string, "null"], format: date-time }
+        deviceError: { type: [string, "null"] }
+        employeeName: { type: [string, "null"] }
+      required: [id, orderId, transactionType, amountRequested, amountReceived, changeDispensed, status, terminalName, startedAt, completedAt, deviceError, employeeName]
+
+    CashPaymentsMachineSessionSummary:
+      type: object
+      properties:
+        enabled: { type: boolean }
+        tpvTotal: { type: string }
+        deviceTotal: { type: string }
+        grossReceived: { type: string }
+        changeDispensed: { type: string }
+        refundsDispensed: { type: string }
+        difference: { type: string }
+        transactionCount: { type: integer }
+      required: [enabled, tpvTotal, deviceTotal, grossReceived, changeDispensed, refundsDispensed, difference, transactionCount]
+
+    CashPaymentsMethodReportRow:
+      type: object
+      properties:
+        methodId: { type: string, format: uuid }
+        name: { type: string }
+        code: { type: string }
+        total: { type: number }
+        count: { type: integer }
+      required: [methodId, name, code, total, count]
+
+    CashPaymentsSessionReportRow:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        terminalName: { type: string }
+        employeeName: { type: string }
+        openedAt: { type: string, format: date-time }
+        closedAt: { type: [string, "null"], format: date-time }
+        status: { $ref: "#/components/schemas/CashPaymentsSessionStatus" }
+        openingFloat: { type: number }
+        expectedCash: { type: [number, "null"] }
+        countedCash: { type: [number, "null"] }
+        difference: { type: [number, "null"] }
+        inMovements: { type: number }
+        outMovements: { type: number }
+      required: [id, terminalName, employeeName, openedAt, closedAt, status, openingFloat, expectedCash, countedCash, difference, inMovements, outMovements]

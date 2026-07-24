@@ -1,17 +1,9 @@
 import { useState, useEffect, useMemo } from "react";
 import { Users, LogIn, LogOut, Coffee, Clock, AlertCircle, Search, X } from "lucide-react";
-import { api } from '../../lib/api-client';
+import { getTimeclockRecordsToday } from "@workspace/api-client-react/timeclock";
+import type { TimeclockRecordListItem } from "@workspace/api-client-react/timeclock";
 
-interface TodayRecord {
-  id: string;
-  employeeId: string;
-  employeeName: string;
-  clockIn: string;
-  clockOut: string | null;
-  source: string;
-}
-
-function minutesBetween(a: string, b: string | null) {
+function minutesBetween(a: string, b: string | null | undefined) {
   const end = b ? new Date(b) : new Date();
   return Math.floor((end.getTime() - new Date(a).getTime()) / 60000);
 }
@@ -27,7 +19,7 @@ function fmtTime(iso: string) {
 }
 
 export default function FichajePanelDiario() {
-  const [records, setRecords] = useState<TodayRecord[]>([]);
+  const [records, setRecords] = useState<TimeclockRecordListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(new Date());
 
@@ -38,7 +30,7 @@ export default function FichajePanelDiario() {
 
   useEffect(() => {
     function loadToday() {
-      api.get<TodayRecord[]>('/api/fichaje/records/today')
+      getTimeclockRecordsToday()
         .then(d => setRecords(d))
         .catch(() => {})
         .finally(() => setLoading(false));

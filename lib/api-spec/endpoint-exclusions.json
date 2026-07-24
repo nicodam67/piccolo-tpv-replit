@@ -1,0 +1,72 @@
+[
+  {
+    "method": "ALL",
+    "path": "/tablet/device/:token/ping",
+    "reason": "Compatibility sentinel returning 410 for credentials formerly accepted in URLs.",
+    "owner": "tablet",
+    "reviewCondition": "Remove only after supported tablet versions no longer call the legacy URL."
+  },
+  {
+    "method": "ALL",
+    "path": "/tablet/device/:token",
+    "reason": "Compatibility sentinel returning 410 for credentials formerly accepted in URLs.",
+    "owner": "tablet",
+    "reviewCondition": "Remove only after supported tablet versions no longer call the legacy URL."
+  },
+  {
+    "method": "GET",
+    "path": "/public/online-config",
+    "reason": "Public online config endpoint — outside Entrega 54 TPV staff scope.",
+    "owner": "delivery",
+    "reviewCondition": "Contract in a future public-online phase if needed."
+  },
+  {
+    "method": "POST",
+    "path": "/public/check-zone",
+    "reason": "Public zone check — outside Entrega 54 TPV staff scope.",
+    "owner": "delivery",
+    "reviewCondition": "Contract in a future public-online phase if needed."
+  },
+  {
+    "method": "POST",
+    "path": "/public/orders/online",
+    "reason": "Legacy public ordering endpoint returns 410 Gone.",
+    "owner": "delivery",
+    "reviewCondition": "Remove route after all clients migrate to online-v2."
+  },
+  {
+    "method": "GET",
+    "path": "/public/order-status/:orderNumber",
+    "reason": "Public order status — outside Entrega 54 TPV staff scope.",
+    "owner": "delivery",
+    "reviewCondition": "Contract in a future public-online phase if needed."
+  },
+  {
+    "method": "GET",
+    "path": "/courier/:courierId/deliveries",
+    "reason": "Courier mobile API uses bearer token security scheme, not employee auth.",
+    "owner": "delivery",
+    "reviewCondition": "Contract separately with CourierToken security scheme."
+  },
+  {
+    "method": "GET",
+    "path": "/courier/:courierId/summary",
+    "reason": "Courier mobile API uses bearer token security scheme, not employee auth.",
+    "owner": "delivery",
+    "reviewCondition": "Contract separately with CourierToken security scheme."
+  },
+  {
+    "method": "PATCH",
+    "path": "/courier/:courierId/orders/:orderId/status",
+    "reason": "Courier mobile API uses bearer token security scheme, not employee auth.",
+    "owner": "delivery",
+    "reviewCondition": "Contract separately with CourierToken security scheme."
+  },
+  {
+    "method": "GET",
+    "path": "/admin/online-reports",
+    "reason": "Online reports/statistics — excluded from Entrega 54 reparto scope.",
+    "owner": "delivery",
+    "reviewCondition": "Contract in director/reports phase if needed."
+  }
+]

@@ -26,11 +26,13 @@ import {
   useUpdateZone,
   useDeleteZone,
   useDuplicateZone,
+  getGetZonesQueryKey,
+} from '@workspace/api-client-react';
+import {
   useGetAlertConfig,
   usePatchAlertConfig,
-  getGetZonesQueryKey,
   getGetAlertConfigQueryKey,
-} from '@workspace/api-client-react';
+} from '@workspace/api-client-react/phase1';
 
 // ─── Color palette ─────────────────────────────────────────────────────────────
 const ZONE_COLORS = [

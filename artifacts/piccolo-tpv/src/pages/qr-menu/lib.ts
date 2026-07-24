@@ -4,21 +4,34 @@
 // Do NOT use plain fetch() here — it won't include the auth token.
 
 import type { QrBranding } from './types';
-import { customFetch, ApiError } from '@workspace/api-client-react';
+import {
+  getAdminQrBranding,
+  putAdminQrBranding,
+  customFetch,
+  ApiError,
+} from '@workspace/api-client-react';
+import type { UpdateQrBrandingInput } from '@workspace/api-client-react';
+import {
+  getAdminCategories,
+  createAdminCategory,
+  updateAdminCategory,
+  updateAdminProduct,
+  createAdminProduct,
+  deleteAdminCategory,
+  deleteAdminProduct,
+  getAdminProducts,
+  pruneTranslations,
+} from '@workspace/api-client-react/catalog-admin';
 
 // ── Branding ──────────────────────────────────────────────────────────────────
 
 export async function fetchQrBranding(): Promise<QrBranding> {
-  const data = await customFetch<QrBranding | null>('/api/admin/qr-branding');
-  return data ?? ({} as QrBranding);
+  const data = await getAdminQrBranding();
+  return (data ?? {}) as QrBranding;
 }
 
 export async function saveQrBranding(data: Partial<QrBranding>): Promise<void> {
-  await customFetch('/api/admin/qr-branding', {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  });
+  await putAdminQrBranding(data as UpdateQrBrandingInput);
 }
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -68,17 +81,19 @@ export interface PublicMenuCategory {
 // ── Categories ────────────────────────────────────────────────────────────────
 
 export async function fetchQrCategories(): Promise<QrCategory[]> {
-  const data = await customFetch<unknown>('/api/admin/categories');
-  if (!data) return [];
-  return Array.isArray(data) ? (data as QrCategory[]) : ((data as any).categories ?? []);
+  const data = await getAdminCategories();
+  return Array.isArray(data) ? data as QrCategory[] : [];
 }
 
 export async function patchCategory(id: string, patch: Record<string, unknown>): Promise<void> {
-  await customFetch(`/api/admin/categories/${id}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(patch),
-  });
+  const { translations, ...rest } = patch;
+  const body = {
+    ...rest,
+    ...(translations && typeof translations === 'object'
+      ? { translations: pruneTranslations(translations as Record<string, { name?: string; description?: string }>) }
+      : {}),
+  };
+  await updateAdminCategory(id, body);
 }
 
 export async function createCategory(data: {
@@ -88,31 +103,40 @@ export async function createCategory(data: {
   sortOrder?: number;
   translations?: Record<string, { name?: string; description?: string }>;
 }): Promise<QrCategory> {
-  return customFetch<QrCategory>('/api/admin/categories', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  });
+  try {
+    return await createAdminCategory({
+      name: data.name,
+      icon: data.icon,
+      color: data.color,
+      sortOrder: data.sortOrder,
+    }) as QrCategory;
+  } catch (e) {
+    if (e instanceof ApiError) {
+      throw new Error((e.data as { error?: string } | null)?.error ?? e.message);
+    }
+    throw e;
+  }
 }
 
 export async function deleteCategory(id: string): Promise<void> {
-  await customFetch(`/api/admin/categories/${id}`, { method: 'DELETE' });
+  await deleteAdminCategory(id);
 }
 
 // ── Products ──────────────────────────────────────────────────────────────────
 
 export async function fetchQrProducts(): Promise<QrProduct[]> {
-  const data = await customFetch<unknown>('/api/admin/products');
-  if (!data) return [];
-  return Array.isArray(data) ? (data as QrProduct[]) : ((data as any).products ?? []);
+  const data = await getAdminProducts();
+  return Array.isArray(data) ? data as QrProduct[] : [];
 }
 
 export async function patchProduct(id: string, patch: Record<string, unknown>): Promise<void> {
-  await customFetch(`/api/admin/products/${id}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(patch),
-  });
+  const { translations, ...rest } = patch;
+  await updateAdminProduct(id, {
+    ...rest,
+    ...(translations && typeof translations === 'object'
+      ? { translations: pruneTranslations(translations as Record<string, { name?: string; description?: string }>) }
+      : {}),
+  } as never);
 }
 
 export async function createProduct(data: {
@@ -131,11 +155,10 @@ export async function createProduct(data: {
   sortOrder?: number;
 }): Promise<QrProduct> {
   try {
-    return await customFetch<QrProduct>('/api/admin/products', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    });
+    return await createAdminProduct({
+      ...data,
+      halfPortionPrice: data.halfPortionPrice ?? undefined,
+    }) as QrProduct;
   } catch (e) {
     if (e instanceof ApiError) {
       throw new Error((e.data as { error?: string } | null)?.error ?? e.message);
@@ -145,7 +168,7 @@ export async function createProduct(data: {
 }
 
 export async function deleteProduct(id: string): Promise<void> {
-  await customFetch(`/api/admin/products/${id}`, { method: 'DELETE' });
+  await deleteAdminProduct(id);
 }
 
 // ── Public menu ───────────────────────────────────────────────────────────────

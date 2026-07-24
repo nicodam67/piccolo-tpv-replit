@@ -5,17 +5,10 @@
 import { useState, useEffect } from "react";
 import { FileEdit, Plus, Search, Clock, Check, X } from "lucide-react";
 import { api } from "../../lib/api-client";
+import { getTimeclockRecords, updateTimeclockRecord } from "@workspace/api-client-react/timeclock";
+import type { TimeclockRecordListItem } from "@workspace/api-client-react/timeclock";
 
-interface FichajeRecord {
-  id: string;
-  employeeId: string;
-  employeeName: string;
-  clockIn: string;
-  clockOut: string | null;
-  source: string;
-  isManual: boolean;
-  notes: string | null;
-}
+interface FichajeRecord extends TimeclockRecordListItem {}
 
 interface Employee { id: string; name: string; }
 
@@ -36,11 +29,11 @@ function EditModal({ record, onClose, onSaved }: { record: FichajeRecord; onClos
     setSaving(true);
     setError(null);
     try {
-      await api.put(`/api/fichaje/records/${record.id}`, {
+      await updateTimeclockRecord(record.id, {
         clockIn: form.clockIn,
-        clockOut: form.clockOut || null,
-        notes: form.notes || null,
-        isManual: true,
+        clockOut: form.clockOut || undefined,
+        notes: form.notes || undefined,
+        reason: form.notes || "Corrección manual",
       });
       onSaved();
     } catch (e) {
@@ -101,9 +94,11 @@ export default function FichajeCorrecciones() {
 
   function load() {
     setLoading(true);
-    const params = new URLSearchParams({ from, to });
-    if (filterEmp) params.set("employeeId", filterEmp);
-    api.get<FichajeRecord[]>(`/api/fichaje/records?${params}`)
+    getTimeclockRecords({
+      from: `${from}T00:00:00.000Z`,
+      to: `${to}T23:59:59.999Z`,
+      ...(filterEmp ? { employeeId: filterEmp } : {}),
+    })
       .then(d => setRecords(d))
       .catch(() => setRecords([]))
       .finally(() => setLoading(false));

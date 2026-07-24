@@ -1,33 +1,25 @@
 /**
  * FichajePortalEmpleado — vista personal del empleado autenticado.
- * Muestra mis registros recientes, horas del mes y estado actual.
- * Usa GET /api/fichaje/me
+ * Usa getFichajeMe + getTimeclockRecords (mes actual).
  */
 import { useState, useEffect } from "react";
 import { UserCircle, Clock, LogIn, LogOut, Calendar, BarChart3 } from "lucide-react";
-import { api } from "../../lib/api-client";
-
-interface MyRecord {
-  id: string;
-  clockIn: string;
-  clockOut: string | null;
-  source: string;
-  isManual: boolean;
-}
+import { getFichajeMe, getTimeclockRecords } from "@workspace/api-client-react/timeclock";
+import type { TimeclockRecord, TimeclockRecordListItem } from "@workspace/api-client-react/timeclock";
 
 interface MeData {
-  employee: { id: string; name: string; role: string; };
-  openRecord: MyRecord | null;
-  recentRecords: MyRecord[];
+  employee: { id: string; name: string; role: string };
+  openRecord: TimeclockRecord | null;
+  recentRecords: TimeclockRecordListItem[];
   monthMinutes: number;
+}
+
+function durationMins(a: string, b: string | null | undefined) {
+  return Math.round(((b ? new Date(b) : new Date()).getTime() - new Date(a).getTime()) / 60000);
 }
 
 function fmtDateTime(iso: string) {
   return new Date(iso).toLocaleString("es-ES", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
-}
-
-function durationMins(a: string, b: string | null) {
-  return Math.round(((b ? new Date(b) : new Date()).getTime() - new Date(a).getTime()) / 60000);
 }
 
 function fmtDuration(mins: number) {
@@ -42,8 +34,29 @@ export default function FichajePortalEmpleado() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    api.get<MeData>("/api/fichaje/me")
-      .then(d => setData(d))
+    const monthStart = new Date();
+    monthStart.setDate(1);
+    monthStart.setHours(0, 0, 0, 0);
+
+    Promise.all([
+      getFichajeMe(),
+      getTimeclockRecords({
+        from: monthStart.toISOString(),
+        to: new Date().toISOString(),
+      }),
+    ])
+      .then(([me, records]) => {
+        const monthMinutes = records.reduce((acc, r) => {
+          if (!r.clockOut) return acc;
+          return acc + durationMins(r.clockIn, r.clockOut);
+        }, 0);
+        setData({
+          employee: me.employee,
+          openRecord: me.currentRecord ?? null,
+          recentRecords: records.slice(0, 10),
+          monthMinutes,
+        });
+      })
       .catch(e => setError(String(e)))
       .finally(() => setLoading(false));
   }, []);
@@ -61,7 +74,6 @@ export default function FichajePortalEmpleado() {
 
   return (
     <div className="p-6 max-w-3xl mx-auto">
-      {/* Header */}
       <div className="flex items-center gap-4 mb-8">
         <div className="w-14 h-14 rounded-full bg-teal-500/15 text-teal-600 flex items-center justify-center text-2xl font-bold">
           {employee.name.charAt(0)}
@@ -72,7 +84,6 @@ export default function FichajePortalEmpleado() {
         </div>
       </div>
 
-      {/* Status card */}
       <div className={`rounded-2xl p-5 mb-6 border ${openRecord ? "bg-green-500/10 border-green-500/20" : "bg-card border-border"}`}>
         <div className="flex items-center gap-3">
           {openRecord ? (
@@ -95,7 +106,6 @@ export default function FichajePortalEmpleado() {
         </div>
       </div>
 
-      {/* Month summary */}
       <div className="grid grid-cols-2 gap-4 mb-6">
         <div className="bg-card border border-border rounded-xl p-4">
           <div className="flex items-center gap-2 text-muted-foreground mb-2">
@@ -113,7 +123,6 @@ export default function FichajePortalEmpleado() {
         </div>
       </div>
 
-      {/* Recent records */}
       <div>
         <h2 className="text-base font-semibold text-foreground mb-3">Últimos registros</h2>
         {recentRecords.length === 0 ? (
