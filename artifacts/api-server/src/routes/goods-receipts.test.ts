@@ -10,7 +10,7 @@ function makeChain(value: unknown) {
     then: (resolve: any, reject: any) => Promise.resolve(value).then(resolve, reject),
   };
   for (const m of ["select","from","where","orderBy","insert","update","set","values","returning",
-    "delete","innerJoin","leftJoin","limit","groupBy","$dynamic","mapWith","inArray","gte","lte","asc","desc"]) {
+    "delete","innerJoin","leftJoin","limit","groupBy","$dynamic","mapWith","inArray","gte","lte","asc","desc","for"]) {
     chain[m] = () => chain;
   }
   return chain;
