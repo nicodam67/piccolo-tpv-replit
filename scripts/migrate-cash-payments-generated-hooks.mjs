@@ -114,6 +114,20 @@ if (schemaImport && ts.isImportDeclaration(schemaImport)) {
   }
 }
 
+const finalApiSource = fs.readFileSync(legacyApiPath, "utf8");
+if (!finalApiSource.includes("NEW ENDPOINTS ADDED MANUALLY")) {
+  fs.writeFileSync(
+    legacyApiPath,
+    finalApiSource.replace(
+      "// ============================================================\n// CONFIG — Business configuration",
+      "// ============================================================\n"
+        + "// NEW ENDPOINTS ADDED MANUALLY — compatibility boundary\n"
+        + "// ============================================================\n\n"
+        + "// CONFIG — Business configuration",
+    ),
+  );
+}
+
 console.log(
   `Removed ${removedApi} Cash & Payments API declarations and ${removedSchemas} legacy schemas.`,
 );

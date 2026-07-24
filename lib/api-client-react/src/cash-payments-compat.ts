@@ -38,8 +38,11 @@ export function idempotencyRequest(key: string, init: RequestInit = {}): Request
   if (key.length < 8 || key.length > 200) {
     throw new Error("Idempotency-Key must contain between 8 and 200 characters");
   }
-  const headers = new Headers(init.headers);
-  headers.set("Idempotency-Key", key);
+  const headers: Record<string, string> = {};
+  new Headers(init.headers).forEach((value, name) => {
+    if (name.toLowerCase() !== "idempotency-key") headers[name] = value;
+  });
+  headers["Idempotency-Key"] = key;
   return { ...init, headers };
 }
 

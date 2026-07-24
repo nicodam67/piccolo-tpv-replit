@@ -1924,6 +1924,9 @@ export const useMarkOrderPase = <TError = ErrorType<ErrorResponse>,
     }
 
 // ============================================================
+// NEW ENDPOINTS ADDED MANUALLY — compatibility boundary
+// ============================================================
+
 // CONFIG — Business configuration
 // ============================================================
 

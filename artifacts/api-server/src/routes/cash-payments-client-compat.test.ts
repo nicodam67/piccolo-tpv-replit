@@ -43,6 +43,8 @@ describe("Cash & Payments compatibility adapters", () => {
     const retry = idempotencyRequest("machine-command-123", first);
     expect(new Headers(first.headers).get("Idempotency-Key")).toBe("machine-command-123");
     expect(new Headers(retry.headers).get("Idempotency-Key")).toBe("machine-command-123");
+    expect({ ...(retry.headers as Record<string, string>) })
+      .toHaveProperty("Idempotency-Key", "machine-command-123");
   });
 
   it("requires a valid key for physical commands and distinguishes commands", () => {
