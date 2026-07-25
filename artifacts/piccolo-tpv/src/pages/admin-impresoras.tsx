@@ -14,6 +14,7 @@ import {
   Settings, FileText, Zap, RefreshCw, ExternalLink,
 } from 'lucide-react';
 import { customFetch } from '@workspace/api-client-react';
+import { getAdminCategories } from '@workspace/api-client-react/catalog-admin';
 
 const api = (path: string, method = 'GET', body?: unknown) =>
   customFetch(path, { method, body: body !== undefined ? JSON.stringify(body) : undefined });
@@ -102,8 +103,8 @@ export default function AdminImpresoras() {
   const loadRouting = async () => {
     setRoutingLoading(true);
     try {
-      const cats = await api('/api/admin/categories') as Array<{ id: string; name: string }>;
-      setCategories(cats);
+      const cats = await getAdminCategories();
+      setCategories(cats.map((c: { id: string; name: string }) => ({ id: c.id, name: c.name })));
       // Fetch routing for each category
       const entries = await Promise.all(
         cats.map(async c => {

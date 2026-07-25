@@ -1,24 +1,17 @@
 import { useState, useEffect } from "react";
 import { Search, Filter, Clock, LogIn, LogOut, Edit2, Plus } from "lucide-react";
 import { api } from '../../lib/api-client';
+import { createTimeclockManualRecord, getTimeclockRecords } from "@workspace/api-client-react/timeclock";
+import type { TimeclockRecordListItem } from "@workspace/api-client-react/timeclock";
 
-interface FichajeRecord {
-  id: string;
-  employeeId: string;
-  employeeName: string;
-  clockIn: string;
-  clockOut: string | null;
-  source: string;
-  isManual: boolean;
-  notes: string | null;
-}
+interface FichajeRecord extends TimeclockRecordListItem {}
 
 interface Employee { id: string; name: string; }
 
 function fmtDateTime(iso: string) {
   return new Date(iso).toLocaleString("es-ES", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
-function fmtDuration(a: string, b: string | null) {
+function fmtDuration(a: string, b: string | null | undefined) {
   const mins = Math.floor(((b ? new Date(b) : new Date()).getTime() - new Date(a).getTime()) / 60000);
   return `${Math.floor(mins / 60)}h ${mins % 60}m`;
 }
@@ -29,7 +22,7 @@ function ManualModal({ onClose, onSaved, employees }: { onClose: () => void; onS
   async function save() {
     if (!form.employeeId || !form.clockIn) return;
     setSaving(true);
-    await api.post('/api/fichaje/records/manual', { employeeId: form.employeeId, clockIn: form.clockIn, clockOut: form.clockOut || undefined, notes: form.notes || undefined });
+    await createTimeclockManualRecord({ employeeId: form.employeeId, clockIn: form.clockIn, clockOut: form.clockOut || undefined, notes: form.notes || undefined });
     setSaving(false);
     onSaved();
   }
@@ -81,9 +74,11 @@ export default function FichajeRegistros() {
 
   function load() {
     setLoading(true);
-    const params = new URLSearchParams({ from, to });
-    if (filterEmp) params.set("employeeId", filterEmp);
-    api.get<FichajeRecord[]>(`/api/fichaje/records?${params}`)
+    getTimeclockRecords({
+      from: `${from}T00:00:00.000Z`,
+      to: `${to}T23:59:59.999Z`,
+      ...(filterEmp ? { employeeId: filterEmp } : {}),
+    })
       .then(d => setRecords(d))
       .catch(() => setRecords([]))
       .finally(() => setLoading(false));

@@ -1,18 +1,14 @@
 import { useState, useEffect, useMemo } from "react";
 import { Plus, CheckCircle, XCircle, Clock, Search, X } from "lucide-react";
 import { api } from '../../lib/api-client';
+import {
+  approveTimeclockAbsence,
+  createTimeclockAbsence,
+  getTimeclockAbsences,
+} from "@workspace/api-client-react/timeclock";
+import type { CreateTimeclockAbsenceInputAbsenceType, TimeclockAbsenceListItem } from "@workspace/api-client-react/timeclock";
 
-interface Absence {
-  id: string;
-  employeeId: string;
-  employeeName: string;
-  absenceDate: string;
-  absenceType: string;
-  status: string;
-  reason: string | null;
-  approvedBy: string | null;
-  approvedAt: string | null;
-}
+interface Absence extends TimeclockAbsenceListItem {}
 
 interface Employee { id: string; name: string; }
 
@@ -24,12 +20,14 @@ const STATUS_STYLE: Record<string, string> = {
 };
 
 function AbsenceModal({ employees, onClose, onSaved }: { employees: Employee[]; onClose: () => void; onSaved: () => void }) {
-  const [form, setForm] = useState({ employeeId: "", absenceDate: "", absenceType: "vacation", reason: "" });
+  const [form, setForm] = useState<{ employeeId: string; absenceDate: string; absenceType: CreateTimeclockAbsenceInputAbsenceType; reason: string }>({
+    employeeId: "", absenceDate: "", absenceType: "vacation", reason: "",
+  });
   const [saving, setSaving] = useState(false);
 
   async function save() {
     setSaving(true);
-    await api.post('/api/fichaje/absences', { ...form, reason: form.reason || undefined });
+    await createTimeclockAbsence({ ...form, reason: form.reason || undefined });
     setSaving(false);
     onSaved();
   }
@@ -44,7 +42,7 @@ function AbsenceModal({ employees, onClose, onSaved }: { employees: Employee[]; 
             {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
           </select>
           <input type="date" value={form.absenceDate} onChange={e => setForm(f => ({ ...f, absenceDate: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" />
-          <select value={form.absenceType} onChange={e => setForm(f => ({ ...f, absenceType: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm">
+          <select value={form.absenceType} onChange={e => setForm(f => ({ ...f, absenceType: e.target.value as CreateTimeclockAbsenceInputAbsenceType }))} className="w-full border rounded-lg px-3 py-2 text-sm">
             {Object.entries(TYPES).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
           </select>
           <input placeholder="Motivo (opcional)" value={form.reason} onChange={e => setForm(f => ({ ...f, reason: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" />
@@ -71,9 +69,7 @@ export default function FichajeAusencias() {
 
   function load() {
     setLoading(true);
-    const params = new URLSearchParams();
-    if (statusFilter) params.set("status", statusFilter);
-    api.get<Absence[]>(`/api/fichaje/absences?${params}`)
+    getTimeclockAbsences(statusFilter ? { status: statusFilter as "pending" | "approved" | "rejected" } : undefined)
       .then(d => setAbsences(d))
       .catch(() => setAbsences([]))
       .finally(() => setLoading(false));
@@ -93,7 +89,7 @@ export default function FichajeAusencias() {
   }, [statusFilter]);
 
   async function approve(id: string, status: "approved" | "rejected") {
-    await api.put(`/api/fichaje/absences/${id}/approve`, { status });
+    await approveTimeclockAbsence(id, { status });
     load();
   }
 

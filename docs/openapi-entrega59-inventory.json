@@ -1,0 +1,1083 @@
+{
+  "generatedAt": "2026-07-24T14:51:59.722Z",
+  "domain": "catalog-admin",
+  "tag": "phase59-catalog-admin",
+  "contractedOperations": 45,
+  "inventoryRows": 50,
+  "inventory": [
+    {
+      "group": "categories",
+      "endpoint": "GET /admin/categories",
+      "consumer": "categorias.tsx, productos.tsx, qr-menu/lib.ts",
+      "auth": "JWT/cookie",
+      "role": "admin",
+      "decision": "include",
+      "reason": "Admin category list"
+    },
+    {
+      "group": "categories",
+      "endpoint": "POST /admin/categories",
+      "consumer": "categorias.tsx, qr-menu/lib.ts",
+      "auth": "JWT/cookie",
+      "role": "admin",
+      "decision": "include",
+      "reason": "Create category"
+    },
+    {
+      "group": "categories",
+      "endpoint": "PUT /admin/categories/sort",
+      "consumer": "categorias.tsx",
+      "auth": "JWT/cookie",
+      "role": "admin",
+      "decision": "include",
+      "reason": "Reorder categories"
+    },
+    {
+      "group": "categories",
+      "endpoint": "PATCH /admin/categories/{id}",
+      "consumer": "categorias.tsx, qr-menu/lib.ts",
+      "auth": "JWT/cookie",
+      "role": "admin",
+      "decision": "include",
+      "reason": "Update category"
+    },
+    {
+      "group": "categories",
+      "endpoint": "DELETE /admin/categories/{id}",
+      "consumer": "categorias.tsx, qr-menu/lib.ts",
+      "auth": "JWT/cookie",
+      "role": "admin",
+      "decision": "include",
+      "reason": "Soft-delete category"
+    },
+    {
+      "group": "categories",
+      "endpoint": "PATCH /admin/categories/{id}/translations",
+      "consumer": "categorias.tsx (legacy nameEn)",
+      "auth": "JWT/cookie",
+      "role": "admin",
+      "decision": "include",
+      "reason": "Legacy translation patch"
+    },
+    {
+      "group": "subcategories",
+      "endpoint": "POST /admin/subcategories",
+      "consumer": "categorias.tsx",
+      "auth": "JWT/cookie",
+      "role": "admin",
+      "decision": "include",
+      "reason": "Create subcategory"
+    },
+    {
+      "group": "subcategories",
+      "endpoint": "PUT /admin/subcategories/sort",
+      "consumer": "categorias.tsx",
+      "auth": "JWT/cookie",
+      "role": "admin",
+      "decision": "include",
+      "reason": "Reorder subcategories"
+    },
+    {
+      "group": "subcategories",
+      "endpoint": "PATCH /admin/subcategories/{id}",
+      "consumer": "categorias.tsx",
+      "auth": "JWT/cookie",
+      "role": "admin",
+      "decision": "include",
+      "reason": "Update subcategory"
+    },
+    {
+      "group": "subcategories",
+      "endpoint": "DELETE /admin/subcategories/{id}",
+      "consumer": "categorias.tsx",
+      "auth": "JWT/cookie",
+      "role": "admin",
+      "decision": "include",
+      "reason": "Delete subcategory"
+    },
+    {
+      "group": "products",
+      "endpoint": "GET /admin/products",
+      "consumer": "productos.tsx, order.tsx, fiscal.tsx",
+      "auth": "JWT/cookie",
+      "role": "admin",
+      "decision": "include",
+      "reason": "Admin product list"
+    },
+    {
+      "group": "products",
+      "endpoint": "POST /admin/products",
+      "consumer": "productos.tsx, qr-menu/lib.ts",
+      "auth": "JWT/cookie",
+      "role": "admin",
+      "decision": "include",
+      "reason": "Create product"
+    },
+    {
+      "group": "products",
+      "endpoint": "PUT /admin/products/sort",
+      "consumer": "productos.tsx",
+      "auth": "JWT/cookie",
+      "role": "admin",
+      "decision": "include",
+      "reason": "Reorder products"
+    },
+    {
+      "group": "products",
+      "endpoint": "GET /admin/products/export",
+      "consumer": "productos.tsx (direct)",
+      "auth": "JWT/cookie",
+      "role": "admin",
+      "decision": "include",
+      "reason": "CSV/XLSX export"
+    },
+    {
+      "group": "products",
+      "endpoint": "POST /admin/products/import",
+      "consumer": "productos.tsx (direct)",
+      "auth": "JWT/cookie",
+      "role": "admin",
+      "decision": "include",
+      "reason": "Multipart import"
+    },
+    {
+      "group": "products",
+      "endpoint": "PATCH /admin/products/{productId}",
+      "consumer": "productos.tsx, qr-menu/lib.ts",
+      "auth": "JWT/cookie",
+      "role": "admin",
+      "decision": "include",
+      "reason": "Update product"
+    },
+    {
+      "group": "products",
+      "endpoint": "DELETE /admin/products/{productId}",
+      "consumer": "productos.tsx, qr-menu/lib.ts",
+      "auth": "JWT/cookie",
+      "role": "admin",
+      "decision": "include",
+      "reason": "Soft-delete product"
+    },
+    {
+      "group": "products",
+      "endpoint": "PUT /admin/products/{productId}/modifier-groups",
+      "consumer": "productos.tsx",
+      "auth": "JWT/cookie",
+      "role": "admin",
+      "decision": "include",
+      "reason": "Assign modifier groups"
+    },
+    {
+      "group": "products",
+      "endpoint": "PATCH /admin/products/{id}/soldout",
+      "consumer": "productos.tsx (direct api.patch)",
+      "auth": "JWT/cookie",
+      "role": "manager,admin",
+      "decision": "include",
+      "reason": "Sold-out toggle"
+    },
+    {
+      "group": "products",
+      "endpoint": "PATCH /admin/products/{id}/translations",
+      "consumer": "productos.tsx (legacy)",
+      "auth": "JWT/cookie",
+      "role": "manager,admin",
+      "decision": "include",
+      "reason": "Legacy translation patch"
+    },
+    {
+      "group": "formats",
+      "endpoint": "GET /products/{productId}/formats",
+      "consumer": "order.tsx",
+      "auth": "JWT/cookie",
+      "role": "authenticated",
+      "decision": "include",
+      "reason": "Staff format list (merged path)"
+    },
+    {
+      "group": "formats",
+      "endpoint": "POST /products/{productId}/formats",
+      "consumer": "productos.tsx",
+      "auth": "JWT/cookie",
+      "role": "admin",
+      "decision": "include",
+      "reason": "Create format"
+    },
+    {
+      "group": "formats",
+      "endpoint": "PATCH /products/formats/{formatId}",
+      "consumer": "productos.tsx",
+      "auth": "JWT/cookie",
+      "role": "admin",
+      "decision": "include",
+      "reason": "Update format"
+    },
+    {
+      "group": "formats",
+      "endpoint": "DELETE /products/formats/{formatId}",
+      "consumer": "productos.tsx",
+      "auth": "JWT/cookie",
+      "role": "admin",
+      "decision": "include",
+      "reason": "Archive format"
+    },
+    {
+      "group": "availability",
+      "endpoint": "GET /admin/product-availability-rules",
+      "consumer": "productos.tsx (indirect)",
+      "auth": "JWT/cookie",
+      "role": "admin",
+      "decision": "include",
+      "reason": "Availability rules CRUD"
+    },
+    {
+      "group": "availability",
+      "endpoint": "POST /admin/product-availability-rules",
+      "consumer": "productos.tsx (indirect)",
+      "auth": "JWT/cookie",
+      "role": "admin",
+      "decision": "include",
+      "reason": "Create rule"
+    },
+    {
+      "group": "availability",
+      "endpoint": "PATCH /admin/product-availability-rules/{id}",
+      "consumer": "productos.tsx (indirect)",
+      "auth": "JWT/cookie",
+      "role": "admin",
+      "decision": "include",
+      "reason": "Update rule"
+    },
+    {
+      "group": "availability",
+      "endpoint": "DELETE /admin/product-availability-rules/{id}",
+      "consumer": "productos.tsx (indirect)",
+      "auth": "JWT/cookie",
+      "role": "admin",
+      "decision": "include",
+      "reason": "Delete rule"
+    },
+    {
+      "group": "modifiers",
+      "endpoint": "GET /admin/modifier-groups",
+      "consumer": "modificadores.tsx, productos.tsx",
+      "auth": "JWT/cookie",
+      "role": "admin",
+      "decision": "include",
+      "reason": "List groups"
+    },
+    {
+      "group": "modifiers",
+      "endpoint": "POST /admin/modifier-groups",
+      "consumer": "modificadores.tsx",
+      "auth": "JWT/cookie",
+      "role": "admin",
+      "decision": "include",
+      "reason": "Create group"
+    },
+    {
+      "group": "modifiers",
+      "endpoint": "PATCH /admin/modifier-groups/{id}",
+      "consumer": "modificadores.tsx",
+      "auth": "JWT/cookie",
+      "role": "admin",
+      "decision": "include",
+      "reason": "Update group"
+    },
+    {
+      "group": "modifiers",
+      "endpoint": "DELETE /admin/modifier-groups/{id}",
+      "consumer": "modificadores.tsx",
+      "auth": "JWT/cookie",
+      "role": "admin",
+      "decision": "include",
+      "reason": "Delete group"
+    },
+    {
+      "group": "modifiers",
+      "endpoint": "POST /admin/modifier-groups/{id}/modifiers",
+      "consumer": "modificadores.tsx",
+      "auth": "JWT/cookie",
+      "role": "admin",
+      "decision": "include",
+      "reason": "Create modifier option"
+    },
+    {
+      "group": "modifiers",
+      "endpoint": "PATCH /admin/modifiers/{id}",
+      "consumer": "modificadores.tsx",
+      "auth": "JWT/cookie",
+      "role": "admin",
+      "decision": "include",
+      "reason": "Update modifier"
+    },
+    {
+      "group": "modifiers",
+      "endpoint": "DELETE /admin/modifiers/{id}",
+      "consumer": "modificadores.tsx",
+      "auth": "JWT/cookie",
+      "role": "admin",
+      "decision": "include",
+      "reason": "Delete modifier"
+    },
+    {
+      "group": "modifiers",
+      "endpoint": "GET /products/{productId}/modifiers",
+      "consumer": "order.tsx",
+      "auth": "JWT/cookie",
+      "role": "authenticated",
+      "decision": "include",
+      "reason": "Staff modifier read (merged path)"
+    },
+    {
+      "group": "allergens",
+      "endpoint": "GET /admin/allergens",
+      "consumer": "productos.tsx",
+      "auth": "JWT/cookie",
+      "role": "admin",
+      "decision": "include",
+      "reason": "EU allergen catalog"
+    },
+    {
+      "group": "allergens",
+      "endpoint": "GET /admin/allergens/{code}",
+      "consumer": "productos.tsx",
+      "auth": "JWT/cookie",
+      "role": "admin",
+      "decision": "include",
+      "reason": "Single allergen"
+    },
+    {
+      "group": "allergens",
+      "endpoint": "GET /admin/products/{id}/allergens",
+      "consumer": "productos.tsx (direct api.get)",
+      "auth": "JWT/cookie",
+      "role": "admin",
+      "decision": "include",
+      "reason": "Product allergen cache"
+    },
+    {
+      "group": "allergens",
+      "endpoint": "POST /admin/products/{id}/allergens/recalculate",
+      "consumer": "productos.tsx (direct api.post)",
+      "auth": "JWT/cookie",
+      "role": "manager,admin",
+      "decision": "include",
+      "reason": "Recalculate from recipe"
+    },
+    {
+      "group": "allergens",
+      "endpoint": "POST /admin/products/{id}/allergens/override",
+      "consumer": "productos.tsx (direct)",
+      "auth": "JWT/cookie",
+      "role": "admin",
+      "decision": "include",
+      "reason": "Manual override"
+    },
+    {
+      "group": "allergens",
+      "endpoint": "DELETE /admin/products/{id}/allergens/override/{code}",
+      "consumer": "productos.tsx (direct)",
+      "auth": "JWT/cookie",
+      "role": "admin",
+      "decision": "include",
+      "reason": "Remove override"
+    },
+    {
+      "group": "staff-read",
+      "endpoint": "GET /categories",
+      "consumer": "order.tsx",
+      "auth": "JWT/cookie",
+      "role": "authenticated",
+      "decision": "include",
+      "reason": "TPV category list (merged path)"
+    },
+    {
+      "group": "staff-read",
+      "endpoint": "GET /categories/{categoryId}/products",
+      "consumer": "order.tsx",
+      "auth": "JWT/cookie",
+      "role": "authenticated",
+      "decision": "include",
+      "reason": "TPV products (merged path)"
+    },
+    {
+      "group": "staff-read",
+      "endpoint": "GET /products",
+      "consumer": "delivery.tsx (search)",
+      "auth": "JWT/cookie",
+      "role": "authenticated",
+      "decision": "include",
+      "reason": "Product search"
+    },
+    {
+      "group": "recipes",
+      "endpoint": "GET /admin/products/{productId}/recipe",
+      "consumer": "productos.tsx (useGetProductRecipe)",
+      "auth": "JWT/cookie",
+      "role": "admin",
+      "decision": "exclude",
+      "reason": "Recipe domain — Entrega futura"
+    },
+    {
+      "group": "ingredients",
+      "endpoint": "GET /admin/ingredients",
+      "consumer": "recetas domain",
+      "auth": "JWT/cookie",
+      "role": "admin",
+      "decision": "exclude",
+      "reason": "Ingredient/stock domain"
+    },
+    {
+      "group": "qr-public",
+      "endpoint": "GET /qr-menu/public/*",
+      "consumer": "QR carta pública",
+      "auth": "public",
+      "role": "none",
+      "decision": "exclude",
+      "reason": "QR public menu — fuera de alcance"
+    },
+    {
+      "group": "tags",
+      "endpoint": "CRUD /admin/tags",
+      "consumer": "none",
+      "auth": "n/a",
+      "role": "n/a",
+      "decision": "exclude",
+      "reason": "Etiquetas dietéticas son columnas boolean en products"
+    },
+    {
+      "group": "menus",
+      "endpoint": "CRUD combos/menus",
+      "consumer": "none",
+      "auth": "n/a",
+      "role": "n/a",
+      "decision": "exclude",
+      "reason": "No implementado en backend"
+    }
+  ],
+  "contracted": [
+    {
+      "group": "contracted",
+      "endpoint": "GET /categories",
+      "operationId": "getCatalogStaffCategories",
+      "roles": [
+        "authenticated"
+      ],
+      "responses": [
+        "200",
+        "401"
+      ]
+    },
+    {
+      "group": "contracted",
+      "endpoint": "GET /categories/{categoryId}/products",
+      "operationId": "getCatalogStaffCategoryProducts",
+      "roles": [
+        "authenticated"
+      ],
+      "responses": [
+        "200",
+        "401"
+      ]
+    },
+    {
+      "group": "contracted",
+      "endpoint": "GET /products/{productId}/modifiers",
+      "operationId": "getCatalogProductModifiers",
+      "roles": [
+        "authenticated"
+      ],
+      "responses": [
+        "200",
+        "401"
+      ]
+    },
+    {
+      "group": "contracted",
+      "endpoint": "GET /products/{productId}/formats",
+      "operationId": "getCatalogProductFormats",
+      "roles": [
+        "authenticated"
+      ],
+      "responses": [
+        "200",
+        "401"
+      ]
+    },
+    {
+      "group": "contracted",
+      "endpoint": "POST /products/{productId}/formats",
+      "operationId": "createCatalogProductFormat",
+      "roles": [
+        "admin"
+      ],
+      "responses": [
+        "201",
+        "400",
+        "401",
+        "403"
+      ]
+    },
+    {
+      "group": "contracted",
+      "endpoint": "PATCH /products/formats/{formatId}",
+      "operationId": "updateCatalogProductFormat",
+      "roles": [
+        "admin"
+      ],
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404"
+      ]
+    },
+    {
+      "group": "contracted",
+      "endpoint": "DELETE /products/formats/{formatId}",
+      "operationId": "deleteCatalogProductFormat",
+      "roles": [
+        "admin"
+      ],
+      "responses": [
+        "200",
+        "401",
+        "403"
+      ]
+    },
+    {
+      "group": "contracted",
+      "endpoint": "GET /admin/categories",
+      "operationId": "getCatalogAdminCategories",
+      "roles": [
+        "admin"
+      ],
+      "responses": [
+        "200",
+        "401",
+        "403"
+      ]
+    },
+    {
+      "group": "contracted",
+      "endpoint": "POST /admin/categories",
+      "operationId": "createCatalogAdminCategory",
+      "roles": [
+        "admin"
+      ],
+      "responses": [
+        "201",
+        "400",
+        "401",
+        "403"
+      ]
+    },
+    {
+      "group": "contracted",
+      "endpoint": "PATCH /admin/categories/sort",
+      "operationId": "sortCatalogAdminCategories",
+      "roles": [
+        "admin"
+      ],
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403"
+      ]
+    },
+    {
+      "group": "contracted",
+      "endpoint": "PATCH /admin/categories/{id}",
+      "operationId": "updateCatalogAdminCategory",
+      "roles": [
+        "admin"
+      ],
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404"
+      ]
+    },
+    {
+      "group": "contracted",
+      "endpoint": "DELETE /admin/categories/{id}",
+      "operationId": "deleteCatalogAdminCategory",
+      "roles": [
+        "admin"
+      ],
+      "responses": [
+        "200",
+        "401",
+        "403",
+        "404"
+      ]
+    },
+    {
+      "group": "contracted",
+      "endpoint": "PATCH /admin/categories/{id}/translations",
+      "operationId": "updateCatalogAdminCategoryTranslations",
+      "roles": [
+        "manager",
+        "admin"
+      ],
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404"
+      ]
+    },
+    {
+      "group": "contracted",
+      "endpoint": "POST /admin/subcategories",
+      "operationId": "createCatalogAdminSubcategory",
+      "roles": [
+        "admin"
+      ],
+      "responses": [
+        "201",
+        "400",
+        "401",
+        "403"
+      ]
+    },
+    {
+      "group": "contracted",
+      "endpoint": "PATCH /admin/subcategories/sort",
+      "operationId": "sortCatalogAdminSubcategories",
+      "roles": [
+        "admin"
+      ],
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403"
+      ]
+    },
+    {
+      "group": "contracted",
+      "endpoint": "PATCH /admin/subcategories/{id}",
+      "operationId": "updateCatalogAdminSubcategory",
+      "roles": [
+        "admin"
+      ],
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404"
+      ]
+    },
+    {
+      "group": "contracted",
+      "endpoint": "DELETE /admin/subcategories/{id}",
+      "operationId": "deleteCatalogAdminSubcategory",
+      "roles": [
+        "admin"
+      ],
+      "responses": [
+        "200",
+        "401",
+        "403"
+      ]
+    },
+    {
+      "group": "contracted",
+      "endpoint": "GET /admin/products",
+      "operationId": "getCatalogAdminProducts",
+      "roles": [
+        "admin"
+      ],
+      "responses": [
+        "200",
+        "401",
+        "403"
+      ]
+    },
+    {
+      "group": "contracted",
+      "endpoint": "POST /admin/products",
+      "operationId": "createCatalogAdminProduct",
+      "roles": [
+        "admin"
+      ],
+      "responses": [
+        "201",
+        "400",
+        "401",
+        "403"
+      ]
+    },
+    {
+      "group": "contracted",
+      "endpoint": "PATCH /admin/products/sort",
+      "operationId": "sortCatalogAdminProducts",
+      "roles": [
+        "admin"
+      ],
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403"
+      ]
+    },
+    {
+      "group": "contracted",
+      "endpoint": "GET /admin/products/export",
+      "operationId": "exportCatalogAdminProducts",
+      "roles": [
+        "admin"
+      ],
+      "responses": [
+        "200",
+        "401",
+        "403"
+      ]
+    },
+    {
+      "group": "contracted",
+      "endpoint": "POST /admin/products/import",
+      "operationId": "importCatalogAdminProducts",
+      "roles": [
+        "admin"
+      ],
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403"
+      ]
+    },
+    {
+      "group": "contracted",
+      "endpoint": "PATCH /admin/products/{productId}",
+      "operationId": "updateCatalogAdminProduct",
+      "roles": [
+        "admin"
+      ],
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404"
+      ]
+    },
+    {
+      "group": "contracted",
+      "endpoint": "DELETE /admin/products/{productId}",
+      "operationId": "deleteCatalogAdminProduct",
+      "roles": [
+        "admin"
+      ],
+      "responses": [
+        "200",
+        "401",
+        "403",
+        "404"
+      ]
+    },
+    {
+      "group": "contracted",
+      "endpoint": "PUT /admin/products/{productId}/modifier-groups",
+      "operationId": "setCatalogAdminProductModifierGroups",
+      "roles": [
+        "admin"
+      ],
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403"
+      ]
+    },
+    {
+      "group": "contracted",
+      "endpoint": "PATCH /admin/products/{id}/soldout",
+      "operationId": "patchCatalogAdminProductSoldout",
+      "roles": [
+        "manager",
+        "admin"
+      ],
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404"
+      ]
+    },
+    {
+      "group": "contracted",
+      "endpoint": "PATCH /admin/products/{id}/translations",
+      "operationId": "patchCatalogAdminProductTranslations",
+      "roles": [
+        "manager",
+        "admin"
+      ],
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404"
+      ]
+    },
+    {
+      "group": "contracted",
+      "endpoint": "GET /admin/product-availability-rules",
+      "operationId": "getCatalogAdminProductAvailabilityRules",
+      "roles": [
+        "manager",
+        "admin"
+      ],
+      "responses": [
+        "200",
+        "401",
+        "403"
+      ]
+    },
+    {
+      "group": "contracted",
+      "endpoint": "POST /admin/product-availability-rules",
+      "operationId": "createCatalogAdminProductAvailabilityRule",
+      "roles": [
+        "manager",
+        "admin"
+      ],
+      "responses": [
+        "201",
+        "400",
+        "401",
+        "403"
+      ]
+    },
+    {
+      "group": "contracted",
+      "endpoint": "PATCH /admin/product-availability-rules/{id}",
+      "operationId": "updateCatalogAdminProductAvailabilityRule",
+      "roles": [
+        "manager",
+        "admin"
+      ],
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404"
+      ]
+    },
+    {
+      "group": "contracted",
+      "endpoint": "DELETE /admin/product-availability-rules/{id}",
+      "operationId": "deleteCatalogAdminProductAvailabilityRule",
+      "roles": [
+        "manager",
+        "admin"
+      ],
+      "responses": [
+        "200",
+        "401",
+        "403",
+        "404"
+      ]
+    },
+    {
+      "group": "contracted",
+      "endpoint": "GET /admin/modifier-groups",
+      "operationId": "getCatalogAdminModifierGroups",
+      "roles": [
+        "admin"
+      ],
+      "responses": [
+        "200",
+        "401",
+        "403"
+      ]
+    },
+    {
+      "group": "contracted",
+      "endpoint": "POST /admin/modifier-groups",
+      "operationId": "createCatalogAdminModifierGroup",
+      "roles": [
+        "admin"
+      ],
+      "responses": [
+        "201",
+        "400",
+        "401",
+        "403"
+      ]
+    },
+    {
+      "group": "contracted",
+      "endpoint": "PATCH /admin/modifier-groups/{id}",
+      "operationId": "updateCatalogAdminModifierGroup",
+      "roles": [
+        "admin"
+      ],
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404"
+      ]
+    },
+    {
+      "group": "contracted",
+      "endpoint": "DELETE /admin/modifier-groups/{id}",
+      "operationId": "deleteCatalogAdminModifierGroup",
+      "roles": [
+        "admin"
+      ],
+      "responses": [
+        "200",
+        "401",
+        "403"
+      ]
+    },
+    {
+      "group": "contracted",
+      "endpoint": "POST /admin/modifier-groups/{id}/modifiers",
+      "operationId": "createCatalogAdminModifier",
+      "roles": [
+        "admin"
+      ],
+      "responses": [
+        "201",
+        "400",
+        "401",
+        "403"
+      ]
+    },
+    {
+      "group": "contracted",
+      "endpoint": "PATCH /admin/modifiers/{id}",
+      "operationId": "updateCatalogAdminModifier",
+      "roles": [
+        "admin"
+      ],
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404"
+      ]
+    },
+    {
+      "group": "contracted",
+      "endpoint": "DELETE /admin/modifiers/{id}",
+      "operationId": "deleteCatalogAdminModifier",
+      "roles": [
+        "admin"
+      ],
+      "responses": [
+        "200",
+        "401",
+        "403"
+      ]
+    },
+    {
+      "group": "contracted",
+      "endpoint": "GET /admin/allergens",
+      "operationId": "getCatalogAdminAllergens",
+      "roles": [
+        "authenticated"
+      ],
+      "responses": [
+        "200",
+        "401"
+      ]
+    },
+    {
+      "group": "contracted",
+      "endpoint": "GET /admin/allergens/{code}",
+      "operationId": "getCatalogAdminAllergen",
+      "roles": [
+        "authenticated"
+      ],
+      "responses": [
+        "200",
+        "401",
+        "404"
+      ]
+    },
+    {
+      "group": "contracted",
+      "endpoint": "GET /admin/products/{id}/allergens",
+      "operationId": "getCatalogAdminProductAllergens",
+      "roles": [
+        "authenticated"
+      ],
+      "responses": [
+        "200",
+        "401"
+      ]
+    },
+    {
+      "group": "contracted",
+      "endpoint": "POST /admin/products/{id}/allergens/recalculate",
+      "operationId": "recalculateCatalogAdminProductAllergens",
+      "roles": [
+        "manager",
+        "admin"
+      ],
+      "responses": [
+        "200",
+        "401",
+        "403"
+      ]
+    },
+    {
+      "group": "contracted",
+      "endpoint": "POST /admin/products/{id}/allergens/override",
+      "operationId": "createCatalogAdminProductAllergenOverride",
+      "roles": [
+        "admin"
+      ],
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403"
+      ]
+    },
+    {
+      "group": "contracted",
+      "endpoint": "DELETE /admin/products/{id}/allergens/override/{code}",
+      "operationId": "deleteCatalogAdminProductAllergenOverride",
+      "roles": [
+        "admin"
+      ],
+      "responses": [
+        "200",
+        "401",
+        "403"
+      ]
+    },
+    {
+      "group": "contracted",
+      "endpoint": "GET /products",
+      "operationId": "searchCatalogProducts",
+      "roles": [
+        "authenticated"
+      ],
+      "responses": [
+        "200",
+        "401"
+      ]
+    }
+  ]
+}

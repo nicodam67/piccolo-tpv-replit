@@ -1,8 +1,9 @@
 import React, { useRef, useEffect } from 'react';
 import { useParams, useLocation } from 'wouter';
 import { ChevronLeft, Printer, FileDown, Loader2, Wallet, TrendingUp, TrendingDown, Receipt, AlertTriangle, RefreshCw } from 'lucide-react';
-import { useGetCashSessionXReport } from '@workspace/api-client-react';
-import type { ZReport, TaxBreakdownItem } from '@workspace/api-client-react';
+import { useGetCashSessionXReport } from '@workspace/api-client-react/cash-payments';
+import type { ZReport } from '@workspace/api-client-react/cash-payments';
+import type { TaxBreakdownItem } from '@workspace/api-client-react';
 
 function fmt(n: number | string) { return parseFloat(String(n)).toFixed(2); }
 function fmtDate(d: string) {

@@ -26,6 +26,8 @@ const mockState = {
   updateRows:   [] as MockRow[],
   insertRows:   [] as MockRow[],
   socketEmit:   vi.fn(),
+  events:       [] as string[],
+  lastDeviceReference: "",
 };
 
 // ─── DB mock ──────────────────────────────────────────────────────────────────
@@ -36,7 +38,7 @@ vi.mock("@workspace/db", async (importOriginal) => {
   function makeChain(resultFn: () => MockRow[]) {
     const chain: Record<string, unknown> = {};
     const methods = ["from", "where", "set", "values", "returning", "limit",
-                     "orderBy", "innerJoin", "leftJoin", "groupBy", "offset"] as const;
+                     "orderBy", "innerJoin", "leftJoin", "groupBy", "offset", "for"] as const;
     methods.forEach((m) => { chain[m] = vi.fn(() => chain); });
     chain.then = (resolve: (v: MockRow[]) => unknown, reject?: (e: unknown) => unknown) =>
       Promise.resolve(resultFn()).then(resolve, reject);
@@ -49,6 +51,7 @@ vi.mock("@workspace/db", async (importOriginal) => {
                      "innerJoin", "leftJoin"] as const;
     methods.forEach((m) => { chain[m] = vi.fn(() => chain); });
     chain.values = vi.fn(() => {
+      mockState.events.push("db-insert");
       const c2: Record<string, unknown> = {};
       (methods as readonly string[]).forEach((m) => { c2[m] = vi.fn(() => c2); });
       // Support ON CONFLICT DO NOTHING — silently returns empty array (no-op)
@@ -65,14 +68,14 @@ vi.mock("@workspace/db", async (importOriginal) => {
     ...actual,
     db: {
       select:  () => makeChain(() => mockState.selectRows),
-      update:  () => makeChain(() => mockState.updateRows),
+      update:  () => makeChain(() => mockState.updateRows.length ? mockState.updateRows : mockState.insertRows),
       delete:  () => makeChain(() => []),
       insert:  () => makeInsert(() => mockState.insertRows),
       execute: () => Promise.resolve({ rows: [] }),
       transaction: async (fn: (tx: unknown) => unknown) =>
         fn({
           select:  () => makeChain(() => mockState.selectRows),
-          update:  () => makeChain(() => mockState.updateRows),
+          update:  () => makeChain(() => mockState.updateRows.length ? mockState.updateRows : mockState.insertRows),
           insert:  () => makeInsert(() => mockState.insertRows),
           execute: () => Promise.resolve({ rows: [] }),
         }),
@@ -106,6 +109,12 @@ vi.mock("../middlewares/auth", async (importOriginal) => {
     requireRole: (..._roles: string[]) => (_req: any, _res: any, next: any) => next(),
   };
 });
+vi.mock("../middlewares/idempotency", () => ({
+  idempotency: (req: any, _res: any, next: any) => {
+    req.headers["idempotency-key"] ??= `test-key-${Math.random()}`;
+    next();
+  },
+}));
 
 // ─── Adapter mock ─────────────────────────────────────────────────────────────
 // We import the registry and replace the adapter with a controllable mock.
@@ -114,6 +123,7 @@ import { adapterRegistry } from "../lib/cash-machine/registry";
 import type { CashMachineAdapter, DeviceStatus, PaymentStatusResult, RefundResult, StartPaymentResult } from "../lib/cash-machine/adapter";
 
 let callCounts: Record<string, number> = {};
+let startPaymentCalls = 0;
 
 function makeMockAdapter(scenario: string = "normal"): CashMachineAdapter {
   return {
@@ -131,6 +141,9 @@ function makeMockAdapter(scenario: string = "normal"): CashMachineAdapter {
       supportsCashLevels: true,
     }),
     startPayment: async (amount: string, reference: string): Promise<StartPaymentResult> => {
+      startPaymentCalls += 1;
+      mockState.events.push("device-start");
+      mockState.lastDeviceReference = reference;
       if (scenario === "disconnected") throw new Error("Device offline");
       const id = `MOCK-${Date.now()}`;
       callCounts[id] = 0;
@@ -212,10 +225,13 @@ const BASE_TX = {
 
 beforeEach(() => {
   callCounts = {};
+  startPaymentCalls = 0;
   mockState.selectRows   = [];
   mockState.updateRows   = [];
   mockState.insertRows   = [];
   mockState.socketEmit.mockReset();
+  mockState.events = [];
+  mockState.lastDeviceReference = "";
   adapterRegistry.setAdapter(makeMockAdapter("normal"));
 });
 
@@ -235,6 +251,22 @@ describe("1. Connection OK", () => {
     expect(res.body.ok).toBe(true);
     expect(res.body.latencyMs).toBeGreaterThanOrEqual(0);
   });
+
+  it("ignores simulator scenario headers in production", async () => {
+    const previous = process.env.NODE_ENV;
+    process.env.NODE_ENV = "production";
+    const scenarioSpy = vi.spyOn(adapterRegistry, "setScenario");
+    try {
+      const res = await request(app)
+        .post("/api/admin/cash-machine/test-connection")
+        .set("X-Simulator-Scenario", "disconnected")
+        .send({});
+      expect(res.status).toBe(200);
+      expect(scenarioSpy).not.toHaveBeenCalled();
+    } finally {
+      process.env.NODE_ENV = previous;
+    }
+  });
 });
 
 describe("2. Device disconnected returns 503", () => {
@@ -247,14 +279,15 @@ describe("2. Device disconnected returns 503", () => {
     expect(res.body.ok).toBe(false);
   });
 
-  it("start payment returns 503 when device is offline", async () => {
+  it("start payment persists an unknown result for reconciliation when device response is unavailable", async () => {
     adapterRegistry.setAdapter(makeMockAdapter("disconnected"));
     mockState.selectRows = [CONFIG_ROW]; // config enabled
-    mockState.insertRows = []; // no in-flight tx
+    mockState.insertRows = [{ ...BASE_TX, status: "pending", deviceTransactionId: null }];
     const res = await request(app)
       .post("/api/cash-machine/payments")
       .send({ amount: "10.00", orderId: "order-001" });
-    expect(res.status).toBe(503);
+    expect(res.status).toBe(202);
+    expect(res.body.reconciliationRequired).toBe(true);
   });
 });
 
@@ -266,6 +299,8 @@ describe("3. Exact-amount payment → completada", () => {
       .post("/api/cash-machine/payments")
       .send({ amount: "10.00", orderId: "order-001" });
     expect(startRes.status).toBe(201);
+    expect(mockState.events.indexOf("db-insert")).toBeLessThan(mockState.events.indexOf("device-start"));
+    expect(mockState.lastDeviceReference).toBe(startRes.body.transaction.id);
     const txId = startRes.body.transaction.id;
 
     // Poll until completada (4 calls with normal adapter)
@@ -465,7 +500,7 @@ describe("11. Double-tap guard", () => {
       .post("/api/cash-machine/payments")
       .send({ amount: "10.00", orderId: "order-011" });
     expect(res.status).toBe(409);
-    expect(res.body.error).toMatch(/en curso/i);
+    expect(res.body.error).toMatch(/pendiente|curso/i);
   });
 });
 
@@ -713,7 +748,7 @@ describe("14. Settlement integration — order closure after device completada",
     expect(settleOrderIfFullyPaid).not.toHaveBeenCalled();
   });
 
-  it("does NOT call settleOrderIfFullyPaid when tx already in terminal state", async () => {
+  it("reconciles an already completed transaction after server recovery", async () => {
     vi.mocked(settleOrderIfFullyPaid).mockClear();
 
     // tx is already completada — early-return path
@@ -725,7 +760,7 @@ describe("14. Settlement integration — order closure after device completada",
 
     const res = await request(app).get(`/api/cash-machine/payments/${txId}`);
     expect(res.status).toBe(200);
-    expect(settleOrderIfFullyPaid).not.toHaveBeenCalled();
+    expect(settleOrderIfFullyPaid).toHaveBeenCalledOnce();
   });
 
   it("emits tables:refresh socket event when order is settled", async () => {
@@ -749,5 +784,41 @@ describe("14. Settlement integration — order closure after device completada",
 
     await request(app).get(`/api/cash-machine/payments/${txId}`);
     expect(mockState.socketEmit).toHaveBeenCalledWith("tables:refresh");
+  });
+});
+
+describe("15. Reconciliation recovery", () => {
+  it("does not start the physical payment again while another request owns recovery", async () => {
+    mockState.selectRows = [{
+      ...BASE_TX,
+      status: "iniciando",
+      deviceTransactionId: null,
+      startedAt: new Date(),
+    }];
+    const res = await request(app).get(`/api/cash-machine/payments/${BASE_TX.id}`);
+    expect(res.status).toBe(202);
+    expect(res.body.recovering).toBe(true);
+    expect(startPaymentCalls).toBe(0);
+  });
+
+  it("allows a manager to resume a payment with unknown physical result", async () => {
+    mockState.selectRows = [{
+      ...BASE_TX,
+      status: "conciliacion_pendiente",
+      transactionType: "payment",
+      deviceTransactionId: null,
+    }];
+    mockState.updateRows = [{ ...BASE_TX, status: "pending", deviceTransactionId: null }];
+    const res = await request(app)
+      .post(`/api/cash-machine/payments/${BASE_TX.id}/reconcile`)
+      .send({});
+    expect(res.status).toBe(202);
+    expect(res.body.recovering).toBe(true);
+  });
+
+  it("never routes a refund through the payment polling endpoint", async () => {
+    mockState.selectRows = [{ ...BASE_TX, transactionType: "refund", status: "pending" }];
+    const res = await request(app).get(`/api/cash-machine/payments/${BASE_TX.id}`);
+    expect(res.status).toBe(400);
   });
 });

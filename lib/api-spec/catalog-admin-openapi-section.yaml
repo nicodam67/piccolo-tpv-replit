@@ -1,0 +1,870 @@
+# phase59-catalog-admin — splice under paths in openapi.yaml
+# Tags: catalog-admin, phase59-catalog-admin on all operations
+
+  /admin/categories:
+    get:
+      operationId: getCatalogAdminCategories
+      tags: [catalog-admin, phase59-catalog-admin]
+      summary: List all categories with subcategories
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      responses:
+        "200":
+          description: Categories with nested subcategories
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/CatalogCategoryWithSubcategories" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      operationId: createCatalogAdminCategory
+      tags: [catalog-admin, phase59-catalog-admin]
+      summary: Create a category
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CatalogCreateCategoryInput" }
+      responses:
+        "201":
+          description: Created category
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogCategoryWithSubcategories" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/categories/sort:
+    patch:
+      operationId: sortCatalogAdminCategories
+      tags: [catalog-admin, phase59-catalog-admin]
+      summary: Bulk update category sort order
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CatalogSortOrderInput" }
+      responses:
+        "200":
+          description: Sort order updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogOkResult" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/categories/{id}:
+    patch:
+      operationId: updateCatalogAdminCategory
+      tags: [catalog-admin, phase59-catalog-admin]
+      summary: Update a category
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CatalogUpdateCategoryInput" }
+      responses:
+        "200":
+          description: Updated category
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogCategory" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      operationId: deleteCatalogAdminCategory
+      tags: [catalog-admin, phase59-catalog-admin]
+      summary: Soft-archive a category
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Category archived
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogOkResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/categories/{id}/translations:
+    patch:
+      operationId: updateCatalogAdminCategoryTranslations
+      tags: [catalog-admin, phase59-catalog-admin]
+      summary: Update category English translation
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [manager, admin]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CatalogCategoryTranslationsInput" }
+      responses:
+        "200":
+          description: Translations updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogCategoryTranslationsResult" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/subcategories:
+    post:
+      operationId: createCatalogAdminSubcategory
+      tags: [catalog-admin, phase59-catalog-admin]
+      summary: Create a subcategory
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CatalogCreateSubcategoryInput" }
+      responses:
+        "201":
+          description: Created subcategory
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogSubcategory" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/subcategories/sort:
+    patch:
+      operationId: sortCatalogAdminSubcategories
+      tags: [catalog-admin, phase59-catalog-admin]
+      summary: Bulk update subcategory sort order
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CatalogSortOrderInput" }
+      responses:
+        "200":
+          description: Sort order updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogOkResult" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/subcategories/{id}:
+    patch:
+      operationId: updateCatalogAdminSubcategory
+      tags: [catalog-admin, phase59-catalog-admin]
+      summary: Update a subcategory
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CatalogUpdateSubcategoryInput" }
+      responses:
+        "200":
+          description: Updated subcategory
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogSubcategory" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      operationId: deleteCatalogAdminSubcategory
+      tags: [catalog-admin, phase59-catalog-admin]
+      summary: Soft-archive a subcategory
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Subcategory archived
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogOkResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/products:
+    get:
+      operationId: getCatalogAdminProducts
+      tags: [catalog-admin, phase59-catalog-admin]
+      summary: List products with filters, formats and modifier groups
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      parameters:
+        - { in: query, name: categoryId, schema: { type: string, format: uuid } }
+        - { in: query, name: active, schema: { type: string, enum: ["true", "false"] } }
+        - { in: query, name: search, schema: { type: string } }
+      responses:
+        "200":
+          description: Product list
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/CatalogProduct" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      operationId: createCatalogAdminProduct
+      tags: [catalog-admin, phase59-catalog-admin]
+      summary: Create a product
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CatalogCreateProductInput" }
+      responses:
+        "201":
+          description: Created product
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogProduct" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/products/sort:
+    patch:
+      operationId: sortCatalogAdminProducts
+      tags: [catalog-admin, phase59-catalog-admin]
+      summary: Bulk update product sort order
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CatalogSortOrderInput" }
+      responses:
+        "200":
+          description: Sort order updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogOkResult" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/products/export:
+    get:
+      operationId: exportCatalogAdminProducts
+      tags: [catalog-admin, phase59-catalog-admin]
+      summary: Export products as CSV or XLSX
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      parameters:
+        - in: query
+          name: format
+          schema: { type: string, enum: [csv, xlsx], default: csv }
+      responses:
+        "200":
+          description: Product export file
+          content:
+            text/csv:
+              schema: { type: string, format: binary }
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema: { type: string, format: binary }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/products/import:
+    post:
+      operationId: importCatalogAdminProducts
+      tags: [catalog-admin, phase59-catalog-admin]
+      summary: Import products from XLSX file
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+              required: [file]
+      responses:
+        "200":
+          description: Import summary
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogProductImportResult" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/products/{productId}:
+    patch:
+      operationId: updateCatalogAdminProduct
+      tags: [catalog-admin, phase59-catalog-admin]
+      summary: Update a product
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      parameters:
+        - name: productId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CatalogUpdateProductInput" }
+      responses:
+        "200":
+          description: Updated product
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogProductDetail" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      operationId: deleteCatalogAdminProduct
+      tags: [catalog-admin, phase59-catalog-admin]
+      summary: Soft-archive a product
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      parameters:
+        - name: productId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Product archived
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogOkResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/products/{productId}/modifier-groups:
+    put:
+      operationId: setCatalogAdminProductModifierGroups
+      tags: [catalog-admin, phase59-catalog-admin]
+      summary: Replace all modifier group assignments for a product
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      parameters:
+        - name: productId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CatalogProductModifierGroupsInput" }
+      responses:
+        "200":
+          description: Modifier groups updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogOkResult" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/products/{id}/soldout:
+    patch:
+      operationId: patchCatalogAdminProductSoldout
+      tags: [catalog-admin, phase59-catalog-admin]
+      summary: Toggle product out-of-stock flag
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [manager, admin]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CatalogSoldoutInput" }
+      responses:
+        "200":
+          description: Sold-out flag updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogSoldoutResult" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/products/{id}/translations:
+    patch:
+      operationId: patchCatalogAdminProductTranslations
+      tags: [catalog-admin, phase59-catalog-admin]
+      summary: Update product English/Spanish translations
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [manager, admin]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CatalogProductTranslationsInput" }
+      responses:
+        "200":
+          description: Translations updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogProductTranslationsResult" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/product-availability-rules:
+    get:
+      operationId: getCatalogAdminProductAvailabilityRules
+      tags: [catalog-admin, phase59-catalog-admin]
+      summary: List product availability rules
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [manager, admin]
+      responses:
+        "200":
+          description: Availability rules
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/CatalogProductAvailabilityRule" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      operationId: createCatalogAdminProductAvailabilityRule
+      tags: [catalog-admin, phase59-catalog-admin]
+      summary: Create a product availability rule
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [manager, admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CatalogCreateProductAvailabilityRuleInput" }
+      responses:
+        "201":
+          description: Created rule
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogProductAvailabilityRule" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/product-availability-rules/{id}:
+    patch:
+      operationId: updateCatalogAdminProductAvailabilityRule
+      tags: [catalog-admin, phase59-catalog-admin]
+      summary: Update a product availability rule
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [manager, admin]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CatalogUpdateProductAvailabilityRuleInput" }
+      responses:
+        "200":
+          description: Updated rule
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogProductAvailabilityRule" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      operationId: deleteCatalogAdminProductAvailabilityRule
+      tags: [catalog-admin, phase59-catalog-admin]
+      summary: Delete a product availability rule
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [manager, admin]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Rule deleted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogOkResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/modifier-groups:
+    get:
+      operationId: getCatalogAdminModifierGroups
+      tags: [catalog-admin, phase59-catalog-admin]
+      summary: List modifier groups with modifiers
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      responses:
+        "200":
+          description: Modifier groups
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/CatalogModifierGroupWithModifiers" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      operationId: createCatalogAdminModifierGroup
+      tags: [catalog-admin, phase59-catalog-admin]
+      summary: Create a modifier group
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CatalogCreateModifierGroupInput" }
+      responses:
+        "201":
+          description: Created modifier group
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogModifierGroupWithModifiers" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/modifier-groups/{id}:
+    patch:
+      operationId: updateCatalogAdminModifierGroup
+      tags: [catalog-admin, phase59-catalog-admin]
+      summary: Update a modifier group
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CatalogUpdateModifierGroupInput" }
+      responses:
+        "200":
+          description: Updated modifier group
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogModifierGroup" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      operationId: deleteCatalogAdminModifierGroup
+      tags: [catalog-admin, phase59-catalog-admin]
+      summary: Soft-archive a modifier group
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Modifier group archived
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogOkResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/modifier-groups/{id}/modifiers:
+    post:
+      operationId: createCatalogAdminModifier
+      tags: [catalog-admin, phase59-catalog-admin]
+      summary: Add a modifier option to a group
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CatalogCreateModifierInput" }
+      responses:
+        "201":
+          description: Created modifier
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogModifier" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/modifiers/{id}:
+    patch:
+      operationId: updateCatalogAdminModifier
+      tags: [catalog-admin, phase59-catalog-admin]
+      summary: Update a modifier option
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CatalogUpdateModifierInput" }
+      responses:
+        "200":
+          description: Updated modifier
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogModifier" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      operationId: deleteCatalogAdminModifier
+      tags: [catalog-admin, phase59-catalog-admin]
+      summary: Soft-archive a modifier option
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Modifier archived
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogOkResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/allergens:
+    get:
+      operationId: getCatalogAdminAllergens
+      tags: [catalog-admin, phase59-catalog-admin]
+      summary: List EU allergen catalogue
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [authenticated]
+      responses:
+        "200":
+          description: Allergen catalogue entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/CatalogAllergen" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /admin/allergens/{code}:
+    get:
+      operationId: getCatalogAdminAllergen
+      tags: [catalog-admin, phase59-catalog-admin]
+      summary: Get a single allergen catalogue entry
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [authenticated]
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Allergen entry
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogAllergen" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/products/{id}/allergens:
+    get:
+      operationId: getCatalogAdminProductAllergens
+      tags: [catalog-admin, phase59-catalog-admin]
+      summary: Get product allergen cache and overrides
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [authenticated]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Product allergen cache, overrides and review flag
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogProductAllergensResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /admin/products/{id}/allergens/recalculate:
+    post:
+      operationId: recalculateCatalogAdminProductAllergens
+      tags: [catalog-admin, phase59-catalog-admin]
+      summary: Recalculate product allergens from recipe ingredients
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [manager, admin]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Recalculation complete
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogOkResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/products/{id}/allergens/override:
+    post:
+      operationId: createCatalogAdminProductAllergenOverride
+      tags: [catalog-admin, phase59-catalog-admin]
+      summary: Add a manual allergen override for a product
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CatalogProductAllergenOverrideInput" }
+      responses:
+        "200":
+          description: Override added
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogOkResult" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/products/{id}/allergens/override/{code}:
+    delete:
+      operationId: deleteCatalogAdminProductAllergenOverride
+      tags: [catalog-admin, phase59-catalog-admin]
+      summary: Remove a manual allergen override
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [admin]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: code
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Override removed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogOkResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /products:
+    get:
+      operationId: searchCatalogProducts
+      tags: [catalog-admin, phase59-catalog-admin]
+      summary: Staff product search (delivery/pickup forms)
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      x-roles: [authenticated]
+      parameters:
+        - { in: query, name: q, schema: { type: string, default: "" } }
+        - { in: query, name: limit, schema: { type: integer, default: 20, maximum: 50 } }
+      responses:
+        "200":
+          description: Matching active products (max 50)
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/CatalogStaffProductSearchItem" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
