@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from './ui/dialog';
-import { useGetProductModifiers, useUpdateOrderItemDetails, getGetTableOrderQueryKey, getGetProductModifiersQueryKey } from '@workspace/api-client-react';
+import { useGetProductModifiers, getGetProductModifiersQueryKey } from '@workspace/api-client-react/catalog-admin';
+import { useUpdateOrderItemDetails, getGetTableOrderQueryKey } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Loader2 } from 'lucide-react';
 import { useScrollGuard } from '../hooks/use-scroll-guard';

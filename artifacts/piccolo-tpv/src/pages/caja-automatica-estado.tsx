@@ -5,7 +5,7 @@ import {
   useGetCashMachineStatus,
   useGetCashMachineConfig,
   useGetCashMachineCashLevels,
-} from '@workspace/api-client-react';
+} from '@workspace/api-client-react/cash-payments';
 
 function fmtDate(d: string) {
   return new Date(d).toLocaleString('es-ES', {

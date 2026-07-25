@@ -6,7 +6,7 @@ import {
   useGetCashMachineConfig,
   useUpdateCashMachineConfig,
   useTestCashMachineConnection,
-} from '@workspace/api-client-react';
+} from '@workspace/api-client-react/cash-payments';
 
 function fmt(n: number | undefined | null) { return n ?? 0; }
 

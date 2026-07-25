@@ -18,8 +18,10 @@ import {
   BarChart3,
 } from 'lucide-react';
 import {
-  useGetAdminIngredients,
   useGetAdminCategories,
+} from '@workspace/api-client-react/catalog-admin';
+import {
+  useGetAdminIngredients,
   getGetAdminIngredientsQueryKey,
   getGetStockAlertsQueryKey,
 } from '@workspace/api-client-react';

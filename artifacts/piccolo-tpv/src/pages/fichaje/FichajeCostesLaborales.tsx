@@ -5,15 +5,8 @@
 import { useState, useEffect } from "react";
 import { Coins, RefreshCw, TrendingUp } from "lucide-react";
 import { api } from "../../lib/api-client";
-
-interface SummaryRow {
-  employeeId: string;
-  employeeName: string;
-  totalMinutes: number;
-  totalHours: string;
-  totalDays: number;
-  totalRecords: number;
-}
+import { getTimeclockReportSummary } from "@workspace/api-client-react/timeclock";
+import type { TimeclockReportSummaryRow } from "@workspace/api-client-react/timeclock";
 
 interface Employee {
   id: string;
@@ -26,7 +19,7 @@ function fmt(n: number, dec = 2) {
 }
 
 export default function FichajeCostesLaborales() {
-  const [summary, setSummary] = useState<SummaryRow[]>([]);
+  const [summary, setSummary] = useState<TimeclockReportSummaryRow[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
   const [from, setFrom] = useState(() => {
@@ -40,7 +33,7 @@ export default function FichajeCostesLaborales() {
 
   function load() {
     setLoading(true);
-    api.get<SummaryRow[]>(`/api/fichaje/reports/summary?from=${from}&to=${to}`)
+    getTimeclockReportSummary({ from: `${from}T00:00:00.000Z`, to: `${to}T23:59:59.999Z` })
       .then(d => setSummary(Array.isArray(d) ? d : []))
       .catch(() => setSummary([]))
       .finally(() => setLoading(false));

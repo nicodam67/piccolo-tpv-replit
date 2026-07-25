@@ -1,15 +1,8 @@
 import { useState, useEffect } from "react";
 import { BarChart3, Clock, Calendar, TrendingUp } from "lucide-react";
 import { api } from "../../lib/api-client";
-
-interface SummaryRow {
-  employeeId: string;
-  employeeName: string;
-  totalMinutes: number;
-  totalHours: string;
-  totalDays: number;
-  totalRecords: number;
-}
+import { getTimeclockReportSummary } from "@workspace/api-client-react/timeclock";
+import type { TimeclockReportSummaryRow } from "@workspace/api-client-react/timeclock";
 
 interface Employee { id: string; name: string; }
 
@@ -37,7 +30,7 @@ function getPreset(preset: string): { from: string; to: string } {
 }
 
 export default function FichajeInformes() {
-  const [summary, setSummary] = useState<SummaryRow[]>([]);
+  const [summary, setSummary] = useState<TimeclockReportSummaryRow[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(false);
   const [preset, setPreset] = useState("month");
@@ -59,9 +52,11 @@ export default function FichajeInformes() {
 
   function load() {
     setLoading(true);
-    const params = new URLSearchParams({ from, to });
-    if (filterEmp) params.set("employeeId", filterEmp);
-    api.get<SummaryRow[]>(`/api/fichaje/reports/summary?${params}`)
+    getTimeclockReportSummary({
+      from: `${from}T00:00:00.000Z`,
+      to: `${to}T23:59:59.999Z`,
+      ...(filterEmp ? { employeeId: filterEmp } : {}),
+    })
       .then(d => setSummary(Array.isArray(d) ? d : []))
       .finally(() => setLoading(false));
   }
