@@ -11,8 +11,8 @@ import {
   useUpdateSubcategory,
   useDeleteSubcategory,
   getGetAdminCategoriesQueryKey,
-} from '@workspace/api-client-react';
-import type { AdminCategory, Subcategory } from '@workspace/api-client-react';
+} from '@workspace/api-client-react/catalog-admin';
+import type { AdminCategory, Subcategory } from '@workspace/api-client-react/catalog-admin';
 import {
   ArrowLeft, Tag, Plus, Pencil, Trash2, ChevronDown, ChevronRight,
   GripVertical, Check, X, Folder, FolderOpen, Search,

@@ -10,22 +10,29 @@ import {
   ArrowLeft,
 } from "lucide-react";
 import { toast } from "sonner";
-import { api } from '../lib/api-client';
+import {
+  createCourier,
+  deleteCourier,
+  getCourierSettlements,
+  getCouriers,
+  patchCourier,
+} from '@workspace/api-client-react/delivery';
+import type { CourierSafe, CourierSettlementWithName } from '@workspace/api-client-react/delivery';
 
-interface Courier {
-  id: string; name: string; phone: string; status: string; active: boolean;
-  vehicleType: string; plate: string; zonaHabitual: string; turno: string;
-  earnedCashPending: string; earnedCardPending: string; totalDeliveries: number;
-  avgDeliveryMinutes: number; token: string;
+interface Courier extends CourierSafe {
+  token?: string;
+  active: boolean;
+  vehicleType: string;
+  plate: string;
+  zonaHabitual: string;
+  turno: string;
+  earnedCashPending: string;
+  earnedCardPending: string;
+  totalDeliveries: number;
+  avgDeliveryMinutes: number;
 }
 
-interface Settlement {
-  id: string; courierId: string; courierName: string;
-  periodStart: string; periodEnd: string; ordersCount: number;
-  totalCash: string; totalCard: string; totalOnline: string;
-  tips: string; expenses: string; differences: string;
-  closedByName: string; notes: string; createdAt: string;
-}
+interface Settlement extends CourierSettlementWithName {}
 
 const VEHICLE_ICONS: Record<string, string> = { moto: "🛵", car: "🚗", bike: "🚲", walking: "🚶" };
 const STATUS_CFG: Record<string, { label: string; cls: string }> = {
@@ -131,11 +138,11 @@ export default function AdminRepartidores() {
   const load = useCallback(async () => {
     try {
       const [cd, sd] = await Promise.all([
-        api.get("/api/admin/couriers").catch(() => []),
-        api.get("/api/admin/courier-settlements").catch(() => []),
+        getCouriers().catch(() => []),
+        getCourierSettlements().catch(() => []),
       ]);
-      setCouriers(Array.isArray(cd) ? cd : []);
-      setSettlements(Array.isArray(sd) ? sd : []);
+      setCouriers(Array.isArray(cd) ? cd as Courier[] : []);
+      setSettlements(Array.isArray(sd) ? sd as Settlement[] : []);
     } catch { /* silent */ }
     finally { setLoading(false); }
   }, []);
@@ -145,7 +152,7 @@ export default function AdminRepartidores() {
   const handleCreate = async (form: typeof EMPTY_FORM) => {
     setBusyId("new");
     try {
-      await api.post("/api/admin/couriers", form);
+      await createCourier({ name: form.name, phone: form.phone });
       toast.success("Repartidor añadido");
       setShowForm(false); load();
     } catch (e: any) { toast.error(e.message); }
@@ -155,7 +162,7 @@ export default function AdminRepartidores() {
   const handleEdit = async (id: string, form: typeof EMPTY_FORM) => {
     setBusyId(id);
     try {
-      await api.patch(`/api/admin/couriers/${id}`, form);
+      await patchCourier(id, form);
       toast.success("Repartidor actualizado");
       setEditingId(null); load();
     } catch (e: any) { toast.error(e.message); }
@@ -166,7 +173,7 @@ export default function AdminRepartidores() {
     if (!confirm(`¿Eliminar a ${name}? Esta acción es permanente.`)) return;
     setBusyId(id);
     try {
-      await api.delete(`/api/admin/couriers/${id}`);
+      await deleteCourier(id);
       toast.success("Repartidor eliminado");
       load();
     } catch (e: any) { toast.error(e.message); }
@@ -176,7 +183,7 @@ export default function AdminRepartidores() {
   const handleStatusChange = async (id: string, status: string) => {
     setBusyId(id);
     try {
-      await api.patch(`/api/admin/couriers/${id}`, { status });
+      await patchCourier(id, { status });
       load();
     } catch (e: any) { toast.error(e.message); }
     finally { setBusyId(null); }
@@ -280,7 +287,7 @@ export default function AdminRepartidores() {
                         <option value="pause">Pausa</option>
                         <option value="off">No disp.</option>
                       </select>
-                      <a href={`/driver/${c.id}#token=${encodeURIComponent(c.token)}`} target="_blank" rel="noreferrer"
+                      <a href={`/driver/${c.id}#token=${encodeURIComponent(c.token ?? "")}`} target="_blank" rel="noreferrer"
                         className="px-2 py-1 bg-primary/10 text-primary rounded-lg text-[10px] border border-primary/20 hover:bg-primary/20 transition-colors">
                         Vista móvil
                       </a>

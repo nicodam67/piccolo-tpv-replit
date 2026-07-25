@@ -1,10 +1,17 @@
 /**
- * FichajeVacaciones — solicitudes y calendario de vacaciones.
- * Usa el endpoint /api/fichaje/absences con type=vacation.
+ * FichajeVacaciones — solicitudes de vacaciones (ausencias tipo vacation).
+ * Cableado al contrato timeclock: absenceType, absenceDate, PUT .../approve.
+ * Bloqueo parcial: el backend solo admite un día por ausencia; rangos multi-día no migrados.
  */
 import { useState, useEffect } from "react";
-import { Umbrella, Plus, Search, X, Check, Clock } from "lucide-react";
+import { Umbrella, Plus, Search, X, Check, Clock, AlertTriangle } from "lucide-react";
 import { api } from "../../lib/api-client";
+import {
+  approveTimeclockAbsence,
+  createTimeclockAbsence,
+  getTimeclockAbsences,
+} from "@workspace/api-client-react/timeclock";
+import type { TimeclockAbsenceListItem } from "@workspace/api-client-react/timeclock";
 
 interface Absence {
   id: string;
@@ -20,6 +27,20 @@ interface Absence {
 
 interface Employee { id: string; name: string; }
 
+function mapVacationRow(row: TimeclockAbsenceListItem): Absence {
+  return {
+    id: row.id,
+    employeeId: row.employeeId,
+    employeeName: row.employeeName,
+    type: row.absenceType,
+    startDate: row.absenceDate,
+    endDate: row.absenceDate,
+    notes: row.reason ?? null,
+    approved: row.status === "approved" ? true : row.status === "rejected" ? false : null,
+    createdAt: row.createdAt,
+  };
+}
+
 function fmt(iso: string) {
   return new Date(iso).toLocaleDateString("es-ES", { day: "2-digit", month: "short", year: "numeric" });
 }
@@ -32,13 +53,20 @@ function NewModal({ employees, onClose, onSaved }: { employees: Employee[]; onCl
   const [form, setForm] = useState({ employeeId: "", startDate: "", endDate: "", notes: "" });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const rangeBlocked = Boolean(form.startDate && form.endDate && form.startDate !== form.endDate);
 
   async function save() {
     if (!form.employeeId || !form.startDate || !form.endDate) return;
+    if (rangeBlocked) return;
     setSaving(true);
     setError(null);
     try {
-      await api.post("/api/fichaje/absences", { ...form, type: "vacation" });
+      await createTimeclockAbsence({
+        employeeId: form.employeeId,
+        absenceDate: form.startDate,
+        absenceType: "vacation",
+        reason: form.notes || undefined,
+      });
       onSaved();
     } catch (e) {
       setError(String(e));
@@ -53,6 +81,12 @@ function NewModal({ employees, onClose, onSaved }: { employees: Employee[]; onCl
           <h3 className="text-lg font-semibold text-foreground">Nueva solicitud de vacaciones</h3>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-secondary text-muted-foreground"><X size={16} /></button>
         </div>
+        {rangeBlocked && (
+          <div className="mb-3 p-2 rounded-lg bg-amber-500/10 text-amber-800 dark:text-amber-300 text-xs flex gap-2">
+            <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+            El backend solo admite un día por solicitud. Usa la misma fecha de inicio y fin, o crea varias solicitudes.
+          </div>
+        )}
         {error && <div className="mb-3 p-2 rounded-lg bg-destructive/10 text-destructive text-xs">{error}</div>}
         <div className="space-y-3">
           <select value={form.employeeId} onChange={e => setForm(f => ({ ...f, employeeId: e.target.value }))}
@@ -77,7 +111,7 @@ function NewModal({ employees, onClose, onSaved }: { employees: Employee[]; onCl
         </div>
         <div className="flex gap-2 mt-5">
           <button onClick={onClose} className="flex-1 border border-border rounded-lg py-2 text-sm text-foreground hover:bg-secondary">Cancelar</button>
-          <button onClick={save} disabled={saving || !form.employeeId || !form.startDate || !form.endDate}
+          <button onClick={save} disabled={saving || !form.employeeId || !form.startDate || !form.endDate || rangeBlocked}
             className="flex-1 bg-teal-600 text-white rounded-lg py-2 text-sm disabled:opacity-50 hover:bg-teal-700">
             {saving ? "Guardando…" : "Crear solicitud"}
           </button>
@@ -96,8 +130,9 @@ export default function FichajeVacaciones() {
 
   function load() {
     setLoading(true);
-    api.get<Absence[]>("/api/fichaje/absences?type=vacation")
-      .then(d => setAbsences(Array.isArray(d) ? d : []))
+    getTimeclockAbsences()
+      .then((d: TimeclockAbsenceListItem[]) =>
+        setAbsences(d.filter((a: TimeclockAbsenceListItem) => a.absenceType === "vacation").map(mapVacationRow)))
       .catch(() => setAbsences([]))
       .finally(() => setLoading(false));
   }
@@ -108,7 +143,7 @@ export default function FichajeVacaciones() {
   }, []);
 
   async function approve(id: string, approved: boolean) {
-    await api.put(`/api/fichaje/absences/${id}`, { approved }).catch(() => {});
+    await approveTimeclockAbsence(id, { status: approved ? "approved" : "rejected" }).catch(() => {});
     load();
   }
 

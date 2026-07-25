@@ -15,6 +15,14 @@ import {
   Filter, Download, ChevronDown, ChevronUp,
 } from 'lucide-react';
 import { api } from '../lib/api-client';
+import {
+  blockCrmGiftCard,
+  createCrmGiftCard,
+  getCrmGiftCard,
+  getCrmGiftCards,
+  rechargeCrmGiftCard,
+} from '@workspace/api-client-react/wallet';
+import type { CrmGiftCard, CrmGiftCardTransaction } from '@workspace/api-client-react/wallet';
 import { toast } from 'sonner';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -68,12 +76,6 @@ interface LoyaltyPoint {
   id: string; clientId: string; tipo: string; puntos: number;
   saldoAnterior: number; saldoPosterior: number; descripcion: string;
   empleadoNombre: string; createdAt: string;
-}
-
-interface GiftCard {
-  id: string; codigo: string; saldoInicial: string; saldoActual: string;
-  clientId: string | null; estado: string; fechaCaducidad: string | null;
-  notas: string; empleadoNombre: string; createdAt: string;
 }
 
 interface Promotion {
@@ -684,15 +686,15 @@ function QuickPointsPanel() {
 // ═══════════════════════════════════════════════════════════════════════════
 
 function TarjetasTab() {
-  const [cards, setCards] = useState<GiftCard[]>([]);
+  const [cards, setCards] = useState<CrmGiftCard[]>([]);
   const [q, setQ] = useState('');
   const [showCreate, setShowCreate] = useState(false);
-  const [selected, setSelected] = useState<GiftCard | null>(null);
+  const [selected, setSelected] = useState<CrmGiftCard | null>(null);
   const [detail, setDetail] = useState<any>(null);
 
   const load = useCallback(async () => {
     try {
-      const data = await api.get<GiftCard[]>(`/api/crm/gift-cards${q ? `?q=${encodeURIComponent(q)}` : ''}`);
+      const data = await getCrmGiftCards(q ? { q } : undefined);
       setCards(data);
     } catch { toast.error('Error al cargar tarjetas'); }
   }, [q]);
@@ -701,20 +703,20 @@ function TarjetasTab() {
 
   const loadDetail = async (id: string) => {
     try {
-      const data = await api.get<any>(`/api/crm/gift-cards/${id}`);
+      const data = await getCrmGiftCard(id);
       setDetail(data);
     } catch { }
   };
 
-  const selectCard = (c: GiftCard) => {
+  const selectCard = (c: CrmGiftCard) => {
     setSelected(c);
     setShowCreate(false);
     void loadDetail(c.id);
   };
 
-  const toggleBlock = async (card: GiftCard) => {
+  const toggleBlock = async (card: CrmGiftCard) => {
     try {
-      await api.post(`/api/crm/gift-cards/${card.id}/block`);
+      await blockCrmGiftCard(card.id);
       toast.success(card.estado === 'bloqueada' ? 'Tarjeta desbloqueada' : 'Tarjeta bloqueada');
       await load();
       await loadDetail(card.id);
@@ -784,7 +786,7 @@ function GiftCardCreateForm({ onSave, onCancel }: { onSave: () => void; onCancel
     if (isNaN(n) || n <= 0) { toast.error('Saldo inválido'); return; }
     setSaving(true);
     try {
-      await api.post('/api/crm/gift-cards', { saldo, notas });
+      await createCrmGiftCard({ saldo, notas });
       toast.success('Tarjeta creada');
       onSave();
     } catch { toast.error('Error al crear'); }
@@ -813,7 +815,7 @@ function GiftCardCreateForm({ onSave, onCancel }: { onSave: () => void; onCancel
   );
 }
 
-function GiftCardDetail({ card, transactions, onBlock, onRecharge }: { card: GiftCard; transactions: any[]; onBlock: () => void; onRecharge: () => void }) {
+function GiftCardDetail({ card, transactions, onBlock, onRecharge }: { card: CrmGiftCard; transactions: CrmGiftCardTransaction[]; onBlock: () => void; onRecharge: () => void }) {
   const [rechargeAmount, setRechargeAmount] = useState('');
   const [recharging, setRecharging] = useState(false);
 
@@ -822,7 +824,7 @@ function GiftCardDetail({ card, transactions, onBlock, onRecharge }: { card: Gif
     if (isNaN(n) || n <= 0) { toast.error('Importe inválido'); return; }
     setRecharging(true);
     try {
-      await api.post(`/api/crm/gift-cards/${card.id}/recharge`, { importe: rechargeAmount });
+      await rechargeCrmGiftCard(card.id, { importe: rechargeAmount });
       toast.success('Tarjeta recargada');
       setRechargeAmount('');
       onRecharge();

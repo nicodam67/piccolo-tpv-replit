@@ -1,0 +1,476 @@
+# phase56-timeclock — splice under components.schemas in openapi.yaml
+
+    TimeclockEmployeeBrief:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+      required: [id, name]
+
+    TimeclockMobileClockStatus:
+      type: object
+      description: Mobile clock is fail-closed; mobileClockEnabled is always false at runtime
+      properties:
+        mobileClockEnabled: { type: boolean }
+        configuredMobileClockEnabled: { type: boolean }
+        reason: { type: string }
+      required: [mobileClockEnabled, configuredMobileClockEnabled, reason]
+
+    TimeclockRecord:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        employeeId: { type: string, format: uuid }
+        clockIn: { type: string, format: date-time }
+        clockOut: { type: string, format: date-time, nullable: true }
+        source: { type: string, enum: [pin, nfc, manual, anviz, import] }
+        isManual: { type: boolean }
+        notes: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        createdBy: { type: string, format: uuid, nullable: true }
+        importHistoryId: { type: string, format: uuid, nullable: true }
+        importRowId: { type: string, format: uuid, nullable: true }
+        externalRecordId: { type: string, nullable: true }
+        deviceId: { type: string, nullable: true }
+      required: [id, employeeId, clockIn, source, isManual, createdAt, updatedAt]
+
+    TimeclockRecordListItem:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        employeeId: { type: string, format: uuid }
+        employeeName: { type: string }
+        clockIn: { type: string, format: date-time }
+        clockOut: { type: string, format: date-time, nullable: true }
+        source: { type: string }
+        isManual: { type: boolean }
+        notes: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+      required: [id, employeeId, employeeName, clockIn, source, isManual, createdAt]
+
+    TimeclockBreak:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        recordId: { type: string, format: uuid }
+        breakStart: { type: string, format: date-time }
+        breakEnd: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+      required: [id, recordId, breakStart, createdAt]
+
+    TimeclockEmployeeStatus:
+      type: object
+      properties:
+        status: { type: string, enum: [out, in, break] }
+        record: { $ref: "#/components/schemas/TimeclockRecord", nullable: true }
+        activeBreak: { $ref: "#/components/schemas/TimeclockBreak", nullable: true }
+      required: [status]
+
+    TimeclockClockProofs:
+      type: object
+      description: Ephemeral proofs keyed by clock action; TTL ~90s
+      properties:
+        clock_in: { type: string }
+        clock_out: { type: string }
+        break_start: { type: string }
+        break_end: { type: string }
+      required: [clock_in, clock_out, break_start, break_end]
+
+    TimeclockClockAuthorization:
+      type: object
+      properties:
+        proofs: { $ref: "#/components/schemas/TimeclockClockProofs" }
+        expiresAt: { type: string, format: date-time }
+        serverTime: { type: string, format: date-time }
+      required: [proofs, expiresAt]
+
+    PublicClockInput:
+      type: object
+      properties:
+        employeeId: { type: string, format: uuid }
+        action: { type: string, enum: [clock_in, clock_out, break_start, break_end] }
+        deviceToken: { type: string, minLength: 1 }
+        proof: { type: string, minLength: 32 }
+      required: [employeeId, action, deviceToken, proof]
+
+    TimeclockClockResult:
+      type: object
+      properties:
+        success: { type: boolean }
+        record: { $ref: "#/components/schemas/TimeclockRecord" }
+        break: { $ref: "#/components/schemas/TimeclockBreak" }
+        serverTime: { type: string, format: date-time }
+      required: [success, serverTime]
+
+    NfcIdentifyInput:
+      type: object
+      properties:
+        rawToken: { type: string, minLength: 1 }
+        deviceToken: { type: string, minLength: 1 }
+      required: [rawToken, deviceToken]
+
+    NfcIdentifyResult:
+      type: object
+      properties:
+        employeeId: { type: string, format: uuid }
+        employeeName: { type: string }
+        currentStatus: { type: string, enum: [out, in, break] }
+        record: { $ref: "#/components/schemas/TimeclockRecord", nullable: true }
+        activeBreak: { $ref: "#/components/schemas/TimeclockBreak", nullable: true }
+        proofs: { $ref: "#/components/schemas/TimeclockClockProofs" }
+        expiresAt: { type: string, format: date-time }
+        serverTime: { type: string, format: date-time }
+      required: [employeeId, employeeName, currentStatus, proofs, expiresAt, serverTime]
+
+    ManualRecordInput:
+      type: object
+      properties:
+        employeeId: { type: string, format: uuid }
+        clockIn: { type: string, description: ISO-8601 datetime }
+        clockOut: { type: string, description: ISO-8601 datetime }
+        notes: { type: string }
+      required: [employeeId, clockIn]
+
+    UpdateTimeclockRecordInput:
+      type: object
+      properties:
+        clockIn: { type: string, description: ISO-8601 datetime }
+        clockOut: { type: string, description: ISO-8601 datetime }
+        notes: { type: string }
+        reason: { type: string, default: Corrección manual }
+      description: Creates a time_corrections audit row with correctedBy = authenticated manager
+
+    TimeclockShift:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        employeeId: { type: string, format: uuid }
+        shiftDate: { type: string, format: date }
+        startTime: { type: string, description: HH:MM }
+        endTime: { type: string, description: HH:MM }
+        isSplit: { type: boolean }
+        splitStartTime: { type: string, nullable: true }
+        splitEndTime: { type: string, nullable: true }
+        notes: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        createdBy: { type: string, format: uuid, nullable: true }
+      required: [id, employeeId, shiftDate, startTime, endTime, isSplit, createdAt]
+
+    TimeclockShiftListItem:
+      allOf:
+        - { $ref: "#/components/schemas/TimeclockShift" }
+        - type: object
+          properties:
+            employeeName: { type: string }
+          required: [employeeName]
+
+    CreateTimeclockShiftInput:
+      type: object
+      properties:
+        employeeId: { type: string, format: uuid }
+        shiftDate: { type: string, format: date }
+        startTime: { type: string }
+        endTime: { type: string }
+        isSplit: { type: boolean, default: false }
+        splitStartTime: { type: string }
+        splitEndTime: { type: string }
+        notes: { type: string }
+      required: [employeeId, shiftDate, startTime, endTime]
+
+    TimeclockAbsence:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        employeeId: { type: string, format: uuid }
+        absenceDate: { type: string, format: date }
+        absenceType: { type: string, enum: [holiday, sick_leave, vacation, presentation, other] }
+        status: { type: string, enum: [pending, approved, rejected] }
+        reason: { type: string, nullable: true }
+        approvedBy: { type: string, format: uuid, nullable: true }
+        approvedAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+      required: [id, employeeId, absenceDate, absenceType, status, createdAt]
+
+    TimeclockAbsenceListItem:
+      allOf:
+        - { $ref: "#/components/schemas/TimeclockAbsence" }
+        - type: object
+          properties:
+            employeeName: { type: string }
+          required: [employeeName]
+
+    CreateTimeclockAbsenceInput:
+      type: object
+      properties:
+        employeeId: { type: string, format: uuid }
+        absenceDate: { type: string, format: date }
+        absenceType: { type: string, enum: [holiday, sick_leave, vacation, presentation, other] }
+        reason: { type: string }
+      required: [employeeId, absenceDate, absenceType]
+
+    ApproveTimeclockAbsenceInput:
+      type: object
+      properties:
+        status: { type: string, enum: [approved, rejected] }
+      required: [status]
+
+    TimeclockReportSummaryRow:
+      type: object
+      properties:
+        employeeId: { type: string, format: uuid }
+        employeeName: { type: string }
+        totalMinutes: { type: integer }
+        totalHours: { type: string }
+        totalDays: { type: integer }
+        totalRecords: { type: integer }
+      required: [employeeId, employeeName, totalMinutes, totalHours, totalDays, totalRecords]
+
+    AnvizImportRow:
+      type: object
+      properties:
+        anvizId: { type: string }
+        clockIn: { type: string, description: ISO-8601 datetime }
+        clockOut: { type: string, description: ISO-8601 datetime }
+      required: [anvizId, clockIn]
+
+    AnvizImportInput:
+      type: object
+      properties:
+        filename: { type: string }
+        rows:
+          type: array
+          items: { $ref: "#/components/schemas/AnvizImportRow" }
+      required: [filename, rows]
+
+    AnvizImportError:
+      type: object
+      properties:
+        row: { type: integer }
+        message: { type: string }
+      required: [row, message]
+
+    AnvizImportResult:
+      type: object
+      properties:
+        success: { type: boolean }
+        imported: { type: integer }
+        skipped: { type: integer }
+        errors:
+          type: array
+          items: { $ref: "#/components/schemas/AnvizImportError" }
+      required: [success, imported, skipped, errors]
+
+    TimeclockImportHistoryItem:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        filename: { type: string }
+        rowsTotal: { type: integer }
+        rowsImported: { type: integer }
+        rowsSkipped: { type: integer }
+        rowsErrored: { type: integer }
+        importedByName: { type: string }
+        createdAt: { type: string, format: date-time }
+      required: [id, filename, rowsTotal, rowsImported, rowsSkipped, rowsErrored, importedByName, createdAt]
+
+    FichajeSettings:
+      type: object
+      properties:
+        id: { type: integer }
+        companyName: { type: string }
+        locale: { type: string }
+        timezone: { type: string, description: IANA timezone e.g. Europe/Madrid }
+        weekStart: { type: string, enum: [monday, sunday] }
+        mobileClockEnabled: { type: boolean }
+        reportEmail: { type: string, nullable: true }
+        reportDayOfWeek: { type: integer, nullable: true }
+        updatedAt: { type: string, format: date-time }
+      required: [id, companyName, locale, timezone, weekStart, mobileClockEnabled, updatedAt]
+
+    UpdateFichajeSettingsInput:
+      type: object
+      properties:
+        companyName: { type: string }
+        locale: { type: string }
+        timezone: { type: string }
+        weekStart: { type: string, enum: [monday, sunday] }
+        mobileClockEnabled: { type: boolean }
+        reportEmail: { type: string, nullable: true }
+        reportDayOfWeek: { type: integer }
+
+    FichajeAuditEntry:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        action: { type: string }
+        employeeId: { type: string, format: uuid, nullable: true }
+        performedByName: { type: string, nullable: true }
+        entityType: { type: string, nullable: true }
+        entityId: { type: string, format: uuid, nullable: true }
+        details:
+          type: object
+          nullable: true
+          additionalProperties: true
+        createdAt: { type: string, format: date-time }
+      required: [id, action, createdAt]
+
+    NfcCardAssignInput:
+      type: object
+      properties:
+        employeeId: { type: string, format: uuid }
+        rawToken: { type: string, minLength: 1 }
+        alias: { type: string }
+      required: [employeeId, rawToken]
+
+    NfcCardBrief:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        alias: { type: string, nullable: true }
+        status: { type: string, enum: [active, revoked] }
+        lastUsedAt: { type: string, format: date-time, nullable: true }
+        assignedAt: { type: string, format: date-time }
+        revokedAt: { type: string, format: date-time, nullable: true }
+        revokedReason: { type: string, nullable: true }
+      required: [id, status, assignedAt]
+
+    NfcCardCreated:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        alias: { type: string, nullable: true }
+        status: { type: string }
+        assignedAt: { type: string, format: date-time }
+      required: [id, status, assignedAt]
+
+    NfcCardUpdateInput:
+      type: object
+      properties:
+        alias: { type: string }
+        status: { type: string, enum: [active, revoked] }
+
+    NfcCardRevokeInput:
+      type: object
+      properties:
+        reason: { type: string }
+
+    FichajeMeResponse:
+      type: object
+      properties:
+        employee:
+          type: object
+          properties:
+            id: { type: string, format: uuid }
+            name: { type: string }
+            role: { type: string }
+          required: [id, name, role]
+        status: { type: string, enum: [out, in, break] }
+        currentRecord: { $ref: "#/components/schemas/TimeclockRecord", nullable: true }
+        currentBreak: { $ref: "#/components/schemas/TimeclockBreak", nullable: true }
+      required: [employee, status]
+
+    TabletDeviceSafe:
+      type: object
+      description: Tablet device without deviceToken; hasToken indicates credential presence
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        location: { type: string }
+        status: { type: string, enum: [active, revoked] }
+        lastSeenAt: { type: string, format: date-time, nullable: true }
+        appVersion: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        revokedAt: { type: string, format: date-time, nullable: true }
+        hasToken: { type: boolean }
+      required: [id, name, location, status, createdAt, hasToken]
+
+    TabletPairingCode:
+      type: object
+      properties:
+        code: { type: string }
+        expiresAt: { type: string, format: date-time }
+        expiresInSeconds: { type: integer }
+      required: [code, expiresAt, expiresInSeconds]
+
+    TabletRegisterInput:
+      type: object
+      properties:
+        name: { type: string, minLength: 1 }
+        location: { type: string }
+        pairingCode: { type: string, minLength: 1 }
+      required: [name, pairingCode]
+
+    TabletRegisterResult:
+      type: object
+      properties:
+        deviceToken: { type: string }
+        deviceId: { type: string, format: uuid }
+      required: [deviceToken, deviceId]
+
+    TabletDeviceInfo:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        status: { type: string }
+        location: { type: string }
+      required: [id, name, status, location]
+
+    TabletPingInput:
+      type: object
+      properties:
+        appVersion: { type: string }
+
+    TabletPingResult:
+      type: object
+      properties:
+        ok: { type: boolean }
+      required: [ok]
+
+    VerifyPinInput:
+      type: object
+      properties:
+        employeeId: { type: string, format: uuid }
+        pin: { type: string, minLength: 1, maxLength: 8 }
+        deviceToken: { type: string, minLength: 1 }
+      required: [employeeId, pin, deviceToken]
+
+    VerifyPinResult:
+      allOf:
+        - type: object
+          properties:
+            ok: { type: boolean }
+          required: [ok]
+        - { $ref: "#/components/schemas/TimeclockClockAuthorization" }
+
+    VerifyPinLockedError:
+      type: object
+      properties:
+        error: { type: string }
+        locked: { type: boolean }
+        retryAfterSeconds: { type: integer }
+        attemptsLeft: { type: integer }
+      required: [error]
+
+    TabletClockInput:
+      type: object
+      properties:
+        employeeId: { type: string, format: uuid }
+        action: { type: string, enum: [clock_in, clock_out, break_start, break_end] }
+        deviceToken: { type: string, minLength: 1 }
+        proof: { type: string, minLength: 32 }
+      required: [employeeId, action, deviceToken, proof]
+
+    TimeclockSuccess:
+      type: object
+      properties:
+        success: { type: boolean }
+      required: [success]
+
+    TimeclockRateLimitError:
+      type: object
+      properties:
+        error: { type: string }
+        retryAfterMs: { type: integer }
+      required: [error]
