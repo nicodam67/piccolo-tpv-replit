@@ -72,7 +72,7 @@ export async function loadPrintConfig(): Promise<{
 }
 
 // ── resolvePrintersForItem ─────────────────────────────────────────────────────
-async function resolvePrintersForItem(
+export async function resolvePrintersForItem(
   productId: string,
   categoryId: string,
   prepZone: string,
