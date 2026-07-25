@@ -54,16 +54,16 @@
     },
     {
       "component": "cash-drawer-kick",
-      "fileOrModule": "pages/admin-print-test.tsx + ticket-builder.ts",
-      "currentFunction": "Template flag/manual checklist; no command",
-      "protocol": "ESC/POS drawer kick absent",
-      "status": "unsupported",
-      "evidence": "no physical kick implementation",
-      "externalDependency": "Drawer connected to printer",
-      "availableTest": "none",
+      "fileOrModule": "lib/print-connector/escpos-payload.ts",
+      "currentFunction": "Optional explicit ESC/POS drawer pulse",
+      "protocol": "ESC/POS common subset",
+      "status": "implemented-unverified",
+      "evidence": "byte payload test passes; wiring/model unverified",
+      "externalDependency": "Drawer connected to compatible printer",
+      "availableTest": "escpos-payload.test.ts",
       "pendingTest": "PENDING_PHYSICAL_CERTIFICATION: cash drawer; open pulse",
       "criticality": "critical",
-      "decision": "blocked"
+      "decision": "certify-physically"
     },
     {
       "component": "database-backup",
@@ -80,29 +80,29 @@
     },
     {
       "component": "department-mode-per-zone",
-      "fileOrModule": "business_config.printMode",
-      "currentFunction": "Only one global mode; routing is printer-only per product/category",
+      "fileOrModule": "production_departments",
+      "currentFunction": "Independent none/KDS/printer/both plus ordered printers; global mode remains ceiling",
       "protocol": "configuration",
-      "status": "unsupported",
-      "evidence": "cannot set KDS/print/both/neither independently per zone",
+      "status": "validated-software",
+      "evidence": "channel matrix, CRUD and order regressions pass",
       "externalDependency": "Department design",
-      "availableTest": "none",
-      "pendingTest": "Owner must approve software change",
+      "availableTest": "production-departments.test.ts",
+      "pendingTest": "PENDING_PHYSICAL_CERTIFICATION: KDS/printer departments; all four modes",
       "criticality": "critical",
-      "decision": "needs-software-correction"
+      "decision": "certify-physically"
     },
     {
       "component": "escpos-payload",
-      "fileOrModule": "lib/ticket-builder.ts",
-      "currentFunction": "Plain-text ticket payload",
-      "protocol": "plain text; not ESC/POS bytes",
-      "status": "unsupported",
-      "evidence": "no ESC/POS command bytes",
-      "externalDependency": "Real connector/codepage",
-      "availableTest": "ticket-builder string tests",
+      "fileOrModule": "lib/print-connector/escpos-payload.ts",
+      "currentFunction": "Builds common ESC/POS init/codepage/text/feed/cut/drawer bytes",
+      "protocol": "ESC/POS common subset",
+      "status": "implemented-unverified",
+      "evidence": "CP858 payload and TCP tests pass; model-specific behavior unverified",
+      "externalDependency": "Real connector/printer",
+      "availableTest": "escpos-payload.test.ts",
       "pendingTest": "PENDING_PHYSICAL_CERTIFICATION: ESC/POS printer; charset, cut and drawer",
       "criticality": "critical",
-      "decision": "needs-connector"
+      "decision": "certify-physically"
     },
     {
       "component": "external-monitoring",
@@ -210,16 +210,16 @@
     },
     {
       "component": "kds-fixed-zones",
-      "fileOrModule": "routes/kds.ts + pages/kds.tsx",
-      "currentFunction": "Hardcoded cocina/pizza/ensalada/barra/pase/sin_partida",
-      "protocol": "internal enum",
-      "status": "implemented-unverified",
-      "evidence": "new zones require code; sin_partida lacks nav",
+      "fileOrModule": "production_departments + KDS routes/UI",
+      "currentFunction": "Departments and navigation load dynamically from PostgreSQL",
+      "protocol": "internal registry",
+      "status": "validated-software",
+      "evidence": "CRUD and dynamic KDS integration tests pass",
       "externalDependency": "Owner department design",
-      "availableTest": "FSM tests",
-      "pendingTest": "Validate final department list",
+      "availableTest": "production-departments tests",
+      "pendingTest": "PENDING_PHYSICAL_CERTIFICATION: KDS fleet; final department list",
       "criticality": "high",
-      "decision": "owner-decision"
+      "decision": "certify-physically"
     },
     {
       "component": "kds-pase",
@@ -431,16 +431,16 @@
     },
     {
       "component": "paper-cut",
-      "fileOrModule": "pages/admin-print-test.tsx",
-      "currentFunction": "Manual checklist step only",
-      "protocol": "ESC/POS command absent",
-      "status": "configuration-only",
-      "evidence": "wizard records operator pass/fail only",
+      "fileOrModule": "lib/print-connector/escpos-payload.ts + admin print test",
+      "currentFunction": "Optional GS V cut command plus physical checklist",
+      "protocol": "ESC/POS common subset",
+      "status": "implemented-unverified",
+      "evidence": "byte command test passes; model compatibility unverified",
       "externalDependency": "Compatible printer",
-      "availableTest": "none",
+      "availableTest": "escpos-payload.test.ts",
       "pendingTest": "PENDING_PHYSICAL_CERTIFICATION: printer; automatic cut",
       "criticality": "high",
-      "decision": "blocked"
+      "decision": "certify-physically"
     },
     {
       "component": "physical-payment-recovery",
@@ -562,15 +562,15 @@
     {
       "component": "print-tcp-schema",
       "fileOrModule": "schema/printers.ts",
-      "currentFunction": "Stores printer IP and port 9100",
-      "protocol": "TCP/IP intended",
-      "status": "configuration-only",
-      "evidence": "admin CRUD stores address/port",
+      "currentFunction": "Stores TCP mode, address, port, codepage, cut/drawer and timeouts",
+      "protocol": "TCP/IP ESC/POS",
+      "status": "implemented-unverified",
+      "evidence": "admin CRUD and TCP software transport exist",
       "externalDependency": "LAN printer",
-      "availableTest": "CRUD tests",
+      "availableTest": "tcp-escpos.test.ts",
       "pendingTest": "PENDING_PHYSICAL_CERTIFICATION: network printer; TCP transport",
       "criticality": "critical",
-      "decision": "needs-connector"
+      "decision": "certify-physically"
     },
     {
       "component": "print-usb",
@@ -588,15 +588,15 @@
     {
       "component": "print-worker-restart",
       "fileOrModule": "lib/print-worker.ts",
-      "currentFunction": "Resumes pending/retrying jobs",
+      "currentFunction": "Resumes pending/retrying and expired sending leases with visible resend mark",
       "protocol": "worker polling",
-      "status": "implemented-unverified",
-      "evidence": "persistent queue; sending rows are not recovered",
+      "status": "validated-software",
+      "evidence": "PostgreSQL integration covers interrupted lease recovery",
       "externalDependency": "PostgreSQL",
-      "availableTest": "none for orphan sending",
+      "availableTest": "print-worker.integration.test.ts",
       "pendingTest": "PENDING_PHYSICAL_CERTIFICATION: printer/service; restart during sending",
       "criticality": "high",
-      "decision": "needs-software-correction"
+      "decision": "certify-physically"
     },
     {
       "component": "print-worker-retry",
@@ -613,16 +613,16 @@
     },
     {
       "component": "production-print-connector",
-      "fileOrModule": "lib/print-connector-sim.ts",
-      "currentFunction": "Simulator rejects production sends",
-      "protocol": "simulated",
-      "status": "fail-closed",
-      "evidence": "NODE_ENV=production returns connector unavailable",
-      "externalDependency": "Physical connector",
-      "availableTest": "production-connectors.test.ts",
+      "fileOrModule": "lib/print-connector",
+      "currentFunction": "Per-printer simulator or TCP ESC/POS selection; simulator rejected in production",
+      "protocol": "TCP ESC/POS",
+      "status": "implemented-unverified",
+      "evidence": "real local TCP socket and fail-closed tests pass",
+      "externalDependency": "Physical LAN printer",
+      "availableTest": "tcp-escpos.test.ts + print-worker.integration.test.ts",
       "pendingTest": "PENDING_PHYSICAL_CERTIFICATION: printer; all production print cases",
       "criticality": "critical",
-      "decision": "blocked"
+      "decision": "certify-physically"
     },
     {
       "component": "s3-destination",
