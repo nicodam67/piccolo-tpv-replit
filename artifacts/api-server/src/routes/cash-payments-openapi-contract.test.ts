@@ -158,7 +158,7 @@ describe("Cash & Payments focused runtime contract evidence", () => {
   });
 
   it("recovers an in-flight machine command across modal remounts", () => {
-    expect(paymentUiSource).toContain("loadOrCreateCashMachineCommand");
+    expect(paymentUiSource).toContain("claimCashMachineCommand");
     expect(paymentUiSource).toContain("paymentCommand.transactionId");
     expect(paymentUiSource).not.toContain("useRef(crypto.randomUUID())");
     expect(machineCommandSource).toContain("localStorage");

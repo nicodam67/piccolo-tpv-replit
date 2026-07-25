@@ -43,10 +43,13 @@ El recurso protegido es `paymentId`, materializado mediante `SELECT ... FOR UPDA
 Dentro de la misma transacción se realizan:
 
 - relectura y validación `completed`/`voided`;
+- validación de existencia y pertenencia de la sesión cuando el pago está vinculado;
 - actualización a `voided`;
 - contramovimiento de efectivo cuando corresponde;
 - inserción en `payment_voids`;
 - inserción de auditoría.
+- persistencia de la respuesta idempotente en la misma transacción financiera.
+- los pagos enlazados deben coincidir con la sesión de la ruta; efectivo legacy sin sesión se rechaza, mientras un pago no efectivo sin sesión no crea movimiento de cajón ni atribuye terminal.
 
 Se añadió el middleware idempotente existente:
 
@@ -64,9 +67,9 @@ No se creó un sistema paralelo.
 | `POST /orders/:id/splits` | `payments.split` | admin, manager, encargado, cashier |
 | `PUT /orders/:id/splits/:groupId/pay` | `payments.create` | admin, manager, encargado, waiter, cashier |
 
-`payments.split` ya existía en el catálogo administrativo. Se incorporó al catálogo runtime y al espejo frontend; la tabla `role_permissions` existente permite grants/denials sin migración.
+`payments.split` ya existía en el catálogo administrativo. Se incorporó al catálogo runtime y al espejo frontend; la tabla `role_permissions` existente permite grants/denials sin migración. El catálogo administrativo usa ahora el mismo identificador runtime `payments.create` para procesar cobros.
 
-La UI muestra “Dividir” únicamente cuando el rol tiene `payments.split`. Un waiter conserva lectura y puede completar una parte ya creada, pero no crear una división. Kitchen puede leer el estado, pero no mutarlo.
+La UI mantiene el botón existente para no usar visibilidad como autoridad ni desalinearse de overrides dinámicos; el backend decide siempre. Un waiter conserva lectura y puede completar una parte ya creada, pero recibe `403` al intentar crear una división. Kitchen puede leer el estado, pero no mutarlo.
 
 ## Recuperación del comando físico
 
@@ -96,6 +99,9 @@ Reglas:
 - timeout HTTP, `503`, intervención manual o conciliación pendiente: conserva;
 - si existe `transactionId`, la reapertura solo consulta; no repite el start;
 - no hay retry automático.
+- si `localStorage` no puede persistir o verificar la clave, el comando no se inicia;
+- un tab no puede sobrescribir mediante `save` un comando más nuevo de otro tab.
+- Web Locks serializa la reclamación inicial entre pestañas; sin esa API el inicio falla cerrado.
 
 La clave completa no se registra ni se muestra.
 

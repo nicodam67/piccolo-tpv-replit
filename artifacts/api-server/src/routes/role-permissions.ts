@@ -38,7 +38,7 @@ export const PERMISSION_CATALOG: {
     module: "payments",
     label: "Cobros",
     actions: [
-      { action: "process",              label: "Procesar cobros",                  defaultRoles: ["admin","manager","encargado","cashier"] },
+      { action: "create",               label: "Procesar cobros",                  defaultRoles: ["admin","manager","encargado","waiter","cashier"] },
       { action: "refund",               label: "Emitir devoluciones",              defaultRoles: ["admin","manager"] },
       { action: "void",                 label: "Anular tickets",                   defaultRoles: ["admin","manager"] },
       { action: "split",                label: "Dividir cuenta",                   defaultRoles: ["admin","manager","encargado","cashier"] },

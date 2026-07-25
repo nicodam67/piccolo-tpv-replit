@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 import {
   CASH_MACHINE_COMMAND_TTL_MS,
   buildCashMachinePaymentFingerprint,
+  claimCashMachineCommand,
   clearCashMachineCommand,
   loadOrCreateCashMachineCommand,
   saveCashMachineCommand,
@@ -22,6 +23,22 @@ class MemoryStorage {
 
   removeItem(key: string) {
     this.values.delete(key);
+  }
+}
+
+class FailingStorage extends MemoryStorage {
+  setItem() {
+    throw new Error('storage unavailable');
+  }
+}
+
+class SerialLockManager {
+  private tail = Promise.resolve();
+
+  request<T>(_name: string, callback: () => T | Promise<T>): Promise<T> {
+    const result = this.tail.then(callback);
+    this.tail = result.then(() => undefined, () => undefined);
+    return result;
   }
 }
 
@@ -141,5 +158,68 @@ describe('cash-machine pending command recovery', () => {
     );
     assert.equal(next.status, 'new');
     assert.equal(next.command.key, 'command-key-2');
+  });
+
+  it('fails closed when the command cannot be persisted', () => {
+    const resolution = loadOrCreateCashMachineCommand(
+      'order-1', '25.00', 'Caja 1', new FailingStorage(), 1_000, () => 'command-key-1',
+    );
+    assert.equal(resolution.status, 'unavailable');
+  });
+
+  it('does not overwrite a newer command saved by another tab', () => {
+    const storage = new MemoryStorage();
+    const first = loadOrCreateCashMachineCommand(
+      'order-1', '25.00', 'Caja 1', storage, 1_000, () => 'command-key-1',
+    ).command;
+    clearCashMachineCommand(first, storage);
+    const newer = loadOrCreateCashMachineCommand(
+      'order-1', '30.00', 'Caja 1', storage, 2_000, () => 'command-key-2',
+    ).command;
+
+    assert.equal(saveCashMachineCommand(first, storage), false);
+    assert.equal(
+      loadOrCreateCashMachineCommand('order-1', '30.00', 'Caja 1', storage, 3_000).command.key,
+      newer.key,
+    );
+  });
+
+  it('serializes simultaneous tab claims and reuses one command key', async () => {
+    const storage = new MemoryStorage();
+    const locks = new SerialLockManager();
+    const [first, second] = await Promise.all([
+      claimCashMachineCommand(
+        'order-1', '25.00', 'Caja 1', storage, locks, 1_000, () => 'command-key-1',
+      ),
+      claimCashMachineCommand(
+        'order-1', '25.00', 'Caja 1', storage, locks, 1_000, () => 'command-key-2',
+      ),
+    ]);
+    assert.deepEqual([first.status, second.status], ['new', 'resume']);
+    assert.equal(first.command.key, second.command.key);
+  });
+
+  it('blocks a simultaneous cross-tab claim with a different fingerprint', async () => {
+    const storage = new MemoryStorage();
+    const locks = new SerialLockManager();
+    const [first, second] = await Promise.all([
+      claimCashMachineCommand(
+        'order-1', '25.00', 'Caja 1', storage, locks, 1_000, () => 'command-key-1',
+      ),
+      claimCashMachineCommand(
+        'order-1', '30.00', 'Caja 1', storage, locks, 1_000, () => 'command-key-2',
+      ),
+    ]);
+    assert.equal(first.status, 'new');
+    assert.equal(second.status, 'blocked');
+    assert.equal(first.command.key, second.command.key);
+  });
+
+  it('fails closed when cross-tab locking is unavailable', async () => {
+    const resolution = await claimCashMachineCommand(
+      'order-1', '25.00', 'Caja 1', new MemoryStorage(), null, 1_000,
+      () => 'command-key-1',
+    );
+    assert.equal(resolution.status, 'unavailable');
   });
 });

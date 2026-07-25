@@ -13,9 +13,12 @@ export interface PendingCashMachineCommand {
 }
 
 type CommandStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
+type CommandLockManager = {
+  request<T>(name: string, callback: () => T | Promise<T>): Promise<T>;
+};
 
 export interface CashMachineCommandResolution {
-  status: 'new' | 'resume' | 'blocked';
+  status: 'new' | 'resume' | 'blocked' | 'unavailable';
   command: PendingCashMachineCommand;
 }
 
@@ -97,15 +100,67 @@ export function loadOrCreateCashMachineCommand(
     createdAt: now,
     expiresAt: now + CASH_MACHINE_COMMAND_TTL_MS,
   };
-  try { storage.setItem(storageKey(orderId), JSON.stringify(command)); } catch {}
-  return { status: 'new', command };
+  try {
+    storage.setItem(storageKey(orderId), JSON.stringify(command));
+    const persisted = JSON.parse(
+      storage.getItem(storageKey(orderId)) ?? 'null',
+    ) as PendingCashMachineCommand | null;
+    if (persisted?.key === command.key) return { status: 'new', command };
+  } catch {}
+  return { status: 'unavailable', command };
+}
+
+export async function claimCashMachineCommand(
+  orderId: string,
+  amount: string,
+  terminalName: string,
+  storage: CommandStorage = localStorage,
+  lockManager: CommandLockManager | null =
+    typeof navigator !== 'undefined' ? navigator.locks : undefined,
+  now = Date.now(),
+  createKey: () => string = () => crypto.randomUUID(),
+): Promise<CashMachineCommandResolution> {
+  if (!lockManager) {
+    return loadOrCreateCashMachineCommand(
+      orderId,
+      amount,
+      terminalName,
+      {
+        getItem: () => null,
+        setItem: () => { throw new Error('Web Locks unavailable'); },
+        removeItem: () => undefined,
+      },
+      now,
+      createKey,
+    );
+  }
+  return lockManager.request(
+    `piccolo:cash-machine-payment:${orderId}`,
+    () => loadOrCreateCashMachineCommand(
+      orderId,
+      amount,
+      terminalName,
+      storage,
+      now,
+      createKey,
+    ),
+  );
 }
 
 export function saveCashMachineCommand(
   command: PendingCashMachineCommand,
   storage: CommandStorage = localStorage,
 ) {
-  try { storage.setItem(storageKey(command.orderId), JSON.stringify(command)); } catch {}
+  try {
+    const key = storageKey(command.orderId);
+    const current = JSON.parse(storage.getItem(key) ?? 'null') as PendingCashMachineCommand | null;
+    if (current && current.key !== command.key) return false;
+    storage.setItem(key, JSON.stringify(command));
+    const persisted = JSON.parse(storage.getItem(key) ?? 'null') as PendingCashMachineCommand | null;
+    return persisted?.key === command.key;
+  } catch {
+    return false;
+  }
 }
 
 export function clearCashMachineCommand(

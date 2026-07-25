@@ -21,7 +21,7 @@ import { pool, type PoolClient } from "@workspace/db";
 
 // ── In-memory LRU cache ────────────────────────────────────────────────────────
 
-const TTL_MS = 24 * 60 * 60 * 1000; // 24 h
+export const IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1000; // 24 h
 const MAX_MEM_ENTRIES = 2_000;
 
 interface MemEntry {
@@ -52,7 +52,7 @@ function evictIfNeeded() {
 setInterval(() => {
   const now = Date.now();
   for (const [k, v] of memCache) {
-    if (now - v.ts > TTL_MS) memCache.delete(k);
+    if (now - v.ts > IDEMPOTENCY_TTL_MS) memCache.delete(k);
   }
 }, 60 * 60 * 1_000).unref();
 
@@ -85,7 +85,7 @@ export async function idempotency(
 
   // ── 1. Memory cache (hot path) ──────────────────────────────────────────────
   const mem = memCache.get(cacheKey);
-  if (mem && Date.now() - mem.ts < TTL_MS) {
+  if (mem && Date.now() - mem.ts < IDEMPOTENCY_TTL_MS) {
     res.status(mem.status).setHeader("Idempotency-Replayed", "true").json(mem.body);
     return;
   }
@@ -137,14 +137,19 @@ export async function idempotency(
   (res as unknown as Record<string, unknown>)["json"] = (body: unknown) => {
     const status = res.statusCode;
     if (status >= 200 && status < 300) {
-      const expiresAt = new Date(Date.now() + TTL_MS);
+      const expiresAt = new Date(Date.now() + IDEMPOTENCY_TTL_MS);
       void (async () => {
         try {
           await client.query(
           `INSERT INTO idempotency_keys
              (cache_key, user_id, status_code, response, expires_at)
            VALUES ($1, $2, $3, $4::jsonb, $5)
-           ON CONFLICT (cache_key) DO NOTHING`,
+           ON CONFLICT (cache_key) DO UPDATE
+             SET user_id = EXCLUDED.user_id,
+                 status_code = EXCLUDED.status_code,
+                 response = EXCLUDED.response,
+                 expires_at = EXCLUDED.expires_at
+           WHERE idempotency_keys.expires_at <= now()`,
           [cacheKey, userId, status, JSON.stringify(body), expiresAt],
           );
           memCache.set(cacheKey, { status, body, ts: Date.now() });

@@ -53,6 +53,7 @@ tags:
 
 
 
+
   - name: cash-payments
     description: Cash sessions, order payments, split bills, tips and fail-closed cash-machine operations
   - name: phase61-cash-payments
@@ -6121,7 +6122,7 @@ paths:
       tags: [payments, cash-payments, phase61-cash-payments]
       summary: Get order totals, payments and remaining balance
       security: [{ bearerAuth: [] }, { cookieAuth: [] }]
-      x-roles: [admin, manager, encargado, cashier]
+      x-roles: [authenticated]
       parameters:
         - { name: orderId, in: path, required: true, schema: { type: string, format: uuid } }
       responses:

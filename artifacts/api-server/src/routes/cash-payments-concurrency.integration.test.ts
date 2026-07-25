@@ -88,7 +88,7 @@ describeWithDatabase("Cash & Payments PostgreSQL concurrency", () => {
       );
       CREATE OR REPLACE FUNCTION entrega63_delay_cash_open() RETURNS trigger AS $$
       BEGIN
-        IF NEW.terminal_name LIKE 'E63-RACE-%' THEN
+        IF NEW.terminal_name LIKE 'E63-RACE-%' AND NEW.status = 'open' THEN
           INSERT INTO entrega63_probe(kind, backend_pid, resource)
           VALUES ('open', pg_backend_pid(), NEW.terminal_name);
           PERFORM pg_sleep(0.5);
@@ -100,6 +100,23 @@ describeWithDatabase("Cash & Payments PostgreSQL concurrency", () => {
       CREATE TRIGGER entrega63_delay_cash_open_trigger
         BEFORE INSERT ON cash_sessions
         FOR EACH ROW EXECUTE FUNCTION entrega63_delay_cash_open();
+
+      CREATE OR REPLACE FUNCTION entrega63_delay_cash_reopen() RETURNS trigger AS $$
+      BEGIN
+        IF NEW.terminal_name LIKE 'E63-RACE-%'
+           AND OLD.status = 'closed'
+           AND NEW.status = 'open' THEN
+          INSERT INTO entrega63_probe(kind, backend_pid, resource)
+          VALUES ('reopen', pg_backend_pid(), NEW.terminal_name);
+          PERFORM pg_sleep(0.5);
+        END IF;
+        RETURN NEW;
+      END;
+      $$ LANGUAGE plpgsql;
+      DROP TRIGGER IF EXISTS entrega63_delay_cash_reopen_trigger ON cash_sessions;
+      CREATE TRIGGER entrega63_delay_cash_reopen_trigger
+        BEFORE UPDATE ON cash_sessions
+        FOR EACH ROW EXECUTE FUNCTION entrega63_delay_cash_reopen();
 
       CREATE OR REPLACE FUNCTION entrega63_delay_payment_void() RETURNS trigger AS $$
       BEGIN
@@ -127,8 +144,10 @@ describeWithDatabase("Cash & Payments PostgreSQL concurrency", () => {
     await cleanup();
     await pool.query(`
       DROP TRIGGER IF EXISTS entrega63_delay_cash_open_trigger ON cash_sessions;
+      DROP TRIGGER IF EXISTS entrega63_delay_cash_reopen_trigger ON cash_sessions;
       DROP TRIGGER IF EXISTS entrega63_delay_payment_void_trigger ON payments;
       DROP FUNCTION IF EXISTS entrega63_delay_cash_open();
+      DROP FUNCTION IF EXISTS entrega63_delay_cash_reopen();
       DROP FUNCTION IF EXISTS entrega63_delay_payment_void();
       DROP TABLE IF EXISTS entrega63_targets;
       DROP TABLE IF EXISTS entrega63_probe;
@@ -195,6 +214,42 @@ describeWithDatabase("Cash & Payments PostgreSQL concurrency", () => {
     expect(probes.rowCount).toBe(1);
   });
 
+  it("serializes a concurrent open against reopening the same terminal", async () => {
+    const terminalName = `${terminalPrefix}REOPEN`;
+    const closedSessionId = randomUUID();
+    await pool.query(
+      `INSERT INTO cash_sessions
+        (id, employee_id, opening_float, terminal_name, status, closed_at)
+       VALUES ($1, $2, '100.00', $3, 'closed', now())`,
+      [closedSessionId, employeeId, terminalName],
+    );
+
+    const responsesPromise = Promise.all([
+      request(app).post("/api/cash-sessions/open").set(auth()).send({
+        terminalName,
+        openingFloat: "100.00",
+      }),
+      request(app).post(`/api/cash-sessions/${closedSessionId}/reopen`).set(auth()).send({}),
+    ]);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    await expectTwoConcurrentDatabaseBackends();
+    const responses = await responsesPromise;
+
+    expect(responses.filter((response) => response.status === 409)).toHaveLength(1);
+    expect(responses.filter((response) => [200, 201].includes(response.status))).toHaveLength(1);
+    const sessions = await pool.query(
+      "SELECT id FROM cash_sessions WHERE terminal_name = $1 AND status = 'open'",
+      [terminalName],
+    );
+    expect(sessions.rowCount).toBe(1);
+    const audits = await pool.query(
+      `SELECT id FROM document_audit_log
+       WHERE action IN ('open_cash_session', 'reopen_cash_session') AND terminal = $1`,
+      [terminalName],
+    );
+    expect(audits.rowCount).toBe(1);
+  });
+
   it("replays one concurrent void command with the same idempotency key", async () => {
     const fixture = await createVoidFixture();
     await pool.query(
@@ -212,6 +267,55 @@ describeWithDatabase("Cash & Payments PostgreSQL concurrency", () => {
     expect(responses[0].body.id).toBe(responses[1].body.id);
     expect(responses.some((response) => response.headers["idempotency-replayed"] === "true")).toBe(true);
     await expectSingleVoidEffects(fixture);
+    const stored = await pool.query<{ status_code: number; response_id: string }>(
+      `SELECT status_code, response->>'id' AS response_id
+       FROM idempotency_keys WHERE cache_key = $1`,
+      [`${employeeId}:e63-void-same-command`],
+    );
+    expect(stored.rows).toEqual([{
+      status_code: 201,
+      response_id: responses[0].body.id,
+    }]);
+  });
+
+  it("rejects voids for another session or a non-completed payment", async () => {
+    const fixture = await createVoidFixture();
+    const otherSessionId = randomUUID();
+    await pool.query(
+      `INSERT INTO cash_sessions
+        (id, employee_id, opening_float, terminal_name, status)
+       VALUES ($1, $2, '100.00', $3, 'open')`,
+      [otherSessionId, employeeId, `${terminalPrefix}OTHER-${fixture.paymentId}`],
+    );
+
+    const wrongSession = await request(app)
+      .post(`/api/cash-sessions/${otherSessionId}/void-payment`)
+      .set(auth())
+      .send({ paymentId: fixture.paymentId, reason: "Sesión incorrecta E63" });
+    expect(wrongSession.status).toBe(409);
+
+    await pool.query("UPDATE payments SET status = 'pending' WHERE id = $1", [fixture.paymentId]);
+    const pending = await request(app)
+      .post(`/api/cash-sessions/${fixture.sessionId}/void-payment`)
+      .set(auth())
+      .send({ paymentId: fixture.paymentId, reason: "Estado incorrecto E63" });
+    expect(pending.status).toBe(409);
+
+    await pool.query(
+      "UPDATE payments SET status = 'completed', cash_session_id = NULL WHERE id = $1",
+      [fixture.paymentId],
+    );
+    const unlinkedCash = await request(app)
+      .post(`/api/cash-sessions/${fixture.sessionId}/void-payment`)
+      .set(auth())
+      .send({ paymentId: fixture.paymentId, reason: "Efectivo sin sesión E63" });
+    expect(unlinkedCash.status).toBe(409);
+
+    const effects = await pool.query(
+      "SELECT id FROM payment_voids WHERE original_payment_id = $1",
+      [fixture.paymentId],
+    );
+    expect(effects.rowCount).toBe(0);
   });
 
   it("enforces the split endpoint role matrix without breaking authenticated reads", async () => {
@@ -323,6 +427,7 @@ async function expectTwoConcurrentDatabaseBackends() {
       WHERE datname = current_database()
         AND pid <> pg_backend_pid()
         AND state = 'active'
+        AND (wait_event_type = 'Lock' OR wait_event = 'PgSleep')
     `);
     if (active.rows.length >= 2) return;
     await new Promise((resolve) => setTimeout(resolve, 25));

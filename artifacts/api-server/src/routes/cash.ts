@@ -12,11 +12,12 @@ import {
   paymentVoidsTable,
   ticketsTable,
   documentAuditLogTable,
+  idempotencyKeysTable,
 } from "@workspace/db";
-import { eq, and, or, desc, sum, sql, inArray, isNull } from "drizzle-orm";
+import { eq, and, or, desc, sum, sql, inArray, isNull, lte } from "drizzle-orm";
 import type { TaxBreakdownItem } from "../lib/tax";
 import { requireAuth, requireRole } from "../middlewares/auth";
-import { idempotency } from "../middlewares/idempotency";
+import { idempotency, IDEMPOTENCY_TTL_MS } from "../middlewares/idempotency";
 import { logDocumentAction } from "../lib/document-audit";
 
 // Roles allowed to manage cash sessions
@@ -752,6 +753,7 @@ router.post(
     const sessionId = req.params.id as string;
     const employeeId = (req as any).user?.id as string;
     const { paymentId, reason } = req.body as { paymentId: string; reason: string };
+    const idempotencyKey = req.headers["idempotency-key"];
 
     if (!reason?.trim() || reason.trim().length < 5) {
       res.status(400).json({ error: "Se requiere motivo detallado para la anulación" });
@@ -769,26 +771,34 @@ router.post(
 
       if (!payment) return { status: "not-found" as const };
       if (payment.status === "voided") return { status: "already-voided" as const };
+      if (payment.status !== "completed") return { status: "not-voidable" as const };
+
+      const [method] = await tx
+        .select({ code: paymentMethodsTable.code })
+        .from(paymentMethodsTable)
+        .where(eq(paymentMethodsTable.id, payment.paymentMethodId));
 
       const [session] = await tx
         .select()
         .from(cashSessionsTable)
         .where(eq(cashSessionsTable.id, sessionId));
+      if (!session) return { status: "session-not-found" as const };
+      if (payment.cashSessionId && payment.cashSessionId !== sessionId) {
+        return { status: "session-mismatch" as const };
+      }
+      if (!payment.cashSessionId && method?.code === "cash") {
+        return { status: "unlinked-cash" as const };
+      }
+      const linkedSession = payment.cashSessionId ? session : null;
 
       await tx
         .update(paymentsTable)
         .set({ status: "voided" })
         .where(eq(paymentsTable.id, paymentId));
 
-      // Get method
-      const [method] = await tx
-        .select({ code: paymentMethodsTable.code })
-        .from(paymentMethodsTable)
-        .where(eq(paymentMethodsTable.id, payment.paymentMethodId));
-
       let counterMovementId: string | null = null;
 
-      if (method?.code === "cash" && session?.status === "open") {
+      if (method?.code === "cash" && linkedSession?.status === "open") {
         // Return cash to drawer via counter movement
         const [mov] = await tx
           .insert(cashMovementsTable)
@@ -809,7 +819,7 @@ router.post(
           originalPaymentId: paymentId,
           reason: reason.trim(),
           authorizedBy: employeeId,
-          cashSessionId: session?.id ?? null,
+          cashSessionId: linkedSession?.id ?? null,
           counterMovementId,
         })
         .returning();
@@ -820,10 +830,28 @@ router.post(
         documentId: paymentId,
         employeeId,
         employeeName: (req as any).user?.name ?? "",
-        terminal: session?.terminalName ?? "",
+        terminal: linkedSession?.terminalName ?? "",
         amount: payment.amount,
         details: `Anulación: ${reason}`,
       });
+
+      if (typeof idempotencyKey === "string") {
+        const cacheKey = `${employeeId}:${idempotencyKey}`;
+        await tx.delete(idempotencyKeysTable).where(and(
+          eq(idempotencyKeysTable.cacheKey, cacheKey),
+          lte(idempotencyKeysTable.expiresAt, new Date()),
+        ));
+        await tx
+          .insert(idempotencyKeysTable)
+          .values({
+            cacheKey,
+            userId: employeeId,
+            statusCode: 201,
+            response: voidRecord,
+            expiresAt: new Date(Date.now() + IDEMPOTENCY_TTL_MS),
+          })
+          .onConflictDoNothing();
+      }
 
       return { status: "voided" as const, payment, session, voidRecord };
     });
@@ -834,6 +862,22 @@ router.post(
     }
     if (transactionResult.status === "already-voided") {
       res.status(409).json({ error: "Este pago ya ha sido anulado" });
+      return;
+    }
+    if (transactionResult.status === "not-voidable") {
+      res.status(409).json({ error: "Solo se puede anular un pago completado" });
+      return;
+    }
+    if (transactionResult.status === "session-not-found") {
+      res.status(404).json({ error: "Sesión de caja no encontrada" });
+      return;
+    }
+    if (transactionResult.status === "session-mismatch") {
+      res.status(409).json({ error: "El pago pertenece a otra sesión de caja" });
+      return;
+    }
+    if (transactionResult.status === "unlinked-cash") {
+      res.status(409).json({ error: "El pago en efectivo no está vinculado a una sesión de caja" });
       return;
     }
 
