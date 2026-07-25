@@ -18,7 +18,7 @@
  *
  *   GET    /admin/installation/diagnosis        full installation semaphore status
  *
- *   POST   /admin/installation/seed             seed 5 default tablets + main PC
+ *   POST   /admin/installation/seed             seed 7 default tablets + main PC
  */
 
 import { Router } from "express";
@@ -40,9 +40,28 @@ import {
   productsTable,
   paymentsTable,
   paymentMethodsTable,
+  kdsStationsTable,
+  tabletDevicesTable,
+  backupDestinationsTable,
+  backupRecordsTable,
+  businessConfigTable,
+  productionDepartmentsTable,
+  techEventsTable,
 } from "@workspace/db";
-import { eq, desc, asc, inArray, sql } from "drizzle-orm";
+import { and, eq, desc, asc, inArray, sql } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
+import { idempotency } from "../middlewares/idempotency";
+import {
+  CERTIFICATION_STATUSES,
+  PHYSICAL_CERTIFICATION_CASES,
+  PHYSICAL_CERTIFICATION_CASE_IDS,
+  certificationSummary,
+  certificationTestType,
+  mergeCertificationCases,
+  renderCertificationHtml,
+  sanitizeCertificationData,
+  sanitizeCertificationText,
+} from "../lib/installation-certification";
 
 const ADMIN_ROLES = ["admin"] as const;
 const MANAGER_ROLES = ["admin", "manager", "encargado"] as const;
@@ -55,6 +74,241 @@ function semaphore(status: string): "ready" | "warning" | "pending" | "error" {
   if (status === "warning") return "warning";
   if (status === "pending" || status === "unknown") return "pending";
   return "error";
+}
+
+type AssistantStepStatus = "ready" | "warning" | "pending" | "error";
+
+async function loadInstallationAssistantSnapshot() {
+  const dbStartedAt = Date.now();
+  await db.execute(sql`SELECT 1`);
+  const databaseLatencyMs = Date.now() - dbStartedAt;
+  const [
+    devices,
+    printers,
+    kdsStations,
+    offlineDevices,
+    fichajeTablets,
+    destinations,
+    schedules,
+    backups,
+    network,
+    tests,
+    businessConfigs,
+    departments,
+    incidents,
+  ] = await Promise.all([
+    db.select().from(installationDevicesTable),
+    db.select().from(printersTable),
+    db.select().from(kdsStationsTable),
+    db.select().from(offlineDevicesTable),
+    db.select().from(tabletDevicesTable),
+    db.select().from(backupDestinationsTable),
+    db.select().from(backupSchedulesTable),
+    db.select().from(backupRecordsTable).orderBy(desc(backupRecordsTable.createdAt)).limit(20),
+    db.select().from(networkRegistryTable),
+    db.select().from(installationTestsTable).orderBy(desc(installationTestsTable.performedAt)),
+    db.select().from(businessConfigTable).limit(1),
+    db.select().from(productionDepartmentsTable),
+    db.select().from(techEventsTable)
+      .where(and(
+        eq(techEventsTable.resolved, false),
+        inArray(techEventsTable.level, ["error", "critical"]),
+      ))
+      .orderBy(desc(techEventsTable.createdAt))
+      .limit(50),
+  ]);
+
+  const now = Date.now();
+  const activePrinters = printers.filter((entry) => entry.active);
+  const tcpPrinters = activePrinters.filter((entry) => entry.connectorMode === "tcp");
+  const offlinePrinters = activePrinters.filter((entry) =>
+    ["offline", "error", "paper_out", "cover_open"].includes(entry.lastStatus));
+  const activeKds = kdsStations.filter((entry) => entry.active);
+  const recentlySeen = (value: Date | null) =>
+    Boolean(value && now - new Date(value).getTime() <= 5 * 60_000);
+  const connectedOfflineDevices = offlineDevices.filter((entry) =>
+    entry.status === "online" || recentlySeen(entry.lastSeenAt));
+  const connectedFichaje = fichajeTablets.filter((entry) =>
+    entry.status === "active" && recentlySeen(entry.lastSeenAt));
+  const inventoryTablets = devices.filter((entry) => entry.deviceCategory === "tablet");
+  const mainComputers = devices.filter((entry) => entry.deviceCategory === "main_computer");
+  const activeDestinations = destinations.filter((entry) => entry.active);
+  const activeSchedules = schedules.filter((entry) => entry.active);
+  const recentVerifiedBackup = backups.find((entry) =>
+    entry.status === "valid"
+    && entry.verified
+    && now - new Date(entry.createdAt).getTime() <= 24 * 60 * 60_000);
+  const networkErrors = network.filter((entry) =>
+    entry.status === "conflict" || entry.status === "unreachable");
+  const networkUnknown = network.filter((entry) => entry.status === "unknown");
+
+  const step = (
+    id: string,
+    label: string,
+    status: AssistantStepStatus,
+    configured: string[],
+    missing: string[],
+    errors: string[],
+    corrections: string[],
+    href: string,
+    detection: string,
+  ) => ({ id, label, status, configured, missing, errors, corrections, href, detection });
+
+  const steps = [
+    step(
+      "main_computer",
+      "Ordenador principal",
+      !mainComputers.length ? "pending" : mainComputers.some((entry) => entry.status === "error") ? "error" : mainComputers.some((entry) => entry.status === "ready") ? "ready" : "warning",
+      mainComputers.map((entry) => `${entry.name}: ${entry.status}`),
+      mainComputers.length ? [] : ["Registrar el ordenador principal"],
+      mainComputers.filter((entry) => entry.status === "error").map((entry) => `${entry.name}: error`),
+      mainComputers.length ? ["Completar modelo, sistema operativo y estado del equipo"] : ["Abrir Inventario y registrar el ordenador"],
+      "/admin/instalacion",
+      "Inventario administrativo",
+    ),
+    step(
+      "printers",
+      "Impresoras",
+      !activePrinters.length ? "pending" : offlinePrinters.length ? "error" : tcpPrinters.length === activePrinters.length && activePrinters.every((entry) => entry.lastStatus === "online") ? "ready" : "warning",
+      activePrinters.map((entry) => `${entry.name}: ${entry.connectorMode}, ${entry.lastStatus}`),
+      activePrinters.length ? [] : ["Configurar al menos una impresora"],
+      offlinePrinters.map((entry) => `${entry.name}: ${entry.lastStatus}`),
+      tcpPrinters.length < activePrinters.length ? ["Cambiar impresoras productivas de simulador a TCP"] : ["Ejecutar la prueba física por modelo"],
+      "/admin/impresoras",
+      "Estado pasivo del worker; online significa TCP, no papel",
+    ),
+    step(
+      "kds",
+      "Estaciones KDS",
+      !activeKds.length ? "pending" : activeKds.every((entry) => recentlySeen(entry.lastPingAt)) ? "ready" : "warning",
+      activeKds.map((entry) => `${entry.name}: ${recentlySeen(entry.lastPingAt) ? "ping reciente" : "sin ping reciente"}`),
+      activeKds.length ? [] : ["Registrar estaciones KDS"],
+      [],
+      activeKds.some((entry) => !recentlySeen(entry.lastPingAt)) ? ["Ejecutar ping desde Estaciones KDS y verificar la pantalla"] : ["Validar flujo físico por departamento"],
+      "/admin/kds-stations",
+      "Configuración y último ping HTTP",
+    ),
+    step(
+      "tablets",
+      "Tablets",
+      inventoryTablets.length < 7 ? "pending" : connectedOfflineDevices.length + connectedFichaje.length >= 7 ? "ready" : "warning",
+      [`${inventoryTablets.length}/7 inventariadas`, `${connectedOfflineDevices.length + connectedFichaje.length} conectadas recientemente`],
+      inventoryTablets.length < 7 ? [`Faltan ${7 - inventoryTablets.length} tablets en inventario`] : [],
+      [],
+      ["Registrar D1–D7 y ejecutar login, Wi‑Fi, memoria, sesión y permisos en cada dispositivo"],
+      "/admin/instalacion",
+      "Inventario + lastSeen de TPV/fichaje (5 min)",
+    ),
+    step(
+      "storage",
+      "NAS / S3",
+      !activeDestinations.length ? "pending" : activeSchedules.some((entry) => entry.destinationId) ? "ready" : "warning",
+      activeDestinations.map((entry) => `${entry.name}: ${entry.destType}`),
+      activeDestinations.length ? [] : ["Configurar un destino local_mount, NAS o S3"],
+      [],
+      activeDestinations.length ? ["Ejecutar round-trip y restore con el harness de staging"] : ["Crear destino en Copias de seguridad"],
+      "/admin/backup",
+      "Configuración persistida; conectividad física requiere harness",
+    ),
+    step(
+      "network",
+      "Red local",
+      !network.length ? "pending" : networkErrors.length ? "error" : networkUnknown.length ? "warning" : "ready",
+      network.map((entry) => `${entry.name}: ${entry.status}`),
+      network.length ? [] : ["Registrar router, servidor y dispositivos críticos"],
+      networkErrors.map((entry) => `${entry.name}: ${entry.status}`),
+      networkErrors.length ? ["Corregir conflictos/reservas DHCP y repetir diagnóstico"] : ["Verificar cobertura real en todas las zonas"],
+      "/admin/devices",
+      "Registro LAN; no equivale a señal Wi‑Fi física",
+    ),
+    step(
+      "backups",
+      "Copias de seguridad",
+      !activeSchedules.length ? "pending" : recentVerifiedBackup ? "ready" : "warning",
+      activeSchedules.map((entry) => `${entry.name}: ${entry.lastStatus}`),
+      activeSchedules.length ? [] : ["Crear una programación activa"],
+      activeSchedules.filter((entry) => entry.lastStatus === "error").map((entry) => `${entry.name}: ${entry.lastError ?? "error"}`),
+      recentVerifiedBackup ? ["Ejecutar restore periódico en staging"] : ["Crear, verificar y restaurar una copia en staging"],
+      "/admin/backup",
+      "Schedule + backup válido, verificado y menor de 24 h",
+    ),
+  ];
+
+  const certificationCases = mergeCertificationCases(tests);
+  const config = businessConfigs[0];
+  return {
+    generatedAt: new Date().toISOString(),
+    version: "1.2.0",
+    configuration: {
+      restaurantName: config?.nombreComercial ?? "",
+      legalName: config?.razonSocial ?? "",
+      nif: config?.nif ?? "",
+      setupCompleted: config?.setupCompleted ?? false,
+      printMode: config?.printMode ?? "unknown",
+      departmentCount: departments.filter((entry) => entry.active).length,
+    },
+    steps,
+    diagnostics: {
+      database: { status: "ready", latencyMs: databaseLatencyMs, detection: "SELECT 1 en vivo" },
+      printers: { configured: activePrinters.length, offline: offlinePrinters.length, detection: "Estado pasivo" },
+      kds: { configured: activeKds.length, recent: activeKds.filter((entry) => recentlySeen(entry.lastPingAt)).length },
+      tablets: { inventoried: inventoryTablets.length, connected: connectedOfflineDevices.length + connectedFichaje.length },
+      storage: { configured: activeDestinations.length, types: activeDestinations.map((entry) => entry.destType) },
+      network: { entries: network.length, errors: networkErrors.length, unknown: networkUnknown.length },
+      backups: { schedules: activeSchedules.length, recentVerified: Boolean(recentVerifiedBackup) },
+      measuredAt: new Date().toISOString(),
+      refreshAfterMs: 10_000,
+    },
+    devices: {
+      mainComputers: mainComputers.length,
+      printers: activePrinters.length,
+      kds: activeKds.length,
+      tablets: inventoryTablets.length,
+      connectedTablets: connectedOfflineDevices.length + connectedFichaje.length,
+      storageTypes: activeDestinations.map((entry) => entry.destType),
+      details: [
+        ...devices.map((entry) => ({
+          type: entry.deviceCategory,
+          name: sanitizeCertificationText(entry.name, 200),
+          model: sanitizeCertificationText(entry.model, 200),
+          status: entry.status,
+          detection: "Inventario",
+        })),
+        ...activePrinters.map((entry) => ({
+          type: "printer",
+          name: sanitizeCertificationText(entry.name, 200),
+          model: sanitizeCertificationText(`${entry.brand} ${entry.model}`.trim(), 200),
+          status: entry.lastStatus,
+          detection: entry.connectorMode === "tcp" ? "TCP pasivo" : "Simulador",
+        })),
+        ...activeKds.map((entry) => ({
+          type: "kds",
+          name: sanitizeCertificationText(entry.name, 200),
+          model: entry.zoneType,
+          status: recentlySeen(entry.lastPingAt) ? "recent" : "stale",
+          detection: "Ping HTTP",
+        })),
+        ...activeDestinations.map((entry) => ({
+          type: "storage",
+          name: sanitizeCertificationText(entry.name, 200),
+          model: entry.destType,
+          status: "configured",
+          detection: "Configuración",
+        })),
+      ],
+    },
+    certification: {
+      catalogStatus: "PENDING_PHYSICAL_CERTIFICATION",
+      cases: certificationCases,
+      summary: certificationSummary(certificationCases),
+    },
+    incidents: incidents.map((entry) => ({
+      level: entry.level,
+      module: entry.module,
+      message: sanitizeCertificationText(entry.message, 500),
+      createdAt: entry.createdAt.toISOString(),
+    })),
+  };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -228,7 +482,7 @@ router.get("/admin/installation/tests", requireAuth, requireRole(...MANAGER_ROLE
 
 // POST /admin/installation/tests
 router.post("/admin/installation/tests", requireAuth, requireRole(...MANAGER_ROLES), async (req, res): Promise<void> => {
-  const { testType, deviceId, deviceName, result, notes, performedBy, metadata } =
+  const { testType, deviceId, deviceName, result, notes, metadata } =
     req.body as Partial<typeof installationTestsTable.$inferInsert>;
 
   if (!testType) {
@@ -242,13 +496,114 @@ router.post("/admin/installation/tests", requireAuth, requireRole(...MANAGER_ROL
     deviceName: deviceName ?? "",
     result: result ?? "pending",
     notes: notes ?? "",
-    performedBy: performedBy ?? "",
+    performedBy: req.user?.name ?? req.user?.id ?? "",
     metadata: metadata ?? null,
     performedAt: new Date(),
   }).returning();
 
   res.status(201).json(test);
 });
+
+// GET /admin/installation/assistant
+// Unified, read-only orchestration snapshot. Hardware states remain explicitly
+// separated from physical certification attestations.
+router.get(
+  "/admin/installation/assistant",
+  requireAuth,
+  requireRole(...MANAGER_ROLES),
+  async (_req, res): Promise<void> => {
+    res.json(await loadInstallationAssistantSnapshot());
+  },
+);
+
+// POST /admin/installation/certification/:caseId
+// Append-only operator attestation using the existing installation_tests table.
+router.post(
+  "/admin/installation/certification/:caseId",
+  requireAuth,
+  requireRole(...MANAGER_ROLES),
+  idempotency,
+  async (req, res): Promise<void> => {
+    const caseId = req.params.caseId as string;
+    if (!PHYSICAL_CERTIFICATION_CASE_IDS.has(caseId)) {
+      res.status(404).json({ error: "Prueba física desconocida" });
+      return;
+    }
+    const status = req.body?.status as string;
+    if (!CERTIFICATION_STATUSES.includes(status as (typeof CERTIFICATION_STATUSES)[number])) {
+      res.status(400).json({ error: "Estado de certificación no válido" });
+      return;
+    }
+    const notes = sanitizeCertificationText(req.body?.notes, 2_000);
+    if (status === "failed" && !notes.trim()) {
+      res.status(400).json({ error: "Una prueba fallida requiere observaciones" });
+      return;
+    }
+    const catalogCase = PHYSICAL_CERTIFICATION_CASES.find((entry) => entry.caseId === caseId)!;
+    const evidence = sanitizeCertificationData(req.body?.evidence ?? []);
+    const performedBy = req.user?.name ?? req.user?.id ?? "";
+    const [event] = await db.insert(installationTestsTable).values({
+      testType: certificationTestType(caseId),
+      deviceId: req.body?.deviceId ?? null,
+      deviceName: sanitizeCertificationText(req.body?.deviceName, 200),
+      result: status,
+      notes,
+      performedBy,
+      metadata: {
+        delivery: 68,
+        sourceDelivery: 67,
+        caseId,
+        area: catalogCase.area,
+        evidence,
+      },
+      performedAt: new Date(),
+    }).returning();
+    await db.insert(techEventsTable).values({
+      level: status === "failed" ? "warning" : "info",
+      module: "installation",
+      message: `Certificación ${caseId}: ${status}`,
+      code: "E68_CERTIFICATION_STATUS",
+      data: {
+        caseId,
+        status,
+        performedBy,
+      },
+    });
+    res.status(201).json(mergeCertificationCases([event]).find((entry) => entry.caseId === caseId));
+  },
+);
+
+// GET /admin/installation/certification/export?format=html|json
+// Admin-only because the report aggregates operational configuration.
+router.get(
+  "/admin/installation/certification/export",
+  requireAuth,
+  requireRole(...ADMIN_ROLES),
+  async (req, res): Promise<void> => {
+    const format = String(req.query.format ?? "html");
+    if (!["html", "json"].includes(format)) {
+      res.status(400).json({ error: "Formato no válido" });
+      return;
+    }
+    const snapshot = await loadInstallationAssistantSnapshot();
+    await db.insert(techEventsTable).values({
+      level: "info",
+      module: "installation",
+      message: `Informe de certificación exportado (${format})`,
+      code: "E68_CERTIFICATION_EXPORT",
+      data: { format, performedBy: req.user?.name ?? req.user?.id ?? "" },
+    });
+    const date = snapshot.generatedAt.slice(0, 10);
+    if (format === "json") {
+      res.setHeader("Content-Disposition", `attachment; filename="piccolo-certificacion-${date}.json"`);
+      res.json(snapshot);
+      return;
+    }
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.setHeader("Content-Disposition", `inline; filename="piccolo-certificacion-${date}.html"`);
+    res.send(renderCertificationHtml(snapshot, req.query.print === "1"));
+  },
+);
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // DIAGNOSIS
@@ -350,7 +705,7 @@ router.get("/admin/installation/diagnosis", requireAuth, requireRole(...MANAGER_
 // ═══════════════════════════════════════════════════════════════════════════════
 
 // POST /admin/installation/seed
-// Creates the 5 default tablets + main computer if they don't exist yet.
+// Creates the 7 certification tablets + main computer if they don't exist yet.
 router.post("/admin/installation/seed", requireAuth, requireRole(...ADMIN_ROLES), async (req, res): Promise<void> => {
   const existing = await db.select({ id: installationDevicesTable.id }).from(installationDevicesTable);
   if (existing.length > 0) {
@@ -409,6 +764,24 @@ router.post("/admin/installation/seed", requireAuth, requireRole(...ADMIN_ROLES)
       deviceCategory: "tablet",
       usualZone: "todos",
       paymentAllowed: true,
+      offlineAuthorized: true,
+      status: "pending",
+    },
+    {
+      name: "Tablet Cobertura Wi-Fi",
+      tabletNumber: 6,
+      deviceCategory: "tablet",
+      usualZone: "zona_limite",
+      paymentAllowed: false,
+      offlineAuthorized: true,
+      status: "pending",
+    },
+    {
+      name: "Tablet PWA y revocación",
+      tabletNumber: 7,
+      deviceCategory: "tablet",
+      usualZone: "sala",
+      paymentAllowed: false,
       offlineAuthorized: true,
       status: "pending",
     },

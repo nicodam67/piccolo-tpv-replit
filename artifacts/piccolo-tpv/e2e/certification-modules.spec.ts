@@ -78,4 +78,20 @@ test.describe("Entrega 39 — module certification", () => {
     const waiter = apiWithAuth(request, waiterToken);
     expect((await waiter.get("/backup/list")).status()).toBe(403);
   });
+
+  test("installation assistant exposes 39 physical checks and admin export", async ({ request }) => {
+    const admin = apiWithAuth(request, adminToken);
+    const assistant = await admin.get("/admin/installation/assistant");
+    expect(assistant.status()).toBe(200);
+    const snapshot = await assistant.json();
+    expect(snapshot.steps).toHaveLength(7);
+    expect(snapshot.certification.cases).toHaveLength(39);
+    expect((await admin.get("/admin/installation/certification/export?format=html")).status()).toBe(200);
+  });
+
+  test("waiter cannot access installation assistant", async ({ request }) => {
+    const waiter = apiWithAuth(request, waiterToken);
+    expect((await waiter.get("/admin/installation/assistant")).status()).toBe(403);
+    expect((await waiter.get("/admin/installation/certification/export?format=json")).status()).toBe(403);
+  });
 });
