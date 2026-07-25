@@ -55,10 +55,22 @@ describe("software-only printer routing", () => {
     expect(result.map((row) => row.id)).toEqual(["pizza-primary"]);
   });
 
-  it("routes an unknown prep zone to cocina without claiming hardware delivery", async () => {
+  it("uses the department printer order before the legacy type fallback", async () => {
+    const result = await resolvePrintersForItem(
+      "product-1",
+      "category-1",
+      "cocina",
+      printers,
+      new Map(),
+      ["bar-primary", "kitchen-primary"],
+    );
+    expect(result.map((row) => row.id)).toEqual(["bar-primary", "kitchen-primary"]);
+  });
+
+  it("does not route an unknown department to an unrelated printer", async () => {
     const result = await resolvePrintersForItem(
       "product-1", "category-1", "unknown-zone", printers, new Map(),
     );
-    expect(result.map((row) => row.id)).toEqual(["kitchen-primary"]);
+    expect(result).toEqual([]);
   });
 });

@@ -13,6 +13,29 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import request from "supertest";
 
+vi.mock("../lib/production-departments", () => ({
+  loadProductionDepartments: vi.fn(async () => [
+    {
+      code: "cocina",
+      outputMode: "both",
+      workflowProfile: "standard",
+      printerIds: [],
+    },
+  ]),
+  resolveEffectiveChannels: vi.fn((
+    _department: unknown,
+    mode: string,
+  ) => ({
+    kds: mode !== "printers_only",
+    printer: mode !== "kds_only",
+  })),
+}));
+
+const mockDispatchKitchenPrint = vi.hoisted(() => vi.fn(async () => undefined));
+vi.mock("../lib/print-dispatch", () => ({
+  dispatchKitchenPrint: mockDispatchKitchenPrint,
+}));
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 /**
@@ -29,7 +52,7 @@ function makeChain(value: unknown) {
   for (const m of [
     "select", "from", "where", "orderBy",
     "insert", "update", "delete", "set", "values", "returning",
-    "innerJoin", "limit", "for", "onConflictDoNothing", "execute",
+    "innerJoin", "leftJoin", "limit", "for", "onConflictDoNothing", "execute",
   ]) {
     chain[m] = () => chain;
   }
@@ -47,6 +70,14 @@ const mockDb = vi.hoisted(() => ({
 }));
 
 const mockEmit = vi.hoisted(() => vi.fn());
+
+function resetDbMocks() {
+  mockDb.select.mockReset().mockImplementation(() => makeChain([]));
+  mockDb.insert.mockReset().mockImplementation(() => makeChain([]));
+  mockDb.update.mockReset().mockImplementation(() => makeChain([]));
+  mockDb.delete.mockReset().mockImplementation(() => makeChain([]));
+  mockDb.transaction.mockReset();
+}
 
 /**
  * Controllable jwt.verify mock so individual tests can simulate a different
@@ -122,6 +153,7 @@ const DELETE_ITEM_ROW = {
 describe("POST /api/orders/:orderId/items — add item emits orders:refresh", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    resetDbMocks();
     process.env["SESSION_SECRET"] = "test-secret";
     // Default: any unmocked DB call returns an empty chain so the route
     // doesn't throw when it hits optional queries (modifiers, audit log,
@@ -182,6 +214,7 @@ describe("POST /api/orders/:orderId/items — add item emits orders:refresh", ()
 describe("DELETE /api/order-items/:itemId — remove item emits orders:refresh", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    resetDbMocks();
     process.env["SESSION_SECRET"] = "test-secret";
     mockDb.select.mockImplementation(() => makeChain([]));
     mockDb.insert.mockImplementation(() => makeChain([]));
@@ -265,13 +298,14 @@ describe("POST /api/orders/:orderId/send — emits kds:refresh and orders:refres
 
   beforeEach(() => {
     vi.clearAllMocks();
+    resetDbMocks();
     process.env["SESSION_SECRET"] = "test-secret";
   });
 
   // Helper: sets up the full mock chain for a successful send, with a given printMode.
   function setupSendMocks(printMode: string, draftRow: unknown = DRAFT_ROW) {
     mockDb.select.mockReturnValueOnce(makeChain([{ status: "open" }]));          // 1. guard
-    mockDb.select.mockReturnValueOnce(makeChain([{ printMode }]));                // 2. businessCfg
+    mockDb.select.mockReturnValueOnce(makeChain([{ printMode }]));                // 2. business config
     mockDb.select.mockReturnValueOnce(makeChain([{ sentAt: null }]));             // 3. preUpdate
     mockDb.select.mockReturnValueOnce(makeChain([draftRow]));                     // 4. draftItems
     mockDb.select.mockReturnValueOnce(makeChain([]));                             // 5. modifiers
@@ -292,7 +326,6 @@ describe("POST /api/orders/:orderId/send — emits kds:refresh and orders:refres
       });
       return { txInsert, txUpdate };
     });
-    mockDb.select.mockReturnValueOnce(makeChain([UPDATED_ORDER]));                // 6. updated order
   }
 
   it("emits kds:refresh and orders:refresh after successfully sending draft items (kds_only mode)", async () => {
@@ -361,8 +394,6 @@ describe("POST /api/orders/:orderId/send — emits kds:refresh and orders:refres
         update: txUpdate,
       });
     });
-    mockDb.select.mockReturnValueOnce(makeChain([UPDATED_ORDER]));
-
     const res = await request(app)
       .post(`/api/orders/${ORDER_ID}/send`)
       .set("Authorization", AUTH);
@@ -408,8 +439,6 @@ describe("POST /api/orders/:orderId/send — emits kds:refresh and orders:refres
         update: txUpdate,
       });
     });
-    mockDb.select.mockReturnValueOnce(makeChain([UPDATED_ORDER]));
-
     const res = await request(app)
       .post(`/api/orders/${ORDER_ID}/send`)
       .set("Authorization", AUTH);
@@ -420,7 +449,7 @@ describe("POST /api/orders/:orderId/send — emits kds:refresh and orders:refres
   });
 
   it("returns 400 and does NOT emit any socket event when there are no draft items", async () => {
-    // order guard passes, businessCfg loads, then draft items query returns empty → 400
+    // order guard passes, then draft items query returns empty → 400
     mockDb.select.mockReturnValueOnce(makeChain([{ status: "open" }]));
     mockDb.select.mockReturnValueOnce(makeChain([{ printMode: "kds_only" }]));
     mockDb.select.mockReturnValueOnce(makeChain([{ sentAt: null }]));
@@ -431,6 +460,16 @@ describe("POST /api/orders/:orderId/send — emits kds:refresh and orders:refres
       .set("Authorization", AUTH);
 
     expect(res.status).toBe(400);
+    expect(mockEmit).not.toHaveBeenCalled();
+  });
+
+  it("fails the send transaction when durable print enqueue fails", async () => {
+    setupSendMocks("both");
+    mockDispatchKitchenPrint.mockRejectedValueOnce(new Error("PRINT_QUEUE_UNAVAILABLE"));
+    const res = await request(app)
+      .post(`/api/orders/${ORDER_ID}/send`)
+      .set("Authorization", AUTH);
+    expect(res.status).toBe(503);
     expect(mockEmit).not.toHaveBeenCalled();
   });
 });
@@ -448,6 +487,7 @@ describe("orders:refresh employeeName — name always comes from the JWT, never 
 
   beforeEach(() => {
     vi.clearAllMocks();
+    resetDbMocks();
     process.env["SESSION_SECRET"] = "test-secret";
     mockDb.select.mockImplementation(() => makeChain([]));
     mockDb.insert.mockImplementation(() => makeChain([]));
@@ -529,6 +569,7 @@ describe("Two-session live sync — end-to-end scenario", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    resetDbMocks();
     process.env["SESSION_SECRET"] = "test-secret";
     mockDb.select.mockImplementation(() => makeChain([]));
     mockDb.insert.mockImplementation(() => makeChain([]));

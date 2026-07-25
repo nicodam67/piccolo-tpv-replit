@@ -12,6 +12,40 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import request from "supertest";
 import { restaurantTablesTable } from "@workspace/db";
 
+vi.mock("../lib/production-departments", () => {
+  const profiles: Record<string, string> = { pizza: "pizza", barra: "bar", pase: "pase" };
+  const make = (code: string) => ({
+    id: `department-${code}`,
+    code,
+    name: code,
+    active: true,
+    outputMode: "both",
+    workflowProfile: profiles[code] ?? "standard",
+    printerIds: [],
+    showInKdsNav: code !== "sin_partida",
+    assignableToProducts: code !== "pase",
+    isPaseAggregator: code === "pase",
+  });
+  return {
+    WORKFLOW_TRANSITIONS: {},
+    loadDepartmentByCode: vi.fn(async (code: string) =>
+      ["cocina", "pizza", "ensalada", "barra", "pase", "sin_partida"].includes(code)
+        ? make(code)
+        : null),
+    transitionsForDepartment: vi.fn((department: { workflowProfile: string }) => ({
+      new: ["preparing", "cancelled"],
+      preparing: department.workflowProfile === "pizza"
+        ? ["in_oven", "ready", "cancelled"]
+        : ["ready", "cancelled"],
+      in_oven: ["ready", "preparing", "cancelled"],
+      ready: ["collected", "served"],
+      collected: [],
+      served: [],
+      cancelled: [],
+    })),
+  };
+});
+
 // ─── Mock state ───────────────────────────────────────────────────────────────
 // Shared state object mutated per-test; the db factory always reads from it.
 
