@@ -9,6 +9,7 @@ const describeWithDatabase = process.env.RUN_DB_INTEGRATION_TESTS === "1" ? desc
 const terminalPrefix = "E63-RACE-";
 let employeeId = "";
 let cashMethodId = "";
+let probeInstalled = false;
 
 function token(role = "admin") {
   return jwt.sign(
@@ -58,20 +59,27 @@ async function cleanup() {
     await pool.query("DELETE FROM document_audit_log WHERE document_id = ANY($1::text[])", [paymentIds]);
   }
   await pool.query("DELETE FROM idempotency_keys WHERE cache_key LIKE $1", ["%:e63-%"]);
-  await pool.query("DELETE FROM entrega63_probe");
+  if (probeInstalled) await pool.query("DELETE FROM entrega63_probe");
 }
 
 describeWithDatabase("Cash & Payments PostgreSQL concurrency", () => {
   beforeAll(async () => {
-    const employee = await pool.query<{ id: string }>(
-      "SELECT id FROM employees WHERE active = true ORDER BY created_at LIMIT 1",
+    employeeId = "63000000-0000-4000-8000-000000000001";
+    await pool.query(
+      `INSERT INTO employees (id, name, role, active)
+       VALUES ($1, 'E63 Concurrency Fixture', 'admin', false)
+       ON CONFLICT (id) DO NOTHING`,
+      [employeeId],
     );
-    if (!employee.rows[0]) throw new Error("E63 requires one active employee fixture");
-    employeeId = employee.rows[0].id;
+    await pool.query(
+      `INSERT INTO payment_methods (code, name, active, sort_order)
+       VALUES ('cash', 'Efectivo', true, 1)
+       ON CONFLICT (code) DO NOTHING`,
+    );
     const method = await pool.query<{ id: string }>(
       "SELECT id FROM payment_methods WHERE code = 'cash' LIMIT 1",
     );
-    if (!method.rows[0]) throw new Error("E63 requires the seeded cash payment method");
+    if (!method.rows[0]) throw new Error("Unable to prepare E63 cash payment method");
     cashMethodId = method.rows[0].id;
 
     await pool.query(`
@@ -136,12 +144,13 @@ describeWithDatabase("Cash & Payments PostgreSQL concurrency", () => {
         BEFORE UPDATE ON payments
         FOR EACH ROW EXECUTE FUNCTION entrega63_delay_payment_void();
     `);
+    probeInstalled = true;
   });
 
   beforeEach(cleanup);
 
   afterAll(async () => {
-    await cleanup();
+    if (employeeId) await cleanup();
     await pool.query(`
       DROP TRIGGER IF EXISTS entrega63_delay_cash_open_trigger ON cash_sessions;
       DROP TRIGGER IF EXISTS entrega63_delay_cash_reopen_trigger ON cash_sessions;
@@ -152,6 +161,8 @@ describeWithDatabase("Cash & Payments PostgreSQL concurrency", () => {
       DROP TABLE IF EXISTS entrega63_targets;
       DROP TABLE IF EXISTS entrega63_probe;
     `);
+    probeInstalled = false;
+    await pool.query("DELETE FROM employees WHERE id = $1", [employeeId]);
   });
 
   it("serializes two real concurrent openings for the same terminal", async () => {

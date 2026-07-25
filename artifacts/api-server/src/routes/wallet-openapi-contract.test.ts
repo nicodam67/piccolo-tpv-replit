@@ -5,8 +5,17 @@ import request from "supertest";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import OpenAPIResponseValidator from "openapi-response-validator";
-import { db, crmClientsTable, crmGiftCardsTable, employeesTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import {
+  db,
+  crmAuditLogTable,
+  crmClientsTable,
+  crmGiftCardsTable,
+  crmGiftCardTransactionsTable,
+  crmWalletTable,
+  crmWalletTransactionsTable,
+  employeesTable,
+} from "@workspace/db";
+import { eq, inArray } from "drizzle-orm";
 import app from "../app";
 
 const describeWithDatabase = process.env.RUN_DB_INTEGRATION_TESTS === "1" ? describe : describe.skip;
@@ -76,14 +85,39 @@ describeWithDatabase("wallet OpenAPI integration contract", () => {
   });
 
   afterAll(async () => {
+    await db.delete(crmGiftCardTransactionsTable)
+      .where(eq(crmGiftCardTransactionsTable.empleadoId, employeeId));
+    await db.delete(crmWalletTransactionsTable)
+      .where(eq(crmWalletTransactionsTable.empleadoId, employeeId));
+    const employeeCards = await db.select({ id: crmGiftCardsTable.id })
+      .from(crmGiftCardsTable)
+      .where(eq(crmGiftCardsTable.empleadoId, employeeId));
+    if (employeeCards.length) {
+      const ids = employeeCards.map((card) => card.id);
+      await db.delete(crmGiftCardTransactionsTable)
+        .where(inArray(crmGiftCardTransactionsTable.giftCardId, ids));
+      await db.delete(crmGiftCardsTable).where(inArray(crmGiftCardsTable.id, ids));
+    }
+    if (giftCardId) {
+      await db.delete(crmGiftCardTransactionsTable)
+        .where(eq(crmGiftCardTransactionsTable.giftCardId, giftCardId));
+    }
     if (giftCardId) await db.delete(crmGiftCardsTable).where(eq(crmGiftCardsTable.id, giftCardId));
+    if (clientId) {
+      await db.delete(crmWalletTransactionsTable)
+        .where(eq(crmWalletTransactionsTable.clientId, clientId));
+      await db.delete(crmWalletTable).where(eq(crmWalletTable.clientId, clientId));
+    }
     if (clientId) await db.delete(crmClientsTable).where(eq(crmClientsTable.id, clientId));
+    await db.delete(crmAuditLogTable).where(eq(crmAuditLogTable.empleadoId, employeeId));
     await db.delete(employeesTable).where(eq(employeesTable.id, employeeId));
   });
 
   it("validates gift card and wallet responses", async () => {
     const createdClient = await request(app).post("/api/crm/clients").set(auth()).send({
-      nombre: "Wallet Contract", telefono: "600000051", rgpdConsentimiento: true,
+      nombre: "Wallet Contract",
+      telefono: `6${Date.now().toString().slice(-8)}`,
+      rgpdConsentimiento: true,
     });
     expect(createdClient.status).toBe(201);
     clientId = createdClient.body.id;

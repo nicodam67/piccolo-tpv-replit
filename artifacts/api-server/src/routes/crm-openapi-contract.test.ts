@@ -5,7 +5,13 @@ import request from "supertest";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import OpenAPIResponseValidator from "openapi-response-validator";
-import { db, crmClientsTable, crmPromotionsTable, employeesTable } from "@workspace/db";
+import {
+  db,
+  crmAuditLogTable,
+  crmClientsTable,
+  crmPromotionsTable,
+  employeesTable,
+} from "@workspace/db";
 import { eq } from "drizzle-orm";
 import app from "../app";
 
@@ -77,6 +83,7 @@ describeWithDatabase("crm OpenAPI integration contract", () => {
   afterAll(async () => {
     if (promotionId) await db.delete(crmPromotionsTable).where(eq(crmPromotionsTable.id, promotionId));
     if (clientId) await db.delete(crmClientsTable).where(eq(crmClientsTable.id, clientId));
+    await db.delete(crmAuditLogTable).where(eq(crmAuditLogTable.empleadoId, employeeId));
     await db.delete(employeesTable).where(eq(employeesTable.id, employeeId));
   });
 

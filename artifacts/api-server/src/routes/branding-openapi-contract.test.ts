@@ -5,7 +5,12 @@ import request from "supertest";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import OpenAPIResponseValidator from "openapi-response-validator";
-import { db, businessConfigTable, employeesTable } from "@workspace/db";
+import {
+  db,
+  businessConfigTable,
+  documentAuditLogTable,
+  employeesTable,
+} from "@workspace/db";
 import { eq } from "drizzle-orm";
 import app from "../app";
 
@@ -69,6 +74,7 @@ describeWithDatabase("branding OpenAPI integration contract", () => {
 
   afterAll(async () => {
     if (configId) await db.delete(businessConfigTable).where(eq(businessConfigTable.id, configId));
+    await db.delete(documentAuditLogTable).where(eq(documentAuditLogTable.employeeId, employeeId));
     await db.delete(employeesTable).where(eq(employeesTable.id, employeeId));
   });
 
