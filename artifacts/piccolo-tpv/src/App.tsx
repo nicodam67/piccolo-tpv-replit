@@ -110,6 +110,7 @@ import AdminSistema from './pages/admin-sistema';
 import AdminSalud from './pages/admin-salud';
 import AdminInstalacion from './pages/admin-instalacion';
 import AdminInstalacionQR from './pages/admin-instalacion-qr';
+import InstallationAssistantPage from './pages/installation/InstallationAssistantPage';
 import AdminPermisos from './pages/admin-permisos';
 import AdminDatosDemo from './pages/admin-datos-demo';
 import NotFound from './pages/not-found';
@@ -486,6 +487,9 @@ function Router() {
       </Route>
       <Route path="/admin/salud">
         <RequireRole roles={ROLES_MANAGER_UP}><AdminSalud /></RequireRole>
+      </Route>
+      <Route path="/admin/instalacion/asistente">
+        <RequireRole roles={ROLES_MANAGER_UP}><InstallationAssistantPage /></RequireRole>
       </Route>
 
       {/* ── Admin-only area ───────────────────────────────────────────────── */}

@@ -6,7 +6,7 @@ import { useLocation } from 'wouter';
 import {
   ChevronLeft, ChevronRight,
   PrinterIcon, ListOrdered, Zap, Monitor, Smartphone,
-  Coins, Wand2, QrCode, Network,
+  Coins, Wand2, QrCode, Network, ClipboardCheck,
 } from 'lucide-react';
 
 const ACCENT = '#06b6d4';
@@ -62,6 +62,7 @@ const SECTIONS: {
     color: '#f59e0b',
     bg: 'rgba(245,158,11,0.12)',
     items: [
+      { icon: <ClipboardCheck size={20} />, title: 'Instalación y certificación', desc: 'Guía de hardware, diagnóstico y 39 pruebas físicas', href: '/admin/instalacion/asistente' },
       { icon: <Wand2 size={20} />, title: 'Asistente de configuración', desc: 'Guía de 16 pasos para la puesta en marcha', href: '/setup' },
     ],
   },
