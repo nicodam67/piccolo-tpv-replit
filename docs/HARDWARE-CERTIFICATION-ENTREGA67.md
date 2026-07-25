@@ -108,9 +108,9 @@ Para NAS usar mount real dentro de `BACKUP_LOCAL_ROOTS`. Para S3 usar bucket de 
 - PostCSS se fija a 8.5.18, parche compatible de build.
 - `brace-expansion` producción sigue abierto por cadena ExcelJS/archiver; no se fuerza major incompatible.
 - React Router requiere major 8 y queda fuera de esta entrega.
-- Esbuild tooling requiere resolución separada por restricciones de peer.
+- API esbuild queda en 0.25.8 (compatible con plugin), Vite en 0.28.1 y el loader legacy se sustituye por `tsx`.
 
-Ejecutar `pnpm audit` y `pnpm audit --prod` en cada run; registrar resultado real.
+Resultado real: `pnpm audit` mantiene 4 high; `pnpm audit --prod` mantiene 2 high en `brace-expansion`. Ejecutar ambos en cada run.
 
 ## Condición de aprobación
 
@@ -124,3 +124,13 @@ Solo cambiar el estado global cuando:
 6. fallos se hayan repetido tras corrección.
 
 Hasta entonces: **PENDING_PHYSICAL_CERTIFICATION**.
+
+## Validación software de esta entrega
+
+- PostgreSQL limpio: 28 migraciones.
+- API: 72 archivos, 804 tests aprobados.
+- E2E: 26/26.
+- Siete órdenes concurrentes: 7/7, una tarea por pedido.
+- Rendimiento: 250 requests, 0 errores; printing p95 10,4 ms.
+- Restore: 165 tablas, restore repetido y rollback.
+- Destino A/B local/NAS: round-trip y switch seguro; ambos siguen pendientes como hardware real.
