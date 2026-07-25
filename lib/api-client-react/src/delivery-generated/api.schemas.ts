@@ -332,7 +332,7 @@ export type OnlineOrdersConfigMaskedSchedule = {[key: string]: {
   close?: string;
   open2?: string;
   close2?: string;
-}};
+}} | null;
 
 export interface OnlineOrdersConfigMasked {
   id: string;

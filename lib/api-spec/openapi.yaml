@@ -8495,7 +8495,10 @@ components:
         address: { type: string }
         phone: { type: string }
         foundedYear: { type: integer, nullable: true }
-        openingHours: { $ref: "#/components/schemas/OpeningHours", nullable: true }
+        openingHours:
+          anyOf:
+            - { $ref: "#/components/schemas/OpeningHours" }
+            - { type: "null" }
         cardLayout: { type: string }
         accentColor: { type: string }
         logoUrl: { type: string }
@@ -8511,7 +8514,10 @@ components:
         address: { type: string }
         phone: { type: string }
         foundedYear: { type: integer, nullable: true }
-        openingHours: { $ref: "#/components/schemas/OpeningHours", nullable: true }
+        openingHours:
+          anyOf:
+            - { $ref: "#/components/schemas/OpeningHours" }
+            - { type: "null" }
         cardLayout: { type: string }
         accentColor: { type: string }
         logoUrl: { type: string }
@@ -8585,13 +8591,25 @@ components:
         country: { type: string }
         phone: { type: string }
         establishedYear: { type: integer, nullable: true }
-        openingHours: { $ref: "#/components/schemas/OpeningHours", nullable: true }
+        openingHours:
+          anyOf:
+            - { $ref: "#/components/schemas/OpeningHours" }
+            - { type: "null" }
         cardLayout: { type: string }
         accentColor: { type: string }
         logoUrl: { type: string }
-        themeColors: { $ref: "#/components/schemas/BrandingThemeColors", nullable: true }
-        themeFonts: { $ref: "#/components/schemas/BrandingThemeFonts", nullable: true }
-        cardSettings: { $ref: "#/components/schemas/BrandingCardSettings", nullable: true }
+        themeColors:
+          anyOf:
+            - { $ref: "#/components/schemas/BrandingThemeColors" }
+            - { type: "null" }
+        themeFonts:
+          anyOf:
+            - { $ref: "#/components/schemas/BrandingThemeFonts" }
+            - { type: "null" }
+        cardSettings:
+          anyOf:
+            - { $ref: "#/components/schemas/BrandingCardSettings" }
+            - { type: "null" }
         schedule:
           type: array
           items: { $ref: "#/components/schemas/QrDaySchedule" }
@@ -8629,9 +8647,18 @@ components:
         phone: { type: string }
         establishedYear: { type: string }
         logoUrl: { type: string }
-        themeColors: { $ref: "#/components/schemas/BrandingThemeColors", nullable: true }
-        themeFonts: { $ref: "#/components/schemas/BrandingThemeFonts", nullable: true }
-        cardSettings: { $ref: "#/components/schemas/BrandingCardSettings", nullable: true }
+        themeColors:
+          anyOf:
+            - { $ref: "#/components/schemas/BrandingThemeColors" }
+            - { type: "null" }
+        themeFonts:
+          anyOf:
+            - { $ref: "#/components/schemas/BrandingThemeFonts" }
+            - { type: "null" }
+        cardSettings:
+          anyOf:
+            - { $ref: "#/components/schemas/BrandingCardSettings" }
+            - { type: "null" }
         schedule:
           type: array
           items: { $ref: "#/components/schemas/QrDaySchedule" }
@@ -8665,9 +8692,18 @@ components:
         phone: { type: string }
         establishedYear: { type: string }
         logoUrl: { type: string }
-        themeColors: { $ref: "#/components/schemas/BrandingThemeColors", nullable: true }
-        themeFonts: { $ref: "#/components/schemas/BrandingThemeFonts", nullable: true }
-        cardSettings: { $ref: "#/components/schemas/BrandingCardSettings", nullable: true }
+        themeColors:
+          anyOf:
+            - { $ref: "#/components/schemas/BrandingThemeColors" }
+            - { type: "null" }
+        themeFonts:
+          anyOf:
+            - { $ref: "#/components/schemas/BrandingThemeFonts" }
+            - { type: "null" }
+        cardSettings:
+          anyOf:
+            - { $ref: "#/components/schemas/BrandingCardSettings" }
+            - { type: "null" }
         schedule:
           type: array
           items: { $ref: "#/components/schemas/QrDaySchedule" }
@@ -9851,8 +9887,14 @@ components:
         createdAt: { type: string, format: date-time }
         deliveryAddressId: { type: string, format: uuid, nullable: true }
         rejectionReason: { type: string, nullable: true }
-        address: { $ref: "#/components/schemas/DeliveryAddress", nullable: true }
-        courier: { $ref: "#/components/schemas/CourierBrief", nullable: true }
+        address:
+          anyOf:
+            - { $ref: "#/components/schemas/DeliveryAddress" }
+            - { type: "null" }
+        courier:
+          anyOf:
+            - { $ref: "#/components/schemas/CourierBrief" }
+            - { type: "null" }
         total: { type: string }
       required: [id, status, deliveryType, clientName, createdAt, total]
 
@@ -9867,8 +9909,14 @@ components:
             history:
               type: array
               items: { $ref: "#/components/schemas/DeliveryOrderStatusHistory" }
-            address: { $ref: "#/components/schemas/DeliveryAddress", nullable: true }
-            courier: { $ref: "#/components/schemas/CourierBrief", nullable: true }
+            address:
+              anyOf:
+                - { $ref: "#/components/schemas/DeliveryAddress" }
+                - { type: "null" }
+            courier:
+              anyOf:
+                - { $ref: "#/components/schemas/CourierBrief" }
+                - { type: "null" }
 
     DeliveryOrderCreated:
       type: object
@@ -9970,8 +10018,14 @@ components:
               unitPrice: { type: string }
               taxRate: { type: number }
             required: [id, productName, quantity, unitPrice]
-        address: { $ref: "#/components/schemas/DeliveryAddress", nullable: true }
-        courier: { $ref: "#/components/schemas/CourierBrief", nullable: true }
+        address:
+          anyOf:
+            - { $ref: "#/components/schemas/DeliveryAddress" }
+            - { type: "null" }
+        courier:
+          anyOf:
+            - { $ref: "#/components/schemas/CourierBrief" }
+            - { type: "null" }
         total: { type: string }
       required: [id, status, deliveryType, clientName, createdAt, total]
 
@@ -10058,14 +10112,16 @@ components:
         takeawayEnabled: { type: boolean }
         deliveryEnabled: { type: boolean }
         schedule:
-          type: object
-          additionalProperties:
-            type: object
-            properties:
-              open: { type: string }
-              close: { type: string }
-              open2: { type: string }
-              close2: { type: string }
+          anyOf:
+            - type: object
+              additionalProperties:
+                type: object
+                properties:
+                  open: { type: string }
+                  close: { type: string }
+                  open2: { type: string }
+                  close2: { type: string }
+            - { type: "null" }
         prepTimeMinutes: { type: integer }
         minOrder: { type: string }
         minOrderDelivery: { type: string }
