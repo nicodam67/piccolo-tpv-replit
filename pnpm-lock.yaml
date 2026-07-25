@@ -137,6 +137,9 @@ importers:
       express-rate-limit:
         specifier: ^8.5.2
         version: 8.5.2(express@5.2.1)
+      iconv-lite:
+        specifier: ^0.7.3
+        version: 0.7.3
       jsonwebtoken:
         specifier: ^9.0.3
         version: 9.0.3

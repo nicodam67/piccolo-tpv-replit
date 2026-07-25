@@ -235,7 +235,7 @@ export function buildModificationTicket(
 export function buildReprintHeader(reason: string, actorName: string, wide = true): string {
   const w = wide ? 48 : 32;
   return [
-    center("*** REIMPRESION ***", w),
+    center("*** REIMPRESIÓN ***", w),
     `USUARIO: ${actorName}`,
     `MOTIVO: ${reason}`,
     `HORA: ${formatTs(new Date())}`,

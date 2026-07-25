@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useLocation } from 'wouter';
 import { toast } from 'sonner';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   useGetAdminProducts,
   useGetAdminCategories,
@@ -29,6 +29,7 @@ import {
   useGetAdminIngredients,
   useGetAdminSubrecipes,
   getGetProductRecipeQueryKey,
+  customFetch,
 } from '@workspace/api-client-react';
 import type { RecipeLine, Ingredient, Subrecipe } from '@workspace/api-client-react';
 import {
@@ -40,15 +41,6 @@ import {
 } from 'lucide-react';
 
 const TAX_RATES = [4, 10, 21] as const;
-const PREP_ZONES = [
-  { value: 'cocina',      label: 'Cocina' },
-  { value: 'pizza',       label: 'Pizza / Horno' },
-  { value: 'ensalada',    label: 'Ensaladas / Frío' },
-  { value: 'barra',       label: 'Barra / Bebidas' },
-  { value: 'pase',        label: 'Expedición / Pase' },
-  { value: 'sin_partida', label: 'Sin partida (solo ticket)' },
-];
-
 const RATE_COLOR: Record<number, string> = {
   4: 'bg-green-500/15 text-green-400 border-green-500/30',
   10: 'bg-blue-500/15 text-blue-400 border-blue-500/30',
@@ -218,6 +210,11 @@ function ProductSheet({
   onDelete?: (id: string) => void;
 }) {
   const qc = useQueryClient();
+  const { data: prepDepartments = [] } = useQuery<Array<{ code: string; name: string }>>({
+    queryKey: ['/api/production-departments', 'assignable'],
+    queryFn: () => customFetch('/api/production-departments?assignable=true'),
+    staleTime: 60_000,
+  });
   const createProduct = useCreateAdminProduct();
   const updateProduct = useUpdateAdminProduct();
   const deleteProduct = useDeleteAdminProduct();
@@ -430,10 +427,10 @@ function ProductSheet({
               <div>
                 <label className="text-xs text-muted-foreground font-semibold block mb-1">Zona de preparación</label>
                 <div className="flex gap-1.5 flex-wrap">
-                  {PREP_ZONES.map((z) => (
-                    <button key={z.value} onClick={() => setPrepZone(z.value)}
-                      className={`px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all ${prepZone === z.value ? 'bg-primary/15 text-primary border-primary/30' : 'bg-secondary/30 text-muted-foreground border-border hover:bg-secondary'}`}>
-                      {z.label}
+                  {prepDepartments.map((department) => (
+                    <button key={department.code} onClick={() => setPrepZone(department.code)}
+                      className={`px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all ${prepZone === department.code ? 'bg-primary/15 text-primary border-primary/30' : 'bg-secondary/30 text-muted-foreground border-border hover:bg-secondary'}`}>
+                      {department.name}
                     </button>
                   ))}
                 </div>

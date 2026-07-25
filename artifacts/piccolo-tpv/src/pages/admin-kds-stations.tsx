@@ -4,6 +4,7 @@
  * CRUD for named KDS displays: zone type, IP, display URL, last ping.
  */
 import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useLocation } from 'wouter';
 import { toast } from 'sonner';
 import {
@@ -20,15 +21,7 @@ import {
   usePingKdsStation,
   type KdsStation,
 } from '@workspace/api-client-react/phase1';
-
-const ZONE_LABELS: Record<string, string> = {
-  cocina:      'Cocina',
-  pizza:       'Pizza',
-  ensalada:    'Ensaladas',
-  barra:       'Barra',
-  pase:        'Expedición / Pase',
-  sin_partida: 'Sin partida',
-};
+import { customFetch } from '@workspace/api-client-react';
 
 const ZONE_COLORS: Record<string, string> = {
   cocina:      'text-orange-400 bg-orange-950/30 border-orange-800',
@@ -54,6 +47,13 @@ function fmtDate(d: string | null | undefined) {
 export default function AdminKdsStations() {
   const [, setLocation] = useLocation();
   const { data: stations = [], isLoading: loading, refetch: load } = useGetKdsStations();
+  const { data: departments = [] } = useQuery<Array<{ code: string; name: string }>>({
+    queryKey: ['/api/production-departments'],
+    queryFn: () => customFetch('/api/production-departments'),
+  });
+  const departmentLabels = Object.fromEntries(
+    departments.map((department) => [department.code, department.name]),
+  );
   const createStation = useCreateKdsStation();
   const updateStation = useUpdateKdsStation();
   const deleteStation = useDeleteKdsStation();
@@ -157,7 +157,7 @@ export default function AdminKdsStations() {
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-black text-sm">{s.name}</span>
                   <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${ZONE_COLORS[s.zoneType] ?? ZONE_COLORS.sin_partida}`}>
-                    {ZONE_LABELS[s.zoneType] ?? s.zoneType}
+                    {departmentLabels[s.zoneType] ?? s.zoneType}
                   </span>
                   {!s.active && <span className="text-[10px] text-red-400 border border-red-800 px-1.5 py-0.5 rounded-full">Inactiva</span>}
                 </div>
@@ -212,7 +212,9 @@ export default function AdminKdsStations() {
                 <div className="relative">
                   <select value={form.zoneType} onChange={e => setForm(f => ({ ...f, zoneType: e.target.value }))}
                     className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-xl text-sm focus:outline-none appearance-none pr-8">
-                    {Object.entries(ZONE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                    {departments.map((department) => (
+                      <option key={department.code} value={department.code}>{department.name}</option>
+                    ))}
                   </select>
                   <ChevronDown size={12} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
                 </div>

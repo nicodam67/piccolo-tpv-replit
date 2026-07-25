@@ -59,12 +59,22 @@ interface Printer {
   fallbackPrinterId: string | null;
   lastStatus: string;
   lastStatusAt: string | null;
+  connectorMode: 'simulator' | 'tcp';
+  codePage: 'cp858' | 'cp437' | 'windows1252';
+  cutEnabled: boolean;
+  drawerEnabled: boolean;
+  connectTimeoutMs: number;
+  writeTimeoutMs: number;
 }
 
 const EMPTY_FORM = {
   name: '', type: 'cocina', brand: '', model: '',
   ip: '', port: 9100, paperWidth: 80, copies: 1,
   active: true, isPrimary: true, fallbackPrinterId: '',
+  connectorMode: 'simulator' as 'simulator' | 'tcp',
+  codePage: 'cp858' as 'cp858' | 'cp437' | 'windows1252',
+  cutEnabled: true, drawerEnabled: false,
+  connectTimeoutMs: 5000, writeTimeoutMs: 10000,
 };
 
 export default function AdminImpresoras() {
@@ -148,6 +158,12 @@ export default function AdminImpresoras() {
       ip: p.ip, port: p.port, paperWidth: p.paperWidth, copies: p.copies,
       active: p.active, isPrimary: p.isPrimary,
       fallbackPrinterId: p.fallbackPrinterId ?? '',
+      connectorMode: p.connectorMode,
+      codePage: p.codePage,
+      cutEnabled: p.cutEnabled,
+      drawerEnabled: p.drawerEnabled,
+      connectTimeoutMs: p.connectTimeoutMs,
+      writeTimeoutMs: p.writeTimeoutMs,
     });
     setShowModal(true);
   };
@@ -528,6 +544,27 @@ export default function AdminImpresoras() {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
+                  <label className="block text-sm font-bold mb-1">Conector</label>
+                  <select value={form.connectorMode}
+                    onChange={e => setForm(f => ({ ...f, connectorMode: e.target.value as 'simulator' | 'tcp' }))}
+                    className="w-full px-3 py-2 bg-secondary border border-border rounded-xl text-sm">
+                    <option value="simulator">Simulador (solo pruebas)</option>
+                    <option value="tcp">TCP ESC/POS</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-bold mb-1">Página de códigos</label>
+                  <select value={form.codePage}
+                    onChange={e => setForm(f => ({ ...f, codePage: e.target.value as 'cp858' | 'cp437' | 'windows1252' }))}
+                    className="w-full px-3 py-2 bg-secondary border border-border rounded-xl text-sm">
+                    <option value="cp858">CP858 (€, español)</option>
+                    <option value="cp437">CP437</option>
+                    <option value="windows1252">Windows-1252</option>
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
                   <label className="block text-sm font-bold mb-1">Dirección IP</label>
                   <input value={form.ip} onChange={e => setForm(f => ({ ...f, ip: e.target.value }))}
                     className="w-full px-3 py-2 bg-secondary border border-border rounded-xl text-sm font-mono" placeholder="192.168.1.100" />
@@ -569,6 +606,14 @@ export default function AdminImpresoras() {
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input type="checkbox" checked={form.active} onChange={e => setForm(f => ({ ...f, active: e.target.checked }))} className="w-4 h-4 rounded" />
                   <span className="text-sm font-semibold">Activa</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={form.cutEnabled} onChange={e => setForm(f => ({ ...f, cutEnabled: e.target.checked }))} className="w-4 h-4 rounded" />
+                  <span className="text-sm font-semibold">Corte</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={form.drawerEnabled} onChange={e => setForm(f => ({ ...f, drawerEnabled: e.target.checked }))} className="w-4 h-4 rounded" />
+                  <span className="text-sm font-semibold">Cajón</span>
                 </label>
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input type="checkbox" checked={form.isPrimary} onChange={e => setForm(f => ({ ...f, isPrimary: e.target.checked }))} className="w-4 h-4 rounded" />

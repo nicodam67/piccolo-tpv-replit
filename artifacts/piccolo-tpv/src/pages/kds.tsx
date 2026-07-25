@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { api } from '../lib/api-client';
 import { useParams, Link } from 'wouter';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { connectAuthenticatedSocket } from '../lib/socket-client';
 import { toast } from 'sonner';
 import { History, RefreshCw, AlertTriangle, X, Clock, CheckCircle, ShieldCheck, Search, Flame } from 'lucide-react';
@@ -13,21 +13,20 @@ import {
 } from '@workspace/api-client-react';
 import {
   useUpdateKitchenTaskStatus,
-  useResendKitchenTask,
   useGetKdsHistory,
   getGetKdsHistoryQueryKey,
 } from '@workspace/api-client-react/phase1';
 
-// ─── Constants ────────────────────────────────────────────────────────────────
+interface ProductionDepartment {
+  code: string;
+  name: string;
+  workflowProfile: 'standard' | 'pizza' | 'bar' | 'pase' | 'none';
+  showInKdsNav: boolean;
+  isPaseAggregator: boolean;
+}
 
-const ZONES = ['cocina', 'pizza', 'ensalada', 'barra', 'pase'] as const;
-type KdsZone = typeof ZONES[number];
 type TaskStatus = 'new' | 'preparing' | 'in_oven' | 'ready' | 'collected' | 'served' | 'cancelled';
 type PaseAction = 'collected' | 'served';
-
-const ZONE_LABELS: Record<string, string> = {
-  cocina: 'Cocina', pizza: 'Pizza', ensalada: 'Ensaladas', barra: 'Barra', pase: 'Expedición',
-};
 
 const CANCELLED_VISIBLE_MS = 5 * 60 * 1000;
 /** Amber warning: elapsed > 10 min */
@@ -98,14 +97,15 @@ function formatTime(iso: string) {
 
 function ZoneActions({
   task,
+  workflowProfile,
   onUpdateStatus,
   onResend,
 }: {
   task: KitchenTask;
+  workflowProfile: ProductionDepartment['workflowProfile'];
   onUpdateStatus: (id: string, status: string) => void;
   onResend: (id: string) => void;
 }) {
-  const zone = task.prepZone;
   const status = task.status as TaskStatus;
   const isCancelled = status === 'cancelled';
 
@@ -122,7 +122,7 @@ function ZoneActions({
   if (isCancelled) return null;
 
   // ── PIZZA ──────────────────────────────────────────────────────────────────
-  if (zone === 'pizza') {
+  if (workflowProfile === 'pizza') {
     if (status === 'new')       return <>{btn('Preparar', 'preparing', 'bg-[#f59e0b] hover:bg-[#d97706] text-[#451a03]')}</>;
     if (status === 'preparing') return <>{btn('Poner en horno', 'in_oven', 'bg-[#ef4444] hover:bg-[#dc2626] text-white')}</>;
     if (status === 'in_oven')   return <>{btn('Sacar del horno', 'ready', 'bg-[#f97316] hover:bg-[#ea580c] text-white')}</>;
@@ -135,7 +135,7 @@ function ZoneActions({
   }
 
   // ── BARRA ──────────────────────────────────────────────────────────────────
-  if (zone === 'barra') {
+  if (workflowProfile === 'bar') {
     if (status === 'new')       return <>{btn('Preparando', 'preparing', 'bg-[#f59e0b] hover:bg-[#d97706] text-[#451a03]')}</>;
     if (status === 'preparing') return <>{btn('Listo', 'ready', 'bg-[#3b82f6] hover:bg-[#2563eb] text-[#1e3a8a]')}</>;
     if (status === 'ready')     return <>{btn('Entregado', 'collected', 'bg-[#22c55e] hover:bg-[#16a34a] text-[#14532d]')}</>;
@@ -158,7 +158,18 @@ function ZoneActions({
 export default function KdsPage() {
   const params = useParams();
   const rawZone = params.zone || 'cocina';
-  const zone: KdsZone = (ZONES as readonly string[]).includes(rawZone) ? (rawZone as KdsZone) : 'cocina';
+  const { data: departments = [] } = useQuery<ProductionDepartment[]>({
+    queryKey: ['/api/production-departments'],
+    queryFn: () => api.get('/api/production-departments'),
+    staleTime: 60_000,
+  });
+  const navDepartments = departments.filter((department) => department.showInKdsNav);
+  const currentDepartment = departments.find((department) => department.code === rawZone)
+    ?? navDepartments[0];
+  const zone = currentDepartment?.code ?? rawZone;
+  const departmentByCode = new Map(
+    departments.map((department) => [department.code, department]),
+  );
   const queryClient = useQueryClient();
   const [updatedBy, setUpdatedBy] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
@@ -168,6 +179,7 @@ export default function KdsPage() {
   const hasConnectedRef = useRef(false);
   const prevTaskIdsRef = useRef<Set<string>>(new Set());
   const [flashingIds, setFlashingIds] = useState<Set<string>>(new Set());
+  const [resendTaskId, setResendTaskId] = useState<string | null>(null);
 
   const { data: rawTasks, isLoading } = useGetKdsTasks(zone as any, {
     query: {
@@ -259,7 +271,6 @@ export default function KdsPage() {
 
   const updateStatus = useUpdateKitchenTaskStatus();
   const markPase    = useMarkOrderPase();
-  const resend      = useResendKitchenTask();
 
   const handleUpdateStatus = (taskId: string, status: TaskStatus) => {
     updateStatus.mutate(
@@ -283,13 +294,10 @@ export default function KdsPage() {
   };
 
   const handleResend = (taskId: string) => {
-    resend.mutate(
-      { taskId },
-      { onSuccess: () => queryClient.invalidateQueries({ queryKey: getGetKdsTasksQueryKey(zone as any) }) },
-    );
+    setResendTaskId(taskId);
   };
 
-  const isPase = zone === 'pase';
+  const isPase = currentDepartment?.isPaseAggregator === true;
 
   return (
     <div className="min-h-[100dvh] bg-background flex flex-col text-foreground overflow-hidden">
@@ -297,18 +305,18 @@ export default function KdsPage() {
         <div className="h-16 flex items-center justify-between px-6">
           <div className="flex items-center gap-6">
             <h1 className="text-3xl font-black uppercase tracking-widest text-primary drop-shadow-sm">
-              {ZONE_LABELS[zone] ?? zone}
+              {currentDepartment?.name ?? zone}
             </h1>
             <div className="w-1 h-8 bg-border rounded-full hidden sm:block" />
             <nav className="hidden sm:flex gap-2">
-              {ZONES.map(z => (
-                <Link key={z} href={`/kds/${z}`}
+              {navDepartments.map(department => (
+                <Link key={department.code} href={`/kds/${department.code}`}
                   className={`px-4 py-2 rounded-lg text-sm font-black uppercase tracking-wider transition-all ${
-                    zone === z
+                    zone === department.code
                       ? 'bg-primary text-primary-foreground shadow-md scale-105'
                       : 'bg-secondary text-muted-foreground hover:bg-secondary/80 hover:text-foreground'
                   }`}>
-                  {ZONE_LABELS[z]}
+                  {department.name}
                 </Link>
               ))}
             </nav>
@@ -340,12 +348,12 @@ export default function KdsPage() {
       )}
 
       <nav className="sm:hidden flex gap-1 p-2 bg-card border-b border-border overflow-x-auto hide-scrollbar shrink-0">
-        {ZONES.map(z => (
-          <Link key={z} href={`/kds/${z}`}
+        {navDepartments.map(department => (
+          <Link key={department.code} href={`/kds/${department.code}`}
             className={`px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wider whitespace-nowrap transition-all ${
-              zone === z ? 'bg-primary text-primary-foreground shadow-md' : 'bg-secondary text-muted-foreground hover:bg-secondary/80'
+              zone === department.code ? 'bg-primary text-primary-foreground shadow-md' : 'bg-secondary text-muted-foreground hover:bg-secondary/80'
             }`}>
-            {ZONE_LABELS[z]}
+            {department.name}
           </Link>
         ))}
       </nav>
@@ -366,9 +374,21 @@ export default function KdsPage() {
               </div>
             </div>
           ) : isPase ? (
-            <PaseView tasks={tasks} onAction={handlePaseAction} />
+            <PaseView
+              tasks={tasks}
+              onAction={handlePaseAction}
+              departmentLabels={Object.fromEntries(
+                departments.map((department) => [department.code, department.name]),
+              )}
+            />
           ) : (
-            <ZoneTasksView tasks={tasks} onUpdateStatus={handleUpdateStatus} onResend={handleResend} flashingIds={flashingIds} />
+            <ZoneTasksView
+              tasks={tasks}
+              onUpdateStatus={handleUpdateStatus}
+              onResend={handleResend}
+              flashingIds={flashingIds}
+              departmentByCode={departmentByCode}
+            />
           )}
         </main>
 
@@ -378,6 +398,105 @@ export default function KdsPage() {
           </aside>
         )}
       </div>
+      {resendTaskId && (
+        <RedispatchModal
+          taskId={resendTaskId}
+          onClose={() => setResendTaskId(null)}
+          onDone={() => {
+            setResendTaskId(null);
+            void queryClient.invalidateQueries({ queryKey: getGetKdsTasksQueryKey(zone as any) });
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function RedispatchModal({
+  taskId,
+  onClose,
+  onDone,
+}: {
+  taskId: string;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const role = (() => {
+    try { return JSON.parse(localStorage.getItem('employee') ?? '{}').role as string; }
+    catch { return ''; }
+  })();
+  const canPrint = ['admin', 'manager', 'encargado'].includes(role);
+  const { data: printers = [] } = useQuery<Array<{ id: string; name: string; active: boolean }>>({
+    queryKey: ['/api/production/printers'],
+    queryFn: () => api.get('/api/production/printers'),
+  });
+  const [sendKds, setSendKds] = useState(true);
+  const [sendPrinter, setSendPrinter] = useState(false);
+  const [printerId, setPrinterId] = useState('');
+  const [reason, setReason] = useState('');
+  const [saving, setSaving] = useState(false);
+  const redispatchKey = useRef(crypto.randomUUID());
+
+  async function submit() {
+    if (!sendKds && !sendPrinter) return;
+    setSaving(true);
+    try {
+      await api.post('/api/production/redispatch', {
+        sourceType: 'kitchen_task',
+        sourceId: taskId,
+        targets: [
+          ...(sendKds ? ['kds'] : []),
+          ...(sendPrinter ? ['printer'] : []),
+        ],
+        printerId: sendPrinter ? printerId || undefined : undefined,
+        reason: reason.trim() || undefined,
+      }, {
+        headers: { 'Idempotency-Key': redispatchKey.current },
+      });
+      toast.success(sendPrinter ? 'REENVIADO a KDS/impresión' : 'REENVIADO a KDS');
+      onDone();
+    } catch (error: any) {
+      toast.error(error?.error ?? 'No se pudo reenviar');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="w-full max-w-md rounded-2xl bg-card border border-border p-5 space-y-4" onClick={e => e.stopPropagation()}>
+        <h2 className="font-black text-lg">Reenviar tarea</h2>
+        <label className="flex items-center gap-2 text-sm font-bold">
+          <input type="checkbox" checked={sendKds} onChange={e => setSendKds(e.target.checked)} />
+          KDS
+        </label>
+        {canPrint && (
+          <label className="flex items-center gap-2 text-sm font-bold">
+            <input type="checkbox" checked={sendPrinter} onChange={e => setSendPrinter(e.target.checked)} />
+            Impresora
+          </label>
+        )}
+        {sendPrinter && (
+          <select value={printerId} onChange={e => setPrinterId(e.target.value)}
+            className="w-full px-3 py-2 rounded-lg bg-secondary border border-border">
+            <option value="">Impresora del departamento</option>
+            {printers.filter(printer => printer.active).map(printer => (
+              <option key={printer.id} value={printer.id}>{printer.name}</option>
+            ))}
+          </select>
+        )}
+        <input value={reason} onChange={e => setReason(e.target.value)}
+          placeholder="Motivo (opcional)"
+          className="w-full px-3 py-2 rounded-lg bg-secondary border border-border" />
+        <p className="text-xs text-amber-400">La copia impresa quedará marcada como REENVIADO.</p>
+        <div className="flex gap-2">
+          <button onClick={onClose} className="flex-1 py-2 border border-border rounded-lg">Cancelar</button>
+          <button onClick={submit} disabled={saving || (!sendKds && !sendPrinter)}
+            className="flex-1 py-2 bg-primary text-primary-foreground rounded-lg font-black disabled:opacity-50">
+            {saving ? 'Enviando…' : 'Reenviar'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -385,17 +504,25 @@ export default function KdsPage() {
 // ─── Zone tasks view ──────────────────────────────────────────────────────────
 
 function ZoneTasksView({
-  tasks, onUpdateStatus, onResend, flashingIds,
+  tasks, onUpdateStatus, onResend, flashingIds, departmentByCode,
 }: {
   tasks: KitchenTask[];
   onUpdateStatus: (id: string, status: string) => void;
   onResend: (id: string) => void;
   flashingIds: Set<string>;
+  departmentByCode: Map<string, ProductionDepartment>;
 }) {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-5 items-start">
       {tasks.map(task => (
-        <TaskCard key={task.id} task={task} onUpdateStatus={onUpdateStatus} onResend={onResend} isFlashing={flashingIds.has(task.id)} />
+        <TaskCard
+          key={task.id}
+          task={task}
+          onUpdateStatus={onUpdateStatus}
+          onResend={onResend}
+          isFlashing={flashingIds.has(task.id)}
+          workflowProfile={departmentByCode.get(task.prepZone)?.workflowProfile ?? 'standard'}
+        />
       ))}
     </div>
   );
@@ -403,12 +530,13 @@ function ZoneTasksView({
 
 
 function TaskCard({
-  task, onUpdateStatus, onResend, isFlashing = false,
+  task, onUpdateStatus, onResend, isFlashing = false, workflowProfile,
 }: {
   task: KitchenTask;
   onUpdateStatus: (id: string, status: string) => void;
   onResend: (id: string) => void;
   isFlashing?: boolean;
+  workflowProfile: ProductionDepartment['workflowProfile'];
 }) {
   const status = task.status as TaskStatus;
   const isNew       = status === 'new';
@@ -555,6 +683,9 @@ function TaskCard({
       )}
 
       <div className={`p-5 flex-1 flex flex-col gap-3 ${isReady && !isCancelled ? 'bg-[#22c55e]/5' : ''}`}>
+        {(task as KitchenTask & { resentAt?: string | null }).resentAt && (
+          <div className="text-xs font-black text-amber-400 tracking-widest">REENVIADO</div>
+        )}
         <div className="flex items-start gap-4">
           <div className={`font-black text-3xl h-14 w-14 flex items-center justify-center rounded-xl shrink-0 shadow-inner ${qtyBg} ${isCancelled ? 'line-through' : ''}`}>
             {task.quantity}
@@ -571,7 +702,12 @@ function TaskCard({
       </div>
 
       <div className="p-3 bg-background border-t-2 border-border/50 flex flex-col gap-2">
-        <ZoneActions task={task} onUpdateStatus={onUpdateStatus} onResend={onResend} />
+        <ZoneActions
+          task={task}
+          workflowProfile={workflowProfile}
+          onUpdateStatus={onUpdateStatus}
+          onResend={onResend}
+        />
         <button onClick={() => onResend(task.id)}
           className="w-full py-2.5 flex items-center justify-center gap-2 bg-secondary hover:bg-secondary/80 text-muted-foreground hover:text-foreground font-bold text-sm uppercase tracking-wider rounded-xl transition-all active:scale-95 border border-border">
           <RefreshCw size={14} /> Reenviar
@@ -591,11 +727,15 @@ const ZONE_DOT_COLORS: Record<string, string> = {
   cancelled: 'bg-red-600 opacity-40',
 };
 
-const ZONE_LABELS_PASE: Record<string, string> = {
-  cocina: 'Cocina', pizza: 'Pizza', ensalada: 'Ensaladas', barra: 'Barra', sin_partida: 'Libre',
-};
-
-function PaseView({ tasks, onAction }: { tasks: KitchenTask[]; onAction: (orderId: string, action: string) => void }) {
+function PaseView({
+  tasks,
+  onAction,
+  departmentLabels,
+}: {
+  tasks: KitchenTask[];
+  onAction: (orderId: string, action: string) => void;
+  departmentLabels: Record<string, string>;
+}) {
   const [reclamacion, setReclamacion] = useState<string | null>(null);
 
   // Group tasks by orderId
@@ -693,7 +833,7 @@ function PaseView({ tasks, onAction }: { tasks: KitchenTask[]; onAction: (orderI
                   <div className="flex items-center gap-2 mb-1">
                     <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${ZONE_DOT_COLORS[zoneStatus]}`} />
                     <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
-                      {ZONE_LABELS_PASE[zone] ?? zone}
+                      {departmentLabels[zone] ?? zone}
                     </span>
                     {zoneReady && <span className="text-[9px] text-green-400 font-black ml-auto">LISTO</span>}
                   </div>

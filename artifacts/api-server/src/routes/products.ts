@@ -14,6 +14,10 @@ import { logDocumentAction } from "../lib/document-audit";
 import { isValidTaxRate } from "../lib/tax";
 import multer from "multer";
 import ExcelJS from "exceljs";
+import {
+  loadDepartmentByCode,
+  loadProductionDepartments,
+} from "../lib/production-departments";
 
 const router: IRouter = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
@@ -248,6 +252,11 @@ router.post("/admin/products", requireAuth, requireRole("admin"), async (req, re
   if (!categoryId || !name?.trim() || price == null) {
     res.status(400).json({ error: "categoryId, name y price son obligatorios" }); return;
   }
+  const department = await loadDepartmentByCode(prepZone);
+  if (!department?.assignableToProducts) {
+    res.status(400).json({ error: "Departamento de preparación no válido" });
+    return;
+  }
   if (!isValidTaxRate(taxRate)) { res.status(400).json({ error: "taxRate debe ser 4, 10 o 21" }); return; }
 
   const [product] = await db
@@ -292,6 +301,13 @@ router.patch("/admin/products/:productId", requireAuth, requireRole("admin"), as
 
   if (taxRate != null && !isValidTaxRate(taxRate as number)) {
     res.status(400).json({ error: "taxRate debe ser 4, 10 o 21" }); return;
+  }
+  if (prepZone != null) {
+    const department = await loadDepartmentByCode(String(prepZone));
+    if (!department?.assignableToProducts) {
+      res.status(400).json({ error: "Departamento de preparación no válido" });
+      return;
+    }
   }
 
   const updates: Record<string, unknown> = {};
@@ -500,13 +516,18 @@ router.post("/admin/products/import", requireAuth, requireRole("admin"), upload.
   }
 
   // Load existing categories & products for dedup/lookup
-  const [existingCats, existingProducts] = await Promise.all([
+  const [existingCats, existingProducts, departments] = await Promise.all([
     db.select({ id: categoriesTable.id, name: categoriesTable.name }).from(categoriesTable),
     db.select({ id: productsTable.id, internalCode: productsTable.internalCode }).from(productsTable).where(eq(productsTable.active, true)),
+    loadProductionDepartments(),
   ]);
 
   const catByName = new Map(existingCats.map((c) => [c.name.toLowerCase(), c]));
   const existingCodes = new Set(existingProducts.map((p) => p.internalCode).filter(Boolean) as string[]);
+  const assignableDepartments = new Set(
+    departments.filter((department) => department.assignableToProducts)
+      .map((department) => department.code),
+  );
 
   const user = (req as any).user;
   let imported = 0;
@@ -547,6 +568,11 @@ router.post("/admin/products/import", requireAuth, requireRole("admin"), upload.
     const taxRate = [4, 10, 21].includes(taxRaw) ? taxRaw : 10;
     const allergens = row["alergenos"] || "";
     const prepZone = row["zona_prep"] || "cocina";
+    if (!assignableDepartments.has(prepZone)) {
+      errors.push(`Fila ${rowNum}: departamento "${prepZone}" no válido`);
+      skipped++;
+      continue;
+    }
 
     const [product] = await db
       .insert(productsTable)

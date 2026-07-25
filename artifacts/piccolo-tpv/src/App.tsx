@@ -97,6 +97,7 @@ import Informes from './pages/informes';
 import AdminImpresoras from './pages/admin-impresoras';
 import AdminColaImpresion from './pages/admin-cola-impresion';
 import AdminKdsStations from './pages/admin-kds-stations';
+import AdminProduccion from './pages/admin-produccion';
 import AdminPrintTest from './pages/admin-print-test';
 import AdminMermas from './pages/admin-mermas';
 import AdminCategoriasIngredientes from './pages/admin-categorias-ingredientes';
@@ -467,6 +468,9 @@ function Router() {
       </Route>
       <Route path="/admin/impresoras">
         <RequireRole roles={ROLES_MANAGER_UP}><AdminImpresoras /></RequireRole>
+      </Route>
+      <Route path="/admin/produccion">
+        <RequireRole roles={ROLES_MANAGER_UP}><AdminProduccion /></RequireRole>
       </Route>
       <Route path="/admin/cola-impresion">
         <RequireRole roles={ROLES_MANAGER_UP}><AdminColaImpresion /></RequireRole>

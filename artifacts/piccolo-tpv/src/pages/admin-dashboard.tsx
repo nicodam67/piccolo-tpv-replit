@@ -204,6 +204,7 @@ const SEARCH_INDEX: SearchItem[] = [
   { title: 'Permisos por rol', path: 'Administración › Auditoría',   href: '/admin/permisos',   keywords: 'permisos rol acceso empleados matriz granular' },
   // Hardware e Instalación
   { title: 'Impresoras',       path: 'Hardware e Instalación › Impresión', href: '/admin/impresoras',      keywords: 'impresoras configurar enrutamiento plantilla ticket' },
+  { title: 'Producción KDS + impresión', path: 'Hardware e Instalación › Producción', href: '/admin/produccion', keywords: 'departamentos kds impresoras routing cola reimpresion' },
   { title: 'Cola de impresión', path: 'Hardware e Instalación › Impresión', href: '/admin/cola-impresion', keywords: 'cola impresion pendientes errores reimpresion' },
   { title: 'Prueba de impresión', path: 'Hardware e Instalación › Impresión', href: '/admin/prueba-impresion', keywords: 'prueba impresion test asistente verificar' },
   { title: 'Estaciones KDS',   path: 'Hardware e Instalación › Pantallas KDS', href: '/admin/kds-stations', keywords: 'kds estaciones pantallas ips ping produccion' },

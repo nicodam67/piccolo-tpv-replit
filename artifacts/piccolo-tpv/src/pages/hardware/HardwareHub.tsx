@@ -21,6 +21,7 @@ const SECTIONS: {
     color: '#06b6d4',
     bg: 'rgba(6,182,212,0.12)',
     items: [
+      { icon: <Monitor size={20} />,      title: 'Producción unificada', desc: 'Departamentos, KDS, impresoras, routing y cola', href: '/admin/produccion' },
       { icon: <PrinterIcon size={20} />, title: 'Impresoras',          desc: 'Configurar, enrutamiento y plantillas',              href: '/admin/impresoras' },
       { icon: <ListOrdered size={20} />, title: 'Cola de impresión',   desc: 'Pendientes, errores y reimpresiones',                href: '/admin/cola-impresion' },
       { icon: <Zap size={20} />,         title: 'Prueba de impresión', desc: 'Asistente de 10 pasos para verificar cada zona',    href: '/admin/prueba-impresion' },
