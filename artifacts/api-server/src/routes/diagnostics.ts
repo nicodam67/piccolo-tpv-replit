@@ -78,7 +78,7 @@ router.get("/diagnostics/status", ...guard, async (_req, res) => {
 
     const fifteenMinAgo = new Date(now.getTime() - 15 * 60000);
     const down = printers.filter(
-      (p) => p.lastStatus !== "ok" || !p.lastStatusAt || new Date(p.lastStatusAt) < fifteenMinAgo
+      (p) => p.lastStatus !== "online" || !p.lastStatusAt || new Date(p.lastStatusAt) < fifteenMinAgo
     );
     status["printers"] = {
       ok: down.length === 0,

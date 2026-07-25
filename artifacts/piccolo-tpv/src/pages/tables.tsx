@@ -11,6 +11,15 @@ import {
   useOpenTable,
   useUpdateZone,
   useGetEmployeeLoginList,
+  getGetZoneTablesQueryKey,
+  getGetDashboardSummaryQueryKey,
+  getGetAllTablesQueryKey,
+  getGetCanvasElementsQueryKey,
+  getGetZonesQueryKey,
+  type Table,
+  type CanvasElement,
+} from "@workspace/api-client-react";
+import {
   useGetOccupationSummary,
   useGetAlertConfig,
   useGetTableHistory,
@@ -20,18 +29,11 @@ import {
   useMergeTables,
   useSeparateTable,
   useTransferWaiter,
-  getGetZoneTablesQueryKey,
-  getGetDashboardSummaryQueryKey,
-  getGetAllTablesQueryKey,
-  getGetCanvasElementsQueryKey,
-  getGetZonesQueryKey,
   getGetOccupationSummaryQueryKey,
   getGetAlertConfigQueryKey,
-  type Table,
-  type CanvasElement,
   type TableEvent,
   type AlertConfig,
-} from "@workspace/api-client-react";
+} from "@workspace/api-client-react/phase1";
 import {
   LogOut, Loader2, Monitor, Settings, ZoomIn, ZoomOut, Maximize2, Package,
   CheckCircle2, CalendarClock, Users, ChefHat, FileText, CreditCard,

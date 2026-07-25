@@ -13,14 +13,21 @@ import {
   businessConfigTable,
   printTestResultsTable,
   categoriesTable,
+  kitchenTasksTable,
+  ordersTable,
+  productionDepartmentsTable,
 } from "@workspace/db";
-import { eq, and, desc, inArray } from "drizzle-orm";
+import { eq, and, desc, inArray, sql } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
+import { idempotency } from "../middlewares/idempotency";
 import {
   buildTestTicket,
+  buildCertificationTestTicket,
+  type PrintCertificationProfile,
   buildReprintHeader,
 } from "../lib/ticket-builder";
-import { getPrinterStatus } from "../lib/print-connector-sim";
+import { getPrinterStatus } from "../lib/print-connector";
+import { emitToFunction } from "../lib/socket-events";
 
 const router: IRouter = Router();
 
@@ -51,9 +58,29 @@ router.get("/admin/printers", requireAuth, requireRole("manager", "admin"), asyn
   res.json(printers);
 });
 
+router.get(
+  "/production/printers",
+  requireAuth,
+  requireRole("admin", "manager", "encargado", "waiter", "kitchen"),
+  async (_req, res): Promise<void> => {
+    const printers = await db.select({
+      id: printersTable.id,
+      name: printersTable.name,
+      active: printersTable.active,
+      lastStatus: printersTable.lastStatus,
+    }).from(printersTable).where(eq(printersTable.active, true))
+      .orderBy(printersTable.name);
+    res.json(printers);
+  },
+);
+
 // ── POST /admin/printers ──────────────────────────────────────────────────────
 router.post("/admin/printers", requireAuth, requireRole("manager", "admin"), async (req, res): Promise<void> => {
-  const { name, type, brand, model, ip, port, paperWidth, copies, active, isPrimary, fallbackPrinterId } =
+  const {
+    name, type, brand, model, ip, port, paperWidth, copies, active, isPrimary,
+    fallbackPrinterId, connectorMode, codePage, cutEnabled, drawerEnabled,
+    connectTimeoutMs, writeTimeoutMs,
+  } =
     req.body as Partial<typeof printersTable.$inferInsert>;
 
   if (!name?.trim()) { res.status(400).json({ error: "El nombre es obligatorio." }); return; }
@@ -70,6 +97,12 @@ router.post("/admin/printers", requireAuth, requireRole("manager", "admin"), asy
     active: active ?? true,
     isPrimary: isPrimary ?? true,
     fallbackPrinterId: fallbackPrinterId ?? null,
+    connectorMode: connectorMode ?? "simulator",
+    codePage: codePage ?? "cp858",
+    cutEnabled: cutEnabled ?? true,
+    drawerEnabled: drawerEnabled ?? false,
+    connectTimeoutMs: connectTimeoutMs ?? 5000,
+    writeTimeoutMs: writeTimeoutMs ?? 10000,
   }).returning();
 
   await auditPrint(null, "printer_created", req.user?.id, req.user?.name ?? "admin", { printerName: printer.name });
@@ -79,7 +112,11 @@ router.post("/admin/printers", requireAuth, requireRole("manager", "admin"), asy
 // ── PATCH /admin/printers/:id ─────────────────────────────────────────────────
 router.patch("/admin/printers/:id", requireAuth, requireRole("manager", "admin"), async (req, res): Promise<void> => {
   const id = req.params.id as string;
-  const { name, type, brand, model, ip, port, paperWidth, copies, active, isPrimary, fallbackPrinterId } =
+  const {
+    name, type, brand, model, ip, port, paperWidth, copies, active, isPrimary,
+    fallbackPrinterId, connectorMode, codePage, cutEnabled, drawerEnabled,
+    connectTimeoutMs, writeTimeoutMs,
+  } =
     req.body as Partial<typeof printersTable.$inferInsert>;
 
   const [printer] = await db
@@ -96,6 +133,12 @@ router.patch("/admin/printers/:id", requireAuth, requireRole("manager", "admin")
       ...(active !== undefined && { active }),
       ...(isPrimary !== undefined && { isPrimary }),
       ...(fallbackPrinterId !== undefined && { fallbackPrinterId }),
+      ...(connectorMode !== undefined && { connectorMode }),
+      ...(codePage !== undefined && { codePage }),
+      ...(cutEnabled !== undefined && { cutEnabled }),
+      ...(drawerEnabled !== undefined && { drawerEnabled }),
+      ...(connectTimeoutMs !== undefined && { connectTimeoutMs }),
+      ...(writeTimeoutMs !== undefined && { writeTimeoutMs }),
       updatedAt: new Date(),
     })
     .where(eq(printersTable.id, id))
@@ -122,12 +165,24 @@ router.delete("/admin/printers/:id", requireAuth, requireRole("manager", "admin"
 });
 
 // ── POST /admin/printers/:id/test ─────────────────────────────────────────────
-router.post("/admin/printers/:id/test", requireAuth, requireRole("manager", "admin"), async (req, res): Promise<void> => {
+router.post(
+  "/admin/printers/:id/test",
+  requireAuth,
+  requireRole("manager", "admin"),
+  idempotency,
+  async (req, res): Promise<void> => {
   const id = req.params.id as string;
   const [printer] = await db.select().from(printersTable).where(eq(printersTable.id, id));
   if (!printer) { res.status(404).json({ error: "Impresora no encontrada." }); return; }
 
-  const content = buildTestTicket(printer.name, printer.type, printer.paperWidth === 80);
+  const profile = (req.body?.profile ?? "standard") as PrintCertificationProfile;
+  if (!["standard", "charset", "long", "drawer"].includes(profile)) {
+    res.status(400).json({ error: "Perfil de certificación no válido" });
+    return;
+  }
+  const content = profile === "standard"
+    ? buildTestTicket(printer.name, printer.type, printer.paperWidth === 80)
+    : buildCertificationTestTicket(profile, printer.name, printer.type, printer.paperWidth === 80);
   const [job] = await db.insert(printQueueTable).values({
     printerId: printer.id,
     orderId: null,
@@ -136,11 +191,22 @@ router.post("/admin/printers/:id/test", requireAuth, requireRole("manager", "adm
     status: "pending",
     actorId: req.user?.id ?? null,
     actorName: req.user?.name ?? "admin",
+    priority: 20,
+    meta: {
+      certificationProfile: profile,
+      openDrawer: profile === "drawer",
+      physicalStatus: "PENDING_PHYSICAL_CERTIFICATION",
+    },
   }).returning();
 
-  await auditPrint(job.id, "test", req.user?.id, req.user?.name ?? "admin", { printerName: printer.name });
-  res.json({ ok: true, jobId: job.id });
-});
+  await auditPrint(job.id, "test", req.user?.id, req.user?.name ?? "admin", {
+    printerName: printer.name,
+    profile,
+    physicalStatus: "PENDING_PHYSICAL_CERTIFICATION",
+  });
+  res.json({ ok: true, jobId: job.id, profile, physicalStatus: "PENDING_PHYSICAL_CERTIFICATION" });
+  },
+);
 
 // ── GET /admin/printers/:id/status ────────────────────────────────────────────
 router.get("/admin/printers/:id/status", requireAuth, requireRole("manager", "admin"), async (req, res): Promise<void> => {
@@ -148,7 +214,13 @@ router.get("/admin/printers/:id/status", requireAuth, requireRole("manager", "ad
   const [printer] = await db.select().from(printersTable).where(eq(printersTable.id, id));
   if (!printer) { res.status(404).json({ error: "Impresora no encontrada." }); return; }
 
-  const statusResult = await getPrinterStatus(id);
+  const statusResult = await getPrinterStatus({
+    printerId: printer.id,
+    printerIp: printer.ip,
+    printerPort: printer.port,
+    connectorMode: printer.connectorMode,
+    connectTimeoutMs: printer.connectTimeoutMs,
+  });
 
   // Persist last status
   await db.update(printersTable).set({
@@ -245,7 +317,17 @@ router.post("/admin/print-queue/:id/retry", requireAuth, requireRole("manager", 
 
   const [updated] = await db
     .update(printQueueTable)
-    .set({ status: "pending", attempts: 0, lastError: null })
+    .set({
+      status: "pending",
+      attempts: 0,
+      lastError: null,
+      nextAttemptAt: null,
+      leaseExpiresAt: null,
+      meta: {
+        ...((job.meta ?? {}) as Record<string, unknown>),
+        autoRecoveryCount: 0,
+      },
+    })
     .where(eq(printQueueTable.id, id))
     .returning();
 
@@ -273,31 +355,245 @@ router.delete("/admin/print-queue/:id", requireAuth, requireRole("manager", "adm
 });
 
 // ── POST /admin/print-queue/:id/reprint ──────────────────────────────────────
-router.post("/admin/print-queue/:id/reprint", requireAuth, requireRole("manager", "admin"), async (req, res): Promise<void> => {
+router.post(
+  "/admin/print-queue/:id/reprint",
+  requireAuth,
+  requireRole("manager", "admin"),
+  idempotency,
+  async (req, res): Promise<void> => {
   const id = req.params.id as string;
-  const { reason } = req.body as { reason?: string };
-  if (!reason?.trim()) { res.status(400).json({ error: "El motivo de reimpresión es obligatorio." }); return; }
+  const { reason, printerId } = req.body as { reason?: string; printerId?: string };
 
   const [original] = await db.select().from(printQueueTable).where(eq(printQueueTable.id, id));
   if (!original) { res.status(404).json({ error: "Trabajo no encontrado." }); return; }
+  const targetPrinterId = printerId ?? original.printerId;
+  const [targetPrinter] = await db.select().from(printersTable)
+    .where(eq(printersTable.id, targetPrinterId));
+  if (!targetPrinter?.active) { res.status(400).json({ error: "Impresora de destino no válida." }); return; }
 
-  const reprintHeader = buildReprintHeader(reason.trim(), req.user?.name ?? "admin", true);
+  const normalizedReason = reason?.trim() ?? "";
+  const reprintHeader = buildReprintHeader(
+    normalizedReason || "Reimpresión manual",
+    req.user?.name ?? "admin",
+    true,
+  );
   const [newJob] = await db.insert(printQueueTable).values({
-    printerId: original.printerId,
+    printerId: targetPrinterId,
     orderId: original.orderId,
     documentType: "reprint",
     content: reprintHeader + original.content,
     status: "pending",
     actorId: req.user?.id ?? null,
     actorName: req.user?.name ?? "admin",
-    meta: { originalJobId: id, reason: reason.trim() },
+    priority: 10,
+    meta: {
+      originalJobId: id,
+      reason: normalizedReason || null,
+      destinationPrinterId: targetPrinterId,
+      destinationPrinterName: targetPrinter.name,
+    },
   }).returning();
 
   await auditPrint(newJob.id, "reprinted", req.user?.id, req.user?.name ?? "admin", {
-    originalJobId: id, reason: reason.trim(),
+    originalJobId: id,
+    reason: normalizedReason || null,
+    destinationPrinterId: targetPrinterId,
+    destinationPrinterName: targetPrinter.name,
   });
   res.status(201).json(newJob);
-});
+  },
+);
+
+// ── POST /production/redispatch ───────────────────────────────────────────────
+router.post(
+  "/production/redispatch",
+  requireAuth,
+  requireRole("admin", "manager", "encargado", "waiter", "kitchen"),
+  idempotency,
+  async (req, res): Promise<void> => {
+    const {
+      sourceType,
+      sourceId,
+      targets,
+      printerId,
+      reason,
+    } = req.body as {
+      sourceType?: "kitchen_task" | "print_job";
+      sourceId?: string;
+      targets?: Array<"kds" | "printer">;
+      printerId?: string;
+      reason?: string;
+    };
+    const normalizedTargets = [...new Set(targets ?? [])];
+    if (!sourceId || !["kitchen_task", "print_job"].includes(sourceType ?? "")
+      || normalizedTargets.length === 0
+      || normalizedTargets.some((target) => !["kds", "printer"].includes(target))) {
+      res.status(400).json({ error: "Origen y destinos válidos son obligatorios" });
+      return;
+    }
+    if (sourceType === "print_job" && normalizedTargets.includes("kds")) {
+      res.status(400).json({ error: "Para reenviar a KDS selecciona una tarea de cocina" });
+      return;
+    }
+    const role = req.user?.role ?? "";
+    if (sourceType === "print_job" && !["manager", "admin"].includes(role)) {
+      res.status(403).json({ error: "La reimpresión de trabajos requiere manager o admin" });
+      return;
+    }
+    if (normalizedTargets.includes("printer")
+      && !["encargado", "manager", "admin"].includes(role)) {
+      res.status(403).json({ error: "El reenvío a impresora requiere encargado, manager o admin" });
+      return;
+    }
+
+    const now = new Date();
+    const actorId = req.user?.id ?? null;
+    const actorName = req.user?.name ?? "admin";
+    const normalizedReason = reason?.trim() ?? "";
+
+    const result = await db.transaction(async (tx) => {
+      let taskResult: typeof kitchenTasksTable.$inferSelect | null = null;
+      let jobResult: typeof printQueueTable.$inferSelect | null = null;
+      let destination: Record<string, unknown> = {};
+      let orderId: string | null = null;
+
+      if (sourceType === "kitchen_task") {
+        const [task] = await tx.select().from(kitchenTasksTable)
+          .where(eq(kitchenTasksTable.id, sourceId))
+          .limit(1);
+        if (!task) return { error: "SOURCE_NOT_FOUND" as const };
+        orderId = task.orderId;
+        const [order] = await tx.select({ status: ordersTable.status }).from(ordersTable)
+          .where(eq(ordersTable.id, task.orderId));
+        if (!order || ["paid", "completed", "bill_requested"].includes(order.status)) {
+          return { error: "ORDER_CLOSED" as const };
+        }
+        let printerForTask: typeof printersTable.$inferSelect | null = null;
+        if (normalizedTargets.includes("printer")) {
+          let targetPrinterId = printerId;
+          if (!targetPrinterId) {
+            const [department] = await tx.select().from(productionDepartmentsTable)
+              .where(eq(productionDepartmentsTable.code, task.prepZone));
+            targetPrinterId = department?.printerIds?.[0];
+          }
+          if (!targetPrinterId) return { error: "PRINTER_REQUIRED" as const };
+          [printerForTask] = await tx.select().from(printersTable)
+            .where(eq(printersTable.id, targetPrinterId));
+          if (!printerForTask?.active) return { error: "PRINTER_INVALID" as const };
+        }
+
+        if (normalizedTargets.includes("kds")) {
+          [taskResult] = await tx.update(kitchenTasksTable).set({
+            status: "new",
+            updatedAt: now,
+            createdAt: now,
+            readyAt: null,
+            collectedAt: null,
+            servedAt: null,
+            cancelledAt: null,
+            resentAt: now,
+            resentBy: actorId,
+            resentReason: normalizedReason || null,
+            resendCount: sql`${kitchenTasksTable.resendCount} + 1`,
+          }).where(eq(kitchenTasksTable.id, task.id)).returning();
+          destination.kdsDepartment = task.prepZone;
+        }
+
+        if (printerForTask) {
+          const mark = [
+            "*** REENVIADO ***",
+            `Usuario: ${actorName}`,
+            `Fecha: ${now.toISOString()}`,
+            ...(normalizedReason ? [`Motivo: ${normalizedReason}`] : []),
+            "",
+          ].join("\n");
+          [jobResult] = await tx.insert(printQueueTable).values({
+            printerId: printerForTask.id,
+            orderId: task.orderId,
+            documentType: "reprint",
+            content: `${mark}\n${task.quantity} x ${task.productName}\n${task.notes}`,
+            status: "pending",
+            priority: 10,
+            actorId,
+            actorName,
+            meta: {
+              sourceType,
+              sourceId,
+              mark: "REENVIADO",
+              reason: normalizedReason || null,
+              destinationPrinterId: printerForTask.id,
+              destinationPrinterName: printerForTask.name,
+            },
+          }).returning();
+          destination.printerId = printerForTask.id;
+          destination.printerName = printerForTask.name;
+        }
+      } else {
+        const [original] = await tx.select().from(printQueueTable)
+          .where(eq(printQueueTable.id, sourceId))
+          .limit(1);
+        if (!original) return { error: "SOURCE_NOT_FOUND" as const };
+        orderId = original.orderId;
+        const targetPrinterId = printerId ?? original.printerId;
+        const [printer] = await tx.select().from(printersTable)
+          .where(eq(printersTable.id, targetPrinterId));
+        if (!printer?.active) return { error: "PRINTER_INVALID" as const };
+        const reprintHeader = buildReprintHeader(
+          normalizedReason || "Reimpresión manual",
+          actorName,
+          true,
+        );
+        [jobResult] = await tx.insert(printQueueTable).values({
+          printerId: printer.id,
+          orderId: original.orderId,
+          documentType: "reprint",
+          content: reprintHeader + original.content,
+          status: "pending",
+          priority: 10,
+          actorId,
+          actorName,
+          meta: {
+            sourceType,
+            sourceId,
+            mark: "REIMPRESIÓN",
+            reason: normalizedReason || null,
+            destinationPrinterId: printer.id,
+            destinationPrinterName: printer.name,
+          },
+        }).returning();
+        destination = { printerId: printer.id, printerName: printer.name };
+      }
+
+      const [auditRow] = await tx.insert(printAuditTable).values({
+        printQueueId: jobResult?.id ?? null,
+        action: sourceType === "print_job" ? "reprinted" : "redispatched",
+        actorId,
+        actorName,
+        detail: {
+          sourceType,
+          sourceId,
+          targets: normalizedTargets,
+          reason: normalizedReason || null,
+          destination,
+          orderId,
+          mark: sourceType === "print_job" ? "REIMPRESIÓN" : "REENVIADO",
+        },
+      }).returning();
+      return { audit: auditRow, task: taskResult, job: jobResult, destination };
+    });
+
+    if ("error" in result) {
+      const status = result.error === "SOURCE_NOT_FOUND" ? 404
+        : result.error === "ORDER_CLOSED" ? 409 : 400;
+      res.status(status).json({ error: result.error });
+      return;
+    }
+    if (result.task) {
+      try { emitToFunction("kds", "kds:refresh", { employeeName: actorName }); } catch {}
+    }
+    res.status(201).json(result);
+  },
+);
 
 // ── GET /admin/print-config ───────────────────────────────────────────────────
 router.get("/admin/print-config", requireAuth, requireRole("manager", "admin"), async (req, res): Promise<void> => {

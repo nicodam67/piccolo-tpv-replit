@@ -9,35 +9,38 @@ import {
   FileText, RefreshCw, History, ChevronUp, Search, X as XIcon,
 } from 'lucide-react';
 import {
-  useGetTableOrder,
   useGetCategories,
   useGetCategoryProducts,
   useGetAdminProducts,
+  useGetProductModifiers,
+  useGetProductFormats,
+  getGetCategoryProductsQueryKey,
+  getGetAdminProductsQueryKey,
+} from '@workspace/api-client-react/catalog-admin';
+import type { Product, ProductFormat, ModifierGroup } from '@workspace/api-client-react/catalog-admin';
+import {
+  useGetTableOrder,
   useAddOrderItem,
   useDeleteOrderItem,
   useSendOrder,
   useGetUnreadNotifications,
   useMarkNotificationRead,
-  useUpdateOrder,
-  useUpdateOrderItem,
-  useDuplicateOrderItem,
-  useGetProductModifiers,
-  useGetProductFormats,
-  useGetPrefacturaStatus,
-  useGetOrderAudit,
   useGetProductAvailability,
   getGetTableOrderQueryKey,
-  getGetCategoryProductsQueryKey,
   getGetAllTablesQueryKey,
   getGetDashboardSummaryQueryKey,
   getGetUnreadNotificationsQueryKey,
+} from '@workspace/api-client-react';
+import {
+  useUpdateOrder,
+  useUpdateOrderItem,
+  useDuplicateOrderItem,
+  useGetPrefacturaStatus,
+  useGetOrderAudit,
   getGetPrefacturaStatusQueryKey,
   getGetOrderAuditQueryKey,
-  type Product,
-  type ProductFormat,
-  type ModifierGroup,
   type AuditLogEntry,
-} from '@workspace/api-client-react';
+} from '@workspace/api-client-react/phase1';
 import { EditItemModal } from '../components/EditItemModal';
 import { EU_ALLERGENS, parseAllergens } from '../lib/allergens';
 import { useScrollGuard } from '../hooks/use-scroll-guard';

@@ -34,6 +34,7 @@ export * from "./setup-wizard";
 export * from "./audit-findings";
 export * from "./installation";
 export * from "./kds-stations";
+export * from "./production-departments";
 export * from "./role-permissions";
 export * from "./auth-sessions";
 export * from "./idempotency-keys";

@@ -61,6 +61,7 @@ import demoDataRouter from "./demo-data";
 import tabletRouter from "./tablet";
 import systemInfoRouter from "./system-info";
 import rolePermissionsRouter from "./role-permissions";
+import productionDepartmentsRouter from "./production-departments";
 
 const router: IRouter = Router();
 
@@ -125,6 +126,7 @@ router.use(installationRouter);
 router.use(demoDataRouter);
 router.use(systemInfoRouter);
 router.use(rolePermissionsRouter);
+router.use(productionDepartmentsRouter);
 router.use(tabletRouter);
 
 import reportsRouter from "./reports";

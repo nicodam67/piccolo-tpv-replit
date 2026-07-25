@@ -62,7 +62,12 @@ export default function AdminPrintTest() {
     if (!assignedPrinter) { toast.error('No hay impresora de este tipo configurada'); return; }
     setPrinting(true);
     try {
-      await api.post(`/api/admin/printers/${assignedPrinter.id}/test`);
+      const profile = currentStep.key === 'special_chars'
+        ? 'charset'
+        : currentStep.key === 'cash_drawer'
+          ? 'drawer'
+          : 'standard';
+      await api.post(`/api/admin/printers/${assignedPrinter.id}/test`, { profile });
       toast.success(`Trabajo enviado a ${assignedPrinter.name}`);
     } finally { setPrinting(false); }
   }

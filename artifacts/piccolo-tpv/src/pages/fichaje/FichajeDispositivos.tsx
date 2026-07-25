@@ -4,20 +4,17 @@
  */
 import { useState, useEffect } from "react";
 import { Tablet, RefreshCw, Pencil, CheckCircle, XCircle, Clock, Key, Copy, Check } from "lucide-react";
-import { api } from "../../lib/api-client";
+import {
+  createTabletPairingCode,
+  getTabletDevices,
+  patchTabletDevice,
+  revokeTabletDevice,
+} from "@workspace/api-client-react/timeclock";
+import type { TabletDeviceSafe } from "@workspace/api-client-react/timeclock";
 
-interface Device {
-  id: string;
-  name: string;
-  location: string;
-  status: "active" | "revoked";
-  lastSeenAt: string | null;
-  appVersion: string | null;
-  createdAt: string;
-  revokedAt: string | null;
-}
+interface Device extends TabletDeviceSafe {}
 
-function fmtRelative(iso: string | null) {
+function fmtRelative(iso: string | null | undefined) {
   if (!iso) return "Nunca";
   const diff = Date.now() - new Date(iso).getTime();
   const mins = Math.floor(diff / 60000);
@@ -36,7 +33,7 @@ function RenameModal({ device, onClose, onSaved }: { device: Device; onClose: ()
   async function save() {
     setSaving(true);
     try {
-      await api.patch(`/api/tablet/devices/${device.id}`, { name, location });
+      await patchTabletDevice(device.id, { name, location });
       onSaved();
     } catch { setSaving(false); }
   }
@@ -126,7 +123,7 @@ export default function FichajeDispositivos() {
 
   function load() {
     setLoading(true);
-    api.get<Device[]>("/api/tablet/devices")
+    getTabletDevices()
       .then(d => setDevices(Array.isArray(d) ? d : []))
       .catch(() => setDevices([]))
       .finally(() => setLoading(false));
@@ -137,7 +134,7 @@ export default function FichajeDispositivos() {
   async function generatePairingCode() {
     setGeneratingCode(true);
     try {
-      const result = await api.post<PairingCode>("/api/tablet/devices/pairing-code");
+      const result = await createTabletPairingCode();
       setPairingCode(result);
     } catch { alert("Error al generar código"); }
     finally { setGeneratingCode(false); }
@@ -145,12 +142,12 @@ export default function FichajeDispositivos() {
 
   async function revoke(device: Device) {
     if (!confirm(`¿Revocar "${device.name}"? El dispositivo dejará de poder fichar.`)) return;
-    await api.delete(`/api/tablet/devices/${device.id}`).catch(() => {});
+    await revokeTabletDevice(device.id).catch(() => {});
     load();
   }
 
   async function activate(device: Device) {
-    await api.patch(`/api/tablet/devices/${device.id}`, { status: "active" }).catch(() => {});
+    await patchTabletDevice(device.id, { status: "active" }).catch(() => {});
     load();
   }
 

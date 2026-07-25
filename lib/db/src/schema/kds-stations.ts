@@ -1,12 +1,11 @@
 import { boolean, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
-
-export const KDS_ZONE_TYPES = ["cocina", "pizza", "ensalada", "barra", "pase", "sin_partida"] as const;
-export type KdsZoneType = typeof KDS_ZONE_TYPES[number];
+import { productionDepartmentsTable } from "./production-departments";
 
 export const kdsStationsTable = pgTable("kds_stations", {
   id:          uuid("id").primaryKey().defaultRandom(),
   name:        text("name").notNull(),
   zoneType:    text("zone_type").notNull().default("cocina"),
+  departmentId: uuid("department_id").references(() => productionDepartmentsTable.id),
   ip:          text("ip").notNull().default(""),
   displayUrl:  text("display_url"),
   notes:       text("notes"),
