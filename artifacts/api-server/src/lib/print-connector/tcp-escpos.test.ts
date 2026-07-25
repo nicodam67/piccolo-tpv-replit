@@ -1,4 +1,5 @@
 import net from "node:net";
+import { EventEmitter } from "node:events";
 import { afterEach, describe, expect, it } from "vitest";
 import { getPrintConnector } from "./index";
 import { TcpEscPosConnector } from "./tcp-escpos";
@@ -58,6 +59,35 @@ describe("TCP ESC/POS connector software transport", () => {
     });
     expect(result.ok).toBe(false);
     expect(result.retryable).toBe(true);
+  });
+
+  it("times out a stalled connection and destroys the socket", async () => {
+    const fake = new EventEmitter() as EventEmitter & {
+      destroyed: boolean;
+      destroy: () => void;
+      setTimeout: () => void;
+      write: () => boolean;
+      end: () => void;
+    };
+    fake.destroyed = false;
+    fake.destroy = () => { fake.destroyed = true; };
+    fake.setTimeout = () => undefined;
+    fake.write = () => true;
+    fake.end = () => undefined;
+    const connector = new TcpEscPosConnector(() => fake as unknown as net.Socket);
+    const result = await connector.send({
+      printerId: "printer-1",
+      printerIp: "127.0.0.1",
+      printerPort: 9100,
+      content: "Ticket",
+      copies: 1,
+      connectTimeoutMs: 20,
+      writeTimeoutMs: 20,
+    });
+    expect(result.ok).toBe(false);
+    expect(result.retryable).toBe(true);
+    expect(result.error).toContain("PRINT_CONNECT_TIMEOUT");
+    expect(fake.destroyed).toBe(true);
   });
 
   it("keeps simulator fail-closed in production", () => {

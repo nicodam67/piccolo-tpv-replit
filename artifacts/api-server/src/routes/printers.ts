@@ -22,6 +22,8 @@ import { requireAuth, requireRole } from "../middlewares/auth";
 import { idempotency } from "../middlewares/idempotency";
 import {
   buildTestTicket,
+  buildCertificationTestTicket,
+  type PrintCertificationProfile,
   buildReprintHeader,
 } from "../lib/ticket-builder";
 import { getPrinterStatus } from "../lib/print-connector";
@@ -163,12 +165,24 @@ router.delete("/admin/printers/:id", requireAuth, requireRole("manager", "admin"
 });
 
 // ── POST /admin/printers/:id/test ─────────────────────────────────────────────
-router.post("/admin/printers/:id/test", requireAuth, requireRole("manager", "admin"), async (req, res): Promise<void> => {
+router.post(
+  "/admin/printers/:id/test",
+  requireAuth,
+  requireRole("manager", "admin"),
+  idempotency,
+  async (req, res): Promise<void> => {
   const id = req.params.id as string;
   const [printer] = await db.select().from(printersTable).where(eq(printersTable.id, id));
   if (!printer) { res.status(404).json({ error: "Impresora no encontrada." }); return; }
 
-  const content = buildTestTicket(printer.name, printer.type, printer.paperWidth === 80);
+  const profile = (req.body?.profile ?? "standard") as PrintCertificationProfile;
+  if (!["standard", "charset", "long", "drawer"].includes(profile)) {
+    res.status(400).json({ error: "Perfil de certificación no válido" });
+    return;
+  }
+  const content = profile === "standard"
+    ? buildTestTicket(printer.name, printer.type, printer.paperWidth === 80)
+    : buildCertificationTestTicket(profile, printer.name, printer.type, printer.paperWidth === 80);
   const [job] = await db.insert(printQueueTable).values({
     printerId: printer.id,
     orderId: null,
@@ -177,11 +191,22 @@ router.post("/admin/printers/:id/test", requireAuth, requireRole("manager", "adm
     status: "pending",
     actorId: req.user?.id ?? null,
     actorName: req.user?.name ?? "admin",
+    priority: 20,
+    meta: {
+      certificationProfile: profile,
+      openDrawer: profile === "drawer",
+      physicalStatus: "PENDING_PHYSICAL_CERTIFICATION",
+    },
   }).returning();
 
-  await auditPrint(job.id, "test", req.user?.id, req.user?.name ?? "admin", { printerName: printer.name });
-  res.json({ ok: true, jobId: job.id });
-});
+  await auditPrint(job.id, "test", req.user?.id, req.user?.name ?? "admin", {
+    printerName: printer.name,
+    profile,
+    physicalStatus: "PENDING_PHYSICAL_CERTIFICATION",
+  });
+  res.json({ ok: true, jobId: job.id, profile, physicalStatus: "PENDING_PHYSICAL_CERTIFICATION" });
+  },
+);
 
 // ── GET /admin/printers/:id/status ────────────────────────────────────────────
 router.get("/admin/printers/:id/status", requireAuth, requireRole("manager", "admin"), async (req, res): Promise<void> => {

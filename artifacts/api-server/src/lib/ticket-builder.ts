@@ -42,6 +42,30 @@ export interface TemplateConfig {
   headerExtra?: string;
 }
 
+export type PrintCertificationProfile = "standard" | "charset" | "long" | "drawer";
+
+export function buildCertificationTestTicket(
+  profile: PrintCertificationProfile,
+  printerName: string,
+  printerType: string,
+  wide = true,
+): string {
+  const base = buildTestTicket(printerName, printerType, wide);
+  if (profile === "charset") {
+    return `${base}\n\nCARACTERES CERTIFICACION\nEspañol: niño, café, información\nCatalà: l·l, ç, à, è, ò\nSímbolos: € « » ¿ ? ¡ !\nUTF-8 origen: convertido por codepage configurada`;
+  }
+  if (profile === "long") {
+    return `${base}\n\nTICKET LARGO CERTIFICACION\n${Array.from(
+      { length: 40 },
+      (_, index) => `${String(index + 1).padStart(2, "0")}  Producto prueba · Modificador ${index + 1}`,
+    ).join("\n")}`;
+  }
+  if (profile === "drawer") {
+    return `${base}\n\nPRUEBA EXPLICITA DE CAJON\nNo repetir sin verificar resultado fisico.`;
+  }
+  return base;
+}
+
 const LINE_80 = "=".repeat(48);
 const LINE_80_THIN = "-".repeat(48);
 const LINE_58 = "=".repeat(32);

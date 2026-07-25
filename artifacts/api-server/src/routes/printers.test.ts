@@ -368,6 +368,23 @@ describe("12. POST /api/admin/printers/:id/test — enqueue test job", () => {
 
     expect(res.status).toBe(404);
   });
+
+  it("enqueues explicit charset and drawer certification profiles as pending physical", async () => {
+    for (const profile of ["charset", "drawer"]) {
+      mockDb.select.mockReturnValueOnce(makeChain([PRINTER_COCINA]));
+      mockDb.insert.mockReturnValueOnce(makeChain([{ id: `job-${profile}` }]));
+      mockDb.insert.mockReturnValueOnce(makeChain([]));
+      const res = await request(app)
+        .post("/api/admin/printers/printer-1/test")
+        .set("Authorization", AUTH)
+        .send({ profile });
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({
+        profile,
+        physicalStatus: "PENDING_PHYSICAL_CERTIFICATION",
+      });
+    }
+  });
 });
 
 // ── 13. GET /admin/printers/:id/status ───────────────────────────────────────
