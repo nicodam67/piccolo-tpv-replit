@@ -1,0 +1,752 @@
+{
+  "delivery": 67,
+  "baseCommit": "21ca916",
+  "globalStatus": "PENDING_PHYSICAL_CERTIFICATION",
+  "caseCount": 39,
+  "rules": {
+    "automationDoesNotCertifyHardware": true,
+    "secretsAllowedInEvidence": false,
+    "productionDataAllowed": false
+  },
+  "cases": [
+    {
+      "caseId": "BACKUP-CORRUPTION",
+      "area": "backup",
+      "deviceRef": "DEST-A",
+      "requiredHardware": "Staging destination",
+      "preparation": "Create valid artifact",
+      "steps": [
+        "Tamper artifact",
+        "Attempt verify/restore"
+      ],
+      "expected": "Corruption rejected and DB unchanged",
+      "evidence": [
+        "backupId",
+        "rollbackReport"
+      ],
+      "status": "PENDING_PHYSICAL_CERTIFICATION"
+    },
+    {
+      "caseId": "BACKUP-LOCAL",
+      "area": "backup",
+      "deviceRef": "DEST-A",
+      "requiredHardware": "Persistent local mount",
+      "preparation": "Allowlisted staging path",
+      "steps": [
+        "Upload",
+        "Verify",
+        "Download",
+        "Restore",
+        "Purge"
+      ],
+      "expected": "Checksum and manifest match",
+      "evidence": [
+        "backupId",
+        "truncatedChecksum"
+      ],
+      "status": "PENDING_PHYSICAL_CERTIFICATION"
+    },
+    {
+      "caseId": "BACKUP-NAS",
+      "area": "backup",
+      "deviceRef": "NAS-1",
+      "requiredHardware": "Real NAS mount",
+      "preparation": "SMB/NFS mounted outside repo",
+      "steps": [
+        "Backup",
+        "Disconnect",
+        "Reconnect",
+        "Restore"
+      ],
+      "expected": "No partial artifact or data loss",
+      "evidence": [
+        "destinationRef",
+        "backupId",
+        "restoreReport"
+      ],
+      "status": "PENDING_PHYSICAL_CERTIFICATION"
+    },
+    {
+      "caseId": "BACKUP-S3",
+      "area": "backup",
+      "deviceRef": "S3-1",
+      "requiredHardware": "Staging S3-compatible bucket",
+      "preparation": "Credentials only in environment",
+      "steps": [
+        "Put",
+        "Head",
+        "Get",
+        "Verify",
+        "Restore",
+        "Delete"
+      ],
+      "expected": "Round-trip and checksum pass",
+      "evidence": [
+        "destinationRef",
+        "objectRef",
+        "restoreReport"
+      ],
+      "status": "PENDING_PHYSICAL_CERTIFICATION"
+    },
+    {
+      "caseId": "BACKUP-SWITCH",
+      "area": "backup",
+      "deviceRef": "DEST-A-TO-B",
+      "requiredHardware": "Two destinations",
+      "preparation": "Verified baseline on A",
+      "steps": [
+        "Upload/verify on B",
+        "Restore from A",
+        "Restore from B"
+      ],
+      "expected": "Old copy remains until B is proven",
+      "evidence": [
+        "backupIds",
+        "switchEvidence"
+      ],
+      "status": "PENDING_PHYSICAL_CERTIFICATION"
+    },
+    {
+      "caseId": "FICHAJE-NFC",
+      "area": "timeclock",
+      "deviceRef": "F2",
+      "requiredHardware": "Android Web NFC + cards",
+      "preparation": "HTTPS and assigned test cards",
+      "steps": [
+        "Known tap",
+        "Unknown tap",
+        "Revoked tap",
+        "Double tap"
+      ],
+      "expected": "Correct proof/denial/debounce",
+      "evidence": [
+        "cardRefs",
+        "auditIds",
+        "videoRef"
+      ],
+      "status": "PENDING_PHYSICAL_CERTIFICATION"
+    },
+    {
+      "caseId": "FICHAJE-PIN",
+      "area": "timeclock",
+      "deviceRef": "F1",
+      "requiredHardware": "Fichaje tablet",
+      "preparation": "Pair device",
+      "steps": [
+        "PIN clock in/out/break",
+        "Network loss"
+      ],
+      "expected": "Proofs single-use; offline fails closed",
+      "evidence": [
+        "recordIds",
+        "auditIds"
+      ],
+      "status": "PENDING_PHYSICAL_CERTIFICATION"
+    },
+    {
+      "caseId": "FICHAJE-TOKEN",
+      "area": "timeclock",
+      "deviceRef": "F1",
+      "requiredHardware": "Fichaje tablet",
+      "preparation": "Registered token",
+      "steps": [
+        "Revoke",
+        "Retry",
+        "Re-pair"
+      ],
+      "expected": "Revoked token denied; new token works",
+      "evidence": [
+        "deviceRef",
+        "auditIds"
+      ],
+      "status": "PENDING_PHYSICAL_CERTIFICATION"
+    },
+    {
+      "caseId": "KDS-CONCURRENT-ORDERS",
+      "area": "kds",
+      "deviceRef": "KDS_ALL",
+      "requiredHardware": "KDS displays",
+      "preparation": "Prepare seven orders",
+      "steps": [
+        "Send concurrently"
+      ],
+      "expected": "No lost/duplicate/cross-order task",
+      "evidence": [
+        "orderIds",
+        "taskIds"
+      ],
+      "status": "PENDING_PHYSICAL_CERTIFICATION"
+    },
+    {
+      "caseId": "KDS-FSM",
+      "area": "kds",
+      "deviceRef": "KDS_BY_PROFILE",
+      "requiredHardware": "Touch display",
+      "preparation": "Seed standard/pizza/bar/pase tasks",
+      "steps": [
+        "Execute every allowed transition"
+      ],
+      "expected": "Only profile-valid transitions succeed",
+      "evidence": [
+        "taskIds",
+        "auditIds"
+      ],
+      "status": "PENDING_PHYSICAL_CERTIFICATION"
+    },
+    {
+      "caseId": "KDS-MULTI-STATION",
+      "area": "kds",
+      "deviceRef": "KDS_ALL",
+      "requiredHardware": "One display per department",
+      "preparation": "Configure stations",
+      "steps": [
+        "Send one multi-department order"
+      ],
+      "expected": "Tasks appear only in correct displays",
+      "evidence": [
+        "orderId",
+        "taskIds",
+        "videoRef"
+      ],
+      "status": "PENDING_PHYSICAL_CERTIFICATION"
+    },
+    {
+      "caseId": "KDS-PASE",
+      "area": "kds",
+      "deviceRef": "KDS_PASE",
+      "requiredHardware": "Pase display",
+      "preparation": "Prepare partially ready order",
+      "steps": [
+        "Complete departments",
+        "Collect/serve"
+      ],
+      "expected": "Pase receives full order and notifies waiter",
+      "evidence": [
+        "orderId",
+        "videoRef"
+      ],
+      "status": "PENDING_PHYSICAL_CERTIFICATION"
+    },
+    {
+      "caseId": "KDS-RECONNECT",
+      "area": "kds",
+      "deviceRef": "KDS_BY_DEPARTMENT",
+      "requiredHardware": "Network-controllable display",
+      "preparation": "Open active KDS",
+      "steps": [
+        "Disconnect",
+        "Create task",
+        "Reconnect"
+      ],
+      "expected": "Polling/refetch recovers authoritative tasks",
+      "evidence": [
+        "taskIds",
+        "videoRef"
+      ],
+      "status": "PENDING_PHYSICAL_CERTIFICATION"
+    },
+    {
+      "caseId": "KDS-REDISPATCH",
+      "area": "kds",
+      "deviceRef": "KDS_AND_PRINTER",
+      "requiredHardware": "KDS + printer",
+      "preparation": "Prepare one task",
+      "steps": [
+        "Redispatch KDS",
+        "Redispatch both"
+      ],
+      "expected": "Single reset and marked print with audit",
+      "evidence": [
+        "taskId",
+        "jobId",
+        "auditId"
+      ],
+      "status": "PENDING_PHYSICAL_CERTIFICATION"
+    },
+    {
+      "caseId": "PRINT-CHAR-CP437",
+      "area": "printing",
+      "deviceRef": "PRINTER_BY_DEPARTMENT",
+      "requiredHardware": "ESC/POS printer",
+      "preparation": "Set CP437",
+      "steps": [
+        "Print same canonical ticket"
+      ],
+      "expected": "Document unsupported/replaced glyphs; no silent acceptance",
+      "evidence": [
+        "jobId",
+        "photoRef"
+      ],
+      "status": "PENDING_PHYSICAL_CERTIFICATION"
+    },
+    {
+      "caseId": "PRINT-CHAR-CP858",
+      "area": "printing",
+      "deviceRef": "PRINTER_BY_DEPARTMENT",
+      "requiredHardware": "ESC/POS printer",
+      "preparation": "Set CP858",
+      "steps": [
+        "Print canonical Spanish/Catalan/€ ticket"
+      ],
+      "expected": "All glyphs legible",
+      "evidence": [
+        "jobId",
+        "photoRef",
+        "operator"
+      ],
+      "status": "PENDING_PHYSICAL_CERTIFICATION"
+    },
+    {
+      "caseId": "PRINT-CHAR-W1252",
+      "area": "printing",
+      "deviceRef": "PRINTER_BY_DEPARTMENT",
+      "requiredHardware": "ESC/POS printer",
+      "preparation": "Set Windows-1252",
+      "steps": [
+        "Print canonical ticket"
+      ],
+      "expected": "Configured glyphs legible",
+      "evidence": [
+        "jobId",
+        "photoRef"
+      ],
+      "status": "PENDING_PHYSICAL_CERTIFICATION"
+    },
+    {
+      "caseId": "PRINT-COVER-OPEN",
+      "area": "printing",
+      "deviceRef": "PRINTER_BY_DEPARTMENT",
+      "requiredHardware": "Printer",
+      "preparation": "Open cover",
+      "steps": [
+        "Send job",
+        "Close cover"
+      ],
+      "expected": "Behavior documented per model",
+      "evidence": [
+        "jobId",
+        "photoRef"
+      ],
+      "status": "PENDING_PHYSICAL_CERTIFICATION"
+    },
+    {
+      "caseId": "PRINT-CUT",
+      "area": "printing",
+      "deviceRef": "PRINTER_BY_DEPARTMENT",
+      "requiredHardware": "Cut-capable printer",
+      "preparation": "Enable cut",
+      "steps": [
+        "Print certification ticket"
+      ],
+      "expected": "One correct cut",
+      "evidence": [
+        "jobId",
+        "videoRef"
+      ],
+      "status": "PENDING_PHYSICAL_CERTIFICATION"
+    },
+    {
+      "caseId": "PRINT-DRAWER",
+      "area": "printing",
+      "deviceRef": "CASH_PRINTER",
+      "requiredHardware": "Compatible drawer",
+      "preparation": "Enable drawer test",
+      "steps": [
+        "Run explicit drawer profile"
+      ],
+      "expected": "One drawer pulse",
+      "evidence": [
+        "jobId",
+        "videoRef"
+      ],
+      "status": "PENDING_PHYSICAL_CERTIFICATION"
+    },
+    {
+      "caseId": "PRINT-FALLBACK",
+      "area": "printing",
+      "deviceRef": "PRIMARY_AND_FALLBACK",
+      "requiredHardware": "Two printers",
+      "preparation": "Set fallback",
+      "steps": [
+        "Disable primary",
+        "Send"
+      ],
+      "expected": "Exactly one marked fallback output",
+      "evidence": [
+        "jobId",
+        "photoRef"
+      ],
+      "status": "PENDING_PHYSICAL_CERTIFICATION"
+    },
+    {
+      "caseId": "PRINT-LAN-LOSS",
+      "area": "printing",
+      "deviceRef": "ALL_PRINTERS",
+      "requiredHardware": "Switch/router",
+      "preparation": "Queue pending jobs",
+      "steps": [
+        "Disconnect LAN",
+        "Restore"
+      ],
+      "expected": "All jobs remain durable and drain",
+      "evidence": [
+        "jobIds",
+        "auditIds"
+      ],
+      "status": "PENDING_PHYSICAL_CERTIFICATION"
+    },
+    {
+      "caseId": "PRINT-LONG",
+      "area": "printing",
+      "deviceRef": "PRINTER_BY_DEPARTMENT",
+      "requiredHardware": "ESC/POS printer with paper",
+      "preparation": "Load 40-line fixture",
+      "steps": [
+        "Enqueue long profile",
+        "Inspect complete output"
+      ],
+      "expected": "No truncation or premature cut",
+      "evidence": [
+        "jobId",
+        "photoRef"
+      ],
+      "status": "PENDING_PHYSICAL_CERTIFICATION"
+    },
+    {
+      "caseId": "PRINT-MULTIPLE",
+      "area": "printing",
+      "deviceRef": "PRINTER_BY_DEPARTMENT",
+      "requiredHardware": "ESC/POS printer",
+      "preparation": "Queue three marked tickets",
+      "steps": [
+        "Submit concurrently",
+        "Compare order"
+      ],
+      "expected": "Three distinct complete tickets",
+      "evidence": [
+        "jobIds",
+        "photoRef"
+      ],
+      "status": "PENDING_PHYSICAL_CERTIFICATION"
+    },
+    {
+      "caseId": "PRINT-PAPER-OUT",
+      "area": "printing",
+      "deviceRef": "PRINTER_BY_DEPARTMENT",
+      "requiredHardware": "Printer",
+      "preparation": "Remove paper",
+      "steps": [
+        "Send job",
+        "Replace paper"
+      ],
+      "expected": "Operator observes failure/recovery; software does not overclaim status",
+      "evidence": [
+        "jobId",
+        "photoRef"
+      ],
+      "status": "PENDING_PHYSICAL_CERTIFICATION"
+    },
+    {
+      "caseId": "PRINT-POWER-OFF",
+      "area": "printing",
+      "deviceRef": "PRINTER_BY_DEPARTMENT",
+      "requiredHardware": "Printer",
+      "preparation": "Power off before send",
+      "steps": [
+        "Send",
+        "Power on"
+      ],
+      "expected": "No job loss; marked recovery",
+      "evidence": [
+        "jobId",
+        "statusTimeline"
+      ],
+      "status": "PENDING_PHYSICAL_CERTIFICATION"
+    },
+    {
+      "caseId": "PRINT-RESTART",
+      "area": "printing",
+      "deviceRef": "SERVER_AND_PRINTER",
+      "requiredHardware": "API host + printer",
+      "preparation": "Leave pending/retrying/sending jobs",
+      "steps": [
+        "Restart API",
+        "Observe"
+      ],
+      "expected": "Durable recovery, visible REENVIADO",
+      "evidence": [
+        "jobIds",
+        "auditIds"
+      ],
+      "status": "PENDING_PHYSICAL_CERTIFICATION"
+    },
+    {
+      "caseId": "PRINT-SIMULTANEOUS",
+      "area": "printing",
+      "deviceRef": "ALL_PRINTERS",
+      "requiredHardware": "Printers for all departments",
+      "preparation": "Configure both mode",
+      "steps": [
+        "Send multi-department order"
+      ],
+      "expected": "One output per configured destination",
+      "evidence": [
+        "orderId",
+        "jobIds",
+        "photoRefs"
+      ],
+      "status": "PENDING_PHYSICAL_CERTIFICATION"
+    },
+    {
+      "caseId": "PRINT-TIMEOUT",
+      "area": "printing",
+      "deviceRef": "PRINTER_BY_DEPARTMENT",
+      "requiredHardware": "Network-controllable printer",
+      "preparation": "Queue one job",
+      "steps": [
+        "Delay/drop TCP",
+        "Restore"
+      ],
+      "expected": "Retry/backoff then marked recovery",
+      "evidence": [
+        "jobId",
+        "auditIds"
+      ],
+      "status": "PENDING_PHYSICAL_CERTIFICATION"
+    },
+    {
+      "caseId": "PRINT-UTF8-SOURCE",
+      "area": "printing",
+      "deviceRef": "PRINTER_BY_DEPARTMENT",
+      "requiredHardware": "ESC/POS printer",
+      "preparation": "Use Unicode source fixture",
+      "steps": [
+        "Print through configured single-byte codepage"
+      ],
+      "expected": "Conversion is documented; UTF-8 mode is not claimed",
+      "evidence": [
+        "jobId",
+        "codePage",
+        "photoRef"
+      ],
+      "status": "PENDING_PHYSICAL_CERTIFICATION"
+    },
+    {
+      "caseId": "TABLET-D1",
+      "area": "tablet",
+      "deviceRef": "D1",
+      "requiredHardware": "Waiter tablet/phone",
+      "preparation": "Staging HTTPS, assigned user and Wi-Fi zone",
+      "steps": [
+        "PIN login",
+        "Open table",
+        "Add product/modifier",
+        "Send",
+        "Wi-Fi loss/reconnect",
+        "Logout/revoke",
+        "Observe memory"
+      ],
+      "expected": "One authoritative order, no session bleed, reconnect without duplication",
+      "evidence": [
+        "deviceRef",
+        "userRef",
+        "orderId",
+        "latencies",
+        "memoryBeforeAfter",
+        "videoRef"
+      ],
+      "status": "PENDING_PHYSICAL_CERTIFICATION"
+    },
+    {
+      "caseId": "TABLET-D2",
+      "area": "tablet",
+      "deviceRef": "D2",
+      "requiredHardware": "Waiter tablet/phone",
+      "preparation": "Staging HTTPS, assigned user and Wi-Fi zone",
+      "steps": [
+        "PIN login",
+        "Open table",
+        "Add product/modifier",
+        "Send",
+        "Wi-Fi loss/reconnect",
+        "Logout/revoke",
+        "Observe memory"
+      ],
+      "expected": "One authoritative order, no session bleed, reconnect without duplication",
+      "evidence": [
+        "deviceRef",
+        "userRef",
+        "orderId",
+        "latencies",
+        "memoryBeforeAfter",
+        "videoRef"
+      ],
+      "status": "PENDING_PHYSICAL_CERTIFICATION"
+    },
+    {
+      "caseId": "TABLET-D3",
+      "area": "tablet",
+      "deviceRef": "D3",
+      "requiredHardware": "Waiter tablet/phone",
+      "preparation": "Staging HTTPS, assigned user and Wi-Fi zone",
+      "steps": [
+        "PIN login",
+        "Open table",
+        "Add product/modifier",
+        "Send",
+        "Wi-Fi loss/reconnect",
+        "Logout/revoke",
+        "Observe memory"
+      ],
+      "expected": "One authoritative order, no session bleed, reconnect without duplication",
+      "evidence": [
+        "deviceRef",
+        "userRef",
+        "orderId",
+        "latencies",
+        "memoryBeforeAfter",
+        "videoRef"
+      ],
+      "status": "PENDING_PHYSICAL_CERTIFICATION"
+    },
+    {
+      "caseId": "TABLET-D4",
+      "area": "tablet",
+      "deviceRef": "D4",
+      "requiredHardware": "Waiter tablet/phone",
+      "preparation": "Staging HTTPS, assigned user and Wi-Fi zone",
+      "steps": [
+        "PIN login",
+        "Open table",
+        "Add product/modifier",
+        "Send",
+        "Wi-Fi loss/reconnect",
+        "Logout/revoke",
+        "Observe memory"
+      ],
+      "expected": "One authoritative order, no session bleed, reconnect without duplication",
+      "evidence": [
+        "deviceRef",
+        "userRef",
+        "orderId",
+        "latencies",
+        "memoryBeforeAfter",
+        "videoRef"
+      ],
+      "status": "PENDING_PHYSICAL_CERTIFICATION"
+    },
+    {
+      "caseId": "TABLET-D5",
+      "area": "tablet",
+      "deviceRef": "D5",
+      "requiredHardware": "Waiter tablet/phone",
+      "preparation": "Staging HTTPS, assigned user and Wi-Fi zone",
+      "steps": [
+        "PIN login",
+        "Open table",
+        "Add product/modifier",
+        "Send",
+        "Wi-Fi loss/reconnect",
+        "Logout/revoke",
+        "Observe memory"
+      ],
+      "expected": "One authoritative order, no session bleed, reconnect without duplication",
+      "evidence": [
+        "deviceRef",
+        "userRef",
+        "orderId",
+        "latencies",
+        "memoryBeforeAfter",
+        "videoRef"
+      ],
+      "status": "PENDING_PHYSICAL_CERTIFICATION"
+    },
+    {
+      "caseId": "TABLET-D6",
+      "area": "tablet",
+      "deviceRef": "D6",
+      "requiredHardware": "Waiter tablet/phone",
+      "preparation": "Staging HTTPS, assigned user and Wi-Fi zone",
+      "steps": [
+        "PIN login",
+        "Open table",
+        "Add product/modifier",
+        "Send",
+        "Wi-Fi loss/reconnect",
+        "Logout/revoke",
+        "Observe memory"
+      ],
+      "expected": "One authoritative order, no session bleed, reconnect without duplication",
+      "evidence": [
+        "deviceRef",
+        "userRef",
+        "orderId",
+        "latencies",
+        "memoryBeforeAfter",
+        "videoRef"
+      ],
+      "status": "PENDING_PHYSICAL_CERTIFICATION"
+    },
+    {
+      "caseId": "TABLET-D7",
+      "area": "tablet",
+      "deviceRef": "D7",
+      "requiredHardware": "Waiter tablet/phone",
+      "preparation": "Staging HTTPS, assigned user and Wi-Fi zone",
+      "steps": [
+        "PIN login",
+        "Open table",
+        "Add product/modifier",
+        "Send",
+        "Wi-Fi loss/reconnect",
+        "Logout/revoke",
+        "Observe memory"
+      ],
+      "expected": "One authoritative order, no session bleed, reconnect without duplication",
+      "evidence": [
+        "deviceRef",
+        "userRef",
+        "orderId",
+        "latencies",
+        "memoryBeforeAfter",
+        "videoRef"
+      ],
+      "status": "PENDING_PHYSICAL_CERTIFICATION"
+    },
+    {
+      "caseId": "TABLET-FLEET-7",
+      "area": "tablet",
+      "deviceRef": "D1-D7",
+      "requiredHardware": "Seven devices simultaneously",
+      "preparation": "Assign seven distinct users/tables",
+      "steps": [
+        "Run overlapping service",
+        "Induce one Wi-Fi loss"
+      ],
+      "expected": "Seven isolated sessions and orders",
+      "evidence": [
+        "orderIds",
+        "deviceMetrics"
+      ],
+      "status": "PENDING_PHYSICAL_CERTIFICATION"
+    },
+    {
+      "caseId": "TABLET-PWA",
+      "area": "tablet",
+      "deviceRef": "D7",
+      "requiredHardware": "PWA-capable browser",
+      "preparation": "Install from explicit TPV URL",
+      "steps": [
+        "Cold start",
+        "Update",
+        "Offline shell"
+      ],
+      "expected": "No stale session or silent offline mutation",
+      "evidence": [
+        "swVersion",
+        "videoRef"
+      ],
+      "status": "PENDING_PHYSICAL_CERTIFICATION"
+    }
+  ]
+}
