@@ -22,6 +22,8 @@
     "migrate:wallet-hooks": "node scripts/migrate-wallet-generated-hooks.mjs",
     "migrate:catalog-admin-hooks": "node scripts/migrate-catalog-admin-generated-hooks.mjs",
     "migrate:cash-payments-hooks": "node scripts/migrate-cash-payments-generated-hooks.mjs",
+    "certify:hardware-readiness": "node scripts/certify-hardware-readiness.mjs",
+    "certify:physical-print": "node scripts/certify-physical-print.mjs",
     "typecheck:libs": "tsc --build",
     "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck"
   },
@@ -41,7 +43,10 @@
   "pnpm": {
     "overrides": {
       "fast-uri": "^3.1.4",
+      "@esbuild-kit/esm-loader": "npm:tsx@^4.21.0",
       "js-yaml": "^4.3.0",
+      "postcss": "8.5.18",
+      "vite>esbuild": "0.28.1",
       "uuid": ">=11.1.1"
     }
   }
