@@ -27,6 +27,35 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterAll } from "vitest";
+
+vi.mock("../lib/production-departments", () => ({
+  loadProductionDepartments: vi.fn(async () => [
+    {
+      code: "cocina",
+      outputMode: "both",
+      workflowProfile: "standard",
+      printerIds: [],
+    },
+  ]),
+  loadDepartmentByCode: vi.fn(async (code: string) => ({
+    code,
+    outputMode: "both",
+    workflowProfile: code === "pizza" ? "pizza" : "standard",
+    isPaseAggregator: code === "pase",
+  })),
+  resolveEffectiveChannels: vi.fn((
+    _department: unknown,
+    mode: string,
+  ) => ({
+    kds: mode !== "printers_only",
+    printer: mode !== "kds_only",
+  })),
+  transitionsForDepartment: vi.fn(() => ({
+    new: ["preparing", "cancelled"],
+    preparing: ["ready", "cancelled"],
+    ready: ["collected"],
+  })),
+}));
 import request from "supertest";
 
 // ─── Drizzle chain mock helper ────────────────────────────────────────────────

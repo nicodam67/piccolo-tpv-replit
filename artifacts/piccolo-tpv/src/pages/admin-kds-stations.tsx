@@ -3,7 +3,8 @@
  * KDS station management — /admin/kds-stations
  * CRUD for named KDS displays: zone type, IP, display URL, last ping.
  */
-import { useState, useEffect, useCallback } from 'react';
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useLocation } from 'wouter';
 import { toast } from 'sonner';
 import {
@@ -12,16 +13,15 @@ import {
   Server, Zap,
 } from 'lucide-react';
 
-import { api } from '../lib/api-client';
-
-const ZONE_LABELS: Record<string, string> = {
-  cocina:      'Cocina',
-  pizza:       'Pizza',
-  ensalada:    'Ensaladas',
-  barra:       'Barra',
-  pase:        'Expedición / Pase',
-  sin_partida: 'Sin partida',
-};
+import {
+  useGetKdsStations,
+  useCreateKdsStation,
+  useUpdateKdsStation,
+  useDeleteKdsStation,
+  usePingKdsStation,
+  type KdsStation,
+} from '@workspace/api-client-react/phase1';
+import { customFetch } from '@workspace/api-client-react';
 
 const ZONE_COLORS: Record<string, string> = {
   cocina:      'text-orange-400 bg-orange-950/30 border-orange-800',
@@ -31,17 +31,6 @@ const ZONE_COLORS: Record<string, string> = {
   pase:        'text-cyan-400 bg-cyan-950/30 border-cyan-800',
   sin_partida: 'text-muted-foreground bg-secondary border-border',
 };
-
-interface KdsStation {
-  id: string;
-  name: string;
-  zoneType: string;
-  ip: string;
-  displayUrl: string | null;
-  notes: string | null;
-  lastPingAt: string | null;
-  active: boolean;
-}
 
 const EMPTY_FORM = {
   name: '', zoneType: 'cocina', ip: '', displayUrl: '', notes: '',
@@ -57,22 +46,23 @@ function fmtDate(d: string | null | undefined) {
 
 export default function AdminKdsStations() {
   const [, setLocation] = useLocation();
-  const [stations, setStations] = useState<KdsStation[]>([]);
-  const [loading, setLoading] = useState(false);
+  const { data: stations = [], isLoading: loading, refetch: load } = useGetKdsStations();
+  const { data: departments = [] } = useQuery<Array<{ code: string; name: string }>>({
+    queryKey: ['/api/production-departments'],
+    queryFn: () => customFetch('/api/production-departments'),
+  });
+  const departmentLabels = Object.fromEntries(
+    departments.map((department) => [department.code, department.name]),
+  );
+  const createStation = useCreateKdsStation();
+  const updateStation = useUpdateKdsStation();
+  const deleteStation = useDeleteKdsStation();
+  const pingStation = usePingKdsStation();
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<KdsStation | null>(null);
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [saving, setSaving] = useState(false);
   const [pinging, setPinging] = useState<string | null>(null);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      setStations(await api.get<KdsStation[]>('/api/admin/kds-stations'));
-    } finally { setLoading(false); }
-  }, []);
-
-  useEffect(() => { void load(); }, [load]);
 
   function openCreate() { setEditing(null); setForm({ ...EMPTY_FORM }); setShowModal(true); }
   function openEdit(s: KdsStation) {
@@ -87,9 +77,9 @@ export default function AdminKdsStations() {
     try {
       const body = { ...form, displayUrl: form.displayUrl || null, notes: form.notes || null };
       if (editing) {
-        await api.patch(`/api/admin/kds-stations/${editing.id}`, body);
+        await updateStation.mutateAsync({ id: editing.id, data: body });
       } else {
-        await api.post('/api/admin/kds-stations', body);
+        await createStation.mutateAsync({ data: body });
       }
       toast.success(editing ? 'Estación actualizada' : 'Estación creada');
       setShowModal(false);
@@ -100,7 +90,7 @@ export default function AdminKdsStations() {
   async function handleDelete(id: string, name: string) {
     if (!confirm(`¿Desactivar la estación "${name}"?`)) return;
     try {
-      await api.delete(`/api/admin/kds-stations/${id}`);
+      await deleteStation.mutateAsync({ id });
       toast.success('Estación desactivada');
       await load();
     } catch { toast.error('Error al desactivar'); }
@@ -109,7 +99,7 @@ export default function AdminKdsStations() {
   async function handlePing(id: string) {
     setPinging(id);
     try {
-      const d = await api.post<{ reachable: boolean; latencyMs: number }>(`/api/admin/kds-stations/${id}/ping`);
+      const d = await pingStation.mutateAsync({ id });
       toast[d.reachable ? 'success' : 'error'](
         d.reachable ? `Alcanzable · ${d.latencyMs}ms` : 'Sin respuesta',
       );
@@ -167,7 +157,7 @@ export default function AdminKdsStations() {
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-black text-sm">{s.name}</span>
                   <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${ZONE_COLORS[s.zoneType] ?? ZONE_COLORS.sin_partida}`}>
-                    {ZONE_LABELS[s.zoneType] ?? s.zoneType}
+                    {departmentLabels[s.zoneType] ?? s.zoneType}
                   </span>
                   {!s.active && <span className="text-[10px] text-red-400 border border-red-800 px-1.5 py-0.5 rounded-full">Inactiva</span>}
                 </div>
@@ -222,7 +212,9 @@ export default function AdminKdsStations() {
                 <div className="relative">
                   <select value={form.zoneType} onChange={e => setForm(f => ({ ...f, zoneType: e.target.value }))}
                     className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-xl text-sm focus:outline-none appearance-none pr-8">
-                    {Object.entries(ZONE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                    {departments.map((department) => (
+                      <option key={department.code} value={department.code}>{department.name}</option>
+                    ))}
                   </select>
                   <ChevronDown size={12} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
                 </div>

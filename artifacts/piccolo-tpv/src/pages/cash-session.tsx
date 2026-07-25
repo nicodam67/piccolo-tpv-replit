@@ -19,7 +19,7 @@ import {
   getGetCashSessionSummaryQueryKey,
   getGetCashSessionHistoryQueryKey,
   AddCashMovementInputMovementType,
-} from '@workspace/api-client-react';
+} from '@workspace/api-client-react/cash-payments';
 
 function fmt(n: number | string) { return parseFloat(String(n)).toFixed(2); }
 function fmtDate(d: string) {

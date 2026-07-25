@@ -1,0 +1,570 @@
+# phase59-catalog-admin — splice under components.schemas in openapi.yaml
+
+    CatalogOkResult:
+      type: object
+      properties:
+        ok: { type: boolean, enum: [true] }
+      required: [ok]
+
+    CatalogTaxRate:
+      type: integer
+      enum: [4, 10, 21]
+      description: Applicable VAT rate (Spain). Prices are VAT-inclusive.
+
+    CatalogTranslations:
+      type: object
+      additionalProperties:
+        type: object
+        properties:
+          name: { type: string }
+          description: { type: string }
+
+    CatalogSortOrderItem:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        sortOrder: { type: integer }
+      required: [id, sortOrder]
+
+    CatalogSortOrderInput:
+      type: object
+      properties:
+        order:
+          type: array
+          items: { $ref: "#/components/schemas/CatalogSortOrderItem" }
+      required: [order]
+
+    CatalogSubcategory:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        categoryId: { type: string, format: uuid }
+        name: { type: string }
+        sortOrder: { type: integer }
+        active: { type: boolean }
+      required: [id, categoryId, name, sortOrder, active]
+
+    CatalogCategory:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        sortOrder: { type: integer }
+        active: { type: boolean }
+        color: { type: string, nullable: true }
+        icon: { type: string, nullable: true }
+        nameEn: { type: string }
+        translations: { $ref: "#/components/schemas/CatalogTranslations", nullable: true }
+      required: [id, name, sortOrder, active, nameEn]
+
+    CatalogCategoryWithSubcategories:
+      allOf:
+        - { $ref: "#/components/schemas/CatalogCategory" }
+        - type: object
+          properties:
+            subcategories:
+              type: array
+              items: { $ref: "#/components/schemas/CatalogSubcategory" }
+          required: [subcategories]
+
+    CatalogCreateCategoryInput:
+      type: object
+      properties:
+        name: { type: string }
+        color: { type: string, nullable: true }
+        icon: { type: string, nullable: true }
+        sortOrder: { type: integer, default: 0 }
+      required: [name]
+
+    CatalogUpdateCategoryInput:
+      type: object
+      properties:
+        name: { type: string }
+        color: { type: string, nullable: true }
+        icon: { type: string, nullable: true }
+        active: { type: boolean }
+        sortOrder: { type: integer }
+        translations: { $ref: "#/components/schemas/CatalogTranslations" }
+
+    CatalogCreateSubcategoryInput:
+      type: object
+      properties:
+        categoryId: { type: string, format: uuid }
+        name: { type: string }
+        sortOrder: { type: integer, default: 0 }
+      required: [categoryId, name]
+
+    CatalogUpdateSubcategoryInput:
+      type: object
+      properties:
+        name: { type: string }
+        active: { type: boolean }
+        sortOrder: { type: integer }
+
+    CatalogStaffCategory:
+      type: object
+      description: Active category for staff TPV (id, name, sortOrder only)
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        sortOrder: { type: integer }
+      required: [id, name, sortOrder]
+
+    CatalogProductFormat:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        productId: { type: string, format: uuid }
+        name: { type: string }
+        price: { type: string, description: Numeric string from DB }
+        cost: { type: string, nullable: true, description: Numeric string from DB }
+        prepTime: { type: integer, nullable: true }
+        kdsDestination: { type: string, nullable: true }
+        sortOrder: { type: integer }
+        active: { type: boolean }
+        taxRate: { $ref: "#/components/schemas/CatalogTaxRate", nullable: true }
+      required: [id, productId, name, price, sortOrder, active]
+
+    CatalogCreateProductFormatInput:
+      type: object
+      properties:
+        name: { type: string }
+        price: { type: string, description: Numeric string }
+        cost: { type: string, nullable: true }
+        prepTime: { type: integer }
+        kdsDestination: { type: string }
+        sortOrder: { type: integer, default: 0 }
+        taxRate: { $ref: "#/components/schemas/CatalogTaxRate" }
+      required: [name, price]
+
+    CatalogUpdateProductFormatInput:
+      type: object
+      properties:
+        name: { type: string }
+        price: { type: string }
+        cost: { type: string, nullable: true }
+        prepTime: { type: integer, nullable: true }
+        kdsDestination: { type: string, nullable: true }
+        sortOrder: { type: integer }
+        active: { type: boolean }
+        taxRate: { $ref: "#/components/schemas/CatalogTaxRate", nullable: true }
+
+    CatalogProductModifierGroupRef:
+      type: object
+      properties:
+        productId: { type: string, format: uuid }
+        groupId: { type: string, format: uuid }
+        groupName: { type: string }
+        required: { type: boolean }
+      required: [productId, groupId, groupName, required]
+
+    CatalogProduct:
+      type: object
+      description: Admin product list item with nested formats and modifier groups
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        internalCode: { type: string, nullable: true }
+        description: { type: string, nullable: true }
+        price: { type: string, description: Numeric string from DB }
+        cost: { type: string, nullable: true }
+        taxRate: { $ref: "#/components/schemas/CatalogTaxRate" }
+        categoryId: { type: string, format: uuid }
+        subcategoryId: { type: string, format: uuid, nullable: true }
+        prepZone: { type: string }
+        active: { type: boolean }
+        tpvVisible: { type: boolean }
+        qrVisible: { type: boolean }
+        deliveryVisible: { type: boolean }
+        outOfStock: { type: boolean }
+        allergens: { type: string }
+        sortOrder: { type: integer }
+        imageUrl: { type: string, nullable: true }
+        videoUrl: { type: string, nullable: true }
+        halfPortionPrice: { type: string, nullable: true }
+        quantity: { type: string, nullable: true }
+        isVegetariano: { type: boolean }
+        isVegano: { type: boolean }
+        isSinGluten: { type: boolean }
+        isPicante: { type: boolean }
+        categoryName: { type: string }
+        formats:
+          type: array
+          items: { $ref: "#/components/schemas/CatalogProductFormat" }
+        modifierGroups:
+          type: array
+          items: { $ref: "#/components/schemas/CatalogProductModifierGroupRef" }
+      required: [id, name, price, taxRate, categoryId, prepZone, active, tpvVisible, qrVisible, deliveryVisible, outOfStock, allergens, sortOrder, categoryName, formats, modifierGroups]
+
+    CatalogProductDetail:
+      type: object
+      description: Full product row returned by create/update
+      properties:
+        id: { type: string, format: uuid }
+        categoryId: { type: string, format: uuid }
+        subcategoryId: { type: string, format: uuid, nullable: true }
+        name: { type: string }
+        internalCode: { type: string, nullable: true }
+        description: { type: string, nullable: true }
+        price: { type: string }
+        cost: { type: string, nullable: true }
+        imageUrl: { type: string, nullable: true }
+        videoUrl: { type: string, nullable: true }
+        prepZone: { type: string }
+        active: { type: boolean }
+        tpvVisible: { type: boolean }
+        qrVisible: { type: boolean }
+        deliveryVisible: { type: boolean }
+        outOfStock: { type: boolean }
+        allergens: { type: string }
+        sortOrder: { type: integer }
+        taxRate: { $ref: "#/components/schemas/CatalogTaxRate" }
+        halfPortionPrice: { type: string, nullable: true }
+        quantity: { type: string, nullable: true }
+        isVegetariano: { type: boolean }
+        isVegano: { type: boolean }
+        isSinGluten: { type: boolean }
+        isPicante: { type: boolean }
+        nameEn: { type: string }
+        descriptionEn: { type: string }
+        nameEs: { type: string }
+        descriptionEs: { type: string }
+        translations: { $ref: "#/components/schemas/CatalogTranslations", nullable: true }
+      required: [id, categoryId, name, price, prepZone, active, taxRate]
+
+    CatalogCreateProductInput:
+      type: object
+      properties:
+        categoryId: { type: string, format: uuid }
+        subcategoryId: { type: string, format: uuid }
+        name: { type: string }
+        internalCode: { type: string }
+        description: { type: string }
+        price: { type: string }
+        cost: { type: string }
+        prepZone: { type: string, default: "cocina" }
+        active: { type: boolean, default: true }
+        tpvVisible: { type: boolean, default: true }
+        qrVisible: { type: boolean, default: true }
+        deliveryVisible: { type: boolean, default: false }
+        taxRate: { $ref: "#/components/schemas/CatalogTaxRate", default: 10 }
+        sortOrder: { type: integer, default: 0 }
+        allergens: { type: string, default: "" }
+        halfPortionPrice: { type: string }
+        quantity: { type: string }
+        isVegetariano: { type: boolean, default: false }
+        isVegano: { type: boolean, default: false }
+        isSinGluten: { type: boolean, default: false }
+        isPicante: { type: boolean, default: false }
+      required: [categoryId, name, price]
+
+    CatalogUpdateProductInput:
+      type: object
+      properties:
+        categoryId: { type: string, format: uuid }
+        subcategoryId: { type: string, format: uuid, nullable: true }
+        name: { type: string }
+        internalCode: { type: string, nullable: true }
+        description: { type: string, nullable: true }
+        price: { type: string }
+        cost: { type: string, nullable: true }
+        prepZone: { type: string }
+        active: { type: boolean }
+        tpvVisible: { type: boolean }
+        qrVisible: { type: boolean }
+        deliveryVisible: { type: boolean }
+        outOfStock: { type: boolean }
+        taxRate: { $ref: "#/components/schemas/CatalogTaxRate" }
+        sortOrder: { type: integer }
+        allergens: { type: string }
+        imageUrl: { type: string, nullable: true }
+        videoUrl: { type: string, nullable: true }
+        halfPortionPrice: { type: string, nullable: true }
+        quantity: { type: string, nullable: true }
+        isVegetariano: { type: boolean }
+        isVegano: { type: boolean }
+        isSinGluten: { type: boolean }
+        isPicante: { type: boolean }
+        translations: { $ref: "#/components/schemas/CatalogTranslations" }
+
+    CatalogProductModifierGroupsInput:
+      type: object
+      properties:
+        modifierGroupIds:
+          type: array
+          items: { type: string, format: uuid }
+      required: [modifierGroupIds]
+
+    CatalogProductImportResult:
+      type: object
+      properties:
+        imported: { type: integer }
+        skipped: { type: integer }
+        errors:
+          type: array
+          items: { type: string }
+      required: [imported, skipped, errors]
+
+    CatalogStaffProductSearchItem:
+      type: object
+      description: Product row from GET /products staff search
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        price: { type: string }
+        taxRate: { $ref: "#/components/schemas/CatalogTaxRate" }
+        active: { type: boolean }
+        outOfStock: { type: boolean }
+        imageUrl: { type: string, nullable: true }
+        categoryId: { type: string, format: uuid }
+        tpvVisible: { type: boolean }
+        deliveryVisible: { type: boolean }
+      required: [id, name, price, taxRate, active, outOfStock, categoryId, tpvVisible, deliveryVisible]
+
+    CatalogStaffCategoryProduct:
+      type: object
+      description: Product with formats for staff category listing
+      properties:
+        id: { type: string, format: uuid }
+        categoryId: { type: string, format: uuid }
+        subcategoryId: { type: string, format: uuid, nullable: true }
+        name: { type: string }
+        price: { type: string }
+        taxRate: { $ref: "#/components/schemas/CatalogTaxRate" }
+        prepZone: { type: string }
+        tpvVisible: { type: boolean }
+        outOfStock: { type: boolean }
+        allergens: { type: string }
+        imageUrl: { type: string, nullable: true }
+        hasModifiers: { type: boolean }
+        formats:
+          type: array
+          items: { $ref: "#/components/schemas/CatalogProductFormat" }
+      required: [id, categoryId, name, price, taxRate, prepZone, tpvVisible, outOfStock, allergens, hasModifiers, formats]
+
+    CatalogModifier:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        groupId: { type: string, format: uuid }
+        name: { type: string }
+        priceDelta: { type: string, description: Numeric string from DB }
+        sortOrder: { type: integer }
+        active: { type: boolean }
+      required: [id, groupId, name, priceDelta, sortOrder, active]
+
+    CatalogModifierGroup:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        required: { type: boolean }
+        maxSelect: { type: integer }
+        sortOrder: { type: integer }
+        active: { type: boolean }
+      required: [id, name, required, maxSelect, sortOrder, active]
+
+    CatalogModifierGroupWithModifiers:
+      allOf:
+        - { $ref: "#/components/schemas/CatalogModifierGroup" }
+        - type: object
+          properties:
+            modifiers:
+              type: array
+              items: { $ref: "#/components/schemas/CatalogModifier" }
+          required: [modifiers]
+
+    CatalogCreateModifierGroupInput:
+      type: object
+      properties:
+        name: { type: string }
+        required: { type: boolean, default: false }
+        maxSelect: { type: integer, default: 1 }
+        sortOrder: { type: integer, default: 0 }
+      required: [name]
+
+    CatalogUpdateModifierGroupInput:
+      type: object
+      properties:
+        name: { type: string }
+        required: { type: boolean }
+        maxSelect: { type: integer }
+        active: { type: boolean }
+        sortOrder: { type: integer }
+
+    CatalogCreateModifierInput:
+      type: object
+      properties:
+        name: { type: string }
+        priceDelta: { type: string, default: "0" }
+        sortOrder: { type: integer, default: 0 }
+      required: [name]
+
+    CatalogUpdateModifierInput:
+      type: object
+      properties:
+        name: { type: string }
+        priceDelta: { type: string }
+        active: { type: boolean }
+        sortOrder: { type: integer }
+
+    CatalogStaffModifierOption:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        priceDelta: { type: string }
+      required: [id, name, priceDelta]
+
+    CatalogStaffModifierGroup:
+      type: object
+      description: Modifier group with options for staff product ordering
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        required: { type: boolean }
+        maxSelect: { type: integer }
+        modifiers:
+          type: array
+          items: { $ref: "#/components/schemas/CatalogStaffModifierOption" }
+      required: [id, name, required, maxSelect, modifiers]
+
+    CatalogSoldoutInput:
+      type: object
+      properties:
+        outOfStock: { type: boolean }
+      required: [outOfStock]
+
+    CatalogSoldoutResult:
+      type: object
+      properties:
+        ok: { type: boolean, enum: [true] }
+        outOfStock: { type: boolean }
+      required: [ok, outOfStock]
+
+    CatalogProductTranslationsInput:
+      type: object
+      properties:
+        nameEn: { type: string, default: "" }
+        descriptionEn: { type: string, default: "" }
+        nameEs: { type: string, default: "" }
+        descriptionEs: { type: string, default: "" }
+
+    CatalogProductTranslationsResult:
+      type: object
+      properties:
+        ok: { type: boolean, enum: [true] }
+        nameEn: { type: string }
+        descriptionEn: { type: string }
+      required: [ok, nameEn, descriptionEn]
+
+    CatalogCategoryTranslationsInput:
+      type: object
+      properties:
+        nameEn: { type: string, default: "" }
+
+    CatalogCategoryTranslationsResult:
+      type: object
+      properties:
+        ok: { type: boolean, enum: [true] }
+        nameEn: { type: string }
+      required: [ok, nameEn]
+
+    CatalogProductAvailabilityRule:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        productId: { type: string, format: uuid, nullable: true }
+        categoryId: { type: string, format: uuid, nullable: true }
+        label: { type: string }
+        daysOfWeek:
+          type: array
+          description: Day-of-week numbers 0=Sun … 6=Sat
+          items: { type: integer, minimum: 0, maximum: 6 }
+        timeFrom: { type: string, description: HH:mm }
+        timeTo: { type: string, description: HH:mm }
+        active: { type: boolean }
+        createdAt: { type: string, format: date-time }
+      required: [id, label, daysOfWeek, timeFrom, timeTo, active, createdAt]
+
+    CatalogCreateProductAvailabilityRuleInput:
+      type: object
+      properties:
+        productId: { type: string, format: uuid }
+        categoryId: { type: string, format: uuid }
+        label: { type: string, default: "" }
+        daysOfWeek:
+          type: array
+          items: { type: integer, minimum: 0, maximum: 6 }
+          default: [0, 1, 2, 3, 4, 5, 6]
+        timeFrom: { type: string, default: "00:00" }
+        timeTo: { type: string, default: "23:59" }
+        active: { type: boolean, default: true }
+
+    CatalogUpdateProductAvailabilityRuleInput:
+      type: object
+      properties:
+        productId: { type: string, format: uuid, nullable: true }
+        categoryId: { type: string, format: uuid, nullable: true }
+        label: { type: string }
+        daysOfWeek:
+          type: array
+          items: { type: integer, minimum: 0, maximum: 6 }
+        timeFrom: { type: string }
+        timeTo: { type: string }
+        active: { type: boolean }
+
+    CatalogAllergen:
+      type: object
+      description: EU Regulation 1169/2011 allergen catalogue entry
+      properties:
+        code: { type: string }
+        nameEs: { type: string }
+        nameEn: { type: string }
+        description: { type: string }
+        iconSlug: { type: string }
+        active: { type: boolean }
+        sortOrder: { type: string }
+      required: [code, nameEs, nameEn, description, iconSlug, active, sortOrder]
+
+    CatalogProductAllergenCacheEntry:
+      type: object
+      properties:
+        allergenCode: { type: string }
+        type: { type: string, enum: [contains, traces, cross_contamination] }
+        source: { type: string, enum: [ingredient, subrecipe, manual] }
+        needsReview: { type: boolean }
+        calculatedAt: { type: string, format: date-time }
+        allergenName: { type: string }
+        allergenNameEn: { type: string }
+        iconSlug: { type: string }
+      required: [allergenCode, type, source, needsReview, calculatedAt, allergenName, allergenNameEn, iconSlug]
+
+    CatalogProductAllergenOverride:
+      type: object
+      properties:
+        allergenCode: { type: string }
+        type: { type: string, enum: [contains, traces, cross_contamination] }
+        allergenName: { type: string }
+        iconSlug: { type: string }
+      required: [allergenCode, type, allergenName, iconSlug]
+
+    CatalogProductAllergensResponse:
+      type: object
+      properties:
+        cache:
+          type: array
+          items: { $ref: "#/components/schemas/CatalogProductAllergenCacheEntry" }
+        overrides:
+          type: array
+          items: { $ref: "#/components/schemas/CatalogProductAllergenOverride" }
+        needsReview: { type: boolean }
+      required: [cache, overrides, needsReview]
+
+    CatalogProductAllergenOverrideInput:
+      type: object
+      properties:
+        allergenCode: { type: string }
+        type: { type: string, enum: [contains, traces, cross_contamination] }
+        note: { type: string }
+      required: [allergenCode, type]

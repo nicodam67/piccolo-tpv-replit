@@ -1,10 +1,17 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { StepProps, setupFetch, BASE } from '../setupUtils';
 
 export default function SetupKDS({ sessionId, onNext, onBack, onSave, onSkip }: StepProps) {
   const [saving, setSaving] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
+  const [departments, setDepartments] = useState<Array<{ code: string; name: string; showInKdsNav: boolean }>>([]);
+
+  useEffect(() => {
+    setupFetch<Array<{ code: string; name: string; showInKdsNav: boolean }>>('/api/production-departments')
+      .then(setDepartments)
+      .catch(() => setDepartments([]));
+  }, []);
 
   async function handleSave() {
     setSaving(true);
@@ -52,10 +59,10 @@ export default function SetupKDS({ sessionId, onNext, onBack, onSave, onSkip }: 
       <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 mb-6">
         <h3 className="font-semibold text-zinc-300 mb-3">Pantallas KDS disponibles</h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {['cocina', 'barra', 'plancha', 'pasteleria'].map((zone) => (
-            <a key={zone} href={`${BASE}/kds/${zone}`} target="_blank" rel="noreferrer"
+          {departments.filter(department => department.showInKdsNav).map((department) => (
+            <a key={department.code} href={`${BASE}/kds/${department.code}`} target="_blank" rel="noreferrer"
               className="flex items-center justify-between bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg px-4 py-3 group transition-colors">
-              <span className="text-zinc-300 capitalize font-medium">KDS {zone}</span>
+              <span className="text-zinc-300 capitalize font-medium">KDS {department.name}</span>
               <span className="text-xs text-amber-400 group-hover:underline">Abrir →</span>
             </a>
           ))}

@@ -2,7 +2,7 @@
  * admin-cola-impresion.tsx
  * Print queue monitor — /admin/cola-impresion
  */
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Link } from 'wouter';
 import { toast } from 'sonner';
 import {
@@ -63,12 +63,15 @@ function formatTs(ts: string | null): string {
 
 export default function AdminColaImpresion() {
   const [jobs, setJobs] = useState<QueueJob[]>([]);
+  const [printers, setPrinters] = useState<Array<{ id: string; name: string; active: boolean }>>([]);
   const [loading, setLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState('');
   const [reprinting, setReprinting] = useState<string | null>(null);
   const [reprintReason, setReprintReason] = useState('');
   const [reprintJobId, setReprintJobId] = useState<string | null>(null);
+  const [reprintPrinterId, setReprintPrinterId] = useState('');
   const [actioning, setActioning] = useState<string | null>(null);
+  const reprintAttemptKey = useRef(crypto.randomUUID());
 
   const load = useCallback(async () => {
     try {
@@ -76,6 +79,8 @@ export default function AdminColaImpresion() {
       if (filterStatus) params.set('status', filterStatus);
       const data = await api(`/api/admin/print-queue?${params}`) as QueueJob[];
       setJobs(data);
+      const printerRows = await api('/api/admin/printers') as Array<{ id: string; name: string; active: boolean }>;
+      setPrinters(printerRows);
     } catch { toast.error('Error al cargar la cola'); }
     finally { setLoading(false); }
   }, [filterStatus]);
@@ -109,13 +114,24 @@ export default function AdminColaImpresion() {
   };
 
   const handleReprint = async () => {
-    if (!reprintJobId || !reprintReason.trim()) return;
+    if (!reprintJobId) return;
     setReprinting(reprintJobId);
     try {
-      await api(`/api/admin/print-queue/${reprintJobId}/reprint`, 'POST', { reason: reprintReason.trim() });
+      await customFetch(`/api/admin/print-queue/${reprintJobId}/reprint`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Idempotency-Key': reprintAttemptKey.current,
+        },
+        body: JSON.stringify({
+          reason: reprintReason.trim() || undefined,
+          printerId: reprintPrinterId || undefined,
+        }),
+      });
       toast.success('Reimpresión encolada');
       setReprintJobId(null);
       setReprintReason('');
+      setReprintPrinterId('');
       load();
     } catch { toast.error('Error al reimprimir'); }
     finally { setReprinting(null); }
@@ -217,7 +233,11 @@ export default function AdminColaImpresion() {
                     </>
                   )}
                   {job.status === 'printed' && (
-                    <button onClick={() => setReprintJobId(job.id)}
+                    <button onClick={() => {
+                      setReprintJobId(job.id);
+                      setReprintPrinterId(job.printerId);
+                      reprintAttemptKey.current = crypto.randomUUID();
+                    }}
                       className="text-xs px-3 py-1.5 border border-border rounded-lg font-bold hover:bg-secondary transition-colors">
                       <SkipForward size={12} className="inline mr-1" />Reimprimir
                     </button>
@@ -234,7 +254,13 @@ export default function AdminColaImpresion() {
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" onClick={() => setReprintJobId(null)}>
           <div className="bg-card border border-border rounded-2xl w-full max-w-sm shadow-2xl p-5 space-y-4" onClick={e => e.stopPropagation()}>
             <h2 className="font-black text-lg">Reimprimir</h2>
-            <p className="text-sm text-muted-foreground">Introduce el motivo de la reimpresión (obligatorio).</p>
+            <p className="text-sm text-muted-foreground">El ticket quedará marcado como REIMPRESIÓN. El motivo es opcional.</p>
+            <select value={reprintPrinterId} onChange={e => setReprintPrinterId(e.target.value)}
+              className="w-full px-3 py-2 bg-secondary border border-border rounded-xl text-sm">
+              {printers.filter(printer => printer.active).map(printer => (
+                <option key={printer.id} value={printer.id}>{printer.name}</option>
+              ))}
+            </select>
             <input
               value={reprintReason}
               onChange={e => setReprintReason(e.target.value)}
@@ -247,7 +273,7 @@ export default function AdminColaImpresion() {
                 className="flex-1 py-2.5 border border-border rounded-xl font-bold text-sm hover:bg-secondary">
                 Cancelar
               </button>
-              <button onClick={handleReprint} disabled={!reprintReason.trim() || reprinting === reprintJobId}
+              <button onClick={handleReprint} disabled={reprinting === reprintJobId}
                 className="flex-1 py-2.5 bg-primary text-primary-foreground rounded-xl font-black text-sm disabled:opacity-50">
                 {reprinting === reprintJobId ? 'Encolando…' : 'Reimprimir'}
               </button>

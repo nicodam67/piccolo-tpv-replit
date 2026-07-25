@@ -1,8 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { api } from '../lib/api-client';
 import { useLocation } from 'wouter';
 import { toast } from 'sonner';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   useGetAdminProducts,
   useGetAdminCategories,
@@ -14,18 +13,25 @@ import {
   useUpdateProductFormatFull,
   useDeleteProductFormat,
   useAssignProductModifierGroups,
+  useImportProducts,
+  downloadProductExport,
+  getGetAdminProductsQueryKey,
+  recalculateAndFetchProductAllergens,
+  allergenCodesForLegacyTextField,
+  patchProductSoldout,
+} from '@workspace/api-client-react/catalog-admin';
+import type { AdminProduct, AdminCategory, AdminModifierGroup, ProductFormat, CatalogTaxRate } from '@workspace/api-client-react/catalog-admin';
+import {
   useGetProductRecipe,
   useCreateRecipeLine,
   useUpdateRecipeLine,
   useDeleteRecipeLine,
   useGetAdminIngredients,
   useGetAdminSubrecipes,
-  useImportProducts,
-  downloadProductExport,
-  getGetAdminProductsQueryKey,
   getGetProductRecipeQueryKey,
+  customFetch,
 } from '@workspace/api-client-react';
-import type { AdminProduct, AdminCategory, AdminModifierGroup, ProductFormat, RecipeLine, Ingredient, Subrecipe } from '@workspace/api-client-react';
+import type { RecipeLine, Ingredient, Subrecipe } from '@workspace/api-client-react';
 import {
   ArrowLeft, Package, Plus, Search, X, Check, Pencil, Trash2,
   ChevronRight, Eye, EyeOff, Tag, Sliders, ImageIcon, Save,
@@ -35,15 +41,6 @@ import {
 } from 'lucide-react';
 
 const TAX_RATES = [4, 10, 21] as const;
-const PREP_ZONES = [
-  { value: 'cocina',      label: 'Cocina' },
-  { value: 'pizza',       label: 'Pizza / Horno' },
-  { value: 'ensalada',    label: 'Ensaladas / Frío' },
-  { value: 'barra',       label: 'Barra / Bebidas' },
-  { value: 'pase',        label: 'Expedición / Pase' },
-  { value: 'sin_partida', label: 'Sin partida (solo ticket)' },
-];
-
 const RATE_COLOR: Record<number, string> = {
   4: 'bg-green-500/15 text-green-400 border-green-500/30',
   10: 'bg-blue-500/15 text-blue-400 border-blue-500/30',
@@ -213,6 +210,11 @@ function ProductSheet({
   onDelete?: (id: string) => void;
 }) {
   const qc = useQueryClient();
+  const { data: prepDepartments = [] } = useQuery<Array<{ code: string; name: string }>>({
+    queryKey: ['/api/production-departments', 'assignable'],
+    queryFn: () => customFetch('/api/production-departments?assignable=true'),
+    staleTime: 60_000,
+  });
   const createProduct = useCreateAdminProduct();
   const updateProduct = useUpdateAdminProduct();
   const deleteProduct = useDeleteAdminProduct();
@@ -269,11 +271,11 @@ function ProductSheet({
 
     try {
       if (isNew) {
-        await createProduct.mutateAsync({ data: { name: name.trim(), categoryId, price, cost: cost || undefined, taxRate, prepZone, tpvVisible, qrVisible, deliveryVisible, internalCode: internalCode || undefined, description: description || undefined, allergens, halfPortionPrice: halfPortionPrice || undefined, quantity: quantity || undefined, isVegetariano, isVegano, isSinGluten, isPicante } });
+        await createProduct.mutateAsync({ data: { name: name.trim(), categoryId, price, cost: cost || undefined, taxRate: taxRate as CatalogTaxRate, prepZone, tpvVisible, qrVisible, deliveryVisible, internalCode: internalCode || undefined, description: description || undefined, allergens, halfPortionPrice: halfPortionPrice || undefined, quantity: quantity || undefined, isVegetariano, isVegano, isSinGluten, isPicante } });
       } else {
         await updateProduct.mutateAsync({
           productId: product.id,
-          data: { name: name.trim(), categoryId, price, cost: cost || null, taxRate, prepZone, tpvVisible, qrVisible, deliveryVisible, active, internalCode: internalCode || null, description: description || null, allergens, imageUrl: imageUrl || null, halfPortionPrice: halfPortionPrice || null, quantity: quantity || null, isVegetariano, isVegano, isSinGluten, isPicante },
+          data: { name: name.trim(), categoryId, price, cost: cost || null, taxRate: taxRate as CatalogTaxRate, prepZone, tpvVisible, qrVisible, deliveryVisible, active, internalCode: internalCode || null, description: description || null, allergens, imageUrl: imageUrl || null, halfPortionPrice: halfPortionPrice || null, quantity: quantity || null, isVegetariano, isVegano, isSinGluten, isPicante },
         });
         // Assign modifier groups
         await assignGroups.mutateAsync({ productId: product.id, data: { modifierGroupIds: Array.from(selectedGroupIds) } });
@@ -425,10 +427,10 @@ function ProductSheet({
               <div>
                 <label className="text-xs text-muted-foreground font-semibold block mb-1">Zona de preparación</label>
                 <div className="flex gap-1.5 flex-wrap">
-                  {PREP_ZONES.map((z) => (
-                    <button key={z.value} onClick={() => setPrepZone(z.value)}
-                      className={`px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all ${prepZone === z.value ? 'bg-primary/15 text-primary border-primary/30' : 'bg-secondary/30 text-muted-foreground border-border hover:bg-secondary'}`}>
-                      {z.label}
+                  {prepDepartments.map((department) => (
+                    <button key={department.code} onClick={() => setPrepZone(department.code)}
+                      className={`px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all ${prepZone === department.code ? 'bg-primary/15 text-primary border-primary/30' : 'bg-secondary/30 text-muted-foreground border-border hover:bg-secondary'}`}>
+                      {department.name}
                     </button>
                   ))}
                 </div>
@@ -888,14 +890,11 @@ function AllergenRecalcButton({ productId, onResult }: { productId: string; onRe
   const handle = async () => {
     setLoading(true);
     try {
-      // Trigger recalculation
-      await api.post(`/api/admin/products/${productId}/allergens/recalculate`, {});
-      // Fetch updated cache
-      const data = await api.get<{ allergenCode: string; type: string }[]>(`/api/admin/products/${productId}/allergens`);
-      if (data.length === 0) {
+      const data = await recalculateAndFetchProductAllergens(productId);
+      const list = allergenCodesForLegacyTextField(data);
+      if (!list) {
         toast.info('No se detectaron alérgenos en los ingredientes de esta receta');
       } else {
-        const list = data.map(a => a.allergenCode).join(', ');
         onResult(list);
         toast.success('Alérgenos actualizados desde los ingredientes');
       }
@@ -1031,7 +1030,7 @@ export default function ProductosPage() {
             <ProductCard key={p.id} product={p} onEdit={() => setEditingProduct(p)}
               onToggleSoldout={async (id, outOfStock) => {
                 try {
-                  await api.patch(`/api/admin/products/${id}/soldout`, { outOfStock });
+                  await patchProductSoldout(id, outOfStock);
                   qc.invalidateQueries({ queryKey: getGetAdminProductsQueryKey() });
                 } catch { /* ignore */ }
               }}

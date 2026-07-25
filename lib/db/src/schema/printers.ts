@@ -44,6 +44,12 @@ export const printersTable = pgTable("printers", {
   /** Simulated status returned by the print connector */
   lastStatus:       text("last_status").notNull().default("unknown"),
   lastStatusAt:     timestamp("last_status_at", { withTimezone: true }),
+  connectorMode:    text("connector_mode").notNull().default("simulator").$type<"simulator" | "tcp">(),
+  codePage:         text("code_page").notNull().default("cp858").$type<"cp858" | "cp437" | "windows1252">(),
+  cutEnabled:       boolean("cut_enabled").notNull().default(true),
+  drawerEnabled:    boolean("drawer_enabled").notNull().default(false),
+  connectTimeoutMs: integer("connect_timeout_ms").notNull().default(5000),
+  writeTimeoutMs:   integer("write_timeout_ms").notNull().default(10000),
   createdAt:        timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt:        timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -69,6 +75,10 @@ export const printQueueTable = pgTable("print_queue", {
   actorName:     text("actor_name"),
   /** Metadata: reprint reason, original job id, etc. */
   meta:          jsonb("meta"),
+  nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true }),
+  leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }),
+  dedupeKey:     text("dedupe_key"),
+  priority:      integer("priority").notNull().default(0),
   createdAt:     timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

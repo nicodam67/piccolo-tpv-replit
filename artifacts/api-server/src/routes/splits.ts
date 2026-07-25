@@ -11,7 +11,8 @@ import {
   paymentMethodsTable,
 } from "@workspace/db";
 import { eq, and, sum } from "drizzle-orm";
-import { requireAuth } from "../middlewares/auth";
+import { requireAuth, requirePermission } from "../middlewares/auth";
+import { PERMISSIONS } from "../lib/permissions";
 
 const router: IRouter = Router();
 
@@ -70,7 +71,7 @@ router.get("/orders/:id/splits", requireAuth, async (req, res): Promise<void> =>
 
 // POST /orders/:id/splits — create or reset split groups
 // Body: { groups: [{ label, items: [{ orderItemId, quantity }] }] }
-router.post("/orders/:id/splits", requireAuth, async (req, res): Promise<void> => {
+router.post("/orders/:id/splits", requireAuth, requirePermission(PERMISSIONS.payments.split), async (req, res): Promise<void> => {
   const orderId = req.params.id as string;
 
   const [order] = await db.select().from(ordersTable).where(eq(ordersTable.id, orderId));
@@ -159,6 +160,7 @@ router.post("/orders/:id/splits", requireAuth, async (req, res): Promise<void> =
 router.put(
   "/orders/:id/splits/:groupId/pay",
   requireAuth,
+  requirePermission(PERMISSIONS.payments.create),
   async (req, res): Promise<void> => {
     const groupId = req.params.groupId as string;
     const { paymentId } = req.body as { paymentId: string };

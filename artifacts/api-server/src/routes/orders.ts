@@ -21,6 +21,10 @@ import { idempotency } from "../middlewares/idempotency";
 import { recipeItemsTable, ingredientsTable, stockMovementsTable } from "@workspace/db";
 import { emitToEmployee, emitToFunction } from "../lib/socket-events";
 import { logger } from "../lib/logger";
+import {
+  loadProductionDepartments,
+  resolveEffectiveChannels,
+} from "../lib/production-departments";
 
 const router: IRouter = Router();
 
@@ -108,7 +112,7 @@ router.get("/tables/:tableId/order", requireAuth, async (req, res): Promise<void
   const [order] = await db
     .select()
     .from(ordersTable)
-    .where(and(eq(ordersTable.tableId, tableId), inArray(ordersTable.status, ["open", "sent", "ready", "bill_requested"])))
+    .where(and(eq(ordersTable.tableId, tableId), inArray(ordersTable.status, ["open", "sent", "ready", "served", "bill_requested"])))
     .orderBy(ordersTable.createdAt)
     .limit(1);
 
@@ -127,6 +131,19 @@ router.patch("/orders/:orderId", requireAuth, async (req, res): Promise<void> =>
   };
 
   const ALLOWED_STATUSES = ["open", "bill_requested"];
+  const [currentOrder] = await db.select({ status: ordersTable.status })
+    .from(ordersTable)
+    .where(eq(ordersTable.id, orderId))
+    .limit(1);
+  if (!currentOrder) { res.status(404).json({ error: "Pedido no encontrado" }); return; }
+  if (["paid", "completed"].includes(currentOrder.status)) {
+    res.status(409).json({ error: "Un pedido terminal no puede reabrirse" });
+    return;
+  }
+  if (status === "open" && currentOrder.status !== "bill_requested") {
+    res.status(409).json({ error: "Solo puede cancelarse una cuenta previamente solicitada" });
+    return;
+  }
   const updates: Record<string, unknown> = {};
   if (guestCount != null && Number.isFinite(guestCount) && guestCount >= 1)
     updates.guestCount = Math.floor(guestCount);
@@ -135,13 +152,20 @@ router.patch("/orders/:orderId", requireAuth, async (req, res): Promise<void> =>
 
   if (!Object.keys(updates).length) { res.status(400).json({ error: "Sin cambios" }); return; }
 
-  const [order] = await db
-    .update(ordersTable)
-    .set(updates as Partial<typeof ordersTable.$inferInsert>)
-    .where(eq(ordersTable.id, orderId))
-    .returning();
+  const order = await db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${"order-critical:" + orderId}))`);
+    const [locked] = await tx.select({ status: ordersTable.status }).from(ordersTable)
+      .where(eq(ordersTable.id, orderId))
+      .for("update");
+    if (!locked || ["paid", "completed"].includes(locked.status)) return null;
+    const [updated] = await tx.update(ordersTable)
+      .set(updates as Partial<typeof ordersTable.$inferInsert>)
+      .where(and(eq(ordersTable.id, orderId), eq(ordersTable.status, locked.status)))
+      .returning();
+    return updated;
+  });
 
-  if (!order) { res.status(404).json({ error: "Pedido no encontrado" }); return; }
+  if (!order) { res.status(409).json({ error: "El pedido cambió y ya no puede modificarse" }); return; }
 
   if (status === "bill_requested") {
     // Update the table status as well
@@ -188,8 +212,12 @@ router.post("/orders/:orderId/items", requireAuth, async (req, res): Promise<voi
 
   // Guard: only add items to open or sent orders
   const [currentOrder] = await db
-    .select({ status: ordersTable.status })
+    .select({
+      status: ordersTable.status,
+      tableName: restaurantTablesTable.name,
+    })
     .from(ordersTable)
+    .leftJoin(restaurantTablesTable, eq(ordersTable.tableId, restaurantTablesTable.id))
     .where(eq(ordersTable.id, orderId));
   if (!currentOrder) { res.status(404).json({ error: "Pedido no encontrado" }); return; }
   if (currentOrder.status === "bill_requested" || currentOrder.status === "paid" || currentOrder.status === "completed") {
@@ -552,24 +580,28 @@ router.post("/orders/:orderId/send", requireAuth, idempotency, async (req, res):
 
   // Guard: cannot send when bill is already requested
   const [currentOrder] = await db
-    .select({ status: ordersTable.status })
+    .select({
+      status: ordersTable.status,
+      tableName: restaurantTablesTable.name,
+    })
     .from(ordersTable)
+    .leftJoin(restaurantTablesTable, eq(ordersTable.tableId, restaurantTablesTable.id))
     .where(eq(ordersTable.id, orderId));
   if (!currentOrder) { res.status(404).json({ error: "Pedido no encontrado" }); return; }
   if (currentOrder.status === "bill_requested") {
     res.status(409).json({ error: "No se puede enviar a cocina: la cuenta ya ha sido solicitada" }); return;
   }
 
-  // Load print mode — determines whether KDS tasks and socket events are created.
-  // kds_only (default): KDS tasks + kds:refresh, no physical printing.
-  // printers_only: no KDS tasks, no kds:refresh, physical printing only.
-  // both: KDS tasks + kds:refresh + physical printing.
+  // Capture one consistent global ceiling for both KDS and physical printing.
+  // Departments are read under the order transaction, while this immutable
+  // request snapshot prevents channel decisions from mixing two configurations.
   const [businessCfg] = await db
     .select({ printMode: businessConfigTable.printMode })
     .from(businessConfigTable)
     .limit(1);
-  const printMode = (businessCfg?.printMode ?? "kds_only") as "kds_only" | "printers_only" | "both";
-  const sendToKds = printMode !== "printers_only";
+  const printMode = (businessCfg?.printMode ?? "kds_only") as
+    "kds_only" | "printers_only" | "both";
+  let sentToKds = false;
 
   // Capture sentAt BEFORE the transaction so isAdded is correct on first send.
   // After the transaction, sentAt is always non-null, so deriving it post-update
@@ -641,13 +673,27 @@ router.post("/orders/:orderId/send", requireAuth, idempotency, async (req, res):
       modsByItem.get(modifier.orderItemId)!.push(modifier);
     }
 
+    const transactionPrintMode = printMode;
+    const transactionDepartments = await loadProductionDepartments({ executor: tx });
+    const transactionDepartmentByCode = new Map(
+      transactionDepartments.map((department) => [department.code, department]),
+    );
+    const channelsFor = (code: string) => {
+      const department = transactionDepartmentByCode.get(code);
+      return department
+        ? resolveEffectiveChannels(department, transactionPrintMode)
+        : {
+          kds: transactionPrintMode !== "printers_only",
+          printer: transactionPrintMode !== "kds_only",
+        };
+    };
+
     // Only create KDS tasks when the mode includes KDS (kds_only or both).
     // printers_only mode routes entirely through physical printers — no KDS tasks.
-    if (sendToKds) {
-      for (const row of draftItems) {
-        const item = row.order_items;
-        const product = row.products;
-
+    for (const row of draftItems) {
+      const item = row.order_items;
+      const product = row.products;
+      if (channelsFor(product.prepZone).kds) {
         const mods = modsByItem.get(item.id) ?? [];
         const modText = mods.map((m) => m.modifierName).join(", ");
         const formatPart = item.formatName ? `[${item.formatName}]` : "";
@@ -664,6 +710,7 @@ router.post("/orders/:orderId/send", requireAuth, idempotency, async (req, res):
           allergyNote: item.allergyNote,
           hasAllergy: item.hasAllergy,
         });
+        sentToKds = true;
       }
     }
 
@@ -789,6 +836,53 @@ router.post("/orders/:orderId/send", requireAuth, idempotency, async (req, res):
       .where(eq(ordersTable.id, orderId));
     if (!updatedOrder) throw new Error("ORDER_NOT_FOUND");
 
+    // Enqueue all physical print jobs inside the same transaction as KDS and
+    // stock side effects. A queue failure rolls back the send; no order can be
+    // committed as sent without its configured durable output.
+    const { dispatchKitchenPrint } = await import("../lib/print-dispatch");
+    const printItems = draftItems.map(row => {
+      const item = row.order_items;
+      const product = row.products;
+      const modifiers = (modsByItem.get(item.id) ?? []).map(modifier => modifier.modifierName);
+      return {
+        orderItemId: item.id,
+        productId: product.id,
+        categoryId: product.categoryId,
+        prepZone: product.prepZone,
+        ticketItem: {
+          quantity: item.quantity,
+          name: product.name,
+          formatName: item.formatName,
+          notes: item.notes,
+          allergyNote: item.allergyNote,
+          hasAllergy: item.hasAllergy,
+          modifiers,
+        },
+      };
+    });
+    await dispatchKitchenPrint({
+      order: {
+        id: orderId,
+        tableName: currentOrder.tableName ?? null,
+        orderNumber: updatedOrder.orderNumber ?? null,
+        orderType: updatedOrder.orderType,
+        deliveryType: updatedOrder.deliveryType,
+        clientName: updatedOrder.clientName,
+        guestCount: updatedOrder.guestCount,
+        employeeName: req.user?.name,
+        estimatedReadyAt: updatedOrder.estimatedReadyAt,
+        sentAt: updatedOrder.sentAt,
+        createdAt: updatedOrder.createdAt,
+      },
+      items: printItems,
+      isAdded: wasAlreadySent,
+      actorId: req.user?.id,
+      actorName: req.user?.name,
+      executor: tx,
+      printModeOverride: transactionPrintMode,
+      departmentsOverride: transactionDepartments,
+    });
+
     // Persist the exact successful response in the SAME transaction as KDS and
     // stock side effects. A process crash after COMMIT can still be replayed.
     const requestKey = req.headers["idempotency-key"];
@@ -831,65 +925,11 @@ router.post("/orders/:orderId/send", requireAuth, idempotency, async (req, res):
   try {
     // kds:refresh is only meaningful when KDS is active (kds_only or both).
     // printers_only mode skips KDS socket event to avoid confusing KDS screens.
-    if (sendToKds) {
+    if (sentToKds) {
       emitToFunction("kds", "kds:refresh", { employeeName: req.user?.name ?? null });
     }
     emitRefresh(orderId, req.user?.name);
   } catch { /* ignore */ }
-
-  // ── Print dispatch (non-blocking, does not affect KDS flow) ──────────────
-  try {
-    const { dispatchKitchenPrint } = await import("../lib/print-dispatch");
-    // isAdded is true only when the order had already been sent BEFORE this
-    // request — derived from the pre-transaction snapshot captured above.
-    const isAdded = wasAlreadySent;
-
-    const printItems = draftItems.map(row => {
-      const item = row.order_items;
-      const product = row.products;
-      const mods = (modsByItem.get(item.id) ?? []).map(m => m.modifierName);
-      return {
-        productId: product.id,
-        categoryId: product.categoryId,
-        prepZone: product.prepZone,
-        ticketItem: {
-          quantity: item.quantity,
-          name: product.name,
-          formatName: item.formatName,
-          notes: item.notes,
-          allergyNote: item.allergyNote,
-          hasAllergy: item.hasAllergy,
-          modifiers: mods,
-        },
-      };
-    });
-
-    const tableName = updated?.tableId
-      ? (await db.select({ name: restaurantTablesTable.name })
-          .from(restaurantTablesTable)
-          .where(eq(restaurantTablesTable.id, updated.tableId)))[0]?.name
-      : null;
-
-    await dispatchKitchenPrint({
-      order: {
-        id: orderId,
-        tableName: tableName ?? null,
-        orderNumber: updated?.orderNumber ?? null,
-        orderType: updated?.orderType,
-        deliveryType: updated?.deliveryType,
-        clientName: updated?.clientName,
-        guestCount: updated?.guestCount,
-        employeeName: req.user?.name,
-        estimatedReadyAt: updated?.estimatedReadyAt,
-        sentAt: updated?.sentAt,
-        createdAt: updated?.createdAt,
-      },
-      items: printItems,
-      isAdded,
-      actorId: req.user?.id,
-      actorName: req.user?.name,
-    });
-  } catch { /* print errors never fail the order send */ }
 
   res.json(updated);
 });
@@ -1029,25 +1069,36 @@ router.post("/orders/:orderId/pase", requireAuth, async (req, res): Promise<void
     const [order] = await db.select().from(ordersTable).where(eq(ordersTable.id, orderId));
 
     if (!order) { res.status(404).json({ error: "Pedido no encontrado" }); return; }
+    if (["paid", "completed", "bill_requested"].includes(order.status)) {
+      res.status(409).json({ error: "El pedido ya está en un estado terminal o de cobro" });
+      return;
+    }
+    const tasks = await db.select({ status: kitchenTasksTable.status })
+      .from(kitchenTasksTable)
+      .where(eq(kitchenTasksTable.orderId, orderId));
+    if (
+      tasks.length === 0
+      || tasks.some((task) => !["ready", "collected", "served", "cancelled"].includes(task.status))
+    ) {
+      res.status(409).json({ error: "El pedido aún tiene tareas en preparación" });
+      return;
+    }
 
     await db.transaction(async (tx) => {
       await tx
         .update(kitchenTasksTable)
         .set({ status: "served", servedAt: now, updatedAt: now })
-        .where(eq(kitchenTasksTable.orderId, orderId));
+        .where(and(
+          eq(kitchenTasksTable.orderId, orderId),
+          inArray(kitchenTasksTable.status, ["ready", "collected"]),
+        ));
 
       await tx
         .update(ordersTable)
         .set({ status: "served" })
         .where(eq(ordersTable.id, orderId));
-
-      if (order.tableId) {
-        await tx
-          .update(restaurantTablesTable)
-          .set({ status: "free" })
-          .where(eq(restaurantTablesTable.id, order.tableId));
-      }
     });
+    await writeAudit(orderId, req.user?.id, req.user?.name ?? "", "order_served", "Pedido servido; mesa permanece pendiente de cobro");
 
     try {
       if (order.tableId) {

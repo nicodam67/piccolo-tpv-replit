@@ -1,6 +1,7 @@
 import { boolean, numeric, pgTable, text, uuid, integer, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import { ordersTable } from "./orders";
 import { productsTable, productFormatsTable } from "./categories";
+import { employeesTable } from "./employees";
 
 export const orderItemsTable = pgTable("order_items", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -48,6 +49,10 @@ export const kitchenTasksTable = pgTable("kitchen_tasks", {
   collectedAt: timestamp("collected_at", { withTimezone: true }),
   servedAt: timestamp("served_at", { withTimezone: true }),
   cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
+  resentAt: timestamp("resent_at", { withTimezone: true }),
+  resentBy: uuid("resent_by").references(() => employeesTable.id),
+  resentReason: text("resent_reason"),
+  resendCount: integer("resend_count").notNull().default(0),
 }, (table) => [
   uniqueIndex("kitchen_tasks_order_item_unique").on(table.orderItemId),
 ]);

@@ -14,6 +14,9 @@ export function getOcrProvider(): OcrProvider {
   if (_instance) return _instance;
 
   const provider = process.env.OCR_PROVIDER ?? "simulator";
+  if (process.env.NODE_ENV === "production") {
+    throw new Error(`Conector OCR real no configurado (${provider})`);
+  }
 
   switch (provider) {
     case "simulator":

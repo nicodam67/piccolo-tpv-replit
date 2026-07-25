@@ -21,8 +21,8 @@ import {
   Zap,
   UtensilsCrossed as ForkIcon,
 } from 'lucide-react';
-import { useGetDashboardSummary, getGetDashboardSummaryQueryKey, customFetch } from '@workspace/api-client-react';
-import { useQuery } from '@tanstack/react-query';
+import { useGetDashboardSummary, getGetDashboardSummaryQueryKey } from '@workspace/api-client-react';
+import { useGetReservations, getGetReservationsQueryKey } from '@workspace/api-client-react/reservations';
 
 // ─── Module definitions ───────────────────────────────────────────────────────
 interface ModuleCard {
@@ -204,6 +204,7 @@ const SEARCH_INDEX: SearchItem[] = [
   { title: 'Permisos por rol', path: 'Administración › Auditoría',   href: '/admin/permisos',   keywords: 'permisos rol acceso empleados matriz granular' },
   // Hardware e Instalación
   { title: 'Impresoras',       path: 'Hardware e Instalación › Impresión', href: '/admin/impresoras',      keywords: 'impresoras configurar enrutamiento plantilla ticket' },
+  { title: 'Producción KDS + impresión', path: 'Hardware e Instalación › Producción', href: '/admin/produccion', keywords: 'departamentos kds impresoras routing cola reimpresion' },
   { title: 'Cola de impresión', path: 'Hardware e Instalación › Impresión', href: '/admin/cola-impresion', keywords: 'cola impresion pendientes errores reimpresion' },
   { title: 'Prueba de impresión', path: 'Hardware e Instalación › Impresión', href: '/admin/prueba-impresion', keywords: 'prueba impresion test asistente verificar' },
   { title: 'Estaciones KDS',   path: 'Hardware e Instalación › Pantallas KDS', href: '/admin/kds-stations', keywords: 'kds estaciones pantallas ips ping produccion' },
@@ -243,10 +244,8 @@ export default function AdminDashboard() {
 
   // Today's reservations count for the badge on Operaciones
   const todayDate = now.toISOString().slice(0, 10);
-  const { data: todayReservations = [] } = useQuery<{ id: string; status: string }[]>({
-    queryKey: ['reservations-today-badge', todayDate],
-    queryFn: () => customFetch(`/api/reservations?date=${todayDate}`),
-    refetchInterval: 60000,
+  const { data: todayReservations = [] } = useGetReservations({ date: todayDate }, {
+    query: { queryKey: getGetReservationsQueryKey({ date: todayDate }), refetchInterval: 60000 },
   });
   const reservasBadge = todayReservations.filter((r: { status: string }) => r.status !== 'cancelled' && r.status !== 'noshow').length;
 

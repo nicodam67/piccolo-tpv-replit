@@ -245,7 +245,7 @@ describe("5. Allergy header in kitchen ticket", () => {
 describe("6. Reprint header", () => {
   it("labels reprinted documents with actor and reason", () => {
     const header = buildReprintHeader("Cliente perdió el ticket", "Admin");
-    expect(header).toContain("REIMPRESION");
+    expect(header).toContain("REIMPRESIÓN");
     expect(header).toContain("Cliente perdió el ticket");
     expect(header).toContain("Admin");
   });
@@ -446,8 +446,9 @@ describe("16. DELETE /api/admin/print-queue/:id — cancel pending job", () => {
 
 // ── 17. POST /admin/print-queue/:id/reprint ──────────────────────────────────
 describe("17. POST /api/admin/print-queue/:id/reprint — reprint with reason", () => {
-  it("creates a new reprint job with REIMPRESION header", async () => {
+  it("creates a new reprint job with REIMPRESIÓN header", async () => {
     mockDb.select.mockReturnValueOnce(makeChain([JOB_PRINTED]));
+    mockDb.select.mockReturnValueOnce(makeChain([PRINTER_COCINA]));
     mockDb.insert
       .mockReturnValueOnce(makeChain([{ id: "job-reprint-1", documentType: "reprint", status: "pending" }]))
       .mockReturnValueOnce(makeChain([])); // audit
@@ -461,13 +462,18 @@ describe("17. POST /api/admin/print-queue/:id/reprint — reprint with reason", 
     expect(res.body.documentType).toBe("reprint");
   });
 
-  it("returns 400 when reason is missing", async () => {
+  it("allows an optional reason and still creates a marked reprint", async () => {
+    mockDb.select.mockReturnValueOnce(makeChain([JOB_PRINTED]));
+    mockDb.select.mockReturnValueOnce(makeChain([PRINTER_COCINA]));
+    mockDb.insert
+      .mockReturnValueOnce(makeChain([{ id: "job-reprint-2", documentType: "reprint", status: "pending" }]))
+      .mockReturnValueOnce(makeChain([]));
     const res = await request(app)
       .post("/api/admin/print-queue/job-3/reprint")
       .set("Authorization", AUTH)
       .send({});
 
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(201);
   });
 });
 

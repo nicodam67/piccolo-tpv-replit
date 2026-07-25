@@ -16,7 +16,8 @@ export const PERMISSIONS = {
   orders:    { create: 'orders.create', modify: 'orders.modify',
                cancel: 'orders.cancel', void: 'orders.void'       },
   kds:       { view: 'kds.view',       manage: 'kds.manage'       },
-  payments:  { create: 'payments.create', refund: 'payments.refund' },
+  payments:  { create: 'payments.create', refund: 'payments.refund',
+               split: 'payments.split' },
   cash:      { open: 'cash.open',      close: 'cash.close',
                view: 'cash.view'                                   },
   invoices:  { create: 'invoices.create', correct: 'invoices.correct' },
@@ -44,7 +45,7 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     'tables.view', 'tables.manage',
     'orders.create', 'orders.modify', 'orders.cancel', 'orders.void',
     'kds.view', 'kds.manage',
-    'payments.create', 'payments.refund',
+    'payments.create', 'payments.refund', 'payments.split',
     'cash.open', 'cash.close', 'cash.view',
     'invoices.create', 'invoices.correct',
     'products.manage',
@@ -62,7 +63,7 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     'tables.view', 'tables.manage',
     'orders.create', 'orders.modify', 'orders.cancel',
     'kds.view', 'kds.manage',
-    'payments.create',
+    'payments.create', 'payments.split',
     'cash.open', 'cash.close', 'cash.view',
     'invoices.create',
     'reports.view',
@@ -75,6 +76,15 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     'kds.view',
     'payments.create',
     'cash.view',
+  ],
+  cashier: [
+    'tables.view',
+    'orders.create', 'orders.modify',
+    'payments.create', 'payments.split',
+    'cash.open', 'cash.view',
+  ],
+  kitchen: [
+    'kds.view', 'kds.manage',
   ],
 };
 

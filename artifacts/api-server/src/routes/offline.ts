@@ -438,6 +438,24 @@ router.post("/offline/sync", ...anyAuth, async (req, res) => {
       continue;
     }
 
+    if (op.operationType === "cash_payment") {
+      const error = "offline_cash_payment_unsupported";
+      await db.insert(offlineQueueTable).values({
+        deviceId: deviceRecord?.id ?? null,
+        employeeId: (req.user as { id?: string } | undefined)?.id ?? null,
+        operationType: op.operationType,
+        idempotencyKey: op.idempotencyKey,
+        payload: op.payload,
+        status: "failed",
+        lastError: error,
+      }).onConflictDoUpdate({
+        target: offlineQueueTable.idempotencyKey,
+        set: { status: "failed", lastError: error },
+      });
+      results.push({ idempotencyKey: op.idempotencyKey, status: "failed", error });
+      continue;
+    }
+
     try {
       let resultPayload: Record<string, unknown> = {};
 
@@ -470,7 +488,6 @@ router.post("/offline/sync", ...anyAuth, async (req, res) => {
           }
           break;
         }
-        case "cash_payment":
         case "clock_in":
         case "clock_out":
           resultPayload = { acknowledged: true, note: "Operación registrada para procesamiento" };
