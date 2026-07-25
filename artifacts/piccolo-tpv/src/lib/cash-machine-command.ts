@@ -116,7 +116,7 @@ export async function claimCashMachineCommand(
   terminalName: string,
   storage: CommandStorage = localStorage,
   lockManager: CommandLockManager | null =
-    typeof navigator !== 'undefined' ? navigator.locks : undefined,
+    typeof navigator !== 'undefined' ? (navigator.locks ?? null) : null,
   now = Date.now(),
   createKey: () => string = () => crypto.randomUUID(),
 ): Promise<CashMachineCommandResolution> {
