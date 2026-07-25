@@ -79,3 +79,15 @@ El seed inicial pasa de cinco a siete tablets para coincidir con D1–D7.
 - NAS/S3: configuración detectada; el round-trip requiere harness.
 - Backup: copia válida/verificada; restore real sigue siendo una prueba separada.
 - PDF: HTML A4 + diálogo de impresión, patrón ya usado por informes X/Z; no se añade dependencia PDF.
+
+## Validación
+
+- 28 migraciones aplicadas en PostgreSQL limpio; Entrega 68 no añade migración.
+- 74 archivos / 813 tests API aprobados.
+- 28/28 E2E aprobados.
+- Cobertura focalizada nueva: 4 casos unitarios, 5 integraciones PostgreSQL y 2 escenarios E2E.
+- TypeScript, ESLint y builds API/TPV aprobados.
+- Route audit: 64 archivos, cero rutas sin guard.
+- Performance: 250 requests, cero errores; printing p95 9,2 ms.
+- Walkthrough UI: persistencia `En progreso`, refresco del resumen y preview PDF verificados.
+- Dependencias: 4 high en árbol completo y 2 high productivas, sin cambio respecto a Entrega 67.

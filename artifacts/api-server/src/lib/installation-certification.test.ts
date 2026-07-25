@@ -40,6 +40,7 @@ describe("installation physical certification", () => {
     expect(cases.find((entry) => entry.caseId === "PRINT-LONG")).toMatchObject({
       status: "passed",
       notes: "Salida completa",
+      performedAt: now.toISOString(),
     });
     expect(cases.find((entry) => entry.caseId === "KDS-FSM")?.status).toBe("pending");
     expect(certificationSummary(cases).status).toBe("pending");

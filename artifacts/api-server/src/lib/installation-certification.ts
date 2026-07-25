@@ -89,7 +89,7 @@ export function mergeCertificationCases(events: CertificationEvent[]) {
       status: (event?.result ?? "pending") as CertificationStatus,
       notes: event?.notes ?? "",
       performedBy: event?.performedBy ?? null,
-      performedAt: event?.performedAt ?? null,
+      performedAt: event?.performedAt ? new Date(event.performedAt).toISOString() : null,
       evidence: event?.metadata?.evidence ?? [],
     };
   });

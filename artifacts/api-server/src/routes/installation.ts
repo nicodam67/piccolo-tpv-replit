@@ -306,7 +306,7 @@ async function loadInstallationAssistantSnapshot() {
       level: entry.level,
       module: entry.module,
       message: sanitizeCertificationText(entry.message, 500),
-      createdAt: entry.createdAt,
+      createdAt: entry.createdAt.toISOString(),
     })),
   };
 }

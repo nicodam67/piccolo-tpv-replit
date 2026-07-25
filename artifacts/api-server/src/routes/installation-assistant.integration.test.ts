@@ -136,6 +136,7 @@ describeWithDatabase("installation assistant and certification", () => {
     expect(html.text).toContain("Informe de instalación y certificación física");
     expect(html.text).toContain("window.print()");
     expect(html.text).not.toContain("192.168.68.10");
+    expect(html.text).not.toContain("Coordinated Universal Time");
   });
 
   it("ignores forged performedBy on the existing generic test API", async () => {
