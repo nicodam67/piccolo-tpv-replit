@@ -226,10 +226,11 @@ function MenuItemCard({
         animate={{ opacity: 1 }}
         transition={{ duration: 0.2, delay: index * 0.03 }}
         onClick={onClick}
-        className="w-full text-left flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg hover:bg-gray-50 border border-gray-100 cursor-pointer"
+        disabled={item.outOfStock}
+        className={`w-full text-left flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg hover:bg-gray-50 border border-gray-100 ${item.outOfStock ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}
       >
         <div className="flex-1 min-w-0">
-          <span className="text-sm font-medium truncate block" style={{ fontFamily: headingFont }}>{name}</span>
+          <span className="text-sm font-medium truncate block" style={{ fontFamily: headingFont }}>{name}{item.outOfStock ? ' · AGOTADO' : ''}</span>
           {tags.length > 0 && cs.showTags && (
             <div className="flex gap-1 mt-0.5">
               {tags.map((k) => <span key={k} className="text-xs">{TAG_STYLES[k].label.split(' ')[0]}</span>)}
@@ -250,7 +251,8 @@ function MenuItemCard({
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3, delay: index * 0.04 }}
         onClick={onClick}
-        className="w-full text-left flex gap-3 rounded-xl border border-gray-100 bg-white shadow-sm hover:shadow-md p-3 transition-shadow cursor-pointer"
+        disabled={item.outOfStock}
+        className={`w-full text-left flex gap-3 rounded-xl border border-gray-100 bg-white shadow-sm hover:shadow-md p-3 transition-shadow ${item.outOfStock ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}
       >
         {cs.showImage && item.imageUrl && (
           <div className="w-16 h-16 rounded-lg overflow-hidden shrink-0 bg-gray-100">
@@ -263,7 +265,7 @@ function MenuItemCard({
           </div>
         )}
         <div className="flex-1 min-w-0">
-          <h3 className="text-sm font-semibold mb-0.5" style={{ fontFamily: headingFont }}>{name}</h3>
+          <h3 className="text-sm font-semibold mb-0.5" style={{ fontFamily: headingFont }}>{name}{item.outOfStock && <span className="ml-2 text-[10px] text-red-700">AGOTADO</span>}</h3>
           {cs.showDescription && desc && (
             <p className="text-xs text-gray-500 line-clamp-2" style={{ fontFamily: bodyFont }}>{desc}</p>
           )}
@@ -296,7 +298,8 @@ function MenuItemCard({
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, delay: index * 0.05 }}
       onClick={onClick}
-      className="w-full text-left rounded-2xl border border-gray-100 bg-white shadow-sm hover:shadow-md overflow-hidden cursor-pointer transition-shadow"
+      disabled={item.outOfStock}
+      className={`w-full text-left rounded-2xl border border-gray-100 bg-white shadow-sm hover:shadow-md overflow-hidden transition-shadow ${item.outOfStock ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}
     >
       {cs.showImage && (
         <div className="h-40 bg-gray-100">
@@ -307,7 +310,7 @@ function MenuItemCard({
         </div>
       )}
       <div className="p-4">
-        <h3 className="text-base font-semibold mb-1 leading-tight" style={{ fontFamily: headingFont }}>{name}</h3>
+        <h3 className="text-base font-semibold mb-1 leading-tight" style={{ fontFamily: headingFont }}>{name}{item.outOfStock && <span className="ml-2 text-[10px] text-red-700">AGOTADO</span>}</h3>
         {cs.showDescription && desc && (
           <p className="text-xs text-gray-500 line-clamp-2 mb-2" style={{ fontFamily: bodyFont }}>{desc}</p>
         )}
@@ -337,7 +340,7 @@ function MenuItemCard({
           {cs.showHalfPortion && item.halfPortionPrice && (
             <span className="text-xs text-gray-400">½ €{Number(item.halfPortionPrice).toFixed(2)}</span>
           )}
-          <span className="text-xs" style={{ color: accentColor + '99' }}>Toca para detalles →</span>
+          <span className="text-xs" style={{ color: item.outOfStock ? '#b91c1c' : accentColor + '99' }}>{item.outOfStock ? 'No disponible' : 'Toca para detalles →'}</span>
         </div>
       </div>
     </motion.button>
@@ -365,13 +368,26 @@ export default function CartaCategoria() {
   });
 
   useEffect(() => {
-    Promise.all([
-      fetch(`${BASE}/api/public/menu`).then((r) => r.json()),
-      fetch(`${BASE}/api/public/branding`).then((r) => r.json()).catch(() => null),
-    ]).then(([cats, brand]) => {
-      setCategories(Array.isArray(cats) ? cats : []);
-      setBranding(brand);
-    }).finally(() => setLoading(false));
+    let active = true;
+    const synchronizeFromTpv = () => Promise.all([
+        fetch(`${BASE}/api/public/menu`).then((r) => r.json()),
+        fetch(`${BASE}/api/public/branding`).then((r) => r.json()).catch(() => null),
+      ]).then(([cats, brand]) => {
+        if (!active) return;
+        setCategories(Array.isArray(cats) ? cats : []);
+        setBranding(brand);
+      }).finally(() => {
+        if (active) setLoading(false);
+      });
+    void synchronizeFromTpv();
+    const timer = window.setInterval(() => void synchronizeFromTpv(), 30_000);
+    const onVisibility = () => { if (!document.hidden) void synchronizeFromTpv(); };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
   }, []);
 
   const category = useMemo(() => categories?.find((c) => c.id === categoryId), [categories, categoryId]);

@@ -62,6 +62,7 @@ import tabletRouter from "./tablet";
 import systemInfoRouter from "./system-info";
 import rolePermissionsRouter from "./role-permissions";
 import productionDepartmentsRouter from "./production-departments";
+import catalogImportRouter from "./catalog-import";
 
 const router: IRouter = Router();
 
@@ -81,6 +82,7 @@ router.use(cashRouter);
 router.use(paymentsRouter);
 router.use(canvasElementsRouter);
 router.use(productsRouter);
+router.use(catalogImportRouter);
 router.use(configRouter);
 router.use(documentsRouter);
 router.use(discountsRouter);

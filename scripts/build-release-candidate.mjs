@@ -139,6 +139,34 @@ if (!noInstaller) {
     `${define}STAGE_DIR=${stage}`,
     path.join(packagingDir, "PiccoloTPV-Server.nsi"),
   ]);
+
+  const bundleDirectory = path.join(stage, "installation-bundle");
+  fs.rmSync(bundleDirectory, { recursive: true, force: true });
+  fs.mkdirSync(bundleDirectory, { recursive: true });
+  for (const installer of ["Piccolo-TPV-Setup.exe", "Piccolo-Server-Setup.exe"]) {
+    copy(path.join(release, installer), path.join(bundleDirectory, installer));
+  }
+  for (const name of fs.readdirSync(release).filter((entry) =>
+    /\.(md|txt)$/.test(entry) && entry !== "SHA256SUMS.txt")) {
+    copy(path.join(release, name), path.join(bundleDirectory, name));
+  }
+  const contentChecksums = fs.readdirSync(bundleDirectory).sort().map((name) =>
+    `${sha256File(path.join(bundleDirectory, name))}  ${name}`);
+  fs.writeFileSync(
+    path.join(bundleDirectory, "CONTENTS-SHA256SUMS.txt"),
+    `${contentChecksums.join("\n")}\n`,
+  );
+  const bundleName = `Piccolo-TPV-${RC_VERSION}-Instalacion.zip`;
+  fs.rmSync(path.join(release, bundleName), { force: true });
+  if (process.platform === "win32") {
+    run("powershell.exe", [
+      "-NoProfile",
+      "-Command",
+      `Compress-Archive -Path '${bundleDirectory}\\*' -DestinationPath '${path.join(release, bundleName)}' -Force`,
+    ]);
+  } else {
+    run("zip", ["-qr", path.join(release, bundleName), "."], bundleDirectory);
+  }
 }
 
 const commit = output("git", ["rev-parse", "HEAD"]);

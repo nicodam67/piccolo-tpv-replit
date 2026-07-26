@@ -47,6 +47,7 @@ import {
   businessConfigTable,
   productionDepartmentsTable,
   techEventsTable,
+  categoriesTable,
 } from "@workspace/db";
 import { and, eq, desc, asc, inArray, sql } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
@@ -97,6 +98,8 @@ async function loadInstallationAssistantSnapshot() {
     businessConfigs,
     departments,
     incidents,
+    catalogProducts,
+    catalogCategories,
   ] = await Promise.all([
     db.select().from(installationDevicesTable),
     db.select().from(printersTable),
@@ -117,6 +120,8 @@ async function loadInstallationAssistantSnapshot() {
       ))
       .orderBy(desc(techEventsTable.createdAt))
       .limit(50),
+    db.select({ id: productsTable.id }).from(productsTable).limit(1),
+    db.select({ id: categoriesTable.id }).from(categoriesTable).limit(1),
   ]);
 
   const now = Date.now();
@@ -142,6 +147,7 @@ async function loadInstallationAssistantSnapshot() {
   const networkErrors = network.filter((entry) =>
     entry.status === "conflict" || entry.status === "unreachable");
   const networkUnknown = network.filter((entry) => entry.status === "unknown");
+  const config = businessConfigs[0];
 
   const step = (
     id: string,
@@ -156,6 +162,43 @@ async function loadInstallationAssistantSnapshot() {
   ) => ({ id, label, status, configured, missing, errors, corrections, href, detection });
 
   const steps = [
+    step(
+      "restaurant",
+      "Restaurante y datos fiscales",
+      config?.setupCompleted ? "ready" : config?.nombreComercial ? "warning" : "pending",
+      config?.nombreComercial
+        ? [`${config.nombreComercial}: ${config.setupCompleted ? "configuración completada" : "configuración parcial"}`]
+        : [],
+      config?.setupCompleted ? [] : ["Completar identidad, dirección, fiscalidad, idioma y zona horaria"],
+      [],
+      ["Abrir el asistente general y completar los datos obligatorios"],
+      "/setup",
+      "Configuración PostgreSQL business_config",
+    ),
+    step(
+      "postgresql",
+      "PostgreSQL",
+      "ready",
+      [`Conexión verificada en ${databaseLatencyMs} ms`],
+      [],
+      [],
+      ["Las credenciales y la instalación se modifican únicamente desde el configurador Windows"],
+      "/admin/salud",
+      "SELECT 1 en vivo; secretos gestionados por instalador",
+    ),
+    step(
+      "initial_catalog",
+      "Carta inicial (opcional)",
+      catalogProducts.length && catalogCategories.length ? "ready" : "pending",
+      catalogProducts.length
+        ? ["Catálogo TPV detectado; QR Menú integrado usa PostgreSQL"]
+        : [],
+      catalogProducts.length ? [] : ["Puedes importar CSV, XLSX o exportación QR compatible"],
+      [],
+      ["Revisar la vista previa, corregir errores y confirmar sin sobrescribir duplicados"],
+      "/admin/instalacion/asistente?tab=catalog",
+      "Productos y categorías PostgreSQL; etapa opcional",
+    ),
     step(
       "main_computer",
       "Ordenador principal",
@@ -179,6 +222,18 @@ async function loadInstallationAssistantSnapshot() {
       "Estado pasivo del worker; online significa TCP, no papel",
     ),
     step(
+      "departments",
+      "Departamentos de producción",
+      departments.some((entry) => entry.active) ? "ready" : "pending",
+      departments.filter((entry) => entry.active).map((entry) =>
+        `${entry.name}: ${entry.outputMode}`),
+      departments.some((entry) => entry.active) ? [] : ["Crear al menos un departamento activo"],
+      [],
+      ["Configurar routing KDS/impresora y orden de impresoras por departamento"],
+      "/admin/produccion",
+      "production_departments PostgreSQL",
+    ),
+    step(
       "kds",
       "Estaciones KDS",
       !activeKds.length ? "pending" : activeKds.every((entry) => recentlySeen(entry.lastPingAt)) ? "ready" : "warning",
@@ -199,6 +254,18 @@ async function loadInstallationAssistantSnapshot() {
       ["Registrar D1–D7 y ejecutar login, Wi‑Fi, memoria, sesión y permisos en cada dispositivo"],
       "/admin/instalacion",
       "Inventario + lastSeen de TPV/fichaje (5 min)",
+    ),
+    step(
+      "timeclock_tablet",
+      "Tablet de fichaje",
+      connectedFichaje.length ? "ready" : fichajeTablets.some((entry) => entry.status === "active") ? "warning" : "pending",
+      fichajeTablets.map((entry) =>
+        `${entry.name}: ${entry.status}${recentlySeen(entry.lastSeenAt) ? ", conectada" : ""}`),
+      fichajeTablets.length ? [] : ["Emparejar una tablet de fichaje"],
+      fichajeTablets.filter((entry) => entry.status === "revoked").map((entry) => `${entry.name}: revocada`),
+      ["Instalar la PWA de fichaje, emparejarla y probar PIN; NFC sigue pendiente físico"],
+      "/admin/fichaje/dispositivos",
+      "tablet_devices + lastSeen (5 min)",
     ),
     step(
       "storage",
@@ -236,7 +303,6 @@ async function loadInstallationAssistantSnapshot() {
   ];
 
   const certificationCases = mergeCertificationCases(tests);
-  const config = businessConfigs[0];
   return {
     generatedAt: new Date().toISOString(),
     version: APP_VERSION,

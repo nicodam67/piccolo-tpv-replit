@@ -4,7 +4,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft, CircleAlert, Download,
   ExternalLink, HardDrive, Loader2, Network, Printer, RefreshCw,
-  Server, ShieldCheck, Smartphone, Utensils,
+  Server, ShieldCheck, Smartphone, Utensils, FileSpreadsheet,
+  Building2, Database, Layers3, Clock3,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../../lib/api-client';
@@ -12,6 +13,7 @@ import { useAuth } from '../../providers/AuthProvider';
 import { Button } from '../../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Textarea } from '../../components/ui/textarea';
+import InitialCatalogImport from './InitialCatalogImport';
 
 type StepStatus = 'ready' | 'warning' | 'pending' | 'error';
 type CertificationStatus = 'pending' | 'in_progress' | 'passed' | 'failed' | 'not_applicable';
@@ -83,6 +85,11 @@ const STEP_ICONS: Record<string, typeof Server> = {
   storage: HardDrive,
   network: Network,
   backups: ShieldCheck,
+  initial_catalog: FileSpreadsheet,
+  restaurant: Building2,
+  postgresql: Database,
+  departments: Layers3,
+  timeclock_tablet: Clock3,
 };
 
 const STATUS_LABELS: Record<CertificationStatus, string> = {
@@ -116,7 +123,9 @@ export default function InstallationAssistantPage() {
   const [, navigate] = useLocation();
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const [tab, setTab] = useState<'assistant' | 'checklist' | 'diagnostics'>('assistant');
+  const initialTab: 'catalog' | 'assistant' =
+    new URLSearchParams(window.location.search).get('tab') === 'catalog' ? 'catalog' : 'assistant';
+  const [tab, setTab] = useState<'assistant' | 'catalog' | 'checklist' | 'diagnostics'>(initialTab);
   const [area, setArea] = useState('all');
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [pendingCase, setPendingCase] = useState<string | null>(null);
@@ -195,6 +204,7 @@ export default function InstallationAssistantPage() {
         <nav className="mx-auto flex max-w-7xl gap-1 px-4">
           {([
             ['assistant', 'Asistente'],
+            ['catalog', 'Carta inicial'],
             ['checklist', `Certificación (${data.certification.summary.total})`],
             ['diagnostics', 'Diagnóstico'],
           ] as const).map(([key, label]) => (
@@ -285,6 +295,10 @@ export default function InstallationAssistantPage() {
             ))}
           </div>
         )}
+
+        <div className={tab === 'catalog' ? 'block' : 'hidden'} aria-hidden={tab !== 'catalog'}>
+          <InitialCatalogImport />
+        </div>
 
         {tab === 'diagnostics' && (
           <div className="space-y-4">

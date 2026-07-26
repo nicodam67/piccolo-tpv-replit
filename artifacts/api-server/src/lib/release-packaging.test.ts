@@ -97,6 +97,21 @@ describe("Piccolo TPV release candidate packaging", () => {
     );
     fs.rmSync(directory, { recursive: true, force: true });
   });
+
+  it("builds one owner package with installers, manuals and both checklists", () => {
+    const builder = read("scripts/build-release-candidate.mjs");
+    expect(builder).toContain("Instalacion.zip");
+    expect(builder).toContain("CONTENTS-SHA256SUMS.txt");
+    for (const document of [
+      "GUIA-RAPIDA.md",
+      "MANUAL-PROPIETARIO.md",
+      "CHECKLIST-INSTALACION.md",
+      "CHECKLIST-CERTIFICACION.md",
+      "CAMBIO-DE-ORDENADOR.md",
+    ]) {
+      expect(fs.existsSync(path.join(root, "release/piccolo", document))).toBe(true);
+    }
+  });
 });
 
 function readFile(directory: string, name: string) {

@@ -46,7 +46,7 @@ describeWithDatabase("installation assistant and certification", () => {
 
   afterAll(cleanup);
 
-  it("protects the assistant and returns the seven guided steps plus 39 cases", async () => {
+  it("protects the assistant and returns all guided install steps plus 39 cases", async () => {
     expect((await request(app).get("/api/admin/installation/assistant")).status).toBe(401);
     expect((await request(app)
       .get("/api/admin/installation/assistant")
@@ -55,7 +55,8 @@ describeWithDatabase("installation assistant and certification", () => {
       .get("/api/admin/installation/assistant")
       .set("Authorization", `Bearer ${token(fixtures.manager)}`);
     expect(response.status).toBe(200);
-    expect(response.body.steps).toHaveLength(7);
+    expect(response.body.steps).toHaveLength(12);
+    expect(response.body.steps.some((step: { id: string }) => step.id === "initial_catalog")).toBe(true);
     expect(response.body.certification.cases).toHaveLength(39);
     expect(response.body.diagnostics.database.status).toBe("ready");
     expect(JSON.stringify(response.body)).not.toContain("192.168.68.10");

@@ -84,7 +84,7 @@ test.describe("Entrega 39 — module certification", () => {
     const assistant = await admin.get("/admin/installation/assistant");
     expect(assistant.status()).toBe(200);
     const snapshot = await assistant.json();
-    expect(snapshot.steps).toHaveLength(7);
+    expect(snapshot.steps).toHaveLength(12);
     expect(snapshot.certification.cases).toHaveLength(39);
     expect((await admin.get("/admin/installation/certification/export?format=html")).status()).toBe(200);
   });
