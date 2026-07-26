@@ -26,6 +26,7 @@ export default [
       "**/import_piccolo_qr/**",
       "docs/backup-qr-menu-replit/**",
       "attached_assets/**",
+      "release/piccolo/staging/**",
     ],
   },
   {
