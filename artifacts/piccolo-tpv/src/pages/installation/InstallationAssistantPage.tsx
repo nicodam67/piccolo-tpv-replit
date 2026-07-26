@@ -296,7 +296,9 @@ export default function InstallationAssistantPage() {
           </div>
         )}
 
-        {tab === 'catalog' && <InitialCatalogImport />}
+        <div className={tab === 'catalog' ? 'block' : 'hidden'} aria-hidden={tab !== 'catalog'}>
+          <InitialCatalogImport />
+        </div>
 
         {tab === 'diagnostics' && (
           <div className="space-y-4">
