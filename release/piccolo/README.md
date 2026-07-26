@@ -2,10 +2,13 @@
 
 Los binarios no se versionan en Git. El workflow **Piccolo TPV Release Candidate** genera:
 
+- `Piccolo-TPV-0.9.0-rc.1-Instalacion.zip` — paquete único recomendado.
 - `Piccolo-TPV-Setup.exe` — lanzador TPV para el ordenador principal.
 - `Piccolo-Server-Setup.exe` — servidor, configuración, actualización, reparación y restore.
 - `Piccolo-TPV-0.9.0-rc.1-portable.zip` — paquete auditable para recuperación técnica.
 - `SHA256SUMS.txt` y `artifact-manifest.json`.
+
+El paquete único contiene ambos instaladores, guía rápida, manual del propietario, manuales de recuperación/actualización/cambio de equipo y los checklists de instalación/certificación.
 
 ## Descarga
 
