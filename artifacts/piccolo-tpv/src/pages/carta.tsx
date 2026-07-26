@@ -260,17 +260,32 @@ export default function Carta() {
   });
 
   useEffect(() => {
-    Promise.all([
-      apiFetch<CartaCategory[]>('/api/public/menu'),
-      apiFetch<PublicBranding>('/api/public/branding').catch(() => null),
-    ]).then(([cats, brand]) => {
-      setCategories(cats);
-      if (brand) {
-        setBranding(brand);
-        applyTheme(brand);
-      }
-    }).catch(() => setConfigurationUnavailable(true))
-      .finally(() => setLoading(false));
+    let active = true;
+    const synchronizeFromTpv = () => Promise.all([
+        apiFetch<CartaCategory[]>('/api/public/menu'),
+        apiFetch<PublicBranding>('/api/public/branding').catch(() => null),
+      ]).then(([cats, brand]) => {
+        if (!active) return;
+        setCategories(cats);
+        setConfigurationUnavailable(false);
+        if (brand) {
+          setBranding(brand);
+          applyTheme(brand);
+        }
+      }).catch(() => {
+        if (active) setConfigurationUnavailable(true);
+      }).finally(() => {
+        if (active) setLoading(false);
+      });
+    void synchronizeFromTpv();
+    const timer = window.setInterval(() => void synchronizeFromTpv(), 30_000);
+    const onVisibility = () => { if (!document.hidden) void synchronizeFromTpv(); };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
   }, []);
 
   useEffect(() => {
