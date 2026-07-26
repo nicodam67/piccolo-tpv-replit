@@ -1,0 +1,26 @@
+{
+  "id": "/fichaje/tablet?profile=fichaje",
+  "name": "Piccolo Fichaje",
+  "short_name": "Fichaje",
+  "description": "Terminal seguro de fichaje Piccolo — versión candidata para pruebas",
+  "start_url": "/fichaje/tablet?profile=fichaje",
+  "scope": "/fichaje/tablet",
+  "display": "fullscreen",
+  "background_color": "#042f2e",
+  "theme_color": "#0f766e",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/pwa/fichaje-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/pwa/fichaje-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

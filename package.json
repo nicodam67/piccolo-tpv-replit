@@ -1,6 +1,6 @@
 {
   "name": "workspace",
-  "version": "0.0.0",
+  "version": "0.9.0-rc.1",
   "license": "MIT",
   "scripts": {
     "preinstall": "sh -c 'rm -f package-lock.json yarn.lock; case \"$npm_config_user_agent\" in pnpm/*) ;; *) echo \"Use pnpm instead\" >&2; exit 1 ;; esac'",
@@ -24,6 +24,8 @@
     "migrate:cash-payments-hooks": "node scripts/migrate-cash-payments-generated-hooks.mjs",
     "certify:hardware-readiness": "node scripts/certify-hardware-readiness.mjs",
     "certify:physical-print": "node scripts/certify-physical-print.mjs",
+    "release:check-version": "node scripts/check-version-coherence.mjs",
+    "release:build-rc": "node scripts/build-release-candidate.mjs",
     "typecheck:libs": "tsc --build",
     "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck"
   },

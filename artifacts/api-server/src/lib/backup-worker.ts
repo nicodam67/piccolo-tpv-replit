@@ -34,9 +34,9 @@ import {
   type BackupArtifact,
   type BackupDestination,
 } from "./backup-destinations";
+import { APP_VERSION } from "./app-version";
 
 const POLL_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
-const APP_VERSION = "1.2.0";
 let workerTimer: ReturnType<typeof setInterval> | null = null;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

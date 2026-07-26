@@ -1,11 +1,12 @@
 import { useEffect } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { Route, Switch, Router as WouterRouter } from 'wouter';
+import { Route, Switch, Router as WouterRouter, useLocation } from 'wouter';
 import { Toaster } from 'sonner';
 import { AuthProvider } from './providers/AuthProvider';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { RequireRole } from './components/auth/RequireRole';
 import { RequirePermission } from './components/auth/RequirePermission';
+import PwaLifecycle from './components/PwaLifecycle';
 
 import Login from './pages/login';
 import Tables from './pages/tables';
@@ -131,6 +132,12 @@ const queryClient = new QueryClient({
     },
   },
 });
+
+function ProfileAwareOfflineBanner() {
+  const [location] = useLocation();
+  if (location.startsWith('/kds/') || location.startsWith('/fichaje/tablet')) return null;
+  return <OfflineBanner />;
+}
 
 // Role sets — kept as constants to avoid inline array allocation per render
 const ROLES_ANY_STAFF   = ['admin', 'manager', 'encargado', 'waiter'];
@@ -620,7 +627,8 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
-          <OfflineBanner />
+          <ProfileAwareOfflineBanner />
+          <PwaLifecycle />
           <Router />
         </WouterRouter>
         <Toaster theme="dark" position="top-center" />

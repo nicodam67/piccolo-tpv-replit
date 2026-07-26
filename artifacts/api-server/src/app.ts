@@ -5,6 +5,8 @@ import cookieParser from "cookie-parser";
 import router from "./routes";
 import { logger } from "./lib/logger";
 import { sanitizeInputs } from "./middlewares/sanitize";
+import path from "node:path";
+import { existsSync } from "node:fs";
 
 const app: Express = express();
 
@@ -110,5 +112,38 @@ app.use("/api", (req, res, next) => {
 });
 
 app.use("/api", router);
+
+// Standalone Windows/server package: serve the already-built TPV from the same
+// origin as the API so secure cookies and Socket.IO keep their validated model.
+// Replit leaves PICCOLO_WEB_ROOT unset and continues using its static artifact.
+const configuredWebRoot = process.env["PICCOLO_WEB_ROOT"];
+if (configuredWebRoot) {
+  const webRoot = path.resolve(configuredWebRoot);
+  const indexPath = path.join(webRoot, "index.html");
+  if (!existsSync(indexPath)) {
+    throw new Error(`PICCOLO_WEB_ROOT does not contain index.html: ${webRoot}`);
+  }
+  app.use(express.static(webRoot, {
+    dotfiles: "deny",
+    fallthrough: true,
+    setHeaders(res, filePath) {
+      if (
+        filePath.endsWith("sw.js")
+        || filePath.endsWith(".webmanifest")
+        || filePath.endsWith("version.json")
+      ) {
+        res.setHeader("Cache-Control", "no-store");
+      } else if (filePath.includes(`${path.sep}assets${path.sep}`)) {
+        res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+      }
+    },
+  }));
+  app.use((req, res, next) => {
+    if (req.method !== "GET" || req.path.startsWith("/api/")) return next();
+    if (!req.accepts("html")) return next();
+    res.setHeader("Cache-Control", "no-cache");
+    res.sendFile(indexPath);
+  });
+}
 
 export default app;

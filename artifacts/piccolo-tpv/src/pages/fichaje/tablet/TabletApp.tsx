@@ -31,8 +31,8 @@ import {
   verifyTabletPin,
   ApiError,
 } from "@workspace/api-client-react/timeclock";
+import { APP_VERSION } from "../../../lib/app-version";
 const TOKEN_KEY = "piccolo_tablet_token";
-const APP_VERSION = "1.0.0";
 
 type Screen = "home" | "pin" | "status" | "confirmation";
 

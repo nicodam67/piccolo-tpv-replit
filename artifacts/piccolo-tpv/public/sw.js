@@ -3,13 +3,18 @@
  * Strategy:
  *  - Static assets (JS, CSS, fonts, images): Cache-First
  *  - API calls: Network-First with no offline fallback (show error)
- *  - HTML shell: Cache-First so the SPA loads offline
+ *  - Navigations: Network-First, cached shell only as degraded fallback
+ *  - Updates: waiting until an operator explicitly approves activation
  */
 
-const CACHE_NAME = 'piccolo-tpv-v1';
+const APP_VERSION = '0.9.0-rc.1';
+const CACHE_NAME = `piccolo-tpv-${APP_VERSION}`;
 const SHELL_URLS = [
   '/',
-  '/manifest.json',
+  '/waiter.webmanifest',
+  '/kds.webmanifest',
+  '/fichaje.webmanifest',
+  '/version.json',
 ];
 
 // ─── Install ──────────────────────────────────────────────────────────────────
@@ -21,7 +26,6 @@ self.addEventListener('install', (event) => {
       });
     })
   );
-  self.skipWaiting();
 });
 
 // ─── Activate ─────────────────────────────────────────────────────────────────
@@ -35,7 +39,10 @@ self.addEventListener('activate', (event) => {
       )
     )
   );
-  self.clients.claim();
+  event.waitUntil(self.clients.claim().then(async () => {
+    const clients = await self.clients.matchAll();
+    clients.forEach((client) => client.postMessage({ type: 'SW_VERSION', version: APP_VERSION }));
+  }));
 });
 
 // ─── Fetch ────────────────────────────────────────────────────────────────────
@@ -60,6 +67,24 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  if (request.mode === 'navigate') {
+    event.respondWith(
+      fetch(request).then((response) => {
+        if (response.ok) {
+          caches.open(CACHE_NAME).then((cache) => cache.put('/', response.clone()));
+        }
+        return response;
+      }).catch(async () => {
+        const cached = await caches.match('/');
+        return cached ?? new Response(
+          '<h1>Piccolo sin conexión</h1><p>Reconecta la red para continuar. No se guardan pedidos offline.</p>',
+          { status: 503, headers: { 'Content-Type': 'text/html; charset=utf-8' } },
+        );
+      }),
+    );
+    return;
+  }
+
   // Static assets: Cache-First
   if (
     url.pathname.match(/\.(js|css|woff2?|ttf|svg|png|jpg|jpeg|ico|webp)$/) ||
@@ -80,7 +105,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // HTML / SPA shell: Cache-First with network update
+  // Other same-origin GETs: Network-First with cache fallback.
   event.respondWith(
     caches.match(request).then((cached) => {
       const networkFetch = fetch(request).then((response) => {
@@ -94,6 +119,13 @@ self.addEventListener('fetch', (event) => {
       return cached ?? networkFetch;
     })
   );
+});
+
+self.addEventListener('message', (event) => {
+  if (event.data?.type === 'SKIP_WAITING') self.skipWaiting();
+  if (event.data?.type === 'GET_VERSION') {
+    event.source?.postMessage({ type: 'SW_VERSION', version: APP_VERSION });
+  }
 });
 
 // ─── Background Sync ──────────────────────────────────────────────────────────

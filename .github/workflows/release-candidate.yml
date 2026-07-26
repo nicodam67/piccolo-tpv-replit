@@ -1,0 +1,98 @@
+name: Piccolo TPV Release Candidate
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*-rc.*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: piccolo-rc-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  PICCOLO_VERSION: 0.9.0-rc.1
+  VITE_APP_VERSION: 0.9.0-rc.1
+
+jobs:
+  gate-linux:
+    name: Validación completa
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.3
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.18.0
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run release:check-version
+      - run: pnpm run typecheck
+      - run: pnpm run lint
+      - run: pnpm --filter @workspace/api-server run audit-routes
+      - run: bash scripts/run-e2e-staging-local.sh
+      - run: bash scripts/run-restore-staging-local.sh
+      - name: Auditoría de producción (bloquea critical)
+        run: pnpm audit --prod --audit-level critical
+
+  windows-installers:
+    name: Instaladores Windows RC
+    needs: gate-linux
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.3
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.18.0
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run release:check-version
+      - run: pnpm run typecheck
+      - run: pnpm run lint
+      - run: pnpm --filter @workspace/api-server run test
+      - run: pnpm --filter @workspace/api-server run build
+      - run: pnpm --filter @workspace/piccolo-tpv run build
+      - name: Instalar compilador NSIS
+        shell: powershell
+        run: choco install nsis --yes --no-progress
+      - name: Generar instaladores y checksums
+        run: pnpm run release:build-rc
+      - name: Smoke de instalación/desinstalación y checksums
+        shell: powershell
+        run: packaging/windows/Test-InstallerArtifacts.ps1 -ReleaseDirectory release/piccolo
+      - name: Firmar si existe certificado real
+        shell: powershell
+        env:
+          WINDOWS_SIGNING_PFX: ${{ secrets.WINDOWS_SIGNING_PFX }}
+          WINDOWS_SIGNING_PASSWORD: ${{ secrets.WINDOWS_SIGNING_PASSWORD }}
+        run: packaging/windows/Sign-Artifacts.ps1 -ReleaseDirectory release/piccolo
+      - uses: actions/upload-artifact@v4
+        with:
+          name: piccolo-tpv-0.9.0-rc.1-windows
+          path: |
+            release/piccolo/*.exe
+            release/piccolo/*.zip
+            release/piccolo/*.md
+            release/piccolo/*.txt
+            release/piccolo/*.json
+          if-no-files-found: error
+          retention-days: 90
+
+  no-stable-release:
+    name: Confirmar canal RC
+    needs: windows-installers
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo "Artefactos RC generados. No se crea ni publica una release estable."

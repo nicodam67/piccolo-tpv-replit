@@ -13,12 +13,12 @@ import { sql } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { APP_VERSION } from "../lib/app-version";
 
 const router = Router();
 const guard = [requireAuth, requireRole("admin", "manager", "encargado")];
 
 // Current version — kept in sync with /VERSION at the repo root.
-const APP_VERSION = "1.2.0";
 const RELEASE_DATE = "2026-07-17";
 
 const CHANGELOG: Array<{

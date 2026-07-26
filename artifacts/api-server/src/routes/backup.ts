@@ -39,6 +39,7 @@ import { requireAuth, requireRole } from "../middlewares/auth";
 import crypto from "node:crypto";
 import ExcelJS from "exceljs";
 import { maskSecrets } from "../lib/mask-secrets";
+import { APP_VERSION } from "../lib/app-version";
 import {
   BACKUP_FORMAT_VERSION,
   backupArtifactChecksum,
@@ -74,7 +75,6 @@ const backupLimiter = rateLimit({
   message: { error: "Demasiadas operaciones de copia de seguridad en esta hora. Inténtelo más tarde." },
 });
 
-const APP_VERSION = "1.2.0";
 
 async function logAudit(
   backupId: string | null,
