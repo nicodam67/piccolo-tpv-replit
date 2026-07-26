@@ -114,7 +114,7 @@ $config = Read-PiccoloEnv $configPath
 $config["PORT"] = "$apiPort"
 $config["PICCOLO_VERSION"] = "0.9.0-rc.1"
 if (-not $config.ContainsKey("RESTAURANT_ID")) { $config["RESTAURANT_ID"] = $restaurantId }
-$config["ALLOWED_ORIGINS"] = "https://$hostName"
+$config["ALLOWED_ORIGINS"] = "https://$hostName,http://localhost:$apiPort,http://127.0.0.1:$apiPort"
 Write-PiccoloEnv $configPath $config
 
 $caddyFile = Join-Path $DataRoot "config\Caddyfile"

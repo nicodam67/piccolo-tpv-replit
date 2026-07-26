@@ -35,8 +35,11 @@ describe("Piccolo TPV release candidate packaging", () => {
     });
     expect(manifests.find(({ profile }) => profile === "fichaje")?.value.start_url).toContain("/fichaje/tablet");
     for (const { value } of manifests) {
-      expect(value.icons).toHaveLength(1);
-      expect(fs.existsSync(path.join(root, "artifacts/piccolo-tpv/public", value.icons[0].src))).toBe(true);
+      expect(value.icons.map((icon: { sizes: string }) => icon.sizes)).toEqual(["192x192", "512x512"]);
+      expect(value.icons.every((icon: { type: string }) => icon.type === "image/png")).toBe(true);
+      for (const icon of value.icons) {
+        expect(fs.existsSync(path.join(root, "artifacts/piccolo-tpv/public", icon.src))).toBe(true);
+      }
     }
   });
 
