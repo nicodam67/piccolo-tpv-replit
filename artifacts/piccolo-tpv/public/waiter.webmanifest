@@ -1,0 +1,21 @@
+{
+  "id": "/?profile=waiter",
+  "name": "Piccolo TPV Camareros",
+  "short_name": "Piccolo TPV",
+  "description": "Terminal de sala Piccolo TPV — versión candidata para pruebas",
+  "start_url": "/?profile=waiter",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone"],
+  "background_color": "#1c1917",
+  "theme_color": "#f59e0b",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/pwa/waiter.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

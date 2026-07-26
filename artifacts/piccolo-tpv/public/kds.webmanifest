@@ -1,0 +1,20 @@
+{
+  "id": "/kds/?profile=kds",
+  "name": "Piccolo KDS",
+  "short_name": "Piccolo KDS",
+  "description": "Pantalla de producción Piccolo KDS — versión candidata para pruebas",
+  "start_url": "/kds/cocina?profile=kds",
+  "scope": "/kds/",
+  "display": "fullscreen",
+  "background_color": "#083344",
+  "theme_color": "#06b6d4",
+  "orientation": "landscape",
+  "icons": [
+    {
+      "src": "/pwa/kds.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

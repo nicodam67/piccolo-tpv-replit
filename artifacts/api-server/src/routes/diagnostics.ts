@@ -22,12 +22,12 @@ import {
 import { eq, desc, and, gte, lte, sql } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { execSync } from "node:child_process";
+import { APP_VERSION } from "../lib/app-version";
 
 const router = Router();
 const guard = [requireAuth, requireRole("admin", "manager", "encargado")];
 const adminOnly = [requireAuth, requireRole("admin")];
 
-const APP_VERSION = "1.0.0";
 const MODULES = [
   "tpv", "kds", "caja", "stock", "reservas", "fichaje",
   "crm", "director", "backup", "impresion", "online-orders",

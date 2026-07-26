@@ -3,6 +3,7 @@ import { api } from '../lib/api-client';
 import { useParams, Link } from 'wouter';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { connectAuthenticatedSocket } from '../lib/socket-client';
+import { APP_VERSION } from '../lib/app-version';
 import { toast } from 'sonner';
 import { History, RefreshCw, AlertTriangle, X, Clock, CheckCircle, ShieldCheck, Search, Flame } from 'lucide-react';
 import {
@@ -322,6 +323,7 @@ export default function KdsPage() {
             </nav>
           </div>
           <div className="flex items-center gap-3">
+            <span className="hidden lg:inline text-[10px] font-bold text-muted-foreground">v{APP_VERSION} · RC pruebas</span>
             {updatedBy && (
               <div className="flex items-center gap-2 bg-primary/15 border border-primary/30 text-primary px-3 py-1.5 rounded-lg animate-pulse">
                 <span className="text-xs font-black uppercase tracking-widest">Actualizado por</span>

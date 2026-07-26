@@ -4,6 +4,7 @@ import { useGetEmployeeLoginList } from "@workspace/api-client-react";
 import { Loader2, Delete, Search, X, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "../providers/AuthProvider";
+import { RELEASE_LABEL } from "../lib/app-version";
 
 // ── PinKey — reliable touch feedback via pointer events ───────────────────────
 function PinKey({
@@ -87,6 +88,7 @@ export default function Login() {
 
   return (
     <div className="min-h-screen w-full flex flex-col lg:flex-row bg-background">
+      <p className="fixed bottom-2 left-3 z-10 text-[10px] text-muted-foreground">{RELEASE_LABEL}</p>
       {/* ── Left: Employee Selection ─────────────────────────────────────────── */}
       <div className="flex-1 p-6 lg:p-12 overflow-y-auto flex flex-col">
         {/* Logo + heading */}

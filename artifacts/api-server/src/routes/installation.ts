@@ -62,6 +62,7 @@ import {
   sanitizeCertificationData,
   sanitizeCertificationText,
 } from "../lib/installation-certification";
+import { APP_VERSION } from "../lib/app-version";
 
 const ADMIN_ROLES = ["admin"] as const;
 const MANAGER_ROLES = ["admin", "manager", "encargado"] as const;
@@ -238,7 +239,7 @@ async function loadInstallationAssistantSnapshot() {
   const config = businessConfigs[0];
   return {
     generatedAt: new Date().toISOString(),
-    version: "1.2.0",
+    version: APP_VERSION,
     configuration: {
       restaurantName: config?.nombreComercial ?? "",
       legalName: config?.razonSocial ?? "",

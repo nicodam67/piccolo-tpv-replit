@@ -27,7 +27,9 @@ import { getOcrProvider } from "../lib/ocr";
 const router = Router();
 
 // ─── Upload directory ─────────────────────────────────────────────────────────
-const UPLOAD_DIR = path.join(process.cwd(), "uploads", "invoices");
+const UPLOAD_DIR = process.env["PICCOLO_UPLOAD_ROOT"]
+  ? path.resolve(process.env["PICCOLO_UPLOAD_ROOT"], "invoices")
+  : path.join(process.cwd(), "uploads", "invoices");
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
 const ALLOWED_MIME = ["application/pdf", "image/jpeg", "image/png", "image/webp"];
