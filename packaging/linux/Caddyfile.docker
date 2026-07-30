@@ -1,0 +1,9 @@
+{
+  email internal
+}
+
+https://{$PICCOLO_HOSTNAME:piccolo.local}:{$PICCOLO_HTTPS_PORT:443} {
+  tls internal
+  reverse_proxy piccolo:8080
+  encode zstd gzip
+}
