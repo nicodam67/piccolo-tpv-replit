@@ -1,0 +1,325 @@
+================================================================================
+  PICCOLO TPV 0.9.0-rc.1 — INSTRUCCIONES DE INSTALACIÓN PASO A PASO
+  Solo para pruebas. No es una versión de producción certificada.
+================================================================================
+
+Fecha del documento: 2026-07-31
+Versión: 0.9.0-rc.1 (Release Candidate)
+
+================================================================================
+1. QUÉ VAS A INSTALAR
+================================================================================
+
+Piccolo TPV consta de:
+
+  A) SERVIDOR (ordenador principal Windows)
+     - Base de datos PostgreSQL
+     - API y panel de administración
+     - Carta QR pública (/carta)
+     - HTTPS local (Caddy)
+
+  B) CLIENTE TPV (mismo PC u otro PC Windows)
+     - Acceso directo al TPV de caja
+
+  C) DISPOSITIVOS (sin instalador; navegador/PWA)
+     - Tablets camarero (Android)
+     - KDS cocina (Android o PC)
+     - Tablet fichaje (Android)
+
+  D) BACKUPS (opcional pero recomendado)
+     - Terramaster NAS u otro destino SMB/S3
+
+================================================================================
+2. REQUISITOS PREVIOS
+================================================================================
+
+ORDENADOR SERVIDOR
+  [ ] Windows 10 22H2 o Windows 11, 64 bits
+  [ ] 8 GB RAM recomendados (mínimo 4 GB)
+  [ ] 20 GB de espacio libre en disco
+  [ ] Conexión Ethernet al router del restaurante (recomendado)
+  [ ] Cuenta de administrador de Windows
+
+RED
+  [ ] Wi-Fi estable para tablets
+  [ ] Puertos libres: 443 (HTTPS), 8080 (API interna), 5432 (PostgreSQL)
+  [ ] Impresoras térmicas accesibles por TCP puerto 9100
+  [ ] Nombre de servidor previsto: piccolo.local (o el que asigne el técnico)
+
+ARCHIVOS A DESCARGAR
+  Descarga desde GitHub Release v0.9.0-rc.1:
+  - Piccolo-TPV-0.9.0-rc.1-Instalacion-8a04275.zip  (paquete completo)
+    O por separado:
+  - Piccolo-Server-Setup.exe
+  - Piccolo-TPV-Setup.exe
+
+  Verifica el checksum SHA-256 del ZIP antes de instalar.
+
+================================================================================
+3. PASO 1 — DESCOMPRIMIR EL PAQUETE
+================================================================================
+
+1. Descarga el ZIP de instalación en el ordenador principal.
+2. Clic derecho → Extraer todo.
+3. Abre la carpeta extraída.
+4. Debes ver al menos:
+     - Piccolo-Server-Setup.exe
+     - Piccolo-TPV-Setup.exe
+     - GUIA-RAPIDA.md
+     - MANUAL-PROPIETARIO.md
+     - Este archivo (INSTRUCCIONES-INSTALACION.txt)
+
+================================================================================
+4. PASO 2 — INSTALAR EL SERVIDOR
+================================================================================
+
+1. Clic derecho en Piccolo-Server-Setup.exe
+2. Elegir "Ejecutar como administrador"
+3. Si Windows muestra "Editor desconocido", pulsa "Más información" → "Ejecutar"
+   (el instalador no está firmado con certificado comercial)
+4. En el asistente, selecciona: INSTALACIÓN NUEVA
+5. Acepta la carpeta de instalación por defecto
+6. Espera a que copie los archivos
+
+7. Se abrirá el CONFIGURADOR GUIADO. Responde en español:
+
+   a) PostgreSQL 16
+      - Si no está instalado, acepta abrir el instalador oficial (winget)
+      - Crea y anota la contraseña del usuario postgres
+      - Vuelve al configurador Piccolo
+
+   b) Nombre del servidor
+      - Por defecto: piccolo.local
+      - Usa otro solo si el técnico lo ha definido
+
+   c) Puerto interno API
+      - Por defecto: 8080
+
+   d) Base de datos
+      - Nombre: piccolo_tpv
+      - Usuario: piccolo
+      - El configurador crea usuario y base de datos
+
+8. Espera el mensaje: "Piccolo TPV 0.9.0-rc.1 instalado. Solo para pruebas."
+
+9. El navegador abrirá https://piccolo.local/setup automáticamente.
+
+IMPORTANTE:
+  - NO edites archivos .env manualmente
+  - Los secretos se guardan en:
+    %ProgramData%\PiccoloTPV\secrets\secrets.env
+
+================================================================================
+5. PASO 3 — ASISTENTE INICIAL /setup
+================================================================================
+
+1. Abre https://piccolo.local/setup (o la URL que mostró el configurador)
+2. Completa los datos del restaurante:
+     - Nombre comercial
+     - Dirección y datos fiscales
+     - Idioma y zona horaria
+3. Crea el usuario administrador inicial
+4. Finaliza el asistente de bienvenida
+
+================================================================================
+6. PASO 4 — INSTALAR CLIENTE TPV (CAJA)
+================================================================================
+
+En el ordenador de caja (puede ser el mismo servidor):
+
+1. Ejecuta Piccolo-TPV-Setup.exe
+2. Introduce la URL del servidor: https://piccolo.local
+3. Finaliza la instalación
+4. Abre "Piccolo TPV" desde el escritorio o menú Inicio
+5. Inicia sesión con tu PIN de empleado
+
+================================================================================
+7. PASO 5 — ASISTENTE DE INSTALACIÓN (12 PASOS)
+================================================================================
+
+1. En un navegador, entra como administrador en:
+   https://piccolo.local/admin/instalacion/asistente
+
+2. Completa los 12 pasos en este orden:
+
+   Paso  1. Restaurante — datos generales y fiscalidad
+   Paso  2. PostgreSQL — verificar conexión
+   Paso  3. Carta inicial — importar CSV/XLSX (opcional)
+   Paso  4. Ordenador principal — verificar servidor
+   Paso  5. Impresoras — añadir IP, puerto 9100, prueba
+   Paso  6. Departamentos — cocina, barra, etc.
+   Paso  7. KDS — estaciones de cocina
+   Paso  8. Tablets D1–D7 — camareros
+   Paso  9. Tablet fichaje — reloj de personal
+   Paso 10. NAS/S3 — destino de copias de seguridad
+   Paso 11. Red — conectividad local
+   Paso 12. Backup — copia verificada y prueba de restore
+
+3. En la pestaña "Certificación", marca las pruebas físicas conforme las vayas
+   realizando en el restaurante.
+
+================================================================================
+8. PASO 6 — IMPRESORAS
+================================================================================
+
+1. Admin → Instalación → Asistente → Impresoras
+   O: Admin → Producción → Impresoras
+
+2. Por cada impresora térmica:
+     - Nombre descriptivo (ej. "Cocina", "Barra")
+     - IP fija en la red local
+     - Puerto: 9100
+     - Modo: TCP ESC/POS (producción)
+     - Charset: CP858 o el que indique el fabricante
+
+3. Pulsa "Imprimir ticket de prueba"
+4. Verifica que la impresora responde (conexión TCP; la impresión física
+   requiere certificación en restaurante)
+
+================================================================================
+9. PASO 7 — TABLETS CAMARERO (ANDROID)
+================================================================================
+
+Repite en cada tablet (D1 a D7):
+
+1. Conecta la tablet a la Wi-Fi del restaurante
+2. Copia el certificado CA del servidor al dispositivo:
+     Ruta en el servidor:
+     %ProgramData%\PiccoloTPV\caddy\caddy\pki\authorities\local\root.crt
+   Instálalo en Android: Ajustes → Seguridad → Instalar certificado
+
+3. Abre Chrome y entra en: https://piccolo.local
+4. Pulsa el menú → "Instalar aplicación" / "Añadir a pantalla de inicio"
+5. Abre "Piccolo TPV" desde el icono
+6. Inicia sesión con PIN del camarero asignado
+
+NOTA: Sin conexión Wi-Fi no se guardan pedidos ni cobros (aviso visible).
+
+================================================================================
+10. PASO 8 — KDS (COCINA)
+================================================================================
+
+Opción A — Tablet Android:
+  1. Instala la PWA igual que las tablets camarero
+  2. Abre: https://piccolo.local/kds
+  3. Selecciona el departamento/estación
+  4. Activa modo kiosco / fijación de pantalla en Android
+
+Opción B — PC Windows:
+  1. Abre Edge en modo kiosco apuntando a https://piccolo.local/kds
+  2. Consulta KDS-KIOSCO.md del paquete para detalles
+
+================================================================================
+11. PASO 9 — TABLET FICHAJE
+================================================================================
+
+1. Abre en la tablet: https://piccolo.local/fichaje/tablet
+2. Instala la PWA ("Piccolo Fichaje")
+3. En el panel admin: Administración → Fichaje → Dispositivos
+4. Empareja la tablet
+5. Activa fijación de pantalla en Android
+
+================================================================================
+12. PASO 10 — CARTA QR (MENÚ PARA CLIENTES)
+================================================================================
+
+La carta QR está incluida en el servidor. No requiere instalación aparte.
+
+1. URL pública: https://piccolo.local/carta
+2. Administra menú y diseño en: /admin/qr-menu
+3. Los productos del TPV con "visible en QR" aparecen automáticamente
+4. Genera el código QR desde Admin → QR Menú → pestaña "QR & Share"
+5. Imprime y coloca el QR en las mesas
+
+================================================================================
+13. PASO 11 — BACKUPS EN TERRAMASTER (NAS)
+================================================================================
+
+Recomendado: servidor en Windows + NAS solo para copias.
+
+1. En el Terramaster, crea una carpeta compartida SMB (ej. \\tos\piccolo-backup)
+2. En Windows, asigna una letra de unidad o ruta de red a esa carpeta
+3. En Piccolo: Asistente → paso NAS/S3
+4. Configura la ruta de backup local/NAS
+5. Programa copia automática y ejecuta una copia manual
+6. Verifica que el estado sea "válida" y con checksum
+
+Ruta de datos Piccolo en Windows:
+  %ProgramData%\PiccoloTPV\backups\
+
+================================================================================
+14. PASO 12 — VERIFICACIÓN FINAL
+================================================================================
+
+Comprueba antes de abrir el restaurante en pruebas:
+
+  [ ] https://piccolo.local/api/healthz responde OK
+  [ ] TPV Windows abre y permite login
+  [ ] Al menos una impresora configurada y en prueba
+  [ ] Al menos un KDS muestra pedidos enviados
+  [ ] Al menos una tablet camarero envía pedido
+  [ ] Fichaje registra entrada/salida
+  [ ] /carta muestra el menú actualizado
+  [ ] Copia de seguridad verificada en las últimas 24 h
+  [ ] Versión visible: 0.9.0-rc.1 — Solo para pruebas
+
+================================================================================
+15. OPERACIÓN DIARIA (RESUMEN)
+================================================================================
+
+  - Mantén el PC servidor encendido durante el servicio
+  - Apaga desde Windows (no cortes la corriente directamente)
+  - No actualices con caja abierta, impresiones activas o backup en curso
+  - Revisa diagnóstico en Admin → Instalación → Diagnóstico
+  - Ante duda en impresión, consulta cola y auditoría antes de reenviar
+
+================================================================================
+16. RECUPERACIÓN Y SOPORTE
+================================================================================
+
+RESTAURAR BACKUP:
+  Menú Inicio → Piccolo TPV Server → Restaurar backup
+
+LOGS:
+  %ProgramData%\PiccoloTPV\logs\
+
+DESINSTALAR (conservando datos):
+  Panel de control → Programas → Piccolo TPV Server → Desinstalar
+
+DOCUMENTACIÓN INCLUIDA EN EL PAQUETE:
+  - GUIA-RAPIDA.md
+  - MANUAL-PROPIETARIO.md
+  - CHECKLIST-INSTALACION.md
+  - CHECKLIST-CERTIFICACION.md
+  - PWA-ANDROID.md
+  - KDS-KIOSCO.md
+  - ACTUALIZACION.md
+  - RECUPERACION.md
+  - DESINSTALACION.md
+  - CAMBIO-DE-ORDENADOR.md
+
+================================================================================
+17. PROBLEMAS FRECUENTES
+================================================================================
+
+"Editor desconocido" al instalar
+  → Normal sin certificado Authenticode. Ejecutar de todas formas.
+
+Tablets no conectan a piccolo.local
+  → Comprobar Wi-Fi, firewall Windows, certificado CA instalado en Android.
+
+Puerto 443 ocupado
+  → Detener el servicio en conflicto o reconfigurar con ayuda técnica.
+
+Impresora no imprime
+  → Verificar IP fija, ping desde el servidor, puerto 9100 abierto.
+
+Carta QR vacía
+  → Completar /setup y marcar productos como visibles en QR.
+
+PostgreSQL no arranca
+  → Revisar servicio PostgreSQL 16 en Windows y credenciales del configurador.
+
+================================================================================
+FIN DEL DOCUMENTO
+================================================================================
