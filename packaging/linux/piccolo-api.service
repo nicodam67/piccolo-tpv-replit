@@ -1,0 +1,20 @@
+[Unit]
+Description=Piccolo TPV API Server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=piccolo
+Group=piccolo
+WorkingDirectory=@PICCOLO_APP_ROOT@
+Environment=PICCOLO_APP_ROOT=@PICCOLO_APP_ROOT@
+Environment=PICCOLO_DATA_ROOT=@PICCOLO_DATA_ROOT@
+ExecStart=@PICCOLO_APP_ROOT@/node/bin/node @PICCOLO_APP_ROOT@/runtime/launch.mjs
+Restart=always
+RestartSec=5
+StandardOutput=append:@PICCOLO_DATA_ROOT@/logs/server.log
+StandardError=append:@PICCOLO_DATA_ROOT@/logs/server.log
+
+[Install]
+WantedBy=multi-user.target

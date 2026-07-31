@@ -39,8 +39,41 @@ jobs:
       - run: pnpm --filter @workspace/api-server run audit-routes
       - run: bash scripts/run-e2e-staging-local.sh
       - run: bash scripts/run-restore-staging-local.sh
+      - run: node --test packaging/linux/packaging.linux.test.mjs
       - name: Auditoría de producción (bloquea critical)
         run: pnpm audit --prod --audit-level critical
+
+  linux-tos-bundle:
+    name: Paquete Linux/TOS RC
+    needs: gate-linux
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.3
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.18.0
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run release:check-version
+      - run: pnpm --filter @workspace/api-server run build
+      - run: pnpm --filter @workspace/piccolo-tpv run build
+      - run: pnpm run release:build-rc-linux
+      - uses: actions/upload-artifact@v4
+        with:
+          name: piccolo-tpv-0.9.0-rc.1-tos-linux
+          path: |
+            release/piccolo/Piccolo-TPV-*-TOS-linux-amd64-*.tar.gz
+            release/piccolo/SHA256SUMS.txt
+            release/piccolo/artifact-manifest.json
+            release/piccolo/TOS-INSTALACION.md
+            release/piccolo/build-metadata-linux.json
+          if-no-files-found: error
+          retention-days: 90
 
   windows-installers:
     name: Instaladores Windows RC
@@ -92,7 +125,7 @@ jobs:
 
   no-stable-release:
     name: Confirmar canal RC
-    needs: windows-installers
+    needs: [windows-installers, linux-tos-bundle]
     runs-on: ubuntu-24.04
     steps:
       - run: echo "Artefactos RC generados. No se crea ni publica una release estable."

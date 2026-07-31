@@ -5,7 +5,12 @@ Los binarios no se versionan en Git. El workflow **Piccolo TPV Release Candidate
 - `Piccolo-TPV-Setup.exe` — lanzador TPV para el ordenador principal.
 - `Piccolo-Server-Setup.exe` — servidor, configuración, actualización, reparación y restore.
 - `Piccolo-TPV-0.9.0-rc.1-portable.zip` — paquete auditable para recuperación técnica.
+- `Piccolo-TPV-0.9.0-rc.1-TOS-linux-amd64-*.tar.gz` — servidor completo para TerraMaster TOS (Docker).
 - `SHA256SUMS.txt` y `artifact-manifest.json`.
+
+## TerraMaster TOS (F4-424)
+
+Consulta `TOS-INSTALACION.md` para instalar todo el servidor Piccolo en un NAS TerraMaster con Docker.
 
 ## Descarga
 

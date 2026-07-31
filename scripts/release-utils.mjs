@@ -18,7 +18,7 @@ export function sha256File(filePath) {
 
 export function artifactManifest(outputDirectory, gitCommit) {
   const files = fs.readdirSync(outputDirectory)
-    .filter((name) => /\.(exe|zip)$/.test(name))
+    .filter((name) => /\.(exe|zip|tar\.gz)$/.test(name))
     .sort()
     .map((name) => {
       const filePath = path.join(outputDirectory, name);

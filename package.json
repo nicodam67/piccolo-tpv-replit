@@ -26,6 +26,7 @@
     "certify:physical-print": "node scripts/certify-physical-print.mjs",
     "release:check-version": "node scripts/check-version-coherence.mjs",
     "release:build-rc": "node scripts/build-release-candidate.mjs",
+    "release:build-rc-linux": "node scripts/build-release-candidate-linux.mjs",
     "typecheck:libs": "tsc --build",
     "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck"
   },
