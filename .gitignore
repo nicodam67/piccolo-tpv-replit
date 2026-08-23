@@ -39,6 +39,20 @@ yarn-error.log
 testem.log
 /typings
 
+# generated release artifacts and staging trees
+/release/piccolo/staging/
+/release/piccolo/staging-linux/
+/release/piccolo/hardware-package/
+/release/piccolo/.chrome-pdf-profile/
+/release/piccolo/*.exe
+/release/piccolo/*.zip
+/release/piccolo/*.tar.gz
+/release/piccolo/*.pdf
+/release/piccolo/*.sha256
+/release/piccolo/SHA256SUMS.txt
+/release/piccolo/artifact-manifest.json
+/release/piccolo/build-metadata*.json
+
 # Local environment files and credentials
 .env
 .env.*
