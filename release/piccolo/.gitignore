@@ -1,6 +1,7 @@
 staging/
 staging-linux/
 hardware-package/
+.chrome-pdf-profile/
 *.exe
 *.zip
 *.tar.gz

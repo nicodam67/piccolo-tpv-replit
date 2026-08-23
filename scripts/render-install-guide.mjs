@@ -23,10 +23,11 @@ for (const browser of candidates) {
     "--headless",
     "--disable-gpu",
     "--no-sandbox",
+    `--user-data-dir=${path.join(root, "release", "piccolo", ".chrome-pdf-profile")}`,
     `--print-to-pdf=${output}`,
     "--print-to-pdf-no-header",
     pathToFileURL(source).href,
-  ], { stdio: "inherit" });
+  ], { stdio: "inherit", timeout: 30_000, killSignal: "SIGKILL" });
   if (result.status === 0 && fs.existsSync(output) && fs.statSync(output).size > 1_000) {
     rendered = true;
     break;
