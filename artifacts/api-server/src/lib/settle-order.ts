@@ -21,15 +21,19 @@ import {
   ticketsTable,
   businessConfigTable,
   discountsTable,
+  documentAuditLogTable,
+  invoicesTable,
 } from "@workspace/db";
-import { eq, and, sum } from "drizzle-orm";
+import { eq, and, sum, sql } from "drizzle-orm";
 import { calcMultiRateBreakdown } from "./tax";
-import { logDocumentAction } from "./document-audit";
+import { createFiscalRecord } from "./fiscal-issuance.js";
+import { getNextNumber } from "./invoice-series.js";
 
 export interface SettlementResult {
   /** True if the order was just settled (ticket issued, status → paid). */
   settled: boolean;
   ticket: typeof ticketsTable.$inferSelect | null;
+  invoice?: typeof invoicesTable.$inferSelect | null;
   /** Remaining balance after all payments (≥ 0). */
   remaining: number;
 }
@@ -45,17 +49,54 @@ export async function settleOrderIfFullyPaid({
   employeeId,
   employeeName = "",
   cashSessionId,
+  payment,
 }: {
   orderId: string;
   employeeId: string;
   employeeName?: string;
   cashSessionId?: string | null;
+  payment?: {
+    paymentMethodId: string;
+    amount: string;
+    reference: string;
+  };
 }): Promise<SettlementResult> {
   return db.transaction(async (tx) => {
-    // Guard against re-settlement
+    await tx.execute(sql`SELECT id FROM orders WHERE id = ${orderId} FOR UPDATE`);
     const [order] = await tx.select().from(ordersTable).where(eq(ordersTable.id, orderId));
-    if (!order || order.status === "paid") {
+    if (!order) {
       return { settled: false, ticket: null, remaining: 0 };
+    }
+    if (order.status === "paid") {
+      const [existingTicket] = await tx
+        .select()
+        .from(ticketsTable)
+        .where(eq(ticketsTable.orderId, orderId));
+      const [existingInvoice] = await tx
+        .select()
+        .from(invoicesTable)
+        .where(and(eq(invoicesTable.orderId, orderId), eq(invoicesTable.serie, "F")));
+      return {
+        settled: false,
+        ticket: existingTicket ?? null,
+        invoice: existingInvoice ?? null,
+        remaining: 0,
+      };
+    }
+
+    if (payment) {
+      await tx
+        .insert(paymentsTable)
+        .values({
+          orderId,
+          cashSessionId: cashSessionId ?? null,
+          paymentMethodId: payment.paymentMethodId,
+          amount: payment.amount,
+          status: "completed",
+          reference: payment.reference,
+          employeeId,
+        })
+        .onConflictDoNothing();
     }
 
     // Compute order total with VAT
@@ -95,6 +136,27 @@ export async function settleOrderIfFullyPaid({
 
     // ── Fully paid → settle ───────────────────────────────────────────────────
 
+    const [existingFullInvoice] = await tx
+      .select()
+      .from(invoicesTable)
+      .where(and(eq(invoicesTable.orderId, orderId), eq(invoicesTable.serie, "F")))
+      .limit(1);
+    if (existingFullInvoice) {
+      await tx.update(ordersTable).set({ status: "paid" }).where(eq(ordersTable.id, orderId));
+      if (order.tableId) {
+        await tx
+          .update(restaurantTablesTable)
+          .set({ status: "free" })
+          .where(eq(restaurantTablesTable.id, order.tableId));
+      }
+      return {
+        settled: true,
+        ticket: null,
+        invoice: existingFullInvoice,
+        remaining: 0,
+      };
+    }
+
     const [bizConfig] = await tx.select().from(businessConfigTable).limit(1);
 
     // Forma de pago: use name of the most recent payment method
@@ -105,10 +167,13 @@ export async function settleOrderIfFullyPaid({
       .where(and(eq(paymentsTable.orderId, orderId), eq(paymentsTable.status, "completed")))
       .limit(1);
 
+    const ticketNumber = await getNextNumber("T", "ticket", tx);
+    const issuedAt = new Date();
     const [ticket] = await tx
       .insert(ticketsTable)
       .values({
         orderId,
+        ticketNumber,
         cashSessionId: cashSessionId ?? null,
         serie: "T",
         nifEmisor:            bizConfig?.nif ?? "",
@@ -120,11 +185,33 @@ export async function settleOrderIfFullyPaid({
         taxTotal,
         total,
         taxBreakdown:         taxBreakdown as any,
+        issuedAt,
         employeeId,
       })
       .returning();
 
-    await logDocumentAction({
+    await createFiscalRecord(tx, {
+      ticketId: ticket.id,
+      serie: ticket.serie,
+      numero: ticket.ticketNumber,
+      issuedAt,
+      tipoFactura: "F2",
+      emisorNif: ticket.nifEmisor,
+      emisorNombre: ticket.razonSocialEmisor,
+      baseImponible: subtotal,
+      cuotaTotal: taxTotal,
+      importeTotal: total,
+      desgloseIva: taxBreakdown.map((tax) => ({
+        tipoImpositivo: Number(tax.rate).toFixed(2),
+        baseImponible: tax.base,
+        cuotaRepercutida: tax.cuota,
+      })),
+      empleadoId: employeeId,
+      empleadoNombre: employeeName,
+      terminal: "cash-machine",
+    });
+
+    await tx.insert(documentAuditLogTable).values({
       action: "issue_ticket",
       documentType: "ticket",
       documentId: ticket.id,
@@ -132,7 +219,7 @@ export async function settleOrderIfFullyPaid({
       employeeName,
       terminal: "",
       amount: total,
-      details: `Ticket T-${ticket.ticketNumber} emitido para pedido ${orderId} (caja automática)`,
+      details: `Ticket T-${ticket.ticketNumber} y registro fiscal emitidos atómicamente para pedido ${orderId} (caja automática)`,
     });
 
     // Mark order paid

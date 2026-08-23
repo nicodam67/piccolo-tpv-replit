@@ -1,0 +1,6 @@
+Piccolo TPV 0.9.0-rc.2 — Solo para pruebas / preproducción
+
+Canal: release-candidate
+Producción: NO
+Hardware físicamente certificado: NO
+Facturación fiscal real: PROHIBIDA

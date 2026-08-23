@@ -24,7 +24,6 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { calcularHuella, verificarCadenaCompleta, generateXmlAlta, generateXmlAnulacion, generarQrContent } from "./verifactu.js";
-import { createHash } from "crypto";
 
 // ─── Mock @workspace/db ───────────────────────────────────────────────────────
 
@@ -134,21 +133,19 @@ const BASE_RECORD = {
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 describe("VERI*FACTU — Cálculo de huella SHA-256", () => {
-  it("8. Calcula la huella correctamente con los campos concatenados con &", () => {
+  it("8. Pasa el vector oficial AEAT de RegistroAlta", () => {
     const params = {
-      emisorNif: "B12345678",
-      numSerieFactura: "FS1",
-      fechaExpedicion: "15-07-2026",
-      tipoFactura: "F2",
-      cuotaTotal: "9.09",
-      importeTotal: "100.00",
+      emisorNif: "89890001K",
+      numSerieFactura: "12345678/G33",
+      fechaExpedicion: "01-01-2024",
+      tipoFactura: "F1",
+      cuotaTotal: "12.35",
+      importeTotal: "123.45",
       huellaAnterior: "",
-      fechaHoraGeneracion: "15-07-2026T20:30:00+02:00",
+      fechaHoraGeneracion: "2024-01-01T19:20:30+01:00",
     };
-    const raw = `${params.emisorNif}&${params.numSerieFactura}&${params.fechaExpedicion}&${params.tipoFactura}&${params.cuotaTotal}&${params.importeTotal}&${params.huellaAnterior}&${params.fechaHoraGeneracion}`;
-    const expected = createHash("sha256").update(raw, "utf8").digest("hex").toUpperCase();
     const actual = calcularHuella(params);
-    expect(actual).toBe(expected);
+    expect(actual).toBe("3C464DAF61ACB827C65FDA19F352A4E3BDC2C640E9E9FC4CC058073F38F12F60");
   });
 
   it("8b. La huella es una cadena hexadecimal de 64 caracteres en mayúsculas", () => {

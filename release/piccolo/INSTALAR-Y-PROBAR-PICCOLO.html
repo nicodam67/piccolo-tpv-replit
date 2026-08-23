@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>Instalar y probar Piccolo 0.9.0-rc.2</title>
+  <style>
+    @page { size: A4; margin: 14mm; }
+    body { font-family: Arial, sans-serif; color: #172033; line-height: 1.45; font-size: 11pt; }
+    h1, h2 { color: #8a2f16; page-break-after: avoid; }
+    h1 { font-size: 24pt; }
+    h2 { margin-top: 22px; border-bottom: 2px solid #e7c5b7; padding-bottom: 4px; }
+    .warning { background: #ffd54f; border: 3px solid #8a2f16; padding: 14px; font-weight: 800; }
+    .choice { background: #eef4ff; border-left: 5px solid #3761a8; padding: 10px; }
+    .ok { background: #e7f7ec; border-left: 5px solid #2f7d46; padding: 10px; }
+    code { background: #f0f1f3; padding: 2px 4px; font-size: 10pt; }
+    li { margin: 5px 0; }
+    table { width: 100%; border-collapse: collapse; margin: 10px 0; }
+    th, td { border: 1px solid #9ca3af; padding: 6px; text-align: left; vertical-align: top; }
+    th { background: #f3f4f6; }
+    .page { page-break-before: always; }
+  </style>
+</head>
+<body>
+  <h1>Instalar y probar Piccolo</h1>
+  <p><strong>Versión:</strong> 0.9.0-rc.2 · <strong>Canal:</strong> pruebas / preproducción</p>
+  <div class="warning">
+    VERSIÓN DE PRUEBAS — NO USAR PARA FACTURACIÓN FISCAL REAL.<br>
+    No configure AEAT producción. Use únicamente datos y cobros marcados como prueba.
+  </div>
+
+  <h2>1. Qué descargar</h2>
+  <ol>
+    <li>Descargue el ZIP cuyo nombre empieza por
+      <code>Piccolo-TPV-0.9.0-rc.2-Hardware-Test-</code>.</li>
+    <li>Haga clic derecho → <strong>Extraer todo</strong>.</li>
+    <li>Abra <code>BUILD-MANIFEST.json</code> y compruebe que muestra la versión
+      <strong>0.9.0-rc.2</strong> y el mismo commit indicado en el informe de entrega.</li>
+  </ol>
+
+  <h2>2. Elegir dónde estará el servidor</h2>
+  <div class="choice">
+    Elija solo una opción como servidor principal durante cada prueba:
+    <ul>
+      <li><strong>Opción A — Windows:</strong> la más sencilla para comenzar inmediatamente.</li>
+      <li><strong>Opción B — TerraMaster:</strong> use Docker Manager/TOS.</li>
+    </ul>
+    Los demás PC, tablets, KDS y teléfonos se conectan a ese servidor por la red local.
+  </div>
+
+  <h2>3. Instalar servidor Windows</h2>
+  <ol>
+    <li>Abra <code>02-Windows-Servidor</code>.</li>
+    <li>Clic derecho sobre <code>Piccolo-Server-Windows-…exe</code> →
+      <strong>Ejecutar como administrador</strong>.</li>
+    <li>Elija <strong>Instalación nueva</strong>.</li>
+    <li>Si solicita PostgreSQL 16, permita instalarlo y anote la contraseña en un lugar seguro.</li>
+    <li>Acepte el nombre <code>piccolo.local</code> y el puerto interno <code>8080</code>.</li>
+    <li>Cuando termine, abra <code>https://piccolo.local/setup</code>.</li>
+    <li>Windows puede indicar “Editor desconocido”: esta RC no está firmada con Authenticode.</li>
+  </ol>
+  <p class="ok">Correcto cuando el navegador muestra el asistente Piccolo y
+    <code>http://127.0.0.1:8080/api/healthz</code> responde <code>ok</code>.</p>
+
+  <h2>4. Instalar servidor TerraMaster</h2>
+  <ol>
+    <li>Abra <code>03-TerraMaster/ARTEFACTO-TERRAMASTER.txt</code>, descargue
+      también el archivo adjunto cuyo nombre exacto indica y cópielo al NAS.</li>
+    <li>Entre por SSH con una cuenta administradora.</li>
+    <li>Extraiga el archivo en una carpeta nueva de Piccolo; no use ningún paquete del repositorio QR.</li>
+    <li>Ejecute <code>sudo ./linux/install-tos.sh</code> y elija <strong>Docker</strong>.</li>
+    <li>Guarde la contraseña generada y compruebe los contenedores
+      <code>postgres</code>, <code>piccolo</code> y <code>caddy</code>.</li>
+    <li>Abra desde otro dispositivo <code>https://piccolo.local/setup</code>.</li>
+  </ol>
+
+  <h2>5. Instalar el TPV en Windows</h2>
+  <ol>
+    <li>Abra <code>01-Windows-TPV</code> y ejecute <code>Piccolo-TPV-Windows-…exe</code>.</li>
+    <li>Escriba la dirección del servidor, normalmente <code>https://piccolo.local</code>.</li>
+    <li>Abra el acceso directo <strong>Piccolo TPV</strong>.</li>
+    <li>Complete el primer administrador, empleados, salas, mesas y productos.</li>
+    <li>Compruebe login, apertura de caja, mesa, comanda y pantalla de cobro.</li>
+  </ol>
+
+  <h2 class="page">6. Conectar tablets y teléfonos</h2>
+  <ol>
+    <li>Conecte el dispositivo a la Wi-Fi del restaurante.</li>
+    <li>Compruebe que sigue en la misma Wi-Fi aunque se desconecte Internet.</li>
+    <li>Abra Chrome y escriba <code>https://piccolo.local/</code>.</li>
+    <li>Si aparece aviso de certificado local, instale la CA de Caddy siguiendo al técnico.</li>
+    <li>Chrome → menú de tres puntos → <strong>Añadir a pantalla de inicio</strong>.</li>
+    <li>Pruebe login, camarero, salas, mesas, productos, modificadores, notas,
+      enviar comanda y modificar según permisos.</li>
+  </ol>
+  <p>No se necesita APK: Piccolo funciona como web/PWA en LAN.</p>
+
+  <h2>7. Abrir KDS</h2>
+  <p>En cada pantalla KDS abra una dirección distinta:</p>
+  <table>
+    <tr><th>Departamento</th><th>Dirección</th></tr>
+    <tr><td>Cocina</td><td><code>https://piccolo.local/kds/cocina</code></td></tr>
+    <tr><td>Pizza</td><td><code>https://piccolo.local/kds/pizza</code></td></tr>
+    <tr><td>Ensaladas</td><td><code>https://piccolo.local/kds/ensalada</code></td></tr>
+    <tr><td>Bar</td><td><code>https://piccolo.local/kds/barra</code></td></tr>
+    <tr><td>Pase</td><td><code>https://piccolo.local/kds/pase</code></td></tr>
+  </table>
+  <p>Use modo pantalla completa o quiosco. En Administración → KDS configure las estaciones.</p>
+
+  <h2>8. Configurar impresoras ESC/POS</h2>
+  <ol>
+    <li>Asigne una IP fija a cada impresora y confirme el puerto TCP <code>9100</code>.</li>
+    <li>Piccolo → Administración → Impresoras → Añadir.</li>
+    <li>Indique departamento, IP, puerto, ancho 58/80 mm y copias.</li>
+    <li>Pulse <strong>Imprimir prueba</strong>.</li>
+    <li>Compruebe: <code>€</code>, <code>ñ</code>, acentos, ¿?, ¡!, alimentación y corte.</li>
+    <li>Configure producto/categoría → impresora y envíe una comanda de prueba.</li>
+  </ol>
+  <p>La RC usa ESC/POS TCP real cuando está empaquetada. USB directo sin adaptador de red
+    no está soportado en esta RC.</p>
+
+  <h2>9. Reenvío y reimpresión</h2>
+  <ol>
+    <li>Administración → Cola de impresión.</li>
+    <li>Seleccione trabajo → reintentar o reimprimir.</li>
+    <li>Para reimpresión escriba el motivo obligatorio.</li>
+    <li>Compruebe usuario, fecha/hora, motivo y encabezado <strong>REIMPRESIÓN</strong>.</li>
+    <li>En KDS use “Reenviar” sobre una tarea.</li>
+  </ol>
+  <p>La reimpresión sólo crea un trabajo de impresión; no crea otra factura ni otro RF.</p>
+
+  <h2>10. Fichaje</h2>
+  <ol>
+    <li>Abra <code>https://piccolo.local/fichaje/tablet</code>.</li>
+    <li>Empareje la tablet desde Administración → Fichaje → Dispositivos.</li>
+    <li>Pruebe PIN, entrada, descanso, fin de descanso y salida.</li>
+    <li>Compruebe el resultado en Administración → Fichaje → Registros.</li>
+  </ol>
+  <p>No se necesita Anviz.</p>
+
+  <h2 class="page">11. Prueba sin Internet</h2>
+  <ol>
+    <li>Con todo funcionando, desconecte únicamente el cable WAN/Internet del router.</li>
+    <li>No apague router, switch, servidor ni Wi-Fi local.</li>
+    <li>Abra mesa, añada producto y envíe comanda.</li>
+    <li>Confirme KDS e impresión.</li>
+    <li>Cobre una operación claramente marcada como <strong>PRUEBA</strong>.</li>
+    <li>Compruebe ticket y RF con estado <code>pendiente_envio</code>.</li>
+    <li>Reinicie una tablet y confirme que puede reconectar al servidor LAN.</li>
+    <li>Restaure Internet y confirme que no se configuró AEAT producción.</li>
+  </ol>
+
+  <h2>12. Pruebas de fallos</h2>
+  <table>
+    <tr><th>Acción controlada</th><th>Resultado esperado</th></tr>
+    <tr><td>Apagar tablet</td><td>Servidor/KDS continúan; al encender recupera estado.</td></tr>
+    <tr><td>Reiniciar TPV Windows</td><td>No duplica pagos/comandas; vuelve a login.</td></tr>
+    <tr><td>Desconectar impresora</td><td>Trabajo queda en reintento/error; KDS continúa.</td></tr>
+    <tr><td>Reconectar impresora</td><td>Reintentar desde cola; auditoría conserva el fallo.</td></tr>
+    <tr><td>Desconectar KDS</td><td>Comanda persiste; KDS la recupera al volver.</td></tr>
+    <tr><td>Perder/recuperar Wi-Fi</td><td>Aviso offline; no afirmar éxito sin respuesta; refresca al volver.</td></tr>
+    <tr><td>Reiniciar servidor</td><td>Dispositivos muestran desconexión; datos confirmados reaparecen.</td></tr>
+    <tr><td>Perder Internet</td><td>LAN sigue; RF permanece pendiente.</td></tr>
+  </table>
+
+  <h2>13. Guardar un diagnóstico</h2>
+  <ol>
+    <li>Administración → Diagnóstico.</li>
+    <li>Pulse <strong>Descargar informe de soporte</strong>.</li>
+    <li>Guarde el ZIP y anote qué estaba haciendo, dispositivo, hora y resultado esperado.</li>
+    <li>Si el servidor no abre, ejecute el recolector de <code>05-Diagnostico</code>.</li>
+  </ol>
+  <p>El ZIP excluye contraseñas, tokens, certificados, variables secretas y copias de base de datos.</p>
+
+  <h2>14. Fin de la sesión</h2>
+  <ol>
+    <li>Exporte el registro de resultados.</li>
+    <li>Cierre la caja de prueba.</li>
+    <li>Realice una copia de seguridad verificada.</li>
+    <li>No pase a producción fiscal aunque todos los pasos sean correctos.</li>
+  </ol>
+</body>
+</html>

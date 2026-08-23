@@ -13,13 +13,12 @@ import { sql } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { APP_COMMIT, APP_VERSION, PRODUCTION_FISCAL_READY } from "../lib/app-version.js";
 
 const router = Router();
 const guard = [requireAuth, requireRole("admin", "manager", "encargado")];
 
-// Current version — kept in sync with /VERSION at the repo root.
-const APP_VERSION = "1.2.0";
-const RELEASE_DATE = "2026-07-17";
+const RELEASE_DATE = "2026-08-23";
 
 const CHANGELOG: Array<{
   version: string;
@@ -27,6 +26,17 @@ const CHANGELOG: Array<{
   highlights: string[];
   migrations: number;
 }> = [
+  {
+    version: "0.9.0-rc.2",
+    date: "2026-08-23",
+    highlights: [
+      "Paquete unificado para pruebas físicas de hardware",
+      "Núcleo fiscal transaccional SIF/VERI*FACTU Fase 1",
+      "Instaladores Windows y paquete TerraMaster reproducibles",
+      "Diagnóstico descargable sin secretos",
+    ],
+    migrations: 1,
+  },
   {
     version: "1.2.0",
     date: "2026-07-17",
@@ -99,6 +109,9 @@ router.get("/admin/system/version", ...guard, async (_req, res): Promise<void> =
 
   res.json({
     version: APP_VERSION,
+    commit: APP_COMMIT,
+    channel: "release-candidate",
+    productionFiscalReady: PRODUCTION_FISCAL_READY,
     releaseDate: RELEASE_DATE,
     migrationsApplied,
     dbLatencyMs,

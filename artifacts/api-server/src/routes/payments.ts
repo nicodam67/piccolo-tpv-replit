@@ -13,14 +13,17 @@ import {
   ticketsTable,
   businessConfigTable,
   discountsTable,
+  documentAuditLogTable,
+  invoicesTable,
 } from "@workspace/db";
-import { eq, and, sum, inArray, gte } from "drizzle-orm";
+import { eq, and, sum, gte, sql } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { idempotency } from "../middlewares/idempotency";
 import { emitToFunction } from "../lib/socket-events";
-import { logDocumentAction } from "../lib/document-audit";
 import { calcMultiRateBreakdown } from "../lib/tax";
 import { issuePoints } from "./crm.js";
+import { createFiscalRecord, FiscalIssuanceError } from "../lib/fiscal-issuance.js";
+import { getNextNumber } from "../lib/invoice-series.js";
 
 // Roles allowed to process payments (excludes kitchen staff)
 const PAYMENT_ROLES = ["waiter", "cashier", "manager", "admin"];
@@ -146,6 +149,7 @@ router.get("/orders/:id/payment-summary", requireAuth, async (req, res): Promise
 router.post("/orders/:id/payments", requireAuth, requireRole(...PAYMENT_ROLES), paymentLimiter, idempotency, async (req, res): Promise<void> => {
   const orderId = req.params.id as string;
   const employeeId = (req as any).user?.id as string;
+  const employeeName = (req as any).user?.name ?? "";
   const { methodCode, amount, reference, terminal: bodyTerminal } = req.body as {
     methodCode: string;
     amount: string;
@@ -159,252 +163,309 @@ router.post("/orders/:id/payments", requireAuth, requireRole(...PAYMENT_ROLES), 
     return;
   }
 
-  const [order] = await db.select().from(ordersTable).where(eq(ordersTable.id, orderId));
-  if (!order) {
-    res.status(404).json({ error: "Pedido no encontrado" });
-    return;
-  }
-
-  // Look up the method BEFORE the order-status guard so the idempotency check
-  // (which needs method.id) can run even for already-paid orders.
-  const [method] = await db
-    .select()
-    .from(paymentMethodsTable)
-    .where(and(eq(paymentMethodsTable.code, methodCode), eq(paymentMethodsTable.active, true)));
-
-  if (!method) {
-    res.status(400).json({ error: "Método de pago no válido" });
-    return;
-  }
-
-  // Elevated-privilege methods: invitation requires admin role
-  const ADMIN_ONLY_METHODS = ["invitation"];
-  if (ADMIN_ONLY_METHODS.includes(method.code)) {
-    const userRole = (req as any).user?.role as string;
-    if (userRole !== "admin") {
-      res.status(403).json({ error: `El método "${method.name}" requiere permisos de administrador` });
-      return;
-    }
-  }
-
-  // ── Settled-order gate with idempotency ──────────────────────────────────
-  // Idempotency is ONLY applied when the order is already fully settled.
-  // During open split-payment accumulation (order not yet "paid") all payment
-  // requests are processed normally so two equal-amount partial payments can
-  // both succeed without false deduplication.
-  //
-  // When the order IS settled: check for a matching completed payment
-  // (orderId + methodId + amount, 60 s window) and return it as an idempotent
-  // 200. This converts what would be a 409 on a final-payment retry into a
-  // success response the client can safely act on.
-  if (order.status === "paid") {
-    const cutoff = new Date(Date.now() - 60_000);
-    const [dupe] = await db
-      .select()
-      .from(paymentsTable)
-      .where(
-        and(
-          eq(paymentsTable.orderId, orderId),
-          eq(paymentsTable.paymentMethodId, method.id),
-          eq(paymentsTable.amount, amount),
-          eq(paymentsTable.status, "completed"),
-          gte(paymentsTable.createdAt, cutoff),
-        )
-      )
-      .limit(1);
-
-    if (dupe) {
-      const [existingTicket] = await db
-        .select()
-        .from(ticketsTable)
-        .where(eq(ticketsTable.orderId, orderId));
-      res.status(200).json({
-        payment: dupe,
-        ticket: existingTicket ?? null,
-        change: "0.00",
-        newRemaining: 0,   // order is settled — remaining is definitively 0
-        idempotent: true,
-      });
-      return;
-    }
-
-    // No recent matching payment found → genuine re-payment on a settled order
-    res.status(409).json({ error: "El pedido ya está cobrado" });
-    return;
-  }
-
-  // Fetch items with taxRate for accurate total
-  const items = await db
-    .select({ unitPrice: orderItemsTable.unitPrice, quantity: orderItemsTable.quantity, taxRate: orderItemsTable.taxRate })
-    .from(orderItemsTable)
-    .where(eq(orderItemsTable.orderId, orderId));
-
-  const discountResultPay = await db
-    .select({ total: sum(discountsTable.discountAmount) })
-    .from(discountsTable)
-    .where(eq(discountsTable.orderId, orderId));
-  const discountForOrder = parseFloat(discountResultPay[0]?.total ?? "0");
-
-  const lineTotals = items.map((it) => ({
-    lineTotal: parseFloat(it.unitPrice) * it.quantity,
-    taxRate: it.taxRate ?? 10,
-  }));
-  const { total } = calcMultiRateBreakdown(lineTotals, discountForOrder);
-  const totalNum = parseFloat(total);
-
-  const paidResult = await db
-    .select({ paid: sum(paymentsTable.amount) })
-    .from(paymentsTable)
-    .where(and(eq(paymentsTable.orderId, orderId), eq(paymentsTable.status, "completed")));
-
-  const alreadyPaid = parseFloat(paidResult[0]?.paid ?? "0");
-  const remaining = parseFloat((totalNum - alreadyPaid).toFixed(2));
-
-  // Only cash can exceed remaining (for change)
-  if (methodCode !== "cash" && amountNum > remaining + 0.001) {
-    res.status(400).json({
-      error: `El importe excede el pendiente de ${remaining.toFixed(2)} €. Solo el efectivo puede superar el pendiente para dar cambio.`,
-    });
-    return;
-  }
-
-  // Get open cash session for this terminal (prefer body.terminal, fallback to header)
   const terminalName = bodyTerminal ?? (req.headers["x-terminal-name"] as string | undefined);
+  const terminalAddress =
+    (req.headers["x-forwarded-for"] as string) ?? req.socket?.remoteAddress ?? "";
 
-  if (!terminalName) {
-    // No terminal supplied — count open sessions to decide whether to allow fallback
-    const allOpen = await db
-      .select({ id: cashSessionsTable.id })
-      .from(cashSessionsTable)
-      .where(eq(cashSessionsTable.status, "open"));
-    if (allOpen.length > 1) {
-      res.status(400).json({
-        error: "Hay varias cajas abiertas. Indica el terminal en el que estás operando.",
-      });
-      return;
-    }
-  }
+  let result;
+  try {
+    result = await db.transaction(async (tx) => {
+      // One order lock covers payment accumulation, final issuance and retries.
+      await tx.execute(sql`SELECT id FROM orders WHERE id = ${orderId} FOR UPDATE`);
+      const [order] = await tx.select().from(ordersTable).where(eq(ordersTable.id, orderId));
+      if (!order) throw new FiscalIssuanceError("ORDER_NOT_FOUND", "Pedido no encontrado");
 
-  const sessionCondition = terminalName
-    ? and(eq(cashSessionsTable.status, "open"), eq(cashSessionsTable.terminalName, terminalName))
-    : eq(cashSessionsTable.status, "open");
-  const [openSession] = await db
-    .select()
-    .from(cashSessionsTable)
-    .where(sessionCondition)
-    .limit(1);
+      const [method] = await tx
+        .select()
+        .from(paymentMethodsTable)
+        .where(and(eq(paymentMethodsTable.code, methodCode), eq(paymentMethodsTable.active, true)));
+      if (!method) throw new FiscalIssuanceError("INVALID_PAYMENT_METHOD", "Método de pago no válido");
+      if (method.code === "invitation" && (req as any).user?.role !== "admin") {
+        throw new FiscalIssuanceError(
+          "PAYMENT_METHOD_FORBIDDEN",
+          `El método "${method.name}" requiere permisos de administrador`,
+        );
+      }
 
-  // Enforce: a terminal that was provided must map to an open session
-  if (terminalName && !openSession) {
-    res.status(409).json({
-      error: `No hay caja abierta en el terminal "${terminalName}". Abre la caja antes de cobrar.`,
-    });
-    return;
-  }
-  // Enforce: cash payments always require an open session
-  if (!openSession && methodCode === "cash") {
-    res.status(409).json({
-      error: "No hay ninguna caja abierta. Abre la caja antes de cobrar con efectivo.",
-    });
-    return;
-  }
+      if (order.status === "paid") {
+        const cutoff = new Date(Date.now() - 60_000);
+        const [dupe] = await tx
+          .select()
+          .from(paymentsTable)
+          .where(and(
+            eq(paymentsTable.orderId, orderId),
+            eq(paymentsTable.paymentMethodId, method.id),
+            eq(paymentsTable.status, "completed"),
+            reference
+              ? eq(paymentsTable.reference, reference)
+              : and(
+                  eq(paymentsTable.amount, amount),
+                  gte(paymentsTable.createdAt, cutoff),
+                ),
+          ))
+          .limit(1);
+        const [existingTicket] = await tx
+          .select()
+          .from(ticketsTable)
+          .where(eq(ticketsTable.orderId, orderId));
+        const [existingInvoice] = await tx
+          .select()
+          .from(invoicesTable)
+          .where(and(eq(invoicesTable.orderId, orderId), eq(invoicesTable.serie, "F")));
+        if (dupe && (existingTicket || existingInvoice)) {
+          return {
+            payment: dupe,
+            ticket: existingTicket ?? null,
+            invoice: existingInvoice ?? null,
+            change: "0.00",
+            newRemaining: 0,
+            idempotent: true,
+            order,
+          };
+        }
+        throw new FiscalIssuanceError("ORDER_ALREADY_PAID", "El pedido ya está cobrado");
+      }
 
-  // Insert payment (cap at remaining for non-cash; for cash allow full amount for change calc)
-  const effectiveAmount = methodCode === "cash"
-    ? Math.min(amountNum, remaining + 0.001) <= remaining
-      ? amount
-      : remaining.toFixed(2)  // only charge remaining, return change to customer
-    : amount;
-
-  const change = methodCode === "cash" ? Math.max(0, amountNum - remaining) : 0;
-
-  const result = await db.transaction(async (tx) => {
-    const [payment] = await tx
-      .insert(paymentsTable)
-      .values({
-        orderId,
-        cashSessionId: openSession?.id ?? null,
-        paymentMethodId: method.id,
-        amount: effectiveAmount,
-        status: "completed",
-        reference: reference ?? null,
-        employeeId,
-      })
-      .returning();
-
-    // Recalculate remaining after this payment
-    const newPaid = alreadyPaid + parseFloat(effectiveAmount);
-    const newRemaining = parseFloat((totalNum - newPaid).toFixed(2));
-
-    let ticket = null;
-    if (newRemaining <= 0.001) {
-      // Issue ticket + close order + free table
-      const { taxBreakdown, subtotal, taxTotal } = calcMultiRateBreakdown(lineTotals, discountForOrder);
-
-      // Copy emisor fields from business_config (snapshot at issuance time)
-      const [bizConfig] = await db.select().from(businessConfigTable).limit(1);
-      // Determine payment method name for forma_pago
-      const [pmRow] = await db
-        .select({ name: paymentMethodsTable.name })
+      const items = await tx
+        .select({
+          unitPrice: orderItemsTable.unitPrice,
+          quantity: orderItemsTable.quantity,
+          taxRate: orderItemsTable.taxRate,
+        })
+        .from(orderItemsTable)
+        .where(eq(orderItemsTable.orderId, orderId));
+      const discountResult = await tx
+        .select({ total: sum(discountsTable.discountAmount) })
+        .from(discountsTable)
+        .where(eq(discountsTable.orderId, orderId));
+      const discountForOrder = parseFloat(discountResult[0]?.total ?? "0");
+      const lineTotals = items.map((item) => ({
+        lineTotal: parseFloat(item.unitPrice) * item.quantity,
+        taxRate: item.taxRate ?? 10,
+      }));
+      const totals = calcMultiRateBreakdown(lineTotals, discountForOrder);
+      const totalNum = parseFloat(totals.total);
+      const paidResult = await tx
+        .select({ paid: sum(paymentsTable.amount) })
         .from(paymentsTable)
-        .innerJoin(paymentMethodsTable, eq(paymentsTable.paymentMethodId, paymentMethodsTable.id))
-        .where(and(eq(paymentsTable.orderId, orderId), eq(paymentsTable.status, "completed")))
-        .limit(1);
+        .where(and(eq(paymentsTable.orderId, orderId), eq(paymentsTable.status, "completed")));
+      const alreadyPaid = parseFloat(paidResult[0]?.paid ?? "0");
+      const remaining = parseFloat((totalNum - alreadyPaid).toFixed(2));
 
-      const [t] = await tx
-        .insert(ticketsTable)
+      if (reference) {
+        const [replayedPayment] = await tx
+          .select()
+          .from(paymentsTable)
+          .where(eq(paymentsTable.reference, reference))
+          .limit(1);
+        if (replayedPayment) {
+          const [existingTicket] = await tx
+            .select()
+            .from(ticketsTable)
+            .where(eq(ticketsTable.orderId, orderId));
+          return {
+            payment: replayedPayment,
+            ticket: existingTicket ?? null,
+            change: "0.00",
+            newRemaining: Math.max(0, remaining),
+            idempotent: true,
+            order,
+          };
+        }
+      }
+
+      if (methodCode !== "cash" && amountNum > remaining + 0.001) {
+        throw new FiscalIssuanceError(
+          "PAYMENT_EXCEEDS_REMAINING",
+          `El importe excede el pendiente de ${remaining.toFixed(2)} €. Solo el efectivo puede superar el pendiente para dar cambio.`,
+        );
+      }
+
+      if (!terminalName) {
+        const allOpen = await tx
+          .select({ id: cashSessionsTable.id })
+          .from(cashSessionsTable)
+          .where(eq(cashSessionsTable.status, "open"));
+        if (allOpen.length > 1) {
+          throw new FiscalIssuanceError(
+            "TERMINAL_REQUIRED",
+            "Hay varias cajas abiertas. Indica el terminal en el que estás operando.",
+          );
+        }
+      }
+      const sessionCondition = terminalName
+        ? and(eq(cashSessionsTable.status, "open"), eq(cashSessionsTable.terminalName, terminalName))
+        : eq(cashSessionsTable.status, "open");
+      const [openSession] = await tx
+        .select()
+        .from(cashSessionsTable)
+        .where(sessionCondition)
+        .limit(1);
+      if (terminalName && !openSession) {
+        throw new FiscalIssuanceError(
+          "CASH_SESSION_MISSING",
+          `No hay caja abierta en el terminal "${terminalName}". Abre la caja antes de cobrar.`,
+        );
+      }
+      if (!openSession && methodCode === "cash") {
+        throw new FiscalIssuanceError(
+          "CASH_SESSION_MISSING",
+          "No hay ninguna caja abierta. Abre la caja antes de cobrar con efectivo.",
+        );
+      }
+
+      const effectiveAmount =
+        methodCode === "cash" && amountNum > remaining ? remaining.toFixed(2) : amount;
+      const change = methodCode === "cash" ? Math.max(0, amountNum - remaining) : 0;
+      const [payment] = await tx
+        .insert(paymentsTable)
         .values({
           orderId,
           cashSessionId: openSession?.id ?? null,
-          serie: "T",
-          nifEmisor: bizConfig?.nif ?? "",
-          razonSocialEmisor: bizConfig?.razonSocial ?? "",
-          direccionEmisor: bizConfig?.direccionFiscal ?? "",
-          formaPago: pmRow?.name ?? method.name,
-          verifactuStatus: "pending",
-          subtotal,
-          taxTotal,
-          total,
-          taxBreakdown: taxBreakdown as any,
+          paymentMethodId: method.id,
+          amount: effectiveAmount,
+          status: "completed",
+          reference: reference ?? null,
           employeeId,
         })
         .returning();
-      ticket = t;
 
-      // Log ticket issuance to document audit
-      await logDocumentAction({
-        action: "issue_ticket",
-        documentType: "ticket",
-        documentId: t.id,
-        employeeId,
-        employeeName: (req as any).user?.name ?? "",
-        terminal: (req.headers["x-forwarded-for"] as string) ?? req.socket?.remoteAddress ?? "",
-        amount: total,
-        details: `Ticket T-${t.ticketNumber} emitido para pedido ${orderId}`,
-      });
+      const newPaid = alreadyPaid + parseFloat(effectiveAmount);
+      const newRemaining = parseFloat((totalNum - newPaid).toFixed(2));
+      let ticket = null;
 
-      await tx.update(ordersTable).set({ status: "paid" }).where(eq(ordersTable.id, orderId));
+      if (newRemaining <= 0.001) {
+        const [existingFullInvoice] = await tx
+          .select()
+          .from(invoicesTable)
+          .where(and(eq(invoicesTable.orderId, orderId), eq(invoicesTable.serie, "F")))
+          .limit(1);
+        if (existingFullInvoice) {
+          await tx.update(ordersTable).set({ status: "paid" }).where(eq(ordersTable.id, orderId));
+          if (order.tableId) {
+            await tx
+              .update(restaurantTablesTable)
+              .set({ status: "free" })
+              .where(eq(restaurantTablesTable.id, order.tableId));
+          }
+          return {
+            payment,
+            ticket: null,
+            invoice: existingFullInvoice,
+            change: change.toFixed(2),
+            newRemaining: 0,
+            idempotent: false,
+            order,
+          };
+        }
 
-      if (order.tableId) {
-        await tx
-          .update(restaurantTablesTable)
-          .set({ status: "free" })
-          .where(eq(restaurantTablesTable.id, order.tableId));
+        const [bizConfig] = await tx.select().from(businessConfigTable).limit(1);
+        const ticketNumber = await getNextNumber("T", "ticket", tx);
+        const issuedAt = new Date();
+        const [createdTicket] = await tx
+          .insert(ticketsTable)
+          .values({
+            orderId,
+            ticketNumber,
+            cashSessionId: openSession?.id ?? null,
+            serie: "T",
+            nifEmisor: bizConfig?.nif ?? "",
+            razonSocialEmisor: bizConfig?.razonSocial ?? "",
+            direccionEmisor: bizConfig?.direccionFiscal ?? "",
+            formaPago: method.name,
+            verifactuStatus: "pending",
+            subtotal: totals.subtotal,
+            taxTotal: totals.taxTotal,
+            total: totals.total,
+            taxBreakdown: totals.taxBreakdown,
+            issuedAt,
+            employeeId,
+          })
+          .returning();
+
+        await createFiscalRecord(tx, {
+          ticketId: createdTicket.id,
+          serie: createdTicket.serie,
+          numero: createdTicket.ticketNumber,
+          issuedAt,
+          tipoFactura: "F2",
+          emisorNif: createdTicket.nifEmisor,
+          emisorNombre: createdTicket.razonSocialEmisor,
+          baseImponible: totals.subtotal,
+          cuotaTotal: totals.taxTotal,
+          importeTotal: totals.total,
+          desgloseIva: totals.taxBreakdown.map((tax) => ({
+            tipoImpositivo: Number(tax.rate).toFixed(2),
+            baseImponible: tax.base,
+            cuotaRepercutida: tax.cuota,
+          })),
+          empleadoId: employeeId,
+          empleadoNombre: employeeName,
+          terminal: terminalAddress,
+        });
+
+        await tx.insert(documentAuditLogTable).values({
+          action: "issue_ticket",
+          documentType: "ticket",
+          documentId: createdTicket.id,
+          employeeId,
+          employeeName,
+          terminal: terminalAddress,
+          amount: totals.total,
+          details: `Ticket T-${ticketNumber} y registro fiscal emitidos atómicamente para pedido ${orderId}`,
+        });
+        await tx.update(ordersTable).set({ status: "paid" }).where(eq(ordersTable.id, orderId));
+        if (order.tableId) {
+          await tx
+            .update(restaurantTablesTable)
+            .set({ status: "free" })
+            .where(eq(restaurantTablesTable.id, order.tableId));
+        }
+        ticket = createdTicket;
       }
-    }
 
-    return { payment, ticket, change: change.toFixed(2), newRemaining: Math.max(0, newRemaining) };
-  });
+      return {
+        payment,
+        ticket,
+        change: change.toFixed(2),
+        newRemaining: Math.max(0, newRemaining),
+        idempotent: false,
+        order,
+      };
+    });
+  } catch (error) {
+    if (error instanceof FiscalIssuanceError) {
+      const status =
+        error.code === "ORDER_NOT_FOUND" ? 404
+          : error.code === "PAYMENT_METHOD_FORBIDDEN" ? 403
+            : ["ORDER_ALREADY_PAID", "CASH_SESSION_MISSING"].includes(error.code) ? 409
+              : ["MISSING_ISSUER_NIF", "ISSUER_MISMATCH"].includes(error.code) ? 503
+                : 400;
+      res.status(status).json({
+        error: error.message,
+        code: error.code,
+        recoverable: status === 503,
+      });
+      return;
+    }
+    console.error("[payments] atomic fiscal issuance failed:", error);
+    res.status(503).json({
+      error: "No se pudo completar el cobro fiscal. No se ha emitido la factura; reintenta.",
+      code: "FISCAL_TRANSACTION_FAILED",
+      recoverable: true,
+    });
+    return;
+  }
 
   // Auto-issue loyalty points when order is fully paid and has a client
-  if (result.ticket && order.clientId) {
+  if (result.ticket && result.order.clientId && !result.idempotent) {
     try {
       await issuePoints({
-        clientId: order.clientId,
+        clientId: result.order.clientId,
         orderId: orderId,
         importeTotal: parseFloat(result.ticket.total ?? "0"),
         empleadoId: employeeId ?? null,
-        empleadoNombre: (req as any).user?.name ?? "",
+        empleadoNombre: employeeName,
       });
     } catch {
       // Points issuance failure must never block payment confirmation
@@ -416,7 +477,14 @@ router.post("/orders/:id/payments", requireAuth, requireRole(...PAYMENT_ROLES), 
     emitToFunction("floor", "tables:refresh");
   } catch { /* socket not init */ }
 
-  res.status(201).json(result);
+  res.status(result.idempotent ? 200 : 201).json({
+    payment: result.payment,
+    ticket: result.ticket,
+    ...("invoice" in result && result.invoice ? { invoice: result.invoice } : {}),
+    change: result.change,
+    newRemaining: result.newRemaining,
+    ...(result.idempotent ? { idempotent: true } : {}),
+  });
 });
 
 // GET /orders/:id/ticket
@@ -437,13 +505,12 @@ router.get("/orders/:id/ticket", requireAuth, async (req, res): Promise<void> =>
 
   const items = await db
     .select({
-      productName: productsTable.name,
+      productName: orderItemsTable.productNameSnapshot,
       quantity: orderItemsTable.quantity,
       unitPrice: orderItemsTable.unitPrice,
       taxRate: orderItemsTable.taxRate,
     })
     .from(orderItemsTable)
-    .innerJoin(productsTable, eq(orderItemsTable.productId, productsTable.id))
     .where(eq(orderItemsTable.orderId, id));
 
   const [tableRow] = order?.tableId

@@ -1,0 +1,5 @@
+UNSIGNED
+
+No existe certificado Authenticode configurado.
+Windows puede mostrar una advertencia de editor desconocido.
+No se inventa ni simula una firma válida.

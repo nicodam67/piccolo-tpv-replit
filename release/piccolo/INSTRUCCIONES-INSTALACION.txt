@@ -1,0 +1,21 @@
+PICCOLO TPV 0.9.0-rc.2 — PRUEBAS / PREPRODUCCIÓN
+==================================================
+
+VERSIÓN DE PRUEBAS — NO USAR PARA FACTURACIÓN FISCAL REAL.
+
+1. Extraiga el ZIP Hardware Test completo.
+2. Abra primero 04-Documentacion\INSTALAR-Y-PROBAR-PICCOLO.pdf.
+3. Elija un único servidor:
+   A) 02-Windows-Servidor\Piccolo-Server-Windows-*.exe
+   B) 03-TerraMaster\ARTEFACTO-TERRAMASTER.txt y el tar.gz adjunto indicado
+4. Instale el TPV desde 01-Windows-TPV.
+5. Conecte tablets, KDS y fichaje por https://piccolo.local.
+6. Configure impresoras TCP ESC/POS por IP y puerto 9100.
+7. Registre resultados en REGISTRO-RESULTADOS-HARDWARE.md.
+8. Ante un fallo descargue el ZIP desde Administración > Diagnóstico.
+
+No use paquetes del repositorio piccolo-qr-menu como servidor TPV.
+No configure certificados ni entorno AEAT de producción.
+
+El commit exacto y los nombres de todos los componentes están en
+BUILD-MANIFEST.json, en la raíz del ZIP.

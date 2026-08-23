@@ -293,6 +293,33 @@ router.post(
 
 // ─── Payments: Poll ───────────────────────────────────────────────────────────
 
+async function reconcileCompletedPayment(
+  transaction: typeof cashMachineTransactionsTable.$inferSelect,
+) {
+  if (!transaction.orderId || !transaction.employeeId) return null;
+  const methodId = await ensurePaymentMethod();
+  const netAmount = (
+    parseFloat(transaction.amountReceived ?? "0")
+    - parseFloat(transaction.changeDispensed ?? "0")
+  ).toFixed(2);
+  const [openSession] = await db
+    .select({ id: cashSessionsTable.id })
+    .from(cashSessionsTable)
+    .where(eq(cashSessionsTable.status, "open"))
+    .limit(1);
+
+  return settleOrderIfFullyPaid({
+    orderId: transaction.orderId,
+    employeeId: transaction.employeeId,
+    cashSessionId: openSession?.id ?? null,
+    payment: {
+      paymentMethodId: methodId,
+      amount: netAmount,
+      reference: transaction.id,
+    },
+  });
+}
+
 router.get(
   "/cash-machine/payments/:id",
   requireAuth,
@@ -312,6 +339,19 @@ router.get(
 
     const TERMINAL_STATUSES = ["completada", "cancelada", "tiempo_agotado", "error", "intervencion_manual"];
     if (TERMINAL_STATUSES.includes(txRow.status)) {
+      if (txRow.status === "completada" && txRow.orderId && txRow.employeeId) {
+        try {
+          const settlement = await reconcileCompletedPayment(txRow);
+          res.json({ transaction: txRow, settlement });
+        } catch (error) {
+          res.status(500).json({
+            error: "El cobro está registrado y su liquidación fiscal sigue pendiente. Reintenta.",
+            transaction: txRow,
+            needsReconciliation: true,
+          });
+        }
+        return;
+      }
       res.json({ transaction: txRow });
       return;
     }
@@ -353,38 +393,13 @@ router.get(
     let settlementResult = null;
     if (justCompleted && txRow.orderId && txRow.employeeId) {
       try {
-        const methodId = await ensurePaymentMethod();
-        const netAmount = (
-          parseFloat(deviceStatus.amountReceived) - parseFloat(deviceStatus.changeDispensed)
-        ).toFixed(2);
-        const [openSession] = await db
-          .select({ id: cashSessionsTable.id })
-          .from(cashSessionsTable)
-          .where(eq(cashSessionsTable.status, "open"))
-          .limit(1);
-
-        // Insert payment (idempotent)
-        await db
-          .insert(paymentsTable)
-          .values({
-            orderId:         txRow.orderId,
-            paymentMethodId: methodId,
-            amount:          netAmount,
-            employeeId:      txRow.employeeId,
-            reference:       txRow.id,   // idempotency key — unique index enforces exactly-once
-            ...(openSession ? { cashSessionId: openSession.id } : {}),
-          })
-          .onConflictDoNothing();
-
-        // Settle the order (ticket issuance + order→paid + table→free)
-        settlementResult = await settleOrderIfFullyPaid({
-          orderId:       txRow.orderId,
-          employeeId:    txRow.employeeId,
-          cashSessionId: openSession?.id ?? null,
+        settlementResult = await reconcileCompletedPayment({
+          ...txRow,
+          ...updated,
         });
 
         // Notify floor plan clients
-        if (settlementResult.settled) {
+        if (settlementResult?.settled) {
           try { emitToFunction("floor", "tables:refresh"); } catch { /* socket not init */ }
         }
       } catch (settleErr: any) {

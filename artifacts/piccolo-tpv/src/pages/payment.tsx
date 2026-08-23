@@ -797,6 +797,7 @@ function SplitPayMode({ orderId, groups, terminal, orderTotal, orderPaid, orderR
   const [amounts, setAmounts]   = useState<Record<string, string>>({});
   const [focused, setFocused]   = useState('cash');
   const [paying, setPaying]     = useState(false);
+  const paymentAttemptKeys = useRef<Record<string, string>>({});
 
   const group = groups.find(g => g.id === activeGroup);
   const groupTotal = parseFloat(group?.total ?? '0');
@@ -841,12 +842,16 @@ function SplitPayMode({ orderId, groups, terminal, orderTotal, orderPaid, orderR
       for (const m of methods) {
         const a = parseAmt(amounts[m.code] ?? '0');
         if (a <= 0) continue;
+        const attemptSlot = `${group.id}:${m.code}`;
+        const reference = paymentAttemptKeys.current[attemptSlot] ?? crypto.randomUUID();
+        paymentAttemptKeys.current[attemptSlot] = reference;
         const res = await new Promise<any>((resolve, reject) => {
           addPayment.mutate(
-            { orderId, data: { methodCode: m.code as AddPaymentInputMethodCode, amount: fmt(a), terminal } },
+            { orderId, data: { methodCode: m.code as AddPaymentInputMethodCode, amount: fmt(a), terminal, reference } },
             { onSuccess: resolve, onError: reject }
           );
         });
+        delete paymentAttemptKeys.current[attemptSlot];
         lastPaymentId = res.payment?.id ?? null;
       }
       await markPaid.mutateAsync({ orderId, groupId: group.id, data: { paymentId: lastPaymentId ?? undefined } });
@@ -1181,6 +1186,7 @@ export default function Payment() {
   const [showDiscount, setShowDiscount]   = useState(false);
   const [showSplit, setShowSplit]         = useState(false);
   const [splitGroups, setSplitGroups]     = useState<SplitGroupWithItems[] | null>(null);
+  const paymentAttemptKeys = useRef<Record<string, string>>({});
   const [tipPaymentId, setTipPaymentId]   = useState<string | null>(null);
   const [showCashMachineModal, setShowCashMachineModal] = useState(false);
 
@@ -1327,13 +1333,17 @@ export default function Payment() {
     for (const m of paymentMethods) {
       const amtStr = amounts[m.code] ?? '0';
       if (parseAmt(amtStr) <= 0) continue;
+      const attemptSlot = `${orderId}:${m.code}`;
+      const reference = paymentAttemptKeys.current[attemptSlot] ?? crypto.randomUUID();
+      paymentAttemptKeys.current[attemptSlot] = reference;
       try {
         const res = await new Promise<any>((resolve, reject) => {
           addPayment.mutate(
-            { orderId: orderId!, data: { methodCode: m.code as AddPaymentInputMethodCode, amount: amtStr, terminal: terminal || undefined } },
+            { orderId: orderId!, data: { methodCode: m.code as AddPaymentInputMethodCode, amount: amtStr, terminal: terminal || undefined, reference } },
             { onSuccess: resolve, onError: reject }
           );
         });
+        delete paymentAttemptKeys.current[attemptSlot];
         lastChange    = parseFloat(res.change ?? '0');
         lastPaymentId = res.payment?.id ?? null;
       } catch (e: any) {

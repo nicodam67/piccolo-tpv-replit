@@ -7,6 +7,7 @@ import {
   text,
   timestamp,
   unique,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
@@ -76,12 +77,14 @@ export type InvoiceSeries = typeof invoiceSeriesTable.$inferSelect;
 // Invoices (full fiscal invoices)
 // ---------------------------------------------------------------------------
 
-export const invoicesTable = pgTable("invoices", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  serie: text("serie").notNull().default("F"),
-  invoiceNumber: integer("invoice_number").notNull().default(0),
-  issuedAt: timestamp("issued_at", { withTimezone: true }).notNull().defaultNow(),
-  operationDate: timestamp("operation_date", { withTimezone: true }),
+export const invoicesTable = pgTable(
+  "invoices",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    serie: text("serie").notNull().default("F"),
+    invoiceNumber: integer("invoice_number").notNull().default(0),
+    issuedAt: timestamp("issued_at", { withTimezone: true }).notNull().defaultNow(),
+    operationDate: timestamp("operation_date", { withTimezone: true }),
   // Emisor (copied from business_config at issuance time)
   emisorNombre: text("emisor_nombre").notNull().default(""),
   emisorNif: text("emisor_nif").notNull().default(""),
@@ -121,8 +124,16 @@ export const invoicesTable = pgTable("invoices", {
   verifactuResponse: jsonb("verifactu_response"),
   // Employee
   employeeId: uuid("employee_id").references(() => employeesTable.id),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    fiscalNumberUniqueIdx: uniqueIndex("invoices_fiscal_number_unique")
+      .on(table.serie, table.invoiceNumber),
+    oneFullInvoicePerOrderIdx: uniqueIndex("invoices_one_full_per_order")
+      .on(table.orderId)
+      .where(sql`${table.orderId} IS NOT NULL AND ${table.serie} = 'F'`),
+  }),
+);
 
 export type Invoice = typeof invoicesTable.$inferSelect;
 

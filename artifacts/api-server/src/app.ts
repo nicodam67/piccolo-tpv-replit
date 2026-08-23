@@ -2,6 +2,8 @@ import express, { type Express } from "express";
 import cors from "cors";
 import pinoHttp from "pino-http";
 import cookieParser from "cookie-parser";
+import { existsSync } from "node:fs";
+import path from "node:path";
 import router from "./routes";
 import { logger } from "./lib/logger";
 import { sanitizeInputs } from "./middlewares/sanitize";
@@ -97,5 +99,16 @@ app.use(cookieParser());
 app.use(sanitizeInputs);
 
 app.use("/api", router);
+
+// Packaged Windows/TerraMaster deployments are single-origin: the API serves
+// the compiled TPV/PWA shell and keeps `/api/*` reserved for JSON routes.
+const packagedWebRoot = process.env["PICCOLO_WEB_ROOT"];
+if (packagedWebRoot && existsSync(path.join(packagedWebRoot, "index.html"))) {
+  app.use(express.static(packagedWebRoot, { index: false }));
+  app.use((req, res, next) => {
+    if (req.method !== "GET" || req.path.startsWith("/api/")) return next();
+    res.sendFile(path.join(packagedWebRoot, "index.html"));
+  });
+}
 
 export default app;

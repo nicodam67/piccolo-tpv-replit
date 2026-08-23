@@ -1,0 +1,65 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${PICCOLO_DB_NAME:-piccolo_tpv}
+      POSTGRES_USER: ${PICCOLO_DB_USER:-piccolo}
+      POSTGRES_PASSWORD: ${PICCOLO_DB_PASSWORD:?PICCOLO_DB_PASSWORD is required}
+    volumes:
+      - ${PICCOLO_DATA_ROOT:-/var/lib/piccolo}/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PICCOLO_DB_USER:-piccolo} -d ${PICCOLO_DB_NAME:-piccolo_tpv}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  piccolo:
+    image: piccolo-tpv:${PICCOLO_VERSION:-0.9.0-rc.2}
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PICCOLO_APP_ROOT: /opt/piccolo/app
+      PICCOLO_DATA_ROOT: /var/lib/piccolo
+      NODE_ENV: production
+      PICCOLO_ALLOW_AEAT_PRODUCTION: "false"
+      PICCOLO_PRINT_CONNECTOR: "network"
+      PICCOLO_DB_HOST: postgres
+      PICCOLO_DB_PORT: 5432
+      PICCOLO_DB_NAME: ${PICCOLO_DB_NAME:-piccolo_tpv}
+      PICCOLO_DB_USER: ${PICCOLO_DB_USER:-piccolo}
+      PICCOLO_DB_PASSWORD: ${PICCOLO_DB_PASSWORD:?PICCOLO_DB_PASSWORD is required}
+      PICCOLO_HOSTNAME: ${PICCOLO_HOSTNAME:-piccolo.local}
+      PICCOLO_HTTPS_PORT: ${PICCOLO_HTTPS_PORT:-443}
+      PICCOLO_API_PORT: ${PICCOLO_API_PORT:-8080}
+    volumes:
+      - ${PICCOLO_DATA_ROOT:-/var/lib/piccolo}:/var/lib/piccolo
+    ports:
+      - "127.0.0.1:${PICCOLO_API_PORT:-8080}:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/api/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    depends_on:
+      piccolo:
+        condition: service_healthy
+    ports:
+      - "${PICCOLO_HTTPS_PORT:-443}:${PICCOLO_HTTPS_PORT:-443}"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ${PICCOLO_DATA_ROOT:-/var/lib/piccolo}/caddy:/data
+      - ${PICCOLO_DATA_ROOT:-/var/lib/piccolo}/caddy-config:/config
+    environment:
+      PICCOLO_HOSTNAME: ${PICCOLO_HOSTNAME:-piccolo.local}
+      PICCOLO_HTTPS_PORT: ${PICCOLO_HTTPS_PORT:-443}

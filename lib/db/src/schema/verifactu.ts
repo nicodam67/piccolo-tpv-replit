@@ -1,4 +1,5 @@
 import {
+  bigint,
   boolean,
   integer,
   jsonb,
@@ -10,6 +11,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { employeesTable } from "./employees";
 import { invoicesTable } from "./documents";
+import { ticketsTable } from "./payments";
 
 // ---------------------------------------------------------------------------
 // VeriFactu Records — one row per fiscal registration (alta or anulación)
@@ -19,8 +21,10 @@ import { invoicesTable } from "./documents";
 export const verifactuRecordsTable = pgTable("verifactu_records", {
   id: uuid("id").primaryKey().defaultRandom(),
 
-  // Link to the invoice that originated this record (null for anulaciones)
+  // Exactly one source is set for new alta records. Legacy/anulación rows can
+  // retain their historical shape.
   invoiceId: uuid("invoice_id").references(() => invoicesTable.id),
+  ticketId: uuid("ticket_id").references(() => ticketsTable.id),
 
   // "alta" = RegistroAlta, "anulacion" = RegistroAnulacion
   registroTipo: text("registro_tipo").notNull().default("alta"),
@@ -71,6 +75,8 @@ export const verifactuRecordsTable = pgTable("verifactu_records", {
   autorizadorAnulacion: text("autorizador_anulacion").notNull().default(""),
 
   // Hash chain
+  chainKey: text("chain_key").notNull().default("legacy"),
+  chainSequence: bigint("chain_sequence", { mode: "number" }).notNull().default(0),
   huellaAnterior: text("huella_anterior").notNull().default(""), // "" for first record
   huella: text("huella").notNull(), // SHA-256 uppercase hex
 
@@ -122,12 +128,25 @@ export const verifactuRecordsTable = pgTable("verifactu_records", {
 
 export type VerifactuRecord = typeof verifactuRecordsTable.$inferSelect;
 
+// One locked head per SIF identity. Issuance locks this row before reading the
+// previous hash, which serializes the chain across all Node processes.
+export const fiscalChainStateTable = pgTable("fiscal_chain_state", {
+  chainKey: text("chain_key").primaryKey(),
+  currentSequence: bigint("current_sequence", { mode: "number" }).notNull().default(0),
+  lastRecordId: uuid("last_record_id").references(() => verifactuRecordsTable.id),
+  lastHash: text("last_hash").notNull().default(""),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type FiscalChainState = typeof fiscalChainStateTable.$inferSelect;
+
 // ---------------------------------------------------------------------------
 // VeriFactu Config — system-level settings (one row per installation)
 // ---------------------------------------------------------------------------
 
 export const verifactuConfigTable = pgTable("verifactu_config", {
   id: uuid("id").primaryKey().defaultRandom(),
+  singletonKey: integer("singleton_key").notNull().default(1).unique(),
 
   // Issuer identification
   emisorNif: text("emisor_nif").notNull().default(""),

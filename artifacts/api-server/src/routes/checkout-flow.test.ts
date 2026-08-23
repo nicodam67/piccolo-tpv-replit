@@ -111,6 +111,10 @@ const MOCK_PERMISSION_OVERRIDE = {
 describe("Checkout flow", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockDb.transaction.mockImplementation(async (fn: (tx: typeof mockDb) => Promise<unknown>) =>
+      fn(mockDb)
+    );
+    mockDb.execute.mockResolvedValue({ rows: [] });
   });
 
   // ── Auth guard — every protected route must reject unauthenticated requests ──

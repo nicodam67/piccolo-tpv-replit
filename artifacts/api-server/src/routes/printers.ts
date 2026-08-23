@@ -148,7 +148,10 @@ router.get("/admin/printers/:id/status", requireAuth, requireRole("manager", "ad
   const [printer] = await db.select().from(printersTable).where(eq(printersTable.id, id));
   if (!printer) { res.status(404).json({ error: "Impresora no encontrada." }); return; }
 
-  const statusResult = await getPrinterStatus(id);
+  const statusResult = await getPrinterStatus(id, {
+    ip: printer.ip,
+    port: printer.port,
+  });
 
   // Persist last status
   await db.update(printersTable).set({
