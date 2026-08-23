@@ -57,6 +57,7 @@ import DirectorPage from './pages/director/DirectorPage';
 import SetupWelcome from './pages/setup/SetupWelcome';
 import SetupWizardPage from './pages/setup/SetupWizardPage';
 import { OfflineBanner } from './components/OfflineBanner';
+import { APP_VERSION } from './lib/app-version';
 import BackupPage from './pages/backup/BackupPage';
 import DiagnosticsPage from './pages/backup/DiagnosticsPage';
 import DevicesPage from './pages/backup/DevicesPage';
@@ -601,6 +602,12 @@ function App() {
         <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
           <OfflineBanner />
           <Router />
+          <div
+            className="fixed bottom-0 inset-x-0 z-[9999] bg-amber-500 text-black text-center text-[10px] sm:text-xs font-black tracking-wide py-1 pointer-events-none print:hidden"
+            role="status"
+          >
+            VERSIÓN DE PRUEBAS {APP_VERSION} — NO USAR PARA FACTURACIÓN FISCAL REAL
+          </div>
         </WouterRouter>
         <Toaster theme="dark" position="top-center" />
       </AuthProvider>

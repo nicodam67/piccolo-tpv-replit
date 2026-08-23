@@ -531,6 +531,15 @@ router.get("/admin/verifactu/config", requireAuth, requireRole("admin"), async (
 router.put("/admin/verifactu/config", requireAuth, requireRole("admin"), async (req, res) => {
   try {
     const body = req.body as Partial<typeof verifactuConfigTable.$inferInsert> & { certificadoPassword?: string };
+    if (
+      body.entorno === "produccion"
+      && process.env["PICCOLO_ALLOW_AEAT_PRODUCTION"] !== "true"
+    ) {
+      return res.status(403).json({
+        error: "Esta RC es exclusivamente de pruebas. El entorno AEAT de producción está bloqueado.",
+        code: "AEAT_PRODUCTION_DISABLED",
+      });
+    }
     const config = await getConfig();
 
     const update: Partial<typeof verifactuConfigTable.$inferInsert> = {};

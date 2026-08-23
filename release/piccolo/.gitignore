@@ -1,0 +1,12 @@
+staging/
+staging-linux/
+hardware-package/
+*.exe
+*.zip
+*.tar.gz
+*.pdf
+*.sha256
+SHA256SUMS.txt
+artifact-manifest.json
+build-metadata.json
+build-metadata-linux.json

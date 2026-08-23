@@ -6,7 +6,7 @@
  *  - HTML shell: Cache-First so the SPA loads offline
  */
 
-const CACHE_NAME = 'piccolo-tpv-v1';
+const CACHE_NAME = 'piccolo-tpv-0.9.0-rc.2';
 const SHELL_URLS = [
   '/',
   '/manifest.json',

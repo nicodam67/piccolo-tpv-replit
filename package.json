@@ -1,13 +1,18 @@
 {
   "name": "workspace",
-  "version": "0.0.0",
+  "version": "0.9.0-rc.2",
   "license": "MIT",
   "scripts": {
     "preinstall": "sh -c 'rm -f package-lock.json yarn.lock; case \"$npm_config_user_agent\" in pnpm/*) ;; *) echo \"Use pnpm instead\" >&2; exit 1 ;; esac'",
     "build": "pnpm run typecheck && pnpm -r --if-present run build",
     "lint": "eslint . --max-warnings=0",
     "typecheck:libs": "tsc --build",
-    "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck"
+    "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck",
+    "release:check-version": "node scripts/check-version-coherence.mjs",
+    "release:build-rc": "node scripts/build-release-candidate.mjs",
+    "release:build-rc-linux": "node scripts/build-release-candidate-linux.mjs",
+    "release:render-guide": "node scripts/render-install-guide.mjs",
+    "release:build-hardware-package": "node scripts/build-hardware-test-package.mjs"
   },
   "private": true,
   "dependencies": {

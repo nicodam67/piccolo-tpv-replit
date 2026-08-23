@@ -13,6 +13,7 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import {
   backupRecordsTable,
+  kdsStationsTable,
   techEventsTable,
   printersTable,
   printQueueTable,
@@ -22,16 +23,31 @@ import {
 import { eq, desc, and, gte, lte, sql } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { execSync } from "node:child_process";
+import os from "node:os";
+import { strToU8, zipSync } from "fflate";
+import {
+  APP_CHANNEL,
+  APP_COMMIT,
+  APP_VERSION,
+  PRODUCTION_FISCAL_READY,
+} from "../lib/app-version.js";
 
 const router = Router();
 const guard = [requireAuth, requireRole("admin", "manager", "encargado")];
 const adminOnly = [requireAuth, requireRole("admin")];
 
-const APP_VERSION = "1.0.0";
 const MODULES = [
   "tpv", "kds", "caja", "stock", "reservas", "fichaje",
   "crm", "director", "backup", "impresion", "online-orders",
 ];
+
+function redactDiagnosticText(value: unknown): string {
+  return String(value ?? "")
+    .replace(/(password|secret|token|authorization|cookie|certificate|database_url)\s*[=:]\s*[^\s,;]+/gi, "$1=[REDACTED]")
+    .replace(/postgres(?:ql)?:\/\/[^\s]+/gi, "postgresql://[REDACTED]")
+    .replace(/Bearer\s+[A-Za-z0-9._~+/-]+=*/gi, "Bearer [REDACTED]")
+    .slice(0, 2_000);
+}
 
 // ─── GET /diagnostics/status ──────────────────────────────────────────────────
 router.get("/diagnostics/status", ...guard, async (_req, res) => {
@@ -286,6 +302,103 @@ router.get("/diagnostics/report", ...adminOnly, async (_req, res) => {
 
   res.setHeader("Content-Disposition", `attachment; filename="piccolo_diagnostics_${new Date().toISOString().slice(0, 10)}.json"`);
   res.json(report);
+});
+
+// ─── GET /diagnostics/bundle ─────────────────────────────────────────────────
+// Downloadable ZIP for restaurant hardware incidents. It deliberately excludes
+// environment variables, auth material, certificates, customer/order data and
+// raw database dumps.
+router.get("/diagnostics/bundle", ...adminOnly, async (_req, res) => {
+  const [events, printers, kdsStations, queueSummary, offlineSummary] = await Promise.all([
+    db.select({
+      level: techEventsTable.level,
+      module: techEventsTable.module,
+      message: techEventsTable.message,
+      code: techEventsTable.code,
+      createdAt: techEventsTable.createdAt,
+      resolved: techEventsTable.resolved,
+    }).from(techEventsTable).orderBy(desc(techEventsTable.createdAt)).limit(200),
+    db.select({
+      name: printersTable.name,
+      type: printersTable.type,
+      paperWidth: printersTable.paperWidth,
+      active: printersTable.active,
+      lastStatus: printersTable.lastStatus,
+      lastStatusAt: printersTable.lastStatusAt,
+    }).from(printersTable).orderBy(printersTable.name),
+    db.select({
+      name: kdsStationsTable.name,
+      zoneType: kdsStationsTable.zoneType,
+      active: kdsStationsTable.active,
+      lastPingAt: kdsStationsTable.lastPingAt,
+    }).from(kdsStationsTable).orderBy(kdsStationsTable.name),
+    db.select({
+      status: printQueueTable.status,
+      count: sql<number>`count(*)::int`,
+    }).from(printQueueTable).groupBy(printQueueTable.status),
+    db.select({
+      status: offlineQueueTable.status,
+      count: sql<number>`count(*)::int`,
+    }).from(offlineQueueTable).groupBy(offlineQueueTable.status),
+  ]);
+
+  const generatedAt = new Date().toISOString();
+  const report = {
+    generatedAt,
+    warning: "VERSIÓN DE PRUEBAS — NO USAR PARA FACTURACIÓN FISCAL REAL",
+    application: {
+      version: APP_VERSION,
+      commit: APP_COMMIT,
+      channel: APP_CHANNEL,
+      productionFiscalReady: PRODUCTION_FISCAL_READY,
+    },
+    system: {
+      platform: process.platform,
+      architecture: process.arch,
+      nodeVersion: process.version,
+      hostname: os.hostname(),
+      uptimeSeconds: Math.round(process.uptime()),
+      serverTime: generatedAt,
+    },
+    modules: MODULES,
+    printers,
+    kdsStations,
+    queues: {
+      printing: queueSummary,
+      offline: offlineSummary,
+    },
+  };
+  const sanitizedEvents = events.map((event) => ({
+    ...event,
+    message: redactDiagnosticText(event.message),
+    code: redactDiagnosticText(event.code),
+  }));
+  const readme = [
+    "Piccolo TPV — paquete de diagnóstico",
+    `Generado: ${generatedAt}`,
+    `Versión: ${APP_VERSION}`,
+    `Commit: ${APP_COMMIT}`,
+    "",
+    "Contenido:",
+    "- diagnostic-report.json: versión, sistema y estado hardware.",
+    "- recent-technical-events.json: eventos técnicos recientes redactados.",
+    "",
+    "Excluido deliberadamente: contraseñas, tokens, cookies, certificados,",
+    "variables de entorno, copias de base de datos y datos de clientes/pedidos.",
+  ].join("\n");
+  const zip = zipSync({
+    "README.txt": strToU8(readme),
+    "diagnostic-report.json": strToU8(`${JSON.stringify(report, null, 2)}\n`),
+    "recent-technical-events.json": strToU8(`${JSON.stringify(sanitizedEvents, null, 2)}\n`),
+  }, { level: 6 });
+
+  const date = generatedAt.slice(0, 10);
+  res.setHeader("Content-Type", "application/zip");
+  res.setHeader(
+    "Content-Disposition",
+    `attachment; filename="Piccolo-Diagnostico-${APP_VERSION}-${date}.zip"`,
+  );
+  res.send(Buffer.from(zip));
 });
 
 // ─── POST /diagnostics/maintenance ───────────────────────────────────────────

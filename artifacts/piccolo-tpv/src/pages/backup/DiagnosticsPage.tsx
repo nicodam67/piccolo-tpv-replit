@@ -102,11 +102,20 @@ export default function DiagnosticsPage() {
   useEffect(() => { void loadEvents(); }, [loadEvents]);
 
   async function downloadReport() {
-    const r = await fetch(`${BASE}/api/diagnostics/report`, { credentials: 'include' });
+    const token = localStorage.getItem('token');
+    const r = await fetch(`${BASE}/api/diagnostics/bundle`, {
+      credentials: 'include',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
     if (!r.ok) { toast.error('Error al descargar'); return; }
     const blob = await r.blob();
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a'); a.href = url; a.download = 'piccolo_diagnostics.json'; a.click();
+    const disposition = r.headers.get('content-disposition') ?? '';
+    const serverName = disposition.match(/filename="([^"]+)"/)?.[1];
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = serverName ?? 'Piccolo-Diagnostico.zip';
+    a.click();
     URL.revokeObjectURL(url); toast.success('Informe descargado');
   }
 
