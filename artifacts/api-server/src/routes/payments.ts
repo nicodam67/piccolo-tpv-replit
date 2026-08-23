@@ -14,6 +14,7 @@ import {
   businessConfigTable,
   discountsTable,
   documentAuditLogTable,
+  invoicesTable,
 } from "@workspace/db";
 import { eq, and, sum, gte, sql } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
@@ -195,17 +196,27 @@ router.post("/orders/:id/payments", requireAuth, requireRole(...PAYMENT_ROLES), 
             eq(paymentsTable.orderId, orderId),
             eq(paymentsTable.paymentMethodId, method.id),
             eq(paymentsTable.status, "completed"),
-            gte(paymentsTable.createdAt, cutoff),
+            reference
+              ? eq(paymentsTable.reference, reference)
+              : and(
+                  eq(paymentsTable.amount, amount),
+                  gte(paymentsTable.createdAt, cutoff),
+                ),
           ))
           .limit(1);
         const [existingTicket] = await tx
           .select()
           .from(ticketsTable)
           .where(eq(ticketsTable.orderId, orderId));
-        if (dupe && existingTicket) {
+        const [existingInvoice] = await tx
+          .select()
+          .from(invoicesTable)
+          .where(and(eq(invoicesTable.orderId, orderId), eq(invoicesTable.serie, "F")));
+        if (dupe && (existingTicket || existingInvoice)) {
           return {
             payment: dupe,
-            ticket: existingTicket,
+            ticket: existingTicket ?? null,
+            invoice: existingInvoice ?? null,
             change: "0.00",
             newRemaining: 0,
             idempotent: true,
@@ -240,6 +251,28 @@ router.post("/orders/:id/payments", requireAuth, requireRole(...PAYMENT_ROLES), 
         .where(and(eq(paymentsTable.orderId, orderId), eq(paymentsTable.status, "completed")));
       const alreadyPaid = parseFloat(paidResult[0]?.paid ?? "0");
       const remaining = parseFloat((totalNum - alreadyPaid).toFixed(2));
+
+      if (reference) {
+        const [replayedPayment] = await tx
+          .select()
+          .from(paymentsTable)
+          .where(eq(paymentsTable.reference, reference))
+          .limit(1);
+        if (replayedPayment) {
+          const [existingTicket] = await tx
+            .select()
+            .from(ticketsTable)
+            .where(eq(ticketsTable.orderId, orderId));
+          return {
+            payment: replayedPayment,
+            ticket: existingTicket ?? null,
+            change: "0.00",
+            newRemaining: Math.max(0, remaining),
+            idempotent: true,
+            order,
+          };
+        }
+      }
 
       if (methodCode !== "cash" && amountNum > remaining + 0.001) {
         throw new FiscalIssuanceError(
@@ -302,6 +335,30 @@ router.post("/orders/:id/payments", requireAuth, requireRole(...PAYMENT_ROLES), 
       let ticket = null;
 
       if (newRemaining <= 0.001) {
+        const [existingFullInvoice] = await tx
+          .select()
+          .from(invoicesTable)
+          .where(and(eq(invoicesTable.orderId, orderId), eq(invoicesTable.serie, "F")))
+          .limit(1);
+        if (existingFullInvoice) {
+          await tx.update(ordersTable).set({ status: "paid" }).where(eq(ordersTable.id, orderId));
+          if (order.tableId) {
+            await tx
+              .update(restaurantTablesTable)
+              .set({ status: "free" })
+              .where(eq(restaurantTablesTable.id, order.tableId));
+          }
+          return {
+            payment,
+            ticket: null,
+            invoice: existingFullInvoice,
+            change: change.toFixed(2),
+            newRemaining: 0,
+            idempotent: false,
+            order,
+          };
+        }
+
         const [bizConfig] = await tx.select().from(businessConfigTable).limit(1);
         const ticketNumber = await getNextNumber("T", "ticket", tx);
         const issuedAt = new Date();
@@ -423,6 +480,7 @@ router.post("/orders/:id/payments", requireAuth, requireRole(...PAYMENT_ROLES), 
   res.status(result.idempotent ? 200 : 201).json({
     payment: result.payment,
     ticket: result.ticket,
+    ...("invoice" in result && result.invoice ? { invoice: result.invoice } : {}),
     change: result.change,
     newRemaining: result.newRemaining,
     ...(result.idempotent ? { idempotent: true } : {}),
@@ -447,13 +505,12 @@ router.get("/orders/:id/ticket", requireAuth, async (req, res): Promise<void> =>
 
   const items = await db
     .select({
-      productName: productsTable.name,
+      productName: orderItemsTable.productNameSnapshot,
       quantity: orderItemsTable.quantity,
       unitPrice: orderItemsTable.unitPrice,
       taxRate: orderItemsTable.taxRate,
     })
     .from(orderItemsTable)
-    .innerJoin(productsTable, eq(orderItemsTable.productId, productsTable.id))
     .where(eq(orderItemsTable.orderId, id));
 
   const [tableRow] = order?.tableId

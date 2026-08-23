@@ -175,8 +175,10 @@ function mockOpenOrderFlow(override: { paymentRow?: object } = {}) {
     if (call === 5) return makeChain([{ paid: "0" }]);
     // 6th select: open session for the supplied terminal
     if (call === 6) return makeChain([OPEN_SESSION]);
-    // 7th select: business config for final ticket
-    if (call === 7) return makeChain([{ nif: "B12345678", razonSocial: "Test SL" }]);
+    // 7th select: no pre-existing full invoice
+    if (call === 7) return makeChain([]);
+    // 8th select: business config for final ticket
+    if (call === 8) return makeChain([{ nif: "B12345678", razonSocial: "Test SL" }]);
     return makeChain([]);
   });
 
@@ -259,7 +261,8 @@ describe("POST /api/orders/:id/payments", () => {
         if (call === 4) return makeChain([{ total: "0" }]);
         if (call === 5) return makeChain([{ paid: "10.00" }]); // first payment already there
         if (call === 6) return makeChain([OPEN_SESSION]);
-        if (call === 7) return makeChain([{ nif: "B12345678", razonSocial: "Test SL" }]);
+        if (call === 7) return makeChain([]);
+        if (call === 8) return makeChain([{ nif: "B12345678", razonSocial: "Test SL" }]);
         return makeChain([]);
       });
       mockDb.insert

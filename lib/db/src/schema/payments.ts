@@ -48,9 +48,8 @@ export const paymentsTable = pgTable(
       .references(() => paymentMethodsTable.id),
     amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
     status: text("status").notNull().default("completed"),
-    /** Idempotency key for cash-machine payments (cash_machine_transaction.id).
-     *  NULL for all other payment methods — uniqueness is enforced only on non-null
-     *  values via the partial index below, preventing cross-method collisions. */
+    /** Durable operation/idempotency key supplied by the POS or cash machine.
+     * NULL remains allowed for legacy integrations; non-null values are unique. */
     reference: text("reference"),
     employeeId: uuid("employee_id")
       .notNull()

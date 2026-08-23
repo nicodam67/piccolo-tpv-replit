@@ -146,6 +146,7 @@ export type FiscalChainState = typeof fiscalChainStateTable.$inferSelect;
 
 export const verifactuConfigTable = pgTable("verifactu_config", {
   id: uuid("id").primaryKey().defaultRandom(),
+  singletonKey: integer("singleton_key").notNull().default(1).unique(),
 
   // Issuer identification
   emisorNif: text("emisor_nif").notNull().default(""),

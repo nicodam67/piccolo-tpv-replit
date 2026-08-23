@@ -829,8 +829,8 @@ describe("Paso 8 — Cobro en efectivo (POST /api/orders/:id/payments)", () => {
       .mockReturnValueOnce(makeChain(                          // open session
         openSession ? [F.session] : [],
       ))
+      .mockReturnValueOnce(makeChain([]))                       // no full invoice for order
       .mockReturnValueOnce(makeChain([F.bizConfig]))           // businessConfig (in tx)
-      .mockReturnValueOnce(makeChain([{ name: "Efectivo" }])) // pmRow (in tx)
       .mockReturnValue(makeChain([]));
 
     mockDb.insert
@@ -939,8 +939,8 @@ describe("Paso 9 — Cobro con tarjeta (POST /api/orders/:id/payments)", () => {
       .mockReturnValueOnce(makeChain([{ total: "0" }]))      // discounts
       .mockReturnValueOnce(makeChain([{ paid: "0" }]))       // already paid
       .mockReturnValueOnce(makeChain([F.session]))            // open session (found but optional)
+      .mockReturnValueOnce(makeChain([]))                     // no full invoice for order
       .mockReturnValueOnce(makeChain([F.bizConfig]))          // biz config
-      .mockReturnValueOnce(makeChain([{ name: "Tarjeta" }])) // pmRow
       .mockReturnValue(makeChain([]));
     mockDb.insert
       .mockReturnValueOnce(makeChain([{ ...F.payment, paymentMethodId: PM_CARD_ID }]))
@@ -1015,8 +1015,8 @@ describe("Paso 10 — Cobro mixto / split bill", () => {
       .mockReturnValueOnce(makeChain([{ total: "0" }]))      // discounts
       .mockReturnValueOnce(makeChain([{ paid: "15.00" }]))   // already paid = 15
       .mockReturnValueOnce(makeChain([F.session]))            // session
+      .mockReturnValueOnce(makeChain([]))                     // no full invoice for order
       .mockReturnValueOnce(makeChain([F.bizConfig]))          // biz config (in tx)
-      .mockReturnValueOnce(makeChain([{ name: "Tarjeta" }])) // pmRow (in tx)
       .mockReturnValue(makeChain([]));
     mockDb.insert
       .mockReturnValueOnce(makeChain([F.payment]))

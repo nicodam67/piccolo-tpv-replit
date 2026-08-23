@@ -660,7 +660,10 @@ describe("14. Settlement integration — order closure after device completada",
     expect(res.body.transaction.status).toBe("completada");
     // settleOrderIfFullyPaid must have been called with the order's details
     expect(settleOrderIfFullyPaid).toHaveBeenCalledWith(
-      expect.objectContaining({ orderId: "order-settle", employeeId: "emp-admin-001" }),
+      expect.objectContaining({
+        employeeId: "emp-admin-001",
+        payment: expect.objectContaining({ reference: txId }),
+      }),
     );
   });
 
@@ -713,7 +716,7 @@ describe("14. Settlement integration — order closure after device completada",
     expect(settleOrderIfFullyPaid).not.toHaveBeenCalled();
   });
 
-  it("does NOT call settleOrderIfFullyPaid when tx already in terminal state", async () => {
+  it("retries fiscal settlement when a completed transaction is polled again", async () => {
     vi.mocked(settleOrderIfFullyPaid).mockClear();
 
     // tx is already completada — early-return path
@@ -725,7 +728,11 @@ describe("14. Settlement integration — order closure after device completada",
 
     const res = await request(app).get(`/api/cash-machine/payments/${txId}`);
     expect(res.status).toBe(200);
-    expect(settleOrderIfFullyPaid).not.toHaveBeenCalled();
+    expect(settleOrderIfFullyPaid).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payment: expect.objectContaining({ reference: txId }),
+      }),
+    );
   });
 
   it("emits tables:refresh socket event when order is settled", async () => {

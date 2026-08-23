@@ -28,7 +28,11 @@ import {
   calcularHuellaAnulacion,
   type HuellaAltaInput,
 } from "../lib/verifactu-hash.js";
-import { createFiscalRecord, FiscalIssuanceError } from "../lib/fiscal-issuance.js";
+import {
+  createFiscalRecord,
+  FiscalIssuanceError,
+  formatFiscalIdentity,
+} from "../lib/fiscal-issuance.js";
 
 const router = Router();
 
@@ -198,7 +202,7 @@ export function generateXmlAlta(r: typeof verifactuRecordsTable.$inferSelect): s
       <sii:TipoRectificativa>${escapeXml(r.tipoRectificativa)}</sii:TipoRectificativa>
       <sii:FacturasRectificadas>
         <sii:IDFacturaRectificada>
-          <sii:NumSerieFactura>${escapeXml(r.facturaRectificadaSerie + (r.facturaRectificadaNumero ?? ""))}</sii:NumSerieFactura>
+          <sii:NumSerieFactura>${escapeXml(formatFiscalIdentity(r.facturaRectificadaSerie, r.facturaRectificadaNumero ?? 0))}</sii:NumSerieFactura>
           <sii:FechaExpedicionFactura>${escapeXml(r.facturaRectificadaFecha)}</sii:FechaExpedicionFactura>
         </sii:IDFacturaRectificada>
       </sii:FacturasRectificadas>`
@@ -445,10 +449,21 @@ async function logAudit(params: {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function getConfig(): Promise<typeof verifactuConfigTable.$inferSelect> {
-  const rows = await db.select().from(verifactuConfigTable).limit(1);
+  const rows = await db
+    .select()
+    .from(verifactuConfigTable)
+    .where(eq(verifactuConfigTable.singletonKey, 1))
+    .limit(1);
   if (rows[0]) return rows[0];
-  // Create default config
-  const [created] = await db.insert(verifactuConfigTable).values({}).returning();
+  await db
+    .insert(verifactuConfigTable)
+    .values({ singletonKey: 1 })
+    .onConflictDoNothing();
+  const [created] = await db
+    .select()
+    .from(verifactuConfigTable)
+    .where(eq(verifactuConfigTable.singletonKey, 1));
+  if (!created) throw new Error("No se pudo inicializar la configuración VERI*FACTU");
   return created;
 }
 

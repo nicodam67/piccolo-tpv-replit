@@ -52,6 +52,7 @@ export interface FiscalIssuanceInput {
     numero: number;
     fechaExpedicion: string;
     motivo: string;
+    tipoRectificativa?: "S" | "I";
   };
   empleadoId?: string | null;
   empleadoNombre?: string;
@@ -65,6 +66,10 @@ function fixed2(value: string | number): string {
     throw new FiscalIssuanceError("INVALID_AMOUNT", `Importe fiscal inválido: ${value}`);
   }
   return number.toFixed(2);
+}
+
+export function formatFiscalIdentity(serie: string, numero: number): string {
+  return `${serie.trim()}-${String(numero).padStart(4, "0")}`;
 }
 
 async function existingAlta(
@@ -111,7 +116,11 @@ export async function createFiscalRecord(
     throw new FiscalIssuanceError("INVALID_NUMBER", "La numeración fiscal no es válida");
   }
 
-  const [config] = await tx.select().from(verifactuConfigTable).limit(1);
+  const [config] = await tx
+    .select()
+    .from(verifactuConfigTable)
+    .where(eq(verifactuConfigTable.singletonKey, 1))
+    .limit(1);
   if (config?.emisorNif && config.emisorNif !== input.emisorNif) {
     throw new FiscalIssuanceError(
       "ISSUER_MISMATCH",
@@ -145,7 +154,7 @@ export async function createFiscalRecord(
   const generatedAt = input.generatedAt ?? new Date();
   const fechaExpedicion = formatAeatDate(input.issuedAt);
   const fechaHoraGeneracion = formatAeatDateTime(generatedAt);
-  const numSerieFactura = `${input.serie}/${input.numero}`;
+  const numSerieFactura = formatFiscalIdentity(input.serie, input.numero);
   const cuotaTotal = fixed2(input.cuotaTotal);
   const importeTotal = fixed2(input.importeTotal);
   const huellaAnterior = chain.lastHash;
@@ -184,7 +193,7 @@ export async function createFiscalRecord(
       cuotaTotal,
       importeTotal,
       desgloseIva: input.desgloseIva ?? null,
-      tipoRectificativa: input.tipoFactura.startsWith("R") ? "S" : "",
+      tipoRectificativa: input.original?.tipoRectificativa ?? "",
       facturaRectificadaSerie: input.original?.serie ?? "",
       facturaRectificadaNumero: input.original?.numero ?? null,
       facturaRectificadaFecha: input.original?.fechaExpedicion ?? "",

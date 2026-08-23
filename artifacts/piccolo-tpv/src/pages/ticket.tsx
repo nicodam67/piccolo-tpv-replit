@@ -122,6 +122,7 @@ export default function Ticket() {
   const bizName = businessConfig?.nombreComercial || 'Piccolo';
   const bizNif  = businessConfig?.nif || (ticket as any).nifEmisor;
   const bizAddr = [businessConfig?.direccionFiscal, businessConfig?.codigoPostal, businessConfig?.poblacion].filter(Boolean).join(', ');
+  const fiscalIdentity = `${(ticket as any).serie || 'T'}-${String(ticket.ticketNumber).padStart(4, '0')}`;
 
   return (
     <div className="min-h-[100dvh] bg-background text-foreground flex flex-col print:bg-white print:text-black">
@@ -141,7 +142,7 @@ export default function Ticket() {
             <ChevronLeft size={24} />
           </button>
           <div className="flex-1 min-w-0">
-            <h1 className="text-xl font-bold ml-2">Ticket #{ticket.ticketNumber}</h1>
+            <h1 className="text-xl font-bold ml-2">Ticket {fiscalIdentity}</h1>
           </div>
           {/* VeriFactu status pill */}
           <span className={`flex items-center gap-1.5 px-3 py-1 rounded-full border text-xs font-bold whitespace-nowrap ${verifactuInfo.color}`}>
@@ -199,7 +200,7 @@ export default function Ticket() {
             <div className="border-b-2 border-dashed border-gray-400 mb-4 mt-3"></div>
 
             <div className="mb-4 space-y-1 font-semibold text-gray-800 text-sm">
-              <div className="flex justify-between"><span>Ticket nº:</span><span className="font-black">#{ticket.ticketNumber}</span></div>
+              <div className="flex justify-between"><span>Ticket nº:</span><span className="font-black">{fiscalIdentity}</span></div>
               <div>Mesa: {order.tableName}</div>
               <div>Atiende: {employeeName}</div>
               <div>Fecha: {new Date(ticket.issuedAt).toLocaleString('es-ES')}</div>
@@ -293,7 +294,7 @@ export default function Ticket() {
         <div className="border-b border-dashed border-black mb-2 mt-1"></div>
 
         <div className="mb-2">
-          <div className="flex justify-between"><span>Ticket:</span><span className="font-bold">#{ticket.ticketNumber}</span></div>
+          <div className="flex justify-between"><span>Ticket:</span><span className="font-bold">{fiscalIdentity}</span></div>
           <div>Fecha: {new Date(ticket.issuedAt).toLocaleString('es-ES')}</div>
           <div>Mesa: {order.tableName}</div>
           <div>Atiende: {employeeName}</div>

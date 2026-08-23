@@ -15,8 +15,10 @@ import {
   employeesTable,
   paymentsTable,
   paymentMethodsTable,
+  discountsTable,
+  ticketsTable,
 } from "@workspace/db";
-import { eq, and, desc, asc, isNull, sql } from "drizzle-orm";
+import { eq, and, desc, asc, isNull, sum, sql } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { logDocumentAction } from "../lib/document-audit";
 import { getNextNumber } from "../lib/invoice-series";
@@ -393,6 +395,18 @@ router.post(
         const [order] = await tx.select().from(ordersTable).where(eq(ordersTable.id, orderId));
         if (!order) throw new FiscalIssuanceError("ORDER_NOT_FOUND", "Pedido no encontrado");
 
+        const [existingTicket] = await tx
+          .select({ id: ticketsTable.id })
+          .from(ticketsTable)
+          .where(eq(ticketsTable.orderId, orderId))
+          .limit(1);
+        if (existingTicket) {
+          throw new FiscalIssuanceError(
+            "SIMPLIFIED_INVOICE_EXISTS",
+            "El pedido ya tiene factura simplificada; no se puede emitir otra factura sin rectificación",
+          );
+        }
+
         const [existing] = await tx
           .select()
           .from(invoicesTable)
@@ -437,7 +451,14 @@ router.post(
           lineTotal: parseFloat(item.unitPrice) * item.quantity,
           taxRate: item.taxRate ?? 10,
         }));
-        const totals = calcMultiRateBreakdown(lineTotals);
+        const discountResult = await tx
+          .select({ total: sum(discountsTable.discountAmount) })
+          .from(discountsTable)
+          .where(eq(discountsTable.orderId, orderId));
+        const totals = calcMultiRateBreakdown(
+          lineTotals,
+          parseFloat(discountResult[0]?.total ?? "0"),
+        );
         const [paymentRow] = await tx
           .select({ methodName: paymentMethodsTable.name })
           .from(paymentsTable)
@@ -522,7 +543,10 @@ router.post(
       });
     } catch (error) {
       if (error instanceof FiscalIssuanceError) {
-        const status = error.code === "ORDER_NOT_FOUND" ? 404 : 503;
+        const status =
+          error.code === "ORDER_NOT_FOUND" ? 404
+            : error.code === "SIMPLIFIED_INVOICE_EXISTS" ? 409
+              : 503;
         res.status(status).json({ error: error.message, code: error.code, recoverable: status === 503 });
         return;
       }
@@ -557,12 +581,11 @@ router.get(
     if (invoice.orderId) {
       items = await db
         .select({
-          productName: productsTable.name,
+          productName: orderItemsTable.productNameSnapshot,
           quantity: orderItemsTable.quantity,
           unitPrice: orderItemsTable.unitPrice,
         })
         .from(orderItemsTable)
-        .innerJoin(productsTable, eq(orderItemsTable.productId, productsTable.id))
         .where(eq(orderItemsTable.orderId, invoice.orderId));
     }
 
@@ -696,6 +719,7 @@ router.post(
             numero: original.invoiceNumber,
             fechaExpedicion: formatAeatDate(original.issuedAt),
             motivo: reason,
+            tipoRectificativa: "I",
           },
           empleadoId: user.id,
           empleadoNombre: user.name,

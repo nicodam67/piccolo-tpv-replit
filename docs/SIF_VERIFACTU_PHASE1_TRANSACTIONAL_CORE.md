@@ -66,13 +66,23 @@ La emisión de factura completa y rectificativa sigue el mismo patrón.
   el resto del trabajo.
 - `tickets (serie, ticket_number)` e `invoices (serie, invoice_number)` tienen
   índices únicos.
+- La migración adelanta cada contador a `MAX(numero)` antes de activarlo, por lo
+  que una instalación con tickets `bigserial` previos no vuelve a empezar en 1.
 - Sólo puede existir una factura F por pedido; el índice parcial
   `invoices_one_full_per_order` actúa como última barrera.
+- Triggers cruzados impiden que el mismo pedido reciba a la vez una F2 y una F1.
+  Si se emitió la F1 antes del cierre, el cobro reutiliza ese documento y no
+  crea un ticket adicional, también en caja automática y reintentos.
 - El bloqueo de `orders` serializa caja, tablet, doble clic y procesos Node que
   intenten cerrar el mismo pedido.
 - `tickets.order_id` sigue siendo único.
 - Los endpoints de emisión admiten `Idempotency-Key`, persistida en PostgreSQL.
-  Aun sin cabecera, los locks y constraints impiden una segunda identidad.
+  El TPV también conserva una `reference` UUID por intento y la inserta con el
+  pago en la propia transacción; una respuesta HTTP perdida no duplica pagos
+  parciales al reintentar.
+- La caja automática inserta su pago, ticket y RF en una transacción y vuelve a
+  intentar la conciliación de transacciones `completada` que aún no cerraron el
+  pedido.
 
 ## Encadenamiento y huella
 
@@ -83,6 +93,11 @@ Cada SIF usa una clave:
 `fiscal_chain_state` contiene la secuencia y huella de cabecera. La fila se
 bloquea con `SELECT ... FOR UPDATE`; por ello dos procesos sólo pueden anexar
 registros en serie. `(chain_key, chain_sequence)` y `huella` son únicos.
+`verifactu_config` queda limitado a una sola fila para que dos configuraciones
+no puedan seleccionar identidades SIF distintas.
+
+La identidad canónica compartida es `SERIE-NNNN` (por ejemplo `T-0001`); es la
+misma representación que entra en el RF y en su huella.
 
 Para RegistroAlta se aplica SHA-256 sobre UTF-8 y hexadecimal en mayúsculas:
 
@@ -118,6 +133,10 @@ La migración `0026_sif_transactional_core.sql` añade:
 - triggers que impiden cambiar contenido fiscal o eliminar RF;
 - auditoría fiscal append-only;
 - protección de los campos fuente de tickets/facturas que ya tienen RF;
+- bloqueo del contenido económico de líneas, modificadores y descuentos cuando
+  el pedido queda facturado;
+- snapshot inmutable del nombre de producto usado para visualizar/reimprimir el
+  documento, independiente de cambios posteriores en el catálogo;
 - constraint triggers diferidos que rechazan al `COMMIT` todo ticket o factura
   emitida sin RF.
 
@@ -127,13 +146,17 @@ que produjo la huella no puede cambiar.
 
 La migración evalúa duplicados históricos antes de crear constraints. Si los
 encuentra, aborta sin borrar ni modificar información y explica el grupo que se
-debe reconciliar. La estrategia segura es inventariar los duplicados, determinar
-su validez con asesoría fiscal, conservar todos los originales y registrar la
-corrección mediante anulación/rectificación; nunca deduplicar con `DELETE`.
+debe reconciliar. Los documentos históricos sin RF y los pedidos que ya tengan
+F1+F2 se inventarían, sin alterarlos, en `sif_migration_findings`. La estrategia
+segura es determinar su validez con asesoría fiscal, conservar todos los
+originales y registrar la corrección mediante anulación/rectificación; nunca
+deduplicar con `DELETE`. Esos documentos históricos quedan congelados aunque no
+tengan RF; no pueden eliminarse, reescribirse ni volver a borrador.
 
 Los RF históricos no se rehashean: cambiar su huella destruiría evidencia. Una
-instalación con huellas históricas incompatibles debe documentar el corte y su
-plan de subsanación antes de activar remisión.
+instalación con enlaces o huellas históricas incompatibles hace abortar la
+migración y debe documentar el corte y su plan de subsanación antes de activar
+remisión.
 
 ## Estado persistente y trabajo sin Internet
 

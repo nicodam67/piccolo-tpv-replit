@@ -22,6 +22,7 @@ import {
   businessConfigTable,
   discountsTable,
   documentAuditLogTable,
+  invoicesTable,
 } from "@workspace/db";
 import { eq, and, sum, sql } from "drizzle-orm";
 import { calcMultiRateBreakdown } from "./tax";
@@ -32,6 +33,7 @@ export interface SettlementResult {
   /** True if the order was just settled (ticket issued, status → paid). */
   settled: boolean;
   ticket: typeof ticketsTable.$inferSelect | null;
+  invoice?: typeof invoicesTable.$inferSelect | null;
   /** Remaining balance after all payments (≥ 0). */
   remaining: number;
 }
@@ -47,11 +49,17 @@ export async function settleOrderIfFullyPaid({
   employeeId,
   employeeName = "",
   cashSessionId,
+  payment,
 }: {
   orderId: string;
   employeeId: string;
   employeeName?: string;
   cashSessionId?: string | null;
+  payment?: {
+    paymentMethodId: string;
+    amount: string;
+    reference: string;
+  };
 }): Promise<SettlementResult> {
   return db.transaction(async (tx) => {
     await tx.execute(sql`SELECT id FROM orders WHERE id = ${orderId} FOR UPDATE`);
@@ -64,7 +72,31 @@ export async function settleOrderIfFullyPaid({
         .select()
         .from(ticketsTable)
         .where(eq(ticketsTable.orderId, orderId));
-      return { settled: false, ticket: existingTicket ?? null, remaining: 0 };
+      const [existingInvoice] = await tx
+        .select()
+        .from(invoicesTable)
+        .where(and(eq(invoicesTable.orderId, orderId), eq(invoicesTable.serie, "F")));
+      return {
+        settled: false,
+        ticket: existingTicket ?? null,
+        invoice: existingInvoice ?? null,
+        remaining: 0,
+      };
+    }
+
+    if (payment) {
+      await tx
+        .insert(paymentsTable)
+        .values({
+          orderId,
+          cashSessionId: cashSessionId ?? null,
+          paymentMethodId: payment.paymentMethodId,
+          amount: payment.amount,
+          status: "completed",
+          reference: payment.reference,
+          employeeId,
+        })
+        .onConflictDoNothing();
     }
 
     // Compute order total with VAT
@@ -103,6 +135,27 @@ export async function settleOrderIfFullyPaid({
     }
 
     // ── Fully paid → settle ───────────────────────────────────────────────────
+
+    const [existingFullInvoice] = await tx
+      .select()
+      .from(invoicesTable)
+      .where(and(eq(invoicesTable.orderId, orderId), eq(invoicesTable.serie, "F")))
+      .limit(1);
+    if (existingFullInvoice) {
+      await tx.update(ordersTable).set({ status: "paid" }).where(eq(ordersTable.id, orderId));
+      if (order.tableId) {
+        await tx
+          .update(restaurantTablesTable)
+          .set({ status: "free" })
+          .where(eq(restaurantTablesTable.id, order.tableId));
+      }
+      return {
+        settled: true,
+        ticket: null,
+        invoice: existingFullInvoice,
+        remaining: 0,
+      };
+    }
 
     const [bizConfig] = await tx.select().from(businessConfigTable).limit(1);
 

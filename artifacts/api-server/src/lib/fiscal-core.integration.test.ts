@@ -2,9 +2,14 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import {
   db,
+  categoriesTable,
+  employeesTable,
   invoicesTable,
+  orderItemsTable,
   ordersTable,
   pool,
+  productsTable,
+  ticketsTable,
   verifactuRecordsTable,
 } from "@workspace/db";
 import { createFiscalRecord } from "./fiscal-issuance.js";
@@ -13,9 +18,11 @@ import { getNextNumber } from "./invoice-series.js";
 const enabled = process.env["RUN_DB_INTEGRATION_TESTS"] === "1";
 const describeDb = enabled ? describe : describe.skip;
 const EMISOR_NIF = "89890001K";
+let employeeId = "";
+let productId = "";
 
-async function createOrder(): Promise<string> {
-  const [order] = await db.insert(ordersTable).values({ status: "paid" }).returning();
+async function createOrder(status = "paid"): Promise<string> {
+  const [order] = await db.insert(ordersTable).values({ status }).returning();
   return order.id;
 }
 
@@ -78,6 +85,20 @@ describeDb.sequential("SIF Phase 1 — PostgreSQL transactional core", () => {
     if (!migration.rows[0]?.name) {
       throw new Error("Run @workspace/db migrate before the Phase 1 integration tests");
     }
+    const [employee] = await db
+      .insert(employeesTable)
+      .values({ name: "Fiscal Integration", role: "admin" })
+      .returning();
+    employeeId = employee.id;
+    const [category] = await db
+      .insert(categoriesTable)
+      .values({ name: "Fiscal Integration" })
+      .returning();
+    const [product] = await db
+      .insert(productsTable)
+      .values({ categoryId: category.id, name: "Producto fiscal", price: "12.10" })
+      .returning();
+    productId = product.id;
   });
 
   it("emits one invoice with exactly one persistent fiscal record", async () => {
@@ -94,7 +115,7 @@ describeDb.sequential("SIF Phase 1 — PostgreSQL transactional core", () => {
   });
 
   it("rolls invoice and numbering back when fiscal record creation fails", async () => {
-    const orderId = await createOrder();
+    const orderId = await createOrder("open");
     await expect(db.transaction(async (tx) => {
       const numero = await getNextNumber("F", "factura", tx);
       const [invoice] = await tx
@@ -170,6 +191,84 @@ describeDb.sequential("SIF Phase 1 — PostgreSQL transactional core", () => {
     expect(records).toHaveLength(1);
   });
 
+  it("allows only one F1/F2 source under a concurrent cross-document race", async () => {
+    const orderId = await createOrder();
+    const issueInvoice = db.transaction(async (tx) => {
+      const numero = await getNextNumber("F", "factura", tx);
+      const issuedAt = new Date();
+      const [invoice] = await tx.insert(invoicesTable).values({
+        serie: "F",
+        invoiceNumber: numero,
+        issuedAt,
+        emisorNombre: "Piccolo Test",
+        emisorNif: EMISOR_NIF,
+        orderId,
+        subtotal: "10.00",
+        taxTotal: "2.10",
+        total: "12.10",
+        status: "issued",
+      }).returning();
+      await createFiscalRecord(tx, {
+        invoiceId: invoice.id,
+        serie: "F",
+        numero,
+        issuedAt,
+        tipoFactura: "F1",
+        emisorNif: EMISOR_NIF,
+        emisorNombre: "Piccolo Test",
+        baseImponible: "10.00",
+        cuotaTotal: "2.10",
+        importeTotal: "12.10",
+      });
+      return invoice.id;
+    });
+    const issueTicket = db.transaction(async (tx) => {
+      const numero = await getNextNumber("T", "ticket", tx);
+      const issuedAt = new Date();
+      const [ticket] = await tx.insert(ticketsTable).values({
+        orderId,
+        ticketNumber: numero,
+        serie: "T",
+        nifEmisor: EMISOR_NIF,
+        razonSocialEmisor: "Piccolo Test",
+        subtotal: "10.00",
+        taxTotal: "2.10",
+        total: "12.10",
+        issuedAt,
+        employeeId,
+      }).returning();
+      await createFiscalRecord(tx, {
+        ticketId: ticket.id,
+        serie: "T",
+        numero,
+        issuedAt,
+        tipoFactura: "F2",
+        emisorNif: EMISOR_NIF,
+        emisorNombre: "Piccolo Test",
+        baseImponible: "10.00",
+        cuotaTotal: "2.10",
+        importeTotal: "12.10",
+      });
+      return ticket.id;
+    });
+
+    const outcomes = await Promise.allSettled([issueInvoice, issueTicket]);
+    expect(outcomes.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    const [invoiceCount, ticketCount, fiscalCount] = await Promise.all([
+      db.select({ id: invoicesTable.id }).from(invoicesTable).where(eq(invoicesTable.orderId, orderId)),
+      db.select({ id: ticketsTable.id }).from(ticketsTable).where(eq(ticketsTable.orderId, orderId)),
+      db.select({ id: verifactuRecordsTable.id })
+        .from(verifactuRecordsTable)
+        .where(sql`${verifactuRecordsTable.invoiceId} IN (
+          SELECT id FROM invoices WHERE order_id = ${orderId}
+        ) OR ${verifactuRecordsTable.ticketId} IN (
+          SELECT id FROM tickets WHERE order_id = ${orderId}
+        )`),
+    ]);
+    expect(invoiceCount.length + ticketCount.length).toBe(1);
+    expect(fiscalCount).toHaveLength(1);
+  });
+
   it("serializes concurrent numbers and produces one non-branching chain", async () => {
     const orderIds = await Promise.all(Array.from({ length: 12 }, () => createOrder()));
     const invoices = await Promise.all(orderIds.map(issueFullInvoice));
@@ -213,6 +312,37 @@ describeDb.sequential("SIF Phase 1 — PostgreSQL transactional core", () => {
       "DELETE FROM verifactu_records WHERE id = $1",
       [record.id],
     )).rejects.toThrow("inmutables");
+  });
+
+  it("freezes order lines and keeps the issued product-name snapshot", async () => {
+    const orderId = await createOrder("open");
+    const [item] = await db.insert(orderItemsTable).values({
+      orderId,
+      productId,
+      quantity: 1,
+      unitPrice: "12.10",
+      taxRate: 21,
+    }).returning();
+    await issueFullInvoice(orderId);
+
+    await expect(db
+      .update(orderItemsTable)
+      .set({ quantity: 2 })
+      .where(eq(orderItemsTable.id, item.id)))
+      .rejects.toThrow("Failed query: update");
+    await db
+      .update(productsTable)
+      .set({ name: "Producto renombrado" })
+      .where(eq(productsTable.id, productId));
+    const [persisted] = await db
+      .select({
+        name: orderItemsTable.productNameSnapshot,
+        quantity: orderItemsTable.quantity,
+      })
+      .from(orderItemsTable)
+      .where(eq(orderItemsTable.id, item.id));
+    expect(persisted.name).toBe("Producto fiscal");
+    expect(persisted.quantity).toBe(1);
   });
 
   it("persists pending delivery state across a simulated process restart", async () => {
