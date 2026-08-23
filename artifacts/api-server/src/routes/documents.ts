@@ -16,10 +16,13 @@ import {
   paymentsTable,
   paymentMethodsTable,
 } from "@workspace/db";
-import { eq, and, desc, asc, isNull, sum } from "drizzle-orm";
+import { eq, and, desc, asc, isNull, sql } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { logDocumentAction } from "../lib/document-audit";
 import { getNextNumber } from "../lib/invoice-series";
+import { idempotency } from "../middlewares/idempotency";
+import { createFiscalRecord, FiscalIssuanceError } from "../lib/fiscal-issuance.js";
+import { formatAeatDate } from "../lib/verifactu-hash.js";
 
 import { calcMultiRateBreakdown } from "../lib/tax";
 
@@ -362,6 +365,7 @@ router.post(
   "/documents/invoices",
   requireAuth,
   requireRole("admin", "manager", "encargado"),
+  idempotency,
   async (req, res): Promise<void> => {
     const user = (req as any).user;
     const {
@@ -383,84 +387,152 @@ router.post(
       return;
     }
 
-    // Get business config for emisor fields
-    const [config] = await db.select().from(businessConfigTable).limit(1);
+    try {
+      const result = await db.transaction(async (tx) => {
+        await tx.execute(sql`SELECT id FROM orders WHERE id = ${orderId} FOR UPDATE`);
+        const [order] = await tx.select().from(ordersTable).where(eq(ordersTable.id, orderId));
+        if (!order) throw new FiscalIssuanceError("ORDER_NOT_FOUND", "Pedido no encontrado");
 
-    // Get order to calculate totals
-    const [order] = await db.select().from(ordersTable).where(eq(ordersTable.id, orderId));
-    if (!order) {
-      res.status(404).json({ error: "Pedido no encontrado" });
-      return;
+        const [existing] = await tx
+          .select()
+          .from(invoicesTable)
+          .where(and(eq(invoicesTable.orderId, orderId), eq(invoicesTable.serie, "F")))
+          .limit(1);
+        if (existing) {
+          await createFiscalRecord(tx, {
+            invoiceId: existing.id,
+            serie: existing.serie,
+            numero: existing.invoiceNumber,
+            issuedAt: existing.issuedAt,
+            tipoFactura: "F1",
+            emisorNif: existing.emisorNif,
+            emisorNombre: existing.emisorNombre,
+            destinatarioNif: existing.clientNif,
+            destinatarioNombre: existing.clientName,
+            baseImponible: existing.subtotal,
+            cuotaTotal: existing.taxTotal,
+            importeTotal: existing.total,
+            desgloseIva: ((existing.taxBreakdown ?? []) as Array<{ rate: number; base: string; cuota: string }>).map((tax) => ({
+              tipoImpositivo: Number(tax.rate).toFixed(2),
+              baseImponible: tax.base,
+              cuotaRepercutida: tax.cuota,
+            })),
+            empleadoId: user.id,
+            empleadoNombre: user.name,
+            terminal: getTerminal(req),
+          });
+          return { invoice: existing, idempotent: true };
+        }
+
+        const [config] = await tx.select().from(businessConfigTable).limit(1);
+        const items = await tx
+          .select({
+            unitPrice: orderItemsTable.unitPrice,
+            quantity: orderItemsTable.quantity,
+            taxRate: orderItemsTable.taxRate,
+          })
+          .from(orderItemsTable)
+          .where(eq(orderItemsTable.orderId, orderId));
+        const lineTotals = items.map((item) => ({
+          lineTotal: parseFloat(item.unitPrice) * item.quantity,
+          taxRate: item.taxRate ?? 10,
+        }));
+        const totals = calcMultiRateBreakdown(lineTotals);
+        const [paymentRow] = await tx
+          .select({ methodName: paymentMethodsTable.name })
+          .from(paymentsTable)
+          .innerJoin(paymentMethodsTable, eq(paymentsTable.paymentMethodId, paymentMethodsTable.id))
+          .where(and(eq(paymentsTable.orderId, orderId), eq(paymentsTable.status, "completed")))
+          .limit(1);
+        const invoiceNum = await getNextNumber("F", "factura", tx);
+        const issuedAt = new Date();
+        const [invoice] = await tx
+          .insert(invoicesTable)
+          .values({
+            serie: "F",
+            invoiceNumber: invoiceNum,
+            issuedAt,
+            emisorNombre: config?.razonSocial || config?.nombreComercial || "",
+            emisorNif: config?.nif ?? "",
+            emisorDireccion: config?.direccionFiscal ?? "",
+            emisorCp: config?.codigoPostal ?? "",
+            emisorPoblacion: config?.poblacion ?? "",
+            emisorProvincia: config?.provincia ?? "",
+            emisorPais: config?.pais ?? "España",
+            clientName: clientName ?? "",
+            clientNif: clientNif ?? "",
+            clientAddress: clientAddress ?? "",
+            clientCp: clientCp ?? "",
+            clientCity: clientCity ?? "",
+            clientProvince: clientProvince ?? "",
+            clientCountry: clientCountry ?? "España",
+            clientEmail: clientEmail ?? "",
+            clientPhone: clientPhone ?? "",
+            orderId,
+            subtotal: totals.subtotal,
+            taxTotal: totals.taxTotal,
+            total: totals.total,
+            taxBreakdown: totals.taxBreakdown,
+            paymentMethod: paymentRow?.methodName ?? "",
+            notes: notes ?? "",
+            status: "issued",
+            verifactuStatus: "pending",
+            employeeId: user.id,
+          })
+          .returning();
+
+        await createFiscalRecord(tx, {
+          invoiceId: invoice.id,
+          serie: invoice.serie,
+          numero: invoice.invoiceNumber,
+          issuedAt,
+          tipoFactura: "F1",
+          emisorNif: invoice.emisorNif,
+          emisorNombre: invoice.emisorNombre,
+          destinatarioNif: invoice.clientNif,
+          destinatarioNombre: invoice.clientName,
+          baseImponible: totals.subtotal,
+          cuotaTotal: totals.taxTotal,
+          importeTotal: totals.total,
+          desgloseIva: totals.taxBreakdown.map((tax) => ({
+            tipoImpositivo: Number(tax.rate).toFixed(2),
+            baseImponible: tax.base,
+            cuotaRepercutida: tax.cuota,
+          })),
+          empleadoId: user.id,
+          empleadoNombre: user.name,
+          terminal: getTerminal(req),
+        });
+        await tx.insert(documentAuditLogTable).values({
+          action: "issue_invoice",
+          documentType: "factura_completa",
+          documentId: invoice.id,
+          employeeId: user.id,
+          employeeName: user.name,
+          terminal: getTerminal(req),
+          amount: totals.total,
+          details: `Factura F-${invoiceNum} y registro fiscal emitidos atómicamente`,
+        });
+        return { invoice, idempotent: false };
+      });
+
+      res.status(result.idempotent ? 200 : 201).json({
+        ...result.invoice,
+        ...(result.idempotent ? { idempotent: true } : {}),
+      });
+    } catch (error) {
+      if (error instanceof FiscalIssuanceError) {
+        const status = error.code === "ORDER_NOT_FOUND" ? 404 : 503;
+        res.status(status).json({ error: error.message, code: error.code, recoverable: status === 503 });
+        return;
+      }
+      console.error("[documents] atomic invoice issuance failed:", error);
+      res.status(503).json({
+        error: "No se pudo emitir la factura fiscal. La transacción se revirtió; reintenta.",
+        code: "FISCAL_TRANSACTION_FAILED",
+        recoverable: true,
+      });
     }
-
-    const items = await db
-      .select({ unitPrice: orderItemsTable.unitPrice, quantity: orderItemsTable.quantity, taxRate: orderItemsTable.taxRate })
-      .from(orderItemsTable)
-      .where(eq(orderItemsTable.orderId, orderId));
-
-    const lineTotals = items.map((it) => ({
-      lineTotal: parseFloat(it.unitPrice) * it.quantity,
-      taxRate: it.taxRate ?? 10,
-    }));
-    const { taxBreakdown, subtotal, taxTotal, total } = calcMultiRateBreakdown(lineTotals);
-
-    // Get payment method used
-    const [paymentRow] = await db
-      .select({ methodName: paymentMethodsTable.name })
-      .from(paymentsTable)
-      .innerJoin(paymentMethodsTable, eq(paymentsTable.paymentMethodId, paymentMethodsTable.id))
-      .where(and(eq(paymentsTable.orderId, orderId), eq(paymentsTable.status, "completed")))
-      .limit(1);
-
-    // Get next invoice number atomically
-    const invoiceNum = await getNextNumber("F", "factura");
-
-    const [invoice] = await db
-      .insert(invoicesTable)
-      .values({
-        serie: "F",
-        invoiceNumber: invoiceNum,
-        emisorNombre: config?.nombreComercial ?? "",
-        emisorNif: config?.nif ?? "",
-        emisorDireccion: config?.direccionFiscal ?? "",
-        emisorCp: config?.codigoPostal ?? "",
-        emisorPoblacion: config?.poblacion ?? "",
-        emisorProvincia: config?.provincia ?? "",
-        emisorPais: config?.pais ?? "España",
-        clientName: clientName ?? "",
-        clientNif: clientNif ?? "",
-        clientAddress: clientAddress ?? "",
-        clientCp: clientCp ?? "",
-        clientCity: clientCity ?? "",
-        clientProvince: clientProvince ?? "",
-        clientCountry: clientCountry ?? "España",
-        clientEmail: clientEmail ?? "",
-        clientPhone: clientPhone ?? "",
-        orderId,
-        subtotal,
-        taxTotal,
-        total,
-        taxBreakdown: taxBreakdown as any,
-        paymentMethod: paymentRow?.methodName ?? "",
-        notes: notes ?? "",
-        status: "issued",
-        verifactuStatus: "pending",
-        employeeId: user.id,
-      })
-      .returning();
-
-    await logDocumentAction({
-      action: "issue_invoice",
-      documentType: "factura_completa",
-      documentId: invoice.id,
-      employeeId: user.id,
-      employeeName: user.name,
-      terminal: getTerminal(req),
-      amount: total,
-      details: `Factura F-${invoiceNum} emitida`,
-    });
-
-    res.status(201).json(invoice);
   }
 );
 
@@ -502,6 +574,7 @@ router.post(
   "/documents/invoices/:id/rectify",
   requireAuth,
   requireAdminWithAudit,
+  idempotency,
   async (req, res): Promise<void> => {
     const id = req.params["id"] as string;
     const user = (req as any).user;
@@ -512,75 +585,155 @@ router.post(
       return;
     }
 
-    const [original] = await db
-      .select()
-      .from(invoicesTable)
-      .where(eq(invoicesTable.id, id));
+    try {
+      const rectificativa = await db.transaction(async (tx) => {
+        await tx.execute(sql`SELECT id FROM invoices WHERE id = ${id} FOR UPDATE`);
+        const [original] = await tx
+          .select()
+          .from(invoicesTable)
+          .where(eq(invoicesTable.id, id));
+        if (!original) {
+          throw new FiscalIssuanceError("INVOICE_NOT_FOUND", "Factura original no encontrada");
+        }
+        if (original.status !== "issued") {
+          throw new FiscalIssuanceError(
+            "INVOICE_NOT_RECTIFIABLE",
+            "Solo se pueden rectificar facturas en estado 'issued'",
+          );
+        }
 
-    if (!original) {
-      res.status(404).json({ error: "Factura original no encontrada" });
-      return;
+        const originalBreakdown =
+          (original.taxBreakdown ?? []) as Array<{ rate: number; base: string; cuota: string }>;
+        // Repair a legacy issued invoice atomically before appending its
+        // rectification. For current invoices this is an idempotent lookup.
+        await createFiscalRecord(tx, {
+          invoiceId: original.id,
+          serie: original.serie,
+          numero: original.invoiceNumber,
+          issuedAt: original.issuedAt,
+          tipoFactura: original.serie === "R" ? "R1" : "F1",
+          emisorNif: original.emisorNif,
+          emisorNombre: original.emisorNombre,
+          destinatarioNif: original.clientNif,
+          destinatarioNombre: original.clientName,
+          baseImponible: original.subtotal,
+          cuotaTotal: original.taxTotal,
+          importeTotal: original.total,
+          desgloseIva: originalBreakdown.map((tax) => ({
+            tipoImpositivo: Number(tax.rate).toFixed(2),
+            baseImponible: tax.base,
+            cuotaRepercutida: tax.cuota,
+          })),
+          empleadoId: user.id,
+          empleadoNombre: user.name,
+          terminal: getTerminal(req),
+        });
+
+        const invoiceNum = await getNextNumber("R", "factura", tx);
+        const issuedAt = new Date();
+        const taxBreakdown = originalBreakdown.map((tax) => ({
+          rate: tax.rate,
+          base: (-Number(tax.base)).toFixed(2),
+          cuota: (-Number(tax.cuota)).toFixed(2),
+        }));
+        const [created] = await tx
+          .insert(invoicesTable)
+          .values({
+            serie: "R",
+            invoiceNumber: invoiceNum,
+            issuedAt,
+            emisorNombre: original.emisorNombre,
+            emisorNif: original.emisorNif,
+            emisorDireccion: original.emisorDireccion,
+            emisorCp: original.emisorCp,
+            emisorPoblacion: original.emisorPoblacion,
+            emisorProvincia: original.emisorProvincia,
+            emisorPais: original.emisorPais,
+            clientName: original.clientName,
+            clientNif: original.clientNif,
+            clientAddress: original.clientAddress,
+            clientCp: original.clientCp,
+            clientCity: original.clientCity,
+            clientProvince: original.clientProvince,
+            clientCountry: original.clientCountry,
+            clientEmail: original.clientEmail,
+            clientPhone: original.clientPhone,
+            orderId: original.orderId,
+            subtotal: (-Number(original.subtotal)).toFixed(2),
+            taxTotal: (-Number(original.taxTotal)).toFixed(2),
+            total: (-Number(original.total)).toFixed(2),
+            taxBreakdown,
+            paymentMethod: original.paymentMethod,
+            notes: reason,
+            status: "issued",
+            originalInvoiceId: id,
+            rectificationReason: reason,
+            verifactuStatus: "pending",
+            employeeId: user.id,
+          })
+          .returning();
+
+        await createFiscalRecord(tx, {
+          invoiceId: created.id,
+          serie: created.serie,
+          numero: created.invoiceNumber,
+          issuedAt,
+          tipoFactura: "R1",
+          emisorNif: created.emisorNif,
+          emisorNombre: created.emisorNombre,
+          destinatarioNif: created.clientNif,
+          destinatarioNombre: created.clientName,
+          baseImponible: created.subtotal,
+          cuotaTotal: created.taxTotal,
+          importeTotal: created.total,
+          desgloseIva: taxBreakdown.map((tax) => ({
+            tipoImpositivo: Number(tax.rate).toFixed(2),
+            baseImponible: tax.base,
+            cuotaRepercutida: tax.cuota,
+          })),
+          original: {
+            serie: original.serie,
+            numero: original.invoiceNumber,
+            fechaExpedicion: formatAeatDate(original.issuedAt),
+            motivo: reason,
+          },
+          empleadoId: user.id,
+          empleadoNombre: user.name,
+          terminal: getTerminal(req),
+        });
+        await tx
+          .update(invoicesTable)
+          .set({ status: "rectified", verifactuStatus: "rectified" })
+          .where(eq(invoicesTable.id, id));
+        await tx.insert(documentAuditLogTable).values({
+          action: "create_rectificativa",
+          documentType: "factura_completa",
+          documentId: created.id,
+          employeeId: user.id,
+          employeeName: user.name,
+          terminal: getTerminal(req),
+          details: `Rectificativa R-${invoiceNum} y registro fiscal emitidos atómicamente sobre ${id}. Motivo: ${reason}`,
+        });
+        return created;
+      });
+
+      res.status(201).json({ rectificativa, originalId: id });
+    } catch (error) {
+      if (error instanceof FiscalIssuanceError) {
+        const status =
+          error.code === "INVOICE_NOT_FOUND" ? 404
+            : error.code === "INVOICE_NOT_RECTIFIABLE" ? 409
+              : 503;
+        res.status(status).json({ error: error.message, code: error.code, recoverable: status === 503 });
+        return;
+      }
+      console.error("[documents] atomic rectification failed:", error);
+      res.status(503).json({
+        error: "No se pudo emitir la rectificativa. La transacción se revirtió; reintenta.",
+        code: "FISCAL_TRANSACTION_FAILED",
+        recoverable: true,
+      });
     }
-
-    if (original.status !== "issued") {
-      res.status(409).json({ error: "Solo se pueden rectificar facturas en estado 'issued'" });
-      return;
-    }
-
-    const invoiceNum = await getNextNumber("R", "factura");
-
-    const [rectificativa] = await db
-      .insert(invoicesTable)
-      .values({
-        serie: "R",
-        invoiceNumber: invoiceNum,
-        emisorNombre: original.emisorNombre,
-        emisorNif: original.emisorNif,
-        emisorDireccion: original.emisorDireccion,
-        emisorCp: original.emisorCp,
-        emisorPoblacion: original.emisorPoblacion,
-        emisorProvincia: original.emisorProvincia,
-        emisorPais: original.emisorPais,
-        clientName: original.clientName,
-        clientNif: original.clientNif,
-        clientAddress: original.clientAddress,
-        clientCp: original.clientCp,
-        clientCity: original.clientCity,
-        clientProvince: original.clientProvince,
-        clientCountry: original.clientCountry,
-        clientEmail: original.clientEmail,
-        clientPhone: original.clientPhone,
-        orderId: original.orderId,
-        subtotal: `-${original.subtotal}`,
-        taxTotal: `-${original.taxTotal}`,
-        total: `-${original.total}`,
-        paymentMethod: original.paymentMethod,
-        notes: reason,
-        status: "issued",
-        originalInvoiceId: id,
-        rectificationReason: reason,
-        verifactuStatus: "pending",
-        employeeId: user.id,
-      })
-      .returning();
-
-    // Mark original as rectified
-    await db
-      .update(invoicesTable)
-      .set({ status: "rectified" })
-      .where(eq(invoicesTable.id, id));
-
-    await logDocumentAction({
-      action: "create_rectificativa",
-      documentType: "factura_completa",
-      documentId: rectificativa.id,
-      employeeId: user.id,
-      employeeName: user.name,
-      terminal: getTerminal(req),
-      details: `Rectificativa R-${invoiceNum} de factura ${id}. Motivo: ${reason}`,
-    });
-
-    res.status(201).json({ rectificativa, originalId: id });
   }
 );
 

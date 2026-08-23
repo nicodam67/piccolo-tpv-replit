@@ -1,6 +1,6 @@
 import { db } from "@workspace/db";
-import { invoiceSeriesTable } from "@workspace/db";
 import { sql } from "drizzle-orm";
+import type { FiscalTransaction } from "./fiscal-issuance.js";
 
 /**
  * Atomically allocate the next correlative number for a given serie+documentType.
@@ -12,8 +12,12 @@ import { sql } from "drizzle-orm";
  *
  * The (serie, documentType) UNIQUE constraint in the schema backs the ON CONFLICT.
  */
-export async function getNextNumber(serie: string, documentType: string): Promise<number> {
-  const rows = await db.execute<{ current_number: number }>(sql`
+export async function getNextNumber(
+  serie: string,
+  documentType: string,
+  executor: typeof db | FiscalTransaction = db,
+): Promise<number> {
+  const rows = await executor.execute(sql`
     INSERT INTO invoice_series (id, serie, document_type, current_number, prefix, updated_at)
     VALUES (gen_random_uuid(), ${serie}, ${documentType}, 1, '', now())
     ON CONFLICT (serie, document_type)
@@ -23,7 +27,8 @@ export async function getNextNumber(serie: string, documentType: string): Promis
     RETURNING current_number
   `);
 
-  const row = (rows as any).rows?.[0] ?? (rows as any)[0];
+  const row = (rows as unknown as { rows?: Array<{ current_number: number }> }).rows?.[0]
+    ?? (rows as unknown as Array<{ current_number: number }>)[0];
   if (!row) throw new Error(`getNextNumber: no row returned for serie=${serie} documentType=${documentType}`);
   return Number(row.current_number);
 }

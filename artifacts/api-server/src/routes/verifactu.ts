@@ -23,6 +23,12 @@ import {
   invoicesTable,
 } from "@workspace/db";
 import { eq, desc, and, gte, lte, sql, or, like } from "drizzle-orm";
+import {
+  calcularHuellaAlta,
+  calcularHuellaAnulacion,
+  type HuellaAltaInput,
+} from "../lib/verifactu-hash.js";
+import { createFiscalRecord, FiscalIssuanceError } from "../lib/fiscal-issuance.js";
 
 const router = Router();
 
@@ -74,28 +80,8 @@ function decryptText(b64: string): string {
 // Result: uppercase hex
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function calcularHuella(params: {
-  emisorNif: string;
-  numSerieFactura: string;
-  fechaExpedicion: string;      // dd-mm-yyyy
-  tipoFactura: string;
-  cuotaTotal: string;
-  importeTotal: string;
-  huellaAnterior: string;
-  fechaHoraGeneracion: string;  // dd-mm-yyyyTHH:mm:ss+HH:MM
-}): string {
-  const raw = [
-    params.emisorNif,
-    params.numSerieFactura,
-    params.fechaExpedicion,
-    params.tipoFactura,
-    params.cuotaTotal,
-    params.importeTotal,
-    params.huellaAnterior,
-    params.fechaHoraGeneracion,
-  ].join("&");
-  return createHash("sha256").update(raw, "utf8").digest("hex").toUpperCase();
-}
+export const calcularHuella = (params: HuellaAltaInput): string =>
+  calcularHuellaAlta(params);
 
 // Verify the full chain integrity starting from the earliest record
 export async function verificarCadenaCompleta(): Promise<{
@@ -107,23 +93,35 @@ export async function verificarCadenaCompleta(): Promise<{
   const records = await db
     .select()
     .from(verifactuRecordsTable)
-    .where(eq(verifactuRecordsTable.registroTipo, "alta"))
-    .orderBy(verifactuRecordsTable.createdAt)
+    .orderBy(verifactuRecordsTable.chainKey, verifactuRecordsTable.chainSequence)
     .limit(100000);
 
   let huellaAnterior = "";
+  let chainKey = "";
   let i = 0;
   for (const r of records) {
-    const expected = calcularHuella({
-      emisorNif: r.emisorNif,
-      numSerieFactura: r.numSerieFactura,
-      fechaExpedicion: r.fechaExpedicion,
-      tipoFactura: r.tipoFactura,
-      cuotaTotal: r.cuotaTotal ?? "0.00",
-      importeTotal: r.importeTotal ?? "0.00",
-      huellaAnterior: huellaAnterior,
-      fechaHoraGeneracion: r.fechaHoraGeneracion,
-    });
+    if (r.chainKey !== chainKey) {
+      chainKey = r.chainKey;
+      huellaAnterior = "";
+    }
+    const expected = r.registroTipo === "anulacion"
+      ? calcularHuellaAnulacion({
+          emisorNif: r.emisorNif,
+          numSerieFactura: r.numSerieFactura,
+          fechaExpedicion: r.fechaExpedicion,
+          huellaAnterior,
+          fechaHoraGeneracion: r.fechaHoraGeneracion,
+        })
+      : calcularHuellaAlta({
+          emisorNif: r.emisorNif,
+          numSerieFactura: r.numSerieFactura,
+          fechaExpedicion: r.fechaExpedicion,
+          tipoFactura: r.tipoFactura,
+          cuotaTotal: r.cuotaTotal ?? "0.00",
+          importeTotal: r.importeTotal ?? "0.00",
+          huellaAnterior,
+          fechaHoraGeneracion: r.fechaHoraGeneracion,
+        });
     if (expected !== r.huella) {
       return {
         ok: false,
@@ -144,31 +142,6 @@ export async function verificarCadenaCompleta(): Promise<{
     i++;
   }
   return { ok: true, totalRegistros: records.length, huellasVerificadas: i };
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Date helpers
-// ─────────────────────────────────────────────────────────────────────────────
-
-function toAeatDate(d: Date): string {
-  const dd = String(d.getDate()).padStart(2, "0");
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const yyyy = d.getFullYear();
-  return `${dd}-${mm}-${yyyy}`;
-}
-
-function toAeatDateTime(d: Date): string {
-  const date = toAeatDate(d);
-  const hh = String(d.getHours()).padStart(2, "0");
-  const min = String(d.getMinutes()).padStart(2, "0");
-  const ss = String(d.getSeconds()).padStart(2, "0");
-  // Spain is UTC+1 (CET) or UTC+2 (CEST)
-  const offset = d.getTimezoneOffset();
-  const absOff = Math.abs(offset);
-  const sign = offset <= 0 ? "+" : "-";
-  const offH = String(Math.floor(absOff / 60)).padStart(2, "0");
-  const offM = String(absOff % 60).padStart(2, "0");
-  return `${date}T${hh}:${min}:${ss}${sign}${offH}:${offM}`;
 }
 
 function fmt2(n: string | number | null | undefined): string {
@@ -678,145 +651,65 @@ router.post("/admin/verifactu/records", requireAuth, requireRole("admin"), fisca
 
     if (!body.invoiceId) return res.status(400).json({ error: "invoiceId requerido" });
 
-    // Check no duplicate
-    const existing = await db.select({ id: verifactuRecordsTable.id })
-      .from(verifactuRecordsTable)
-      .where(
-        and(
-          eq(verifactuRecordsTable.invoiceId, body.invoiceId),
-          eq(verifactuRecordsTable.registroTipo, "alta")
-        )
-      )
-      .limit(1);
-    if (existing.length > 0) {
-      return res.status(409).json({ error: "Ya existe un registro VERI*FACTU para esta factura" });
-    }
-
-    // Load invoice
-    const [invoice] = await db.select().from(invoicesTable).where(eq(invoicesTable.id, body.invoiceId));
-    if (!invoice) return res.status(404).json({ error: "Factura no encontrada" });
-    if (invoice.status === "draft") return res.status(400).json({ error: "No se puede registrar una factura en borrador" });
-
-    // Guard: prefacturas (serie "P") are pre-bills with no fiscal validity.
-    // They must never consume a fiscal series number or generate a VERI*FACTU record.
-    if (invoice.serie && invoice.serie.startsWith("P")) {
-      return res.status(400).json({
-        error: "Las prefacturas (serie P) no generan registros VERI*FACTU ni consumen numeración fiscal. Cobra la comanda primero para emitir el ticket definitivo.",
-      });
-    }
-
-    // Load config
-    const config = await getConfig();
-    if (!config.emisorNif) return res.status(400).json({ error: "Configure el NIF del emisor en Configuración VERI*FACTU antes de generar registros" });
-
-    // Determine series from invoice type
-    const tipoFactura = body.tipoFactura ?? (invoice.status === "rectified" ? "R1" : "F2");
-    const serie = invoice.serie ?? "FS";
-    const numero = invoice.invoiceNumber;
-    const numSerieFactura = `${serie}${numero}`;
-
-    // Compute hash chain — get last record's hash
-    const [lastRecord] = await db
-      .select({ huella: verifactuRecordsTable.huella })
-      .from(verifactuRecordsTable)
-      .orderBy(desc(verifactuRecordsTable.createdAt))
-      .limit(1);
-    const huellaAnterior = lastRecord?.huella ?? "";
-
-    const now = new Date();
-    const fechaExpedicion = toAeatDate(invoice.issuedAt ?? now);
-    const fechaHoraGeneracion = toAeatDateTime(now);
-
-    const importeTotal = fmt2(invoice.total);
-    const cuotaTotal = fmt2(invoice.taxTotal);
-
-    // Calculate individual VAT breakdown
-    const desgloseIva = body.desgloseIva ?? (
-      invoice.taxBreakdown
-        ? (invoice.taxBreakdown as Array<{ rate: number; base: string; cuota: string }>).map((b) => ({
-            tipoImpositivo: fmt2(b.rate),
-            baseImponible: fmt2(b.base),
-            cuotaRepercutida: fmt2(b.cuota),
-          }))
-        : [{
-            tipoImpositivo: "10.00",
-            baseImponible: fmt2(invoice.subtotal),
-            cuotaRepercutida: cuotaTotal,
-          }]
-    );
-
-    const huella = calcularHuella({
-      emisorNif: config.emisorNif,
-      numSerieFactura,
-      fechaExpedicion,
-      tipoFactura,
-      cuotaTotal,
-      importeTotal,
-      huellaAnterior,
-      fechaHoraGeneracion,
-    });
-
-    const qrContent = generarQrContent({
-      nif: config.emisorNif,
-      numSerie: numSerieFactura,
-      fecha: fechaExpedicion,
-      importe: importeTotal,
-      entorno: config.entorno,
-    });
-
     const emp = (req as unknown as { employee?: { id: string; name: string } }).employee;
-
-    const [record] = await db.insert(verifactuRecordsTable).values({
-      invoiceId: body.invoiceId,
-      registroTipo: "alta",
-      tipoFactura,
-      serie,
-      numero,
-      numSerieFactura,
-      fechaExpedicion,
-      fechaHoraGeneracion,
-      emisorNif: config.emisorNif,
-      emisorNombre: config.emisorNombre || invoice.emisorNombre,
-      destinatarioNif: invoice.clientNif ?? "",
-      destinatarioNombre: invoice.clientName ?? "",
-      descripcion: body.descripcion ?? "Servicios de hostelería",
-      baseImponible: fmt2(invoice.subtotal),
-      tipoIva: "10.00",
-      cuotaIva: cuotaTotal,
-      cuotaTotal,
-      importeTotal,
-      desgloseIva,
-      huellaAnterior,
-      huella,
-      idSistemaInformatico: config.idSistemaInformatico,
-      nombreSistemaInformatico: config.nombreSistemaInformatico,
-      versionSistema: config.versionSistema,
-      numeroInstalacion: config.numeroInstalacion,
-      qrContent,
-      estado: "validado",
-      entornoEnvio: config.entorno,
-      empleadoId: emp?.id ?? null,
-      empleadoNombre: emp?.name ?? "",
-    }).returning();
-
-    // Update invoice verifactu status
-    await db.update(invoicesTable)
-      .set({ verifactuStatus: "generated", verifactuResponse: { registroId: record.id, huella } })
-      .where(eq(invoicesTable.id, body.invoiceId));
-
-    await logAudit({
-      recordId: record.id,
-      invoiceId: body.invoiceId,
-      accion: "generar_registro",
-      empleadoId: emp?.id,
-      empleadoNombre: emp?.name,
-      terminal: req.ip ?? "",
-      detalles: `Huella: ${huella.substring(0, 16)}… | Serie: ${numSerieFactura} | Tipo: ${tipoFactura}`,
+    const result = await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT id FROM invoices WHERE id = ${body.invoiceId} FOR UPDATE`);
+      const [invoice] = await tx
+        .select()
+        .from(invoicesTable)
+        .where(eq(invoicesTable.id, body.invoiceId));
+      if (!invoice) throw new FiscalIssuanceError("INVOICE_NOT_FOUND", "Factura no encontrada");
+      if (invoice.status === "draft") {
+        throw new FiscalIssuanceError("DRAFT_INVOICE", "No se puede registrar una factura en borrador");
+      }
+      if (invoice.serie.startsWith("P")) {
+        throw new FiscalIssuanceError(
+          "PREINVOICE",
+          "Las prefacturas no generan registros VERI*FACTU ni consumen numeración fiscal",
+        );
+      }
+      const desgloseIva = body.desgloseIva ?? (
+        invoice.taxBreakdown
+          ? (invoice.taxBreakdown as Array<{ rate: number; base: string; cuota: string }>).map((tax) => ({
+              tipoImpositivo: fmt2(tax.rate),
+              baseImponible: fmt2(tax.base),
+              cuotaRepercutida: fmt2(tax.cuota),
+            }))
+          : [{
+              tipoImpositivo: "10.00",
+              baseImponible: fmt2(invoice.subtotal),
+              cuotaRepercutida: fmt2(invoice.taxTotal),
+            }]
+      );
+      const record = await createFiscalRecord(tx, {
+        invoiceId: invoice.id,
+        serie: invoice.serie,
+        numero: invoice.invoiceNumber,
+        issuedAt: invoice.issuedAt,
+        tipoFactura: body.tipoFactura ?? (invoice.serie === "R" ? "R1" : "F1"),
+        emisorNif: invoice.emisorNif,
+        emisorNombre: invoice.emisorNombre,
+        destinatarioNif: invoice.clientNif,
+        destinatarioNombre: invoice.clientName,
+        descripcion: body.descripcion,
+        baseImponible: invoice.subtotal,
+        cuotaTotal: invoice.taxTotal,
+        importeTotal: invoice.total,
+        desgloseIva,
+        empleadoId: emp?.id,
+        empleadoNombre: emp?.name,
+        terminal: req.ip ?? "",
+      });
+      return record;
     });
 
-    res.status(201).json(record);
+    res.status(201).json(result);
   } catch (err) {
     console.error(err);
+    if (err instanceof FiscalIssuanceError) {
+      const status = err.code === "INVOICE_NOT_FOUND" ? 404 : 400;
+      return res.status(status).json({ error: err.message, code: err.code });
+    }
     const emp = (req as unknown as { employee?: { id: string; name: string } }).employee;
     await logAudit({ accion: "error_generacion", empleadoId: emp?.id, resultado: "error", detalles: String(err) });
     res.status(500).json({ error: "Error al generar registro VERI*FACTU" });
@@ -961,102 +854,11 @@ router.post("/admin/verifactu/records/:id/retry", requireAuth, requireRole("admi
 // ─────────────────────────────────────────────────────────────────────────────
 
 router.post("/admin/verifactu/records/:id/cancel", requireAuth, requireRole("admin"), fiscalLimiter, async (req, res) => {
-  try {
-    const id = req.params.id as string;
-    const body = req.body as { motivo: string; autorizador: string };
-    if (!body.motivo) return res.status(400).json({ error: "motivo requerido" });
-    if (!body.autorizador) return res.status(400).json({ error: "autorizador requerido" });
-
-    const [original] = await db.select().from(verifactuRecordsTable).where(eq(verifactuRecordsTable.id, id));
-    if (!original) return res.status(404).json({ error: "Registro no encontrado" });
-    if (original.registroTipo !== "alta") return res.status(400).json({ error: "Solo se pueden anular registros de alta" });
-    if (original.estado === "anulado") return res.status(400).json({ error: "El registro ya está anulado" });
-
-    const config = await getConfig();
-    const [lastRecord] = await db
-      .select({ huella: verifactuRecordsTable.huella })
-      .from(verifactuRecordsTable)
-      .orderBy(desc(verifactuRecordsTable.createdAt))
-      .limit(1);
-    const huellaAnterior = lastRecord?.huella ?? "";
-
-    const now = new Date();
-    const fechaHoraGeneracion = toAeatDateTime(now);
-    const fechaExpedicion = toAeatDate(now);
-
-    const huella = calcularHuella({
-      emisorNif: original.emisorNif,
-      numSerieFactura: original.numSerieFactura,
-      fechaExpedicion: original.fechaExpedicion,
-      tipoFactura: original.tipoFactura,
-      cuotaTotal: original.cuotaTotal ?? "0.00",
-      importeTotal: original.importeTotal ?? "0.00",
-      huellaAnterior,
-      fechaHoraGeneracion,
-    });
-
-    const emp = (req as unknown as { employee?: { id: string; name: string } }).employee;
-
-    const [anulacion] = await db.insert(verifactuRecordsTable).values({
-      invoiceId: original.invoiceId,
-      registroTipo: "anulacion",
-      tipoFactura: original.tipoFactura,
-      serie: original.serie,
-      numero: original.numero,
-      numSerieFactura: original.numSerieFactura,
-      fechaExpedicion,
-      fechaHoraGeneracion,
-      emisorNif: original.emisorNif,
-      emisorNombre: original.emisorNombre,
-      descripcion: `Anulación de ${original.numSerieFactura}`,
-      baseImponible: original.baseImponible,
-      tipoIva: original.tipoIva,
-      cuotaIva: original.cuotaIva,
-      cuotaTotal: original.cuotaTotal,
-      importeTotal: original.importeTotal,
-      registroAnuladoId: original.id,
-      motivoAnulacion: body.motivo,
-      autorizadorAnulacion: body.autorizador,
-      huellaAnterior,
-      huella,
-      idSistemaInformatico: config.idSistemaInformatico,
-      nombreSistemaInformatico: config.nombreSistemaInformatico,
-      versionSistema: config.versionSistema,
-      numeroInstalacion: config.numeroInstalacion,
-      qrContent: "",
-      estado: "validado",
-      entornoEnvio: config.entorno,
-      empleadoId: emp?.id ?? null,
-      empleadoNombre: emp?.name ?? "",
-    }).returning();
-
-    // Mark original as anulado
-    await db.update(verifactuRecordsTable)
-      .set({ estado: "anulado", updatedAt: new Date() })
-      .where(eq(verifactuRecordsTable.id, id));
-
-    // Mark invoice as cancelled
-    if (original.invoiceId) {
-      await db.update(invoicesTable)
-        .set({ status: "cancelled", verifactuStatus: "cancelled" })
-        .where(eq(invoicesTable.id, original.invoiceId));
-    }
-
-    await logAudit({
-      recordId: anulacion.id,
-      invoiceId: original.invoiceId ?? undefined,
-      accion: "generar_anulacion",
-      empleadoId: emp?.id,
-      empleadoNombre: emp?.name,
-      terminal: req.ip ?? "",
-      detalles: `Anulación de ${original.numSerieFactura} | Motivo: ${body.motivo} | Autorizador: ${body.autorizador}`,
-    });
-
-    res.status(201).json(anulacion);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Error al crear registro de anulación" });
-  }
+  res.status(501).json({
+    error: "La anulación fiscal queda bloqueada en Fase 1 hasta implementar su flujo transaccional completo. El registro original no se ha modificado.",
+    code: "FISCAL_CANCELLATION_PHASE2",
+    recordId: req.params.id,
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

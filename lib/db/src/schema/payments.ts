@@ -68,13 +68,15 @@ export const paymentsTable = pgTable(
   }),
 );
 
-export const ticketsTable = pgTable("tickets", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  orderId: uuid("order_id")
-    .notNull()
-    .unique()
-    .references(() => ordersTable.id),
-  ticketNumber: bigserial("ticket_number", { mode: "number" }),
+export const ticketsTable = pgTable(
+  "tickets",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orderId: uuid("order_id")
+      .notNull()
+      .unique()
+      .references(() => ordersTable.id),
+    ticketNumber: bigserial("ticket_number", { mode: "number" }),
   // Fiscal fields — set by backend at generation time, never editable after issuance
   serie: text("serie").notNull().default("T"),
   nifEmisor: text("nif_emisor").notNull().default(""),
@@ -97,8 +99,13 @@ export const ticketsTable = pgTable("tickets", {
     .notNull()
     .references(() => employeesTable.id),
   /** True for simulation/demo data; safe to purge without touching real records */
-  isDemo: boolean("is_demo").notNull().default(false),
-});
+    isDemo: boolean("is_demo").notNull().default(false),
+  },
+  (table) => ({
+    fiscalNumberUniqueIdx: uniqueIndex("tickets_fiscal_number_unique")
+      .on(table.serie, table.ticketNumber),
+  }),
+);
 
 export const cashMovementsTable = pgTable("cash_movements", {
   id: uuid("id").primaryKey().defaultRandom(),
