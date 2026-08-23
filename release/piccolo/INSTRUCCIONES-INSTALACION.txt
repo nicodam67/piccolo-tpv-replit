@@ -7,7 +7,7 @@ VERSIÓN DE PRUEBAS — NO USAR PARA FACTURACIÓN FISCAL REAL.
 2. Abra primero 04-Documentacion\INSTALAR-Y-PROBAR-PICCOLO.pdf.
 3. Elija un único servidor:
    A) 02-Windows-Servidor\Piccolo-Server-Windows-*.exe
-   B) 03-TerraMaster\Piccolo-TPV-*-TOS-linux-amd64-*.tar.gz
+   B) 03-TerraMaster\ARTEFACTO-TERRAMASTER.txt y el tar.gz adjunto indicado
 4. Instale el TPV desde 01-Windows-TPV.
 5. Conecte tablets, KDS y fichaje por https://piccolo.local.
 6. Configure impresoras TCP ESC/POS por IP y puerto 9100.

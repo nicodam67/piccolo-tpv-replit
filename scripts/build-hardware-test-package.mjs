@@ -55,7 +55,24 @@ const clientName = `Piccolo-TPV-Windows-${RC_VERSION}-${shortCommit}.exe`;
 const serverName = `Piccolo-Server-Windows-${RC_VERSION}-${shortCommit}.exe`;
 fs.copyFileSync(windowsClientSource, path.join(stage, "01-Windows-TPV", clientName));
 fs.copyFileSync(windowsServerSource, path.join(stage, "02-Windows-Servidor", serverName));
-fs.copyFileSync(path.join(release, terraMaster), path.join(stage, "03-TerraMaster", terraMaster));
+const terraMasterSha256 = sha256(path.join(release, terraMaster));
+fs.writeFileSync(
+  path.join(stage, "03-TerraMaster", "ARTEFACTO-TERRAMASTER.txt"),
+  [
+    "El servidor TerraMaster se entrega como artefacto adjunto independiente",
+    "para evitar duplicar 65 MB dentro de este ZIP.",
+    "",
+    `Nombre exacto: ${terraMaster}`,
+    `SHA-256: ${terraMasterSha256}`,
+    `Commit: ${commit}`,
+    "",
+    "Debe descargarse junto a este ZIP desde la entrega de Cursor Cloud.",
+    "También es reproducible desde el repositorio con:",
+    "  pnpm --filter @workspace/api-server run build",
+    "  pnpm --filter @workspace/piccolo-tpv run build",
+    "  pnpm run release:build-rc-linux",
+  ].join("\n"),
+);
 
 for (const name of fs.readdirSync(release).filter((entry) => /\.(md|txt|html|pdf)$/.test(entry))) {
   fs.copyFileSync(path.join(release, name), path.join(stage, "04-Documentacion", name));
@@ -77,6 +94,8 @@ const components = {
     windowsTpv: clientName,
     windowsServer: serverName,
     terraMaster,
+    terraMasterSha256,
+    terraMasterDelivery: "artefacto adjunto independiente",
     tabletAccess: "https://<servidor-piccolo>/",
     kdsAccess: "https://<servidor-piccolo>/kds/<departamento>",
     timeclockAccess: "https://<servidor-piccolo>/fichaje/tablet",
