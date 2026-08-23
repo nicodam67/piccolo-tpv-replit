@@ -18,6 +18,7 @@ const candidates = [
 if (!fs.existsSync(source)) throw new Error(`Missing guide source: ${source}`);
 
 let rendered = false;
+fs.rmSync(output, { force: true });
 for (const browser of candidates) {
   const result = spawnSync(browser, [
     "--headless",
@@ -27,8 +28,8 @@ for (const browser of candidates) {
     `--print-to-pdf=${output}`,
     "--print-to-pdf-no-header",
     pathToFileURL(source).href,
-  ], { stdio: "inherit", timeout: 30_000, killSignal: "SIGKILL" });
-  if (result.status === 0 && fs.existsSync(output) && fs.statSync(output).size > 1_000) {
+  ], { stdio: "inherit", timeout: 10_000, killSignal: "SIGKILL" });
+  if (fs.existsSync(output) && fs.statSync(output).size > 1_000) {
     rendered = true;
     break;
   }
