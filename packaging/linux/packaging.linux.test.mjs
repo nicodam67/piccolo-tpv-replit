@@ -47,5 +47,8 @@ describe("linux/tos packaging", () => {
     assert.match(compose, /piccolo:/);
     assert.match(compose, /caddy:/);
     assert.match(compose, /postgres:16-alpine/);
+    assert.match(compose, /127\.0\.0\.1:\$\{PICCOLO_API_PORT:-8080\}:8080/);
+    const installer = fs.readFileSync(path.join(linuxDir, "install-docker.sh"), "utf8");
+    assert.match(installer, /for component in server web db runtime diagnostics/);
   });
 });

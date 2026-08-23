@@ -29,12 +29,11 @@ fi
 
 log "Instalación Docker/TOS Piccolo TPV ${PICCOLO_VERSION} en ${INSTALL_DIR}."
 
-mkdir -p "$INSTALL_DIR" "$DATA_ROOT"/{config,secrets,logs,uploads,backups,caddy,caddy-config,postgres}
-rsync -a --delete \
-  "$BUNDLE_DIR/server/" "$INSTALL_DIR/app/server/" \
-  "$BUNDLE_DIR/web/" "$INSTALL_DIR/app/web/" \
-  "$BUNDLE_DIR/db/" "$INSTALL_DIR/app/db/" \
-  "$BUNDLE_DIR/runtime/" "$INSTALL_DIR/app/runtime/"
+mkdir -p "$INSTALL_DIR/app" "$DATA_ROOT"/{config,secrets,logs,uploads,backups,caddy,caddy-config,postgres}
+for component in server web db runtime diagnostics; do
+  mkdir -p "$INSTALL_DIR/app/$component"
+  rsync -a --delete "$BUNDLE_DIR/$component/" "$INSTALL_DIR/app/$component/"
+done
 
 install -m 644 "$SCRIPT_DIR/docker/Dockerfile" "$INSTALL_DIR/docker/Dockerfile"
 install -m 644 "$SCRIPT_DIR/docker/entrypoint.sh" "$INSTALL_DIR/docker/entrypoint.sh"
