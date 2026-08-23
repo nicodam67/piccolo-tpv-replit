@@ -1,5 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import pg from "pg";
+import { beforeAll, describe, expect, it } from "vitest";
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import {
   db,
@@ -30,7 +29,7 @@ async function issueFullInvoice(orderId: string) {
       .limit(1);
     if (existing) return existing;
 
-    const numero = await getNextNumber("F", "phase1-integration", tx);
+    const numero = await getNextNumber("F", "factura", tx);
     const issuedAt = new Date();
     const [invoice] = await tx
       .insert(invoicesTable)
@@ -81,11 +80,6 @@ describeDb.sequential("SIF Phase 1 — PostgreSQL transactional core", () => {
     }
   });
 
-  afterAll(async () => {
-    // The test intentionally leaves immutable fiscal rows in the dedicated test
-    // database. Production/shared databases must never run this suite.
-  });
-
   it("emits one invoice with exactly one persistent fiscal record", async () => {
     const invoice = await issueFullInvoice(await createOrder());
     const records = await db
@@ -102,7 +96,7 @@ describeDb.sequential("SIF Phase 1 — PostgreSQL transactional core", () => {
   it("rolls invoice and numbering back when fiscal record creation fails", async () => {
     const orderId = await createOrder();
     await expect(db.transaction(async (tx) => {
-      const numero = await getNextNumber("F", "phase1-rollback", tx);
+      const numero = await getNextNumber("F", "factura", tx);
       const [invoice] = await tx
         .insert(invoicesTable)
         .values({
@@ -141,7 +135,7 @@ describeDb.sequential("SIF Phase 1 — PostgreSQL transactional core", () => {
   it("rejects a commit that tries to leave an issued invoice without a fiscal record", async () => {
     const orderId = await createOrder();
     await expect(db.transaction(async (tx) => {
-      const numero = await getNextNumber("F", "phase1-orphan", tx);
+      const numero = await getNextNumber("F", "factura", tx);
       await tx.insert(invoicesTable).values({
         serie: "F",
         invoiceNumber: numero,
@@ -153,7 +147,12 @@ describeDb.sequential("SIF Phase 1 — PostgreSQL transactional core", () => {
         total: "12.10",
         status: "issued",
       });
-    })).rejects.toThrow("factura sin registro fiscal");
+    })).rejects.toThrow("Failed query: commit");
+    const orphan = await db
+      .select()
+      .from(invoicesTable)
+      .where(eq(invoicesTable.orderId, orderId));
+    expect(orphan).toHaveLength(0);
   });
 
   it("deduplicates a double click for the same logical order", async () => {
@@ -218,15 +217,17 @@ describeDb.sequential("SIF Phase 1 — PostgreSQL transactional core", () => {
 
   it("persists pending delivery state across a simulated process restart", async () => {
     const invoice = await issueFullInvoice(await createOrder());
-    const restartedPool = new pg.Pool({ connectionString: process.env["DATABASE_URL"] });
+    // A fresh PostgreSQL session represents a new Node process reading only
+    // durable state after restart (no module-level/in-memory state is involved).
+    const restartedClient = await pool.connect();
     try {
-      const result = await restartedPool.query<{ estado: string }>(
+      const result = await restartedClient.query<{ estado: string }>(
         "SELECT estado FROM verifactu_records WHERE invoice_id = $1",
         [invoice.id],
       );
       expect(result.rows).toEqual([{ estado: "pendiente_envio" }]);
     } finally {
-      await restartedPool.end();
+      restartedClient.release();
     }
   });
 

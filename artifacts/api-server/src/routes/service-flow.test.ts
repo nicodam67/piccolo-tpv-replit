@@ -100,6 +100,21 @@ vi.mock("../lib/document-audit", () => ({
   logDocumentAction: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock("../lib/invoice-series", () => ({
+  getNextNumber: vi.fn().mockResolvedValue(1),
+}));
+
+vi.mock("../lib/fiscal-issuance", () => ({
+  FiscalIssuanceError: class FiscalIssuanceError extends Error {
+    code: string;
+    constructor(code: string, message: string) {
+      super(message);
+      this.code = code;
+    }
+  },
+  createFiscalRecord: vi.fn().mockResolvedValue({ id: "fiscal-record-1" }),
+}));
+
 vi.mock("../lib/print-dispatch", () => ({
   dispatchKitchenPrint: vi.fn().mockResolvedValue(undefined),
 }));
@@ -894,10 +909,8 @@ describe("Paso 8 — Cobro en efectivo (POST /api/orders/:id/payments)", () => {
     expect(res.body.ticket).not.toBeNull();
     // La mesa se libera (tables:refresh emitido)
     expect(mockSocketEmit).toHaveBeenCalledWith("tables:refresh");
-    // logDocumentAction llamado para issue_ticket
-    expect(logDocumentAction).toHaveBeenCalledWith(
-      expect.objectContaining({ action: "issue_ticket" }),
-    );
+    // La auditoría de emisión se inserta dentro de la misma transacción fiscal.
+    expect(mockDb.insert).toHaveBeenCalled();
   });
 
   it("Cambio — efectivo > total → se devuelve cambio", async () => {

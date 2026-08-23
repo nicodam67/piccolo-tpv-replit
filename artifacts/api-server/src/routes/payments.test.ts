@@ -46,6 +46,7 @@ const mockDb = vi.hoisted(() => ({
   update: vi.fn(),
   delete: vi.fn(),
   transaction: vi.fn(),
+  execute: vi.fn(),
 }));
 
 vi.mock("@workspace/db", async (importOriginal) => {
@@ -66,6 +67,21 @@ vi.mock("../lib/socket", () => ({
 
 vi.mock("../lib/document-audit", () => ({
   logDocumentAction: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock("../lib/invoice-series", () => ({
+  getNextNumber: vi.fn().mockResolvedValue(1),
+}));
+
+vi.mock("../lib/fiscal-issuance", () => ({
+  FiscalIssuanceError: class FiscalIssuanceError extends Error {
+    code: string;
+    constructor(code: string, message: string) {
+      super(message);
+      this.code = code;
+    }
+  },
+  createFiscalRecord: vi.fn().mockResolvedValue({ id: "fiscal-record-1" }),
 }));
 
 vi.mock("../lib/print-worker", () => ({
@@ -136,6 +152,7 @@ beforeEach(() => {
   mockDb.insert.mockReturnValue(makeChain([]));
   mockDb.update.mockReturnValue(makeChain([]));
   mockDb.delete.mockReturnValue(makeChain([]));
+  mockDb.execute.mockResolvedValue({ rows: [] });
   mockDb.transaction.mockImplementation(async (fn: (tx: typeof mockDb) => Promise<unknown>) =>
     fn(mockDb)
   );
@@ -156,22 +173,17 @@ function mockOpenOrderFlow(override: { paymentRow?: object } = {}) {
     if (call === 4) return makeChain([{ total: "0" }]);
     // 5th select: payments sum
     if (call === 5) return makeChain([{ paid: "0" }]);
-    // 6th select: terminal / session check (count open sessions)
+    // 6th select: open session for the supplied terminal
     if (call === 6) return makeChain([OPEN_SESSION]);
-    // 7th select: open session
-    if (call === 7) return makeChain([OPEN_SESSION]);
+    // 7th select: business config for final ticket
+    if (call === 7) return makeChain([{ nif: "B12345678", razonSocial: "Test SL" }]);
     return makeChain([]);
   });
 
-  mockDb.transaction.mockImplementation(async (fn: (tx: typeof mockDb) => Promise<unknown>) => {
-    const txMock = {
-      ...mockDb,
-      insert: vi.fn().mockReturnValue(makeChain([override.paymentRow ?? COMPLETED_PAYMENT])),
-      select: vi.fn().mockReturnValue(makeChain([TICKET])),
-      update: vi.fn().mockReturnValue(makeChain([])),
-    };
-    return fn(txMock as unknown as typeof mockDb);
-  });
+  mockDb.insert
+    .mockReturnValueOnce(makeChain([override.paymentRow ?? COMPLETED_PAYMENT]))
+    .mockReturnValueOnce(makeChain([TICKET]))
+    .mockReturnValue(makeChain([]));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -221,18 +233,9 @@ describe("POST /api/orders/:id/payments", () => {
         if (call === 4) return makeChain([{ total: "0" }]);
         if (call === 5) return makeChain([{ paid: "0" }]);
         if (call === 6) return makeChain([OPEN_SESSION]);
-        if (call === 7) return makeChain([OPEN_SESSION]);
         return makeChain([]);
       });
-      mockDb.transaction.mockImplementationOnce(async (fn: (tx: typeof mockDb) => Promise<unknown>) => {
-        const txMock = {
-          ...mockDb,
-          insert: vi.fn().mockReturnValue(makeChain([PARTIAL_PAYMENT_1])),
-          select: vi.fn().mockReturnValue(makeChain([])), // no ticket yet (still 10.00 remaining)
-          update: vi.fn().mockReturnValue(makeChain([])),
-        };
-        return fn(txMock as unknown as typeof mockDb);
-      });
+      mockDb.insert.mockReturnValueOnce(makeChain([PARTIAL_PAYMENT_1]));
 
       const res1 = await request(app)
         .post(`/api/orders/${ORDER_ID}/payments`)
@@ -256,18 +259,13 @@ describe("POST /api/orders/:id/payments", () => {
         if (call === 4) return makeChain([{ total: "0" }]);
         if (call === 5) return makeChain([{ paid: "10.00" }]); // first payment already there
         if (call === 6) return makeChain([OPEN_SESSION]);
-        if (call === 7) return makeChain([OPEN_SESSION]);
+        if (call === 7) return makeChain([{ nif: "B12345678", razonSocial: "Test SL" }]);
         return makeChain([]);
       });
-      mockDb.transaction.mockImplementationOnce(async (fn: (tx: typeof mockDb) => Promise<unknown>) => {
-        const txMock = {
-          ...mockDb,
-          insert: vi.fn().mockReturnValue(makeChain([PARTIAL_PAYMENT_2])),
-          select: vi.fn().mockReturnValue(makeChain([TICKET])), // ticket issued on full payment
-          update: vi.fn().mockReturnValue(makeChain([])),
-        };
-        return fn(txMock as unknown as typeof mockDb);
-      });
+      mockDb.insert
+        .mockReturnValueOnce(makeChain([PARTIAL_PAYMENT_2]))
+        .mockReturnValueOnce(makeChain([TICKET]))
+        .mockReturnValue(makeChain([]));
 
       const res2 = await request(app)
         .post(`/api/orders/${ORDER_ID}/payments`)
