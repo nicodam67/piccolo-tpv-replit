@@ -67,7 +67,7 @@ interface ShiftChange {
   recipientName?: string | null;
   originalSnapshot: ShiftSnapshot;
   counterpartSnapshot?: ShiftSnapshot | null;
-  proposal: { employeeId?: string; date?: string; startTime?: string; endTime?: string };
+  proposal: { date?: string; startTime?: string; endTime?: string };
   requesterComment?: string | null;
   managerComment?: string | null;
   validationIssues: Issue[];

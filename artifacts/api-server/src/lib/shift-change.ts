@@ -35,7 +35,6 @@ export interface ShiftSnapshot extends PlannedAssignment {
 }
 
 export interface ShiftChangeProposal {
-  employeeId?: string;
   date?: string;
   startTime?: string;
   endTime?: string;
@@ -98,7 +97,9 @@ export function shiftVersionMatches(snapshot: ShiftSnapshot, current: ShiftSnaps
     && snapshot.date === current.date
     && snapshot.startTime === current.startTime
     && snapshot.endTime === current.endTime
-    && snapshot.positionId === current.positionId;
+    && snapshot.positionId === current.positionId
+    && snapshot.scheduleId === current.scheduleId
+    && snapshot.requirementId === current.requirementId;
 }
 
 export function buildProposedAssignments(input: {
@@ -125,7 +126,7 @@ export function buildProposedAssignments(input: {
   }
   return [{
     ...original,
-    employeeId: proposal.employeeId ?? original.employeeId,
+    employeeId: original.employeeId,
     date: proposal.date ?? original.date,
     startTime: proposal.startTime ?? original.startTime,
     endTime: proposal.endTime ?? original.endTime,

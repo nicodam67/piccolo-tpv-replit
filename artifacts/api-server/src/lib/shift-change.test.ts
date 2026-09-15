@@ -107,6 +107,11 @@ describe("shift-change state machine and authorization", () => {
     );
   });
 
+  it("expires either pending state and releases it from the active workflow", () => {
+    expect(nextShiftChangeStatus("PENDING_RECIPIENT", "EXPIRE")).toBe("EXPIRED");
+    expect(nextShiftChangeStatus("PENDING_MANAGER", "EXPIRE")).toBe("EXPIRED");
+  });
+
   it("does not grant approval permission to employees", () => {
     expect(hasPermission("waiter", "shift_changes.manage")).toBe(false);
     expect(hasPermission("manager", "shift_changes.manage")).toBe(true);
@@ -114,6 +119,7 @@ describe("shift-change state machine and authorization", () => {
 
   it("detects a turn modified after request creation", () => {
     expect(shiftVersionMatches(original, { ...original, startTime: "13:00" })).toBe(false);
+    expect(shiftVersionMatches(original, { ...original, scheduleId: "other-schedule" })).toBe(false);
   });
 });
 

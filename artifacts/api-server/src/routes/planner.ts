@@ -111,13 +111,11 @@ const ShiftChangeBody = z.object({
   recipientId: z.string().uuid().nullable().optional(),
   counterpartShiftId: z.string().uuid().nullable().optional(),
   proposal: z.object({
-    employeeId: z.string().uuid().optional(),
     date: DateString.optional(),
     startTime: TimeString.optional(),
     endTime: TimeString.optional(),
   }).default({}),
   comment: z.string().trim().max(500).nullable().optional(),
-  expiresAt: z.string().datetime().nullable().optional(),
 });
 
 const ShiftChangeCommentBody = z.object({
@@ -126,7 +124,6 @@ const ShiftChangeCommentBody = z.object({
 
 const ShiftChangeApproveBody = ShiftChangeCommentBody.extend({
   proposal: z.object({
-    employeeId: z.string().uuid().optional(),
     date: DateString.optional(),
     startTime: TimeString.optional(),
     endTime: TimeString.optional(),
@@ -186,7 +183,7 @@ async function addShiftChangeEvent(
   executor: Pick<typeof db, "insert">,
   values: {
     requestId: string;
-    actorId: string;
+    actorId?: string | null;
     action: string;
     previousStatus?: string | null;
     newStatus: string;
@@ -199,6 +196,36 @@ async function addShiftChangeEvent(
     previousStatus: values.previousStatus ?? null,
     comment: values.comment ?? null,
     metadata: values.metadata ?? null,
+  });
+}
+
+async function expireStaleShiftChanges() {
+  await db.transaction(async (tx) => {
+    const result = await tx.execute(sql`
+      SELECT id, status
+      FROM shift_change_requests
+      WHERE status IN ('PENDING_RECIPIENT', 'PENDING_MANAGER')
+        AND expires_at IS NOT NULL
+        AND expires_at <= now()
+      FOR UPDATE SKIP LOCKED
+    `);
+    const stale = result.rows as Array<{ id: string; status: string }>;
+    if (stale.length === 0) return;
+    const ids = stale.map((row) => row.id);
+    await tx.update(shiftChangeRequestsTable).set({
+      status: "EXPIRED",
+      resolvedAt: new Date(),
+      updatedAt: new Date(),
+    }).where(inArray(shiftChangeRequestsTable.id, ids));
+    await tx.delete(shiftChangeLocksTable).where(inArray(shiftChangeLocksTable.requestId, ids));
+    await tx.insert(shiftChangeEventsTable).values(stale.map((row) => ({
+      requestId: row.id,
+      actorId: null,
+      action: "EXPIRED",
+      previousStatus: row.status,
+      newStatus: "EXPIRED",
+      metadata: { source: "automatic_expiration" },
+    })));
   });
 }
 
@@ -649,6 +676,7 @@ router.post("/planner/schedules/:id/archive", requireAuth, requirePermission("pl
 });
 
 router.get("/planner/shift-changes", requireAuth, requirePermission("shift_changes.view_own"), async (req, res) => {
+  await expireStaleShiftChanges();
   const rows = await db.select().from(shiftChangeRequestsTable)
     .where(or(
       eq(shiftChangeRequestsTable.requesterId, req.user!.id),
@@ -659,6 +687,7 @@ router.get("/planner/shift-changes", requireAuth, requirePermission("shift_chang
 });
 
 router.get("/planner/shift-changes/manage", requireAuth, requirePermission("shift_changes.manage"), async (req, res) => {
+  await expireStaleShiftChanges();
   const status = typeof req.query.status === "string" ? req.query.status : undefined;
   const rows = await db.select().from(shiftChangeRequestsTable)
     .where(status ? eq(shiftChangeRequestsTable.status, status) : undefined)
@@ -667,6 +696,7 @@ router.get("/planner/shift-changes/manage", requireAuth, requirePermission("shif
 });
 
 router.get("/planner/shift-changes/options/:shiftId", requireAuth, requirePermission("shift_changes.create"), async (req, res) => {
+  await expireStaleShiftChanges();
   const [shift] = await db.select().from(shiftsTable)
     .where(eq(shiftsTable.id, req.params.shiftId as string)).limit(1);
   if (!shift || shift.employeeId !== req.user!.id || !shift.scheduleId) {
@@ -682,6 +712,7 @@ router.get("/planner/shift-changes/options/:shiftId", requireAuth, requirePermis
     .where(and(
       eq(employeesTable.active, true),
       eq(employeesTable.empStatus, "active"),
+      schedule.workCenterId ? eq(employeesTable.workCenterId, schedule.workCenterId) : undefined,
     ))
     .orderBy(asc(employeesTable.name));
   const shifts = await db.select({
@@ -699,6 +730,7 @@ router.get("/planner/shift-changes/options/:shiftId", requireAuth, requirePermis
 });
 
 router.post("/planner/shift-changes", requireAuth, requirePermission("shift_changes.create"), async (req, res) => {
+  await expireStaleShiftChanges();
   const parsed = ShiftChangeBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "Solicitud de cambio inválida", issues: parsed.error.issues }); return;
@@ -724,6 +756,9 @@ router.post("/planner/shift-changes", requireAuth, requirePermission("shift_chan
       }
       if (!needsRecipient && data.recipientId) {
         throw new ShiftChangeError("UNEXPECTED_RECIPIENT", "Este tipo de solicitud se envía directamente al responsable.");
+      }
+      if (needsRecipient && Object.keys(data.proposal).length > 0) {
+        throw new ShiftChangeError("UNEXPECTED_PROPOSAL", "La cesión o intercambio conserva los horarios de los turnos.");
       }
       if (data.recipientId === req.user!.id) {
         throw new ShiftChangeError("SAME_EMPLOYEE", "No puedes enviarte un cambio a ti mismo.");
@@ -769,7 +804,7 @@ router.post("/planner/shift-changes", requireAuth, requirePermission("shift_chan
         counterpartSnapshot,
         proposal: data.proposal,
         requesterComment: data.comment ?? null,
-        expiresAt: data.expiresAt ? new Date(data.expiresAt) : null,
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1_000),
       }).returning();
 
       await tx.insert(shiftChangeLocksTable).values([
@@ -942,8 +977,13 @@ router.post("/planner/shift-changes/:id/approve", requireAuth, requirePermission
       }
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${request.scheduleId}, 0))`);
       const shiftIds = [request.originalShiftId, request.counterpartShiftId].filter((id): id is string => Boolean(id));
+      // A rare planner approval may briefly block time-record writes. This closes
+      // the clock-in race without changing the stable Fichaje write paths.
+      await tx.execute(sql`LOCK TABLE time_records IN SHARE ROW EXCLUSIVE MODE`);
       await tx.execute(sql`SELECT id FROM shifts WHERE id IN (${sqlParameterList(shiftIds)}) FOR UPDATE`);
       const currentShifts = await tx.select().from(shiftsTable).where(inArray(shiftsTable.id, shiftIds));
+      const persistedLocks = await tx.select().from(shiftChangeLocksTable)
+        .where(eq(shiftChangeLocksTable.requestId, requestId));
       const original = currentShifts.find((shift) => shift.id === request.originalShiftId);
       const counterpart = request.counterpartShiftId
         ? currentShifts.find((shift) => shift.id === request.counterpartShiftId)
@@ -956,6 +996,12 @@ router.post("/planner/shift-changes/:id/approve", requireAuth, requirePermission
       if (!shiftVersionMatches(originalSnapshot, toShiftSnapshot(original))
         || (counterpartSnapshot && counterpart && !shiftVersionMatches(counterpartSnapshot, toShiftSnapshot(counterpart)))) {
         throw new ShiftChangeError("SHIFT_CHANGED", "El turno cambió después de crear la solicitud. Crea una nueva solicitud.");
+      }
+      if (persistedLocks.length !== shiftIds.length || persistedLocks.some((lock) => {
+        const current = currentShifts.find((shift) => shift.id === lock.shiftId);
+        return !current || lock.expectedUpdatedAt.getTime() !== current.updatedAt.getTime();
+      })) {
+        throw new ShiftChangeError("SHIFT_CHANGED", "El bloqueo del turno ya no coincide con su versión actual.");
       }
       const linkedRecords = await tx.select({ id: timeRecordsTable.id }).from(timeRecordsTable)
         .where(inArray(timeRecordsTable.plannedShiftId, shiftIds)).limit(1);
