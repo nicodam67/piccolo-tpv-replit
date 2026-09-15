@@ -19,7 +19,6 @@ import {
 import { requireAuth, requirePermission } from "../middlewares/auth";
 import {
   canPublish,
-  comparePlannedWithClock,
   generateSchedule,
   type PlannedAssignment,
   type PlannerEmployee,
@@ -75,7 +74,15 @@ const ProfileBody = z.object({
   minRestMinutes: z.number().int().min(0).max(2_880).default(720),
   allowsSplitShift: z.boolean().default(false),
   workingDays: z.array(z.number().int().min(0).max(6)).min(1),
-  preferredWindows: z.array(z.record(z.string(), z.unknown())).default([]),
+  preferredWindows: z.array(z.object({
+    type: z.literal("PREFERRED"),
+    date: DateString.nullable().optional(),
+    dayOfWeek: z.number().int().min(0).max(6).nullable().optional(),
+    startTime: TimeString.nullable().optional(),
+    endTime: TimeString.nullable().optional(),
+    validFrom: DateString.nullable().optional(),
+    validTo: DateString.nullable().optional(),
+  })).default([]),
   restrictions: z.record(z.string(), z.unknown()).default({}),
 });
 
@@ -103,7 +110,7 @@ async function loadScheduleContext(scheduleId: string) {
     .limit(1);
   if (!schedule) return null;
 
-  const [requirements, employeeRows, profiles, availability, absences, positionLinks, shiftRows] = await Promise.all([
+  const [requirements, employeeRows, profiles, availability, absences, positionLinks, shiftRows, constraintShiftRows] = await Promise.all([
     db.select({
       id: staffingRequirementsTable.id,
       date: staffingRequirementsTable.requirementDate,
@@ -121,7 +128,10 @@ async function loadScheduleContext(scheduleId: string) {
       name: employeesTable.name,
       primaryPositionId: employeesTable.positionId,
       weeklyHours: employeesTable.weeklyHours,
-    }).from(employeesTable).where(eq(employeesTable.active, true)),
+    }).from(employeesTable).where(and(
+      eq(employeesTable.active, true),
+      schedule.workCenterId ? eq(employeesTable.workCenterId, schedule.workCenterId) : undefined,
+    )),
     db.select().from(employeePlanningProfilesTable),
     db.select().from(employeeAvailabilityTable)
       .where(or(
@@ -151,6 +161,24 @@ async function loadScheduleContext(scheduleId: string) {
     }).from(shiftsTable)
       .innerJoin(employeesTable, eq(shiftsTable.employeeId, employeesTable.id))
       .where(eq(shiftsTable.scheduleId, scheduleId))
+      .orderBy(asc(shiftsTable.shiftDate), asc(shiftsTable.startTime)),
+    db.select({
+      id: shiftsTable.id,
+      employeeId: shiftsTable.employeeId,
+      employeeName: employeesTable.name,
+      requirementId: shiftsTable.requirementId,
+      positionId: shiftsTable.positionId,
+      date: shiftsTable.shiftDate,
+      startTime: shiftsTable.startTime,
+      endTime: shiftsTable.endTime,
+      origin: shiftsTable.origin,
+      notes: shiftsTable.notes,
+    }).from(shiftsTable)
+      .innerJoin(employeesTable, eq(shiftsTable.employeeId, employeesTable.id))
+      .where(and(
+        gte(shiftsTable.shiftDate, schedule.dateFrom),
+        lte(shiftsTable.shiftDate, schedule.dateTo),
+      ))
       .orderBy(asc(shiftsTable.shiftDate), asc(shiftsTable.startTime)),
   ]);
 
@@ -182,9 +210,11 @@ async function loadScheduleContext(scheduleId: string) {
     };
   });
   const needs = requirements as StaffingNeed[];
-  const assignments = shiftRows
-    .filter((shift): shift is typeof shift & { positionId: string } => Boolean(shift.positionId))
-    .map((shift) => ({ ...shift, origin: shift.origin as PlannedAssignment["origin"] })) as PlannedAssignment[];
+  const assignments = constraintShiftRows.map((shift) => ({
+    ...shift,
+    positionId: shift.positionId ?? "",
+    origin: shift.origin as PlannedAssignment["origin"],
+  })) as PlannedAssignment[];
   return { schedule, requirements, employeeRows, profiles, availability, absences, positionLinks, shiftRows, employees, needs, assignments };
 }
 
@@ -207,7 +237,10 @@ async function replaceIssues(scheduleId: string, issues: PlannerIssue[]) {
 async function validateAndPersistIssues(scheduleId: string): Promise<PlannerIssue[] | null> {
   const context = await loadScheduleContext(scheduleId);
   if (!context) return null;
-  const issues = validateSchedule(context.employees, context.needs, context.assignments);
+  const currentAssignments = context.assignments.filter((assignment) =>
+    context.shiftRows.some((shift) => shift.id === assignment.id),
+  );
+  const issues = validateSchedule(context.employees, context.needs, currentAssignments, context.assignments);
   await replaceIssues(scheduleId, issues);
   return issues;
 }
@@ -248,9 +281,14 @@ router.get("/planner/schedules/:id", requireAuth, requirePermission("planner.vie
     res.status(404).json({ error: "Cuadrante no encontrado" }); return;
   }
   if (!manager) {
+    const positions = await db.select().from(hrPositionsTable)
+      .where(eq(hrPositionsTable.active, true)).orderBy(asc(hrPositionsTable.name));
     res.json({
       schedule: context.schedule,
+      requirements: context.requirements,
       shiftRows: context.shiftRows.filter((shift) => shift.employeeId === req.user!.id),
+      employeeRows: context.employeeRows.filter((employee) => employee.id === req.user!.id),
+      positions,
       issues: [],
     });
     return;
@@ -264,9 +302,14 @@ router.get("/planner/schedules/:id", requireAuth, requirePermission("planner.vie
 
 router.post("/planner/schedules/:id/requirements", requireAuth, requirePermission("planner.manage"), async (req, res) => {
   const scheduleId = req.params.id as string;
-  if (!await isDraft(scheduleId)) { res.status(409).json({ error: "Solo se pueden modificar borradores" }); return; }
+  const [schedule] = await db.select().from(planningSchedulesTable)
+    .where(eq(planningSchedulesTable.id, scheduleId)).limit(1);
+  if (schedule?.status !== "DRAFT") { res.status(409).json({ error: "Solo se pueden modificar borradores" }); return; }
   const parsed = RequirementBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: "Necesidad inválida", issues: parsed.error.issues }); return; }
+  if (parsed.data.requirementDate < schedule.dateFrom || parsed.data.requirementDate > schedule.dateTo) {
+    res.status(400).json({ error: "La necesidad debe estar dentro del periodo del cuadrante" }); return;
+  }
   const [requirement] = await db.insert(staffingRequirementsTable).values({
     scheduleId,
     ...parsed.data,
@@ -282,7 +325,12 @@ router.put("/planner/requirements/:id", requireAuth, requirePermission("planner.
   const [existing] = await db.select().from(staffingRequirementsTable)
     .where(eq(staffingRequirementsTable.id, req.params.id as string)).limit(1);
   if (!existing) { res.status(404).json({ error: "Necesidad no encontrada" }); return; }
-  if (!await isDraft(existing.scheduleId)) { res.status(409).json({ error: "Solo se pueden modificar borradores" }); return; }
+  const [schedule] = await db.select().from(planningSchedulesTable)
+    .where(eq(planningSchedulesTable.id, existing.scheduleId)).limit(1);
+  if (schedule?.status !== "DRAFT") { res.status(409).json({ error: "Solo se pueden modificar borradores" }); return; }
+  if (parsed.data.requirementDate < schedule.dateFrom || parsed.data.requirementDate > schedule.dateTo) {
+    res.status(400).json({ error: "La necesidad debe estar dentro del periodo del cuadrante" }); return;
+  }
   const [updated] = await db.update(staffingRequirementsTable)
     .set({ ...parsed.data, updatedAt: new Date() })
     .where(eq(staffingRequirementsTable.id, req.params.id as string)).returning();
@@ -338,10 +386,13 @@ router.post("/planner/schedules/:id/generate", requireAuth, requirePermission("p
   if (!context) { res.status(404).json({ error: "Cuadrante no encontrado" }); return; }
   if (context.schedule.status !== "DRAFT") { res.status(409).json({ error: "Solo se pueden generar borradores" }); return; }
 
-  const manual = context.assignments.filter((assignment) => assignment.origin === "manual");
-  const result = generateSchedule(context.employees, context.needs, manual);
+  const existing = context.assignments.filter((assignment) =>
+    assignment.origin === "manual"
+    || !context.shiftRows.some((shift) => shift.id === assignment.id),
+  );
+  const result = generateSchedule(context.employees, context.needs, existing);
   await db.delete(shiftsTable).where(and(eq(shiftsTable.scheduleId, scheduleId), eq(shiftsTable.origin, "generated")));
-  const generated = result.assignments.filter((assignment) => assignment.origin === "generated");
+  const generated = result.assignments.filter((assignment) => assignment.origin === "generated" && !assignment.id);
   if (generated.length > 0) {
     await db.insert(shiftsTable).values(generated.map((assignment) => ({
       employeeId: assignment.employeeId,
@@ -355,18 +406,18 @@ router.post("/planner/schedules/:id/generate", requireAuth, requirePermission("p
       createdBy: req.user!.id,
     })));
   }
-  await replaceIssues(scheduleId, result.issues);
   await db.update(planningSchedulesTable).set({
     generatedAt: new Date(),
     generatedBy: req.user!.id,
     generationSource: "deterministic-v1",
     updatedAt: new Date(),
   }).where(eq(planningSchedulesTable.id, scheduleId));
+  const issues = await validateAndPersistIssues(scheduleId) ?? result.issues;
   await audit("planner_schedule_generated", req.user!.id, "planning_schedule", scheduleId, {
     assignments: generated.length,
-    issues: result.issues.length,
+    issues: issues.length,
   });
-  res.json({ generated: generated.length, issues: result.issues });
+  res.json({ generated: generated.length, issues });
 });
 
 router.post("/planner/schedules/:id/validate", requireAuth, requirePermission("planner.manage"), async (req, res) => {
@@ -377,9 +428,14 @@ router.post("/planner/schedules/:id/validate", requireAuth, requirePermission("p
 
 router.post("/planner/schedules/:id/assignments", requireAuth, requirePermission("planner.manage"), async (req, res) => {
   const scheduleId = req.params.id as string;
-  if (!await isDraft(scheduleId)) { res.status(409).json({ error: "Solo se pueden modificar borradores" }); return; }
+  const [schedule] = await db.select().from(planningSchedulesTable)
+    .where(eq(planningSchedulesTable.id, scheduleId)).limit(1);
+  if (schedule?.status !== "DRAFT") { res.status(409).json({ error: "Solo se pueden modificar borradores" }); return; }
   const parsed = AssignmentBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: "Turno inválido", issues: parsed.error.issues }); return; }
+  if (parsed.data.shiftDate < schedule.dateFrom || parsed.data.shiftDate > schedule.dateTo) {
+    res.status(400).json({ error: "El turno debe estar dentro del periodo del cuadrante" }); return;
+  }
   const [shift] = await db.insert(shiftsTable).values({
     ...parsed.data,
     scheduleId,
@@ -396,7 +452,12 @@ router.put("/planner/assignments/:id", requireAuth, requirePermission("planner.m
   if (!parsed.success) { res.status(400).json({ error: "Turno inválido", issues: parsed.error.issues }); return; }
   const [before] = await db.select().from(shiftsTable).where(eq(shiftsTable.id, req.params.id as string)).limit(1);
   if (!before?.scheduleId) { res.status(404).json({ error: "Asignación no encontrada" }); return; }
-  if (!await isDraft(before.scheduleId)) { res.status(409).json({ error: "Solo se pueden modificar borradores" }); return; }
+  const [schedule] = await db.select().from(planningSchedulesTable)
+    .where(eq(planningSchedulesTable.id, before.scheduleId)).limit(1);
+  if (schedule?.status !== "DRAFT") { res.status(409).json({ error: "Solo se pueden modificar borradores" }); return; }
+  if (parsed.data.shiftDate < schedule.dateFrom || parsed.data.shiftDate > schedule.dateTo) {
+    res.status(400).json({ error: "El turno debe estar dentro del periodo del cuadrante" }); return;
+  }
   const [shift] = await db.update(shiftsTable).set({
     ...parsed.data,
     origin: "manual",
@@ -447,7 +508,7 @@ router.post("/planner/schedules/:id/archive", requireAuth, requirePermission("pl
   res.json(schedule);
 });
 
-router.get("/planner/schedules/:id/reconciliation", requireAuth, requirePermission("planner.view"), async (req, res) => {
+router.get("/planner/schedules/:id/reconciliation", requireAuth, requirePermission("timeclock.manage"), async (req, res) => {
   const scheduleId = req.params.id as string;
   const rows = await db.select({
     shiftId: shiftsTable.id,
@@ -460,19 +521,7 @@ router.get("/planner/schedules/:id/reconciliation", requireAuth, requirePermissi
   }).from(shiftsTable)
     .leftJoin(timeRecordsTable, eq(timeRecordsTable.plannedShiftId, shiftsTable.id))
     .where(eq(shiftsTable.scheduleId, scheduleId));
-  res.json(rows.map((row) => ({
-    ...row,
-    comparison: row.clockIn && row.clockOut
-      ? comparePlannedWithClock({
-          id: row.shiftId,
-          employeeId: row.employeeId,
-          positionId: "",
-          date: row.date,
-          startTime: row.startTime,
-          endTime: row.endTime,
-        }, row.clockIn, row.clockOut)
-      : null,
-  })));
+  res.json(rows);
 });
 
 export default router;

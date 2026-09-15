@@ -270,7 +270,7 @@ function WeekView({ context, days, onPrevious, onNext, onToday, onEdit, onAdd, o
                     </div>
                   ))}
                   {shifts.map((shift) => (
-                    <button key={shift.id} onClick={() => onEdit(shift)} className="w-full rounded-lg border border-teal-500/20 bg-teal-500/10 p-2 text-left hover:border-teal-500/50">
+                    <button key={shift.id} disabled={context.schedule.status !== "DRAFT"} onClick={() => onEdit(shift)} className="w-full rounded-lg border border-teal-500/20 bg-teal-500/10 p-2 text-left enabled:hover:border-teal-500/50 disabled:cursor-default">
                       <div className="truncate text-xs font-semibold text-teal-400">{shift.employeeName}</div>
                       <div className="mt-0.5 text-xs text-muted-foreground">{shift.startTime}–{shift.endTime}</div>
                       <div className="mt-1 text-[10px] uppercase text-muted-foreground/70">{shift.origin === "generated" ? "Automático" : "Manual"}</div>

@@ -330,12 +330,13 @@ export function validateSchedule(
   employees: PlannerEmployee[],
   needs: StaffingNeed[],
   assignments: PlannedAssignment[],
+  constraintAssignments: PlannedAssignment[] = assignments,
 ): PlannerIssue[] {
   const byEmployee = new Map(employees.map((employee) => [employee.id, employee]));
   const issues = assignments.flatMap((assignment) => {
     const employee = byEmployee.get(assignment.employeeId);
     return employee
-      ? validateAssignment(employee, assignment, assignments)
+      ? validateAssignment(employee, assignment, constraintAssignments)
       : [{
           code: "UNAVAILABLE" as const,
           employeeId: assignment.employeeId,

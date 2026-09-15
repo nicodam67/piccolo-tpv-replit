@@ -72,6 +72,7 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     'reports.view',
     'discounts.apply',
     'crm.view',
+    'planner.view', 'planner.manage',
   ],
   waiter: [
     'tables.view',
