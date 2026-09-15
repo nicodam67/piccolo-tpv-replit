@@ -26,7 +26,7 @@ test("manager reviews an explainable staffing-needs proposal", async ({ page }) 
   await expect(page.getByRole("heading", { name: "Propuesta de necesidades" })).toBeVisible();
   await expect(page.getByText(/tickets históricos/)).toBeVisible();
   await expect(page.getByText("Demanda estimada")).toBeVisible();
-  await expect(page.getByText("Asignables")).toBeVisible();
+  await expect(page.getByRole("columnheader", { name: "Asignables" })).toBeVisible();
   await expect(page.getByText(/Déficit/).first()).toBeVisible();
   await expect(page.getByText(/Base:/).first()).toBeVisible();
   await expect(page.getByText(/Histórico:/).first()).toBeVisible();
