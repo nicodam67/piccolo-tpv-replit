@@ -344,8 +344,6 @@ router.put(
   requireRole("admin", "manager", "encargado"),
   async (req, res): Promise<void> => {
     const id = req.params.id as string;
-    const parsed = ShiftBody.partial().safeParse(req.body);
-    if (!parsed.success) { res.status(400).json({ error: "Datos inválidos" }); return; }
     const user = req.user!;
 
     const existing = await db
@@ -508,6 +506,8 @@ router.put(
   requireRole("admin", "manager", "encargado"),
   async (req, res): Promise<void> => {
     const id = req.params.id as string;
+    const parsed = ShiftBody.partial().safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: "Datos inválidos" }); return; }
     const [existing] = await db.select({
       scheduleId: shiftsTable.scheduleId,
       employeeId: shiftsTable.employeeId,
