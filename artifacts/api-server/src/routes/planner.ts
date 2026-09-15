@@ -44,6 +44,7 @@ import {
   type ShiftChangeStatus,
   type ShiftSnapshot,
 } from "../lib/shift-change";
+import { postgresErrorCode, sqlParameterList } from "../lib/postgres";
 
 const router: IRouter = Router();
 const DateString = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -796,7 +797,7 @@ router.post("/planner/shift-changes", requireAuth, requirePermission("shift_chan
     if (error instanceof ShiftChangeError) {
       res.status(error.code === "FOREIGN_SHIFT" ? 403 : 409).json({ error: error.message, code: error.code }); return;
     }
-    if ((error as { code?: string }).code === "23505") {
+    if (postgresErrorCode(error) === "23505") {
       res.status(409).json({ error: "Ya existe una solicitud activa sobre uno de estos turnos.", code: "SHIFT_LOCKED" }); return;
     }
     throw error;
@@ -941,7 +942,7 @@ router.post("/planner/shift-changes/:id/approve", requireAuth, requirePermission
       }
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${request.scheduleId}, 0))`);
       const shiftIds = [request.originalShiftId, request.counterpartShiftId].filter((id): id is string => Boolean(id));
-      await tx.execute(sql`SELECT id FROM shifts WHERE id = ANY(${shiftIds}::uuid[]) FOR UPDATE`);
+      await tx.execute(sql`SELECT id FROM shifts WHERE id IN (${sqlParameterList(shiftIds)}) FOR UPDATE`);
       const currentShifts = await tx.select().from(shiftsTable).where(inArray(shiftsTable.id, shiftIds));
       const original = currentShifts.find((shift) => shift.id === request.originalShiftId);
       const counterpart = request.counterpartShiftId
