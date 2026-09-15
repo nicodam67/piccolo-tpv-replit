@@ -742,12 +742,8 @@ router.get("/planner/planning-employees", requireAuth, requirePermission("planne
     )).orderBy(asc(employeesTable.name));
   const employeeIds = employees.map((employee) => employee.id);
   const [availability, profiles, settings, positions] = await Promise.all([
-    employeeIds.length
-      ? db.select().from(employeeAvailabilityTable).where(inArray(employeeAvailabilityTable.employeeId, employeeIds))
-      : Promise.resolve([]),
-    employeeIds.length
-      ? db.select().from(employeePlanningProfilesTable).where(inArray(employeePlanningProfilesTable.employeeId, employeeIds))
-      : Promise.resolve([]),
+    db.select().from(employeeAvailabilityTable).where(inArray(employeeAvailabilityTable.employeeId, employeeIds)),
+    db.select().from(employeePlanningProfilesTable).where(inArray(employeePlanningProfilesTable.employeeId, employeeIds)),
     db.select({ timezone: fichajeSettingsTable.timezone }).from(fichajeSettingsTable).limit(1),
     db.select({ id: hrPositionsTable.id, name: hrPositionsTable.name })
       .from(hrPositionsTable).where(eq(hrPositionsTable.active, true)).orderBy(asc(hrPositionsTable.name)),
@@ -1007,26 +1003,20 @@ router.get("/planner/availability/team", requireAuth, requirePermission("planner
     )).orderBy(asc(employeesTable.name));
   const employeeIds = employees.map((employee) => employee.id);
   const [rules, absences, requests, settings] = await Promise.all([
-    employeeIds.length
-      ? db.select().from(employeeAvailabilityTable).where(inArray(employeeAvailabilityTable.employeeId, employeeIds))
-      : Promise.resolve([]),
-    employeeIds.length
-      ? db.select().from(absencesTable).where(and(
+    db.select().from(employeeAvailabilityTable).where(inArray(employeeAvailabilityTable.employeeId, employeeIds)),
+    db.select().from(absencesTable).where(and(
           inArray(absencesTable.employeeId, employeeIds),
           eq(absencesTable.status, "approved"),
           gte(absencesTable.absenceDate, dates[0]!),
           lte(absencesTable.absenceDate, dates[6]!),
-        ))
-      : Promise.resolve([]),
-    employeeIds.length
-      ? db.select().from(hrEmployeeRequestsTable).where(and(
+        )),
+    db.select().from(hrEmployeeRequestsTable).where(and(
           inArray(hrEmployeeRequestsTable.employeeId, employeeIds),
           eq(hrEmployeeRequestsTable.status, "approved"),
           inArray(hrEmployeeRequestsTable.requestType, ["vacation", "absence"]),
           lte(hrEmployeeRequestsTable.dateFrom, dates[6]!),
           gte(hrEmployeeRequestsTable.dateTo, dates[0]!),
-        ))
-      : Promise.resolve([]),
+        )),
     db.select({ timezone: fichajeSettingsTable.timezone }).from(fichajeSettingsTable).limit(1),
   ]);
   res.json({
