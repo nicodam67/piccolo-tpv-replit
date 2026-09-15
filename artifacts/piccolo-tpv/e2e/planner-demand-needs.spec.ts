@@ -59,7 +59,7 @@ test("configured reservation demand becomes an applied need and generated assign
         workCenterId: centerId,
         positionId,
         departmentId: null,
-        dayOfWeek: 5,
+        dayOfWeek: 3,
         startTime: "16:00",
         endTime: "18:00",
         validFrom: "2027-03-01",
@@ -84,7 +84,7 @@ test("configured reservation demand becomes an applied need and generated assign
     const reservationResponse = await request.post(`${API}/reservations`, {
       headers,
       data: {
-        fecha: "2027-03-05",
+        fecha: "2027-03-03",
         hora: "16:30",
         nombre: `Reserva E2E ${marker}`,
         personas: 4,
@@ -115,7 +115,7 @@ test("configured reservation demand becomes an applied need and generated assign
     const proposal = await calculated.json();
     expect(proposal.items).toEqual([
       expect.objectContaining({
-        requirementDate: "2027-03-05",
+        requirementDate: "2027-03-03",
         reservationGuests: 4,
         suggestedCount: 1,
       }),
@@ -133,7 +133,7 @@ test("configured reservation demand becomes an applied need and generated assign
       expect.objectContaining({ source: "demand-v1", requiredCount: 1 }),
     ]);
     expect(context.shiftRows).toEqual([
-      expect.objectContaining({ date: "2027-03-05", positionId }),
+      expect.objectContaining({ date: "2027-03-03", positionId }),
     ]);
   } finally {
     if (ruleId) await request.delete(`${API}/planner/demand-rules/${ruleId}`, { headers });
