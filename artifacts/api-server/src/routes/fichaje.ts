@@ -12,8 +12,9 @@ import {
   fichajeSettingsTable,
   nfcCardsTable,
   tabletDevicesTable,
+  planningSchedulesTable,
 } from "@workspace/db";
-import { eq, and, gte, lte, desc, asc, isNull, isNotNull } from "drizzle-orm";
+import { eq, and, gte, lte, desc, asc, isNull, isNotNull, or } from "drizzle-orm";
 import * as crypto from "node:crypto";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { idempotency } from "../middlewares/idempotency";
@@ -368,9 +369,16 @@ router.get("/fichaje/shifts", requireAuth, async (req, res): Promise<void> => {
   const user = req.user!;
   const { from, to, employeeId } = req.query as Record<string, string>;
   const isManager = ["admin", "manager", "encargado"].includes(user.role);
-  const targetId = isManager && employeeId ? employeeId : user.id;
-
-  const conditions = [eq(shiftsTable.employeeId, targetId)];
+  const conditions = [];
+  if (!isManager) {
+    conditions.push(eq(shiftsTable.employeeId, user.id));
+    conditions.push(or(
+      isNull(shiftsTable.scheduleId),
+      eq(planningSchedulesTable.status, "PUBLISHED"),
+    )!);
+  } else if (employeeId) {
+    conditions.push(eq(shiftsTable.employeeId, employeeId));
+  }
   if (from) conditions.push(gte(shiftsTable.shiftDate, from));
   if (to) conditions.push(lte(shiftsTable.shiftDate, to));
 
@@ -386,10 +394,15 @@ router.get("/fichaje/shifts", requireAuth, async (req, res): Promise<void> => {
       splitStartTime: shiftsTable.splitStartTime,
       splitEndTime: shiftsTable.splitEndTime,
       notes: shiftsTable.notes,
+      scheduleId: shiftsTable.scheduleId,
+      scheduleStatus: planningSchedulesTable.status,
+      positionId: shiftsTable.positionId,
+      origin: shiftsTable.origin,
     })
     .from(shiftsTable)
     .innerJoin(employeesTable, eq(shiftsTable.employeeId, employeesTable.id))
-    .where(and(...conditions))
+    .leftJoin(planningSchedulesTable, eq(shiftsTable.scheduleId, planningSchedulesTable.id))
+    .where(conditions.length ? and(...conditions) : undefined)
     .orderBy(asc(shiftsTable.shiftDate));
 
   res.json(shifts);

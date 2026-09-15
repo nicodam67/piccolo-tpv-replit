@@ -94,6 +94,15 @@ export const PERMISSION_CATALOG: {
     ],
   },
   {
+    module: "planner",
+    label: "Planificador de personal",
+    actions: [
+      { action: "view", label: "Ver cuadrantes publicados", defaultRoles: ["admin", "manager", "encargado", "waiter", "cashier", "kitchen", "employee"] },
+      { action: "manage", label: "Crear, generar y editar borradores", defaultRoles: ["admin", "manager", "encargado"] },
+      { action: "publish", label: "Publicar cuadrantes", defaultRoles: ["admin", "manager"] },
+    ],
+  },
+  {
     module: "reports",
     label: "Informes",
     actions: [
@@ -113,7 +122,7 @@ export const PERMISSION_CATALOG: {
   },
 ];
 
-const ROLES = ["admin", "manager", "encargado", "waiter", "cashier"] as const;
+const ROLES = ["admin", "manager", "encargado", "waiter", "cashier", "kitchen", "employee"] as const;
 
 // ─── GET /admin/permissions/catalog ──────────────────────────────────────────
 router.get("/admin/permissions/catalog", requireAuth, requireRole("admin", "manager"), (_req, res) => {

@@ -25,6 +25,8 @@ export const PERMISSIONS = {
   stock:     { manage: 'stock.manage'                              },
   employees: { manage: 'employees.manage'                          },
   timeclock: { manage: 'timeclock.manage'                          },
+  planner:   { view: 'planner.view', manage: 'planner.manage',
+               publish: 'planner.publish'                          },
   reports:   { view: 'reports.view'                                },
   settings:  { manage: 'settings.manage'                           },
   users:     { manage: 'users.manage'                              },
@@ -51,7 +53,9 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     'stock.manage',
     'employees.manage',
     'timeclock.manage',
+    'planner.view', 'planner.manage', 'planner.publish',
     'reports.view',
+    'planner.view', 'planner.manage',
     'settings.manage',
     'discounts.apply',
     'delivery.manage',
@@ -75,7 +79,11 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     'kds.view',
     'payments.create',
     'cash.view',
+    'planner.view',
   ],
+  cashier: ['planner.view'],
+  kitchen: ['planner.view'],
+  employee: ['planner.view'],
 };
 
 /**

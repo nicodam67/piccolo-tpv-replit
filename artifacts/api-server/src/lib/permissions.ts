@@ -19,6 +19,8 @@ export const PERMISSIONS = {
   suppliers: { manage: 'suppliers.manage'                           },
   employees: { manage: 'employees.manage'                          },
   timeclock: { manage: 'timeclock.manage'                          },
+  planner:   { view: 'planner.view', manage: 'planner.manage',
+               publish: 'planner.publish'                          },
   reports:   { view: 'reports.view'                                },
   settings:  { manage: 'settings.manage'                           },
   users:     { manage: 'users.manage'                              },
@@ -46,6 +48,7 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     'stock.view', 'suppliers.manage',
     'employees.manage',
     'timeclock.manage',
+    'planner.view', 'planner.manage', 'planner.publish',
     'reports.view',
     'settings.manage',
     'discounts.apply', 'discounts.delete', 'comps.apply', 'taxes.manage',
@@ -62,6 +65,7 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     'invoices.create',
     'stock.view',
     'timeclock.manage',
+    'planner.view', 'planner.manage',
     'reports.view',
     'discounts.apply',
     'crm.view',
@@ -72,16 +76,20 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     'kds.view',
     'payments.create',
     'cash.view',
+    'planner.view',
   ],
   cashier: [
     'tables.view',
     'orders.create', 'orders.modify',
     'payments.create',
     'cash.open', 'cash.view',
+    'planner.view',
   ],
   kitchen: [
     'kds.view', 'kds.manage',
+    'planner.view',
   ],
+  employee: ['planner.view'],
 };
 
 export function hasPermission(role: string | undefined | null, permission: string): boolean {
