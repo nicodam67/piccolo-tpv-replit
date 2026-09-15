@@ -4,6 +4,13 @@
 ALTER TABLE reservations
   ADD COLUMN IF NOT EXISTS work_center_id uuid REFERENCES hr_work_centers(id) ON DELETE SET NULL;
 
+UPDATE reservations AS reservation
+SET work_center_id = employee.work_center_id
+FROM employees AS employee
+WHERE reservation.work_center_id IS NULL
+  AND reservation.created_by = employee.id
+  AND employee.work_center_id IS NOT NULL;
+
 CREATE TABLE IF NOT EXISTS staffing_demand_rules (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   rule_group_id uuid NOT NULL DEFAULT gen_random_uuid(),
