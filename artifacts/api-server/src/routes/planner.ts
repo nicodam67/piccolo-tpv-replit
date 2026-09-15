@@ -407,7 +407,18 @@ function addIsoDays(date: string, days: number): string {
 }
 
 function stableHash(value: unknown): string {
-  return createHash("sha256").update(JSON.stringify(value)).digest("hex");
+  const canonicalize = (input: unknown): unknown => {
+    if (Array.isArray(input)) return input.map(canonicalize);
+    if (input && typeof input === "object") {
+      return Object.fromEntries(
+        Object.entries(input as Record<string, unknown>)
+          .sort(([left], [right]) => left.localeCompare(right))
+          .map(([key, nested]) => [key, canonicalize(nested)]),
+      );
+    }
+    return input;
+  };
+  return createHash("sha256").update(JSON.stringify(canonicalize(value))).digest("hex");
 }
 
 async function hasDemandRuleConflict(
