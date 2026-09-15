@@ -139,7 +139,7 @@ export default function StaffPlanner() {
   async function loadSchedules(preferredId?: string) {
     const rows = await api.get<Schedule[]>("/api/planner/schedules");
     setSchedules(rows);
-    const nextId = preferredId ?? selectedId ?? rows[0]?.id ?? "";
+    const nextId = preferredId || selectedId || rows[0]?.id || "";
     if (nextId) setSelectedId(nextId);
     else setLoading(false);
   }

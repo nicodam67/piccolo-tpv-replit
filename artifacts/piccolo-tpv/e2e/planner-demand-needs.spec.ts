@@ -13,6 +13,7 @@ test("manager reviews an explainable staffing-needs proposal", async ({ page }) 
   expect(login.status()).toBe(200);
 
   await page.goto(`${APP}/personal/planificador`);
+  await page.getByLabel("Cuadrante seleccionado").selectOption({ label: "Demanda supersede E2E" });
   await page.getByRole("button", { name: "Necesidades" }).click();
   await expect(page.getByRole("button", { name: "Calcular necesidades" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Necesidad manual" })).toBeVisible();
