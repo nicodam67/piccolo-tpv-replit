@@ -1832,7 +1832,7 @@ router.post("/planner/need-proposals/:id/apply", requireAuth, requirePermission(
       eq(staffingDemandRulesTable.workCenterId, lockedProposal.workCenterId),
       eq(staffingDemandRulesTable.active, true),
     ))).map(mapDemandRule).sort((left, right) => left.id.localeCompare(right.id));
-    if (stableHash(currentRules) !== lockedProposal.configurationHash) {
+    if (stableHash(currentRules) !== stableHash(lockedProposal.rulesSnapshot)) {
       throw new ShiftChangeError(
         "PROPOSAL_STALE",
         "Las reglas de demanda cambiaron; recalcula la propuesta antes de aplicarla.",
