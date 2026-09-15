@@ -59,6 +59,15 @@ test("configured reservation demand becomes an applied need and generated assign
   let reservationId = "";
 
   try {
+    const occupiedDates = new Set(
+      (await request.get(`${API}/fichaje/shifts`, { headers }).then((response) => response.json()) as Array<{ shiftDate: string }>)
+        .map((shift) => shift.shiftDate),
+    );
+    const candidate = new Date("2027-03-03T12:00:00Z");
+    while (occupiedDates.has(candidate.toISOString().slice(0, 10))) {
+      candidate.setUTCDate(candidate.getUTCDate() + 7);
+    }
+    const targetDate = candidate.toISOString().slice(0, 10);
     const ruleResponse = await request.post(`${API}/planner/demand-rules`, {
       headers,
       data: {
@@ -69,8 +78,8 @@ test("configured reservation demand becomes an applied need and generated assign
         dayOfWeek: 3,
         startTime: "16:00",
         endTime: "18:00",
-        validFrom: "2027-03-01",
-        validTo: "2027-03-07",
+        validFrom: targetDate,
+        validTo: targetDate,
         baseCount: 0,
         historicalWeeks: 1,
         minimumComparableWeeks: 1,
@@ -91,7 +100,7 @@ test("configured reservation demand becomes an applied need and generated assign
     const reservationResponse = await request.post(`${API}/reservations`, {
       headers,
       data: {
-        fecha: "2027-03-03",
+        fecha: targetDate,
         hora: "16:30",
         nombre: `Reserva E2E ${marker}`,
         personas: 4,
@@ -106,8 +115,8 @@ test("configured reservation demand becomes an applied need and generated assign
       headers,
       data: {
         name: `Demanda Playwright ${marker}`,
-        dateFrom: "2027-03-03",
-        dateTo: "2027-03-03",
+        dateFrom: targetDate,
+        dateTo: targetDate,
         workCenterId: centerId,
       },
     });
@@ -122,7 +131,7 @@ test("configured reservation demand becomes an applied need and generated assign
     const proposal = await calculated.json();
     expect(proposal.items).toEqual([
       expect.objectContaining({
-        requirementDate: "2027-03-03",
+        requirementDate: targetDate,
         reservationGuests: 4,
         suggestedCount: 1,
       }),
@@ -140,7 +149,7 @@ test("configured reservation demand becomes an applied need and generated assign
       expect.objectContaining({ source: "demand-v1", requiredCount: 1 }),
     ]);
     expect(context.shiftRows).toEqual([
-      expect.objectContaining({ date: "2027-03-03", positionId }),
+      expect.objectContaining({ date: targetDate, positionId }),
     ]);
   } finally {
     if (ruleId) await request.delete(`${API}/planner/demand-rules/${ruleId}`, { headers });
