@@ -566,6 +566,10 @@ router.get("/fichaje/absences", requireAuth, async (req, res): Promise<void> => 
   const { from, to, employeeId, status } = req.query as Record<string, string>;
   const isManager = ["admin", "manager", "encargado"].includes(user.role);
   const targetId = isManager && employeeId ? employeeId : user.id;
+  if (!await canManageEmployeeAtCenter(user, targetId)) {
+    res.status(403).json({ error: "El empleado no pertenece a tu centro de trabajo" });
+    return;
+  }
 
   const conditions = [eq(absencesTable.employeeId, targetId)];
   if (from) conditions.push(gte(absencesTable.absenceDate, from));
@@ -606,6 +610,10 @@ router.post("/fichaje/absences", requireAuth, async (req, res): Promise<void> =>
   const user = req.user!;
   const isManager = ["admin", "manager", "encargado"].includes(user.role);
   const employeeId = isManager ? parsed.data.employeeId : user.id;
+  if (!await canManageEmployeeAtCenter(user, employeeId)) {
+    res.status(403).json({ error: "El empleado no pertenece a tu centro de trabajo" });
+    return;
+  }
 
   const [absence] = await db.insert(absencesTable).values({ ...parsed.data, employeeId }).returning();
   await logAudit("absence_created", employeeId, user.id, "absence", absence.id);
@@ -619,6 +627,15 @@ router.put(
   async (req, res): Promise<void> => {
     const id = req.params.id as string;
     const { status } = req.body; // 'approved' | 'rejected'
+    if (!["approved", "rejected"].includes(status)) {
+      res.status(400).json({ error: "Estado de ausencia inválido" }); return;
+    }
+    const [existing] = await db.select({ employeeId: absencesTable.employeeId })
+      .from(absencesTable).where(eq(absencesTable.id, id)).limit(1);
+    if (!existing) { res.status(404).json({ error: "Ausencia no encontrada" }); return; }
+    if (!await canManageEmployeeAtCenter(req.user!, existing.employeeId)) {
+      res.status(403).json({ error: "El empleado no pertenece a tu centro de trabajo" }); return;
+    }
     const [updated] = await db
       .update(absencesTable)
       .set({ status, approvedBy: req.user!.id, approvedAt: new Date() })
@@ -638,6 +655,9 @@ router.delete(
     const id = req.params.id as string;
     const existing = await db.select().from(absencesTable).where(eq(absencesTable.id, id)).limit(1);
     if (!existing[0]) { res.status(404).json({ error: "Ausencia no encontrada" }); return; }
+    if (!await canManageEmployeeAtCenter(req.user!, existing[0].employeeId)) {
+      res.status(403).json({ error: "El empleado no pertenece a tu centro de trabajo" }); return;
+    }
     await db.delete(absencesTable).where(eq(absencesTable.id, id));
     res.json({ success: true });
   }
