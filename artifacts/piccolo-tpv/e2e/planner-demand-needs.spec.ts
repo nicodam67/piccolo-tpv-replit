@@ -99,8 +99,8 @@ test("configured reservation demand becomes an applied need and generated assign
       headers,
       data: {
         name: `Demanda Playwright ${marker}`,
-        dateFrom: "2027-03-01",
-        dateTo: "2027-03-07",
+        dateFrom: "2027-03-03",
+        dateTo: "2027-03-03",
         workCenterId: centerId,
       },
     });
