@@ -1828,6 +1828,16 @@ router.post("/planner/need-proposals/:id/apply", requireAuth, requirePermission(
     if (schedule?.status !== "DRAFT") {
       throw new ShiftChangeError("SCHEDULE_NOT_DRAFT", "Solo se aplican propuestas sobre borradores.");
     }
+    const currentRules = (await tx.select().from(staffingDemandRulesTable).where(and(
+      eq(staffingDemandRulesTable.workCenterId, lockedProposal.workCenterId),
+      eq(staffingDemandRulesTable.active, true),
+    ))).map(mapDemandRule).sort((left, right) => left.id.localeCompare(right.id));
+    if (stableHash(currentRules) !== lockedProposal.configurationHash) {
+      throw new ShiftChangeError(
+        "PROPOSAL_STALE",
+        "Las reglas de demanda cambiaron; recalcula la propuesta antes de aplicarla.",
+      );
+    }
     const [items, existingRequirements] = await Promise.all([
       tx.select().from(staffingNeedProposalItemsTable)
         .where(eq(staffingNeedProposalItemsTable.proposalId, proposalId)),
