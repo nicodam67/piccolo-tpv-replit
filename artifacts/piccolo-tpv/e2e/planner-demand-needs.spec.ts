@@ -13,7 +13,13 @@ test("manager reviews an explainable staffing-needs proposal", async ({ page }) 
   expect(login.status()).toBe(200);
 
   await page.goto(`${APP}/personal/planificador`);
-  await page.getByLabel("Cuadrante seleccionado").selectOption({ label: "Demanda supersede E2E" });
+  const schedules = await page.request.get(`${API}/planner/schedules`).then((response) => response.json());
+  const demandSchedule = schedules.find((schedule: { name: string }) => schedule.name === "Demanda supersede E2E");
+  expect(demandSchedule?.id).toBeTruthy();
+  await Promise.all([
+    page.waitForResponse((response) => response.url().endsWith(`/api/planner/schedules/${demandSchedule.id}`)),
+    page.getByLabel("Cuadrante seleccionado").selectOption(demandSchedule.id),
+  ]);
   await page.getByRole("button", { name: "Necesidades" }).click();
   await expect(page.getByRole("button", { name: "Calcular necesidades" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Necesidad manual" })).toBeVisible();
