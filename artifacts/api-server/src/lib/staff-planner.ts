@@ -138,7 +138,9 @@ export function validateAssignment(
 ): PlannerIssue[] {
   const issues: PlannerIssue[] = [];
   const ownAssignments = assignments.filter(
-    (item) => item.employeeId === employee.id && item.id !== assignment.id,
+    (item) => item.employeeId === employee.id
+      && item !== assignment
+      && (assignment.id === undefined || item.id !== assignment.id),
   );
 
   if (!employee.positionIds.includes(assignment.positionId)) {

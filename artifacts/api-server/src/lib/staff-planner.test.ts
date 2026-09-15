@@ -141,6 +141,27 @@ describe("generation, editing and publication", () => {
     expect(first.assignments[0]?.employeeId).toBe("a");
   });
 
+  it("does not assign one employee twice to the same staffing need", () => {
+    const result = generateSchedule([employee()], [{ ...need, requiredCount: 2 }]);
+    const persistedAssignments = result.assignments.map((item, index) => ({ ...item, id: `generated-${index}` }));
+    const validationIssues = validateSchedule(
+      [employee()],
+      [{ ...need, requiredCount: 2 }],
+      persistedAssignments,
+    );
+
+    expect(validationIssues.filter((issue) => issue.code === "OVERLAP")).toHaveLength(0);
+    expect(result.assignments).toHaveLength(1);
+    expect(result.assignments[0]?.employeeId).toBe("employee-a");
+    expect(result.issues).toEqual([
+      expect.objectContaining({
+        code: "UNCOVERED_NEED",
+        requirementId: need.id,
+        details: expect.objectContaining({ missing: 1 }),
+      }),
+    ]);
+  });
+
   it("revalidates an incompatible manual edit", () => {
     const edited = assignment({ id: "manual", positionId: "kitchen", origin: "manual" });
     const issues = validateSchedule([employee()], [{ ...need, positionId: "kitchen" }], [edited]);
