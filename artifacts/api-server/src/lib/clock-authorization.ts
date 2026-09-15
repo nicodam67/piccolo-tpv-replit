@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import { and, eq, gte, isNull } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@workspace/db";
 import {
   breaksTable,
@@ -9,6 +9,7 @@ import {
   tabletDevicesTable,
   timeRecordsTable,
 } from "@workspace/db";
+import { resolvePlannedShiftId } from "./planned-shift-link";
 
 export const CLOCK_ACTIONS = [
   "clock_in",
@@ -169,8 +170,6 @@ export async function consumeClockProof(input: {
     }
 
     const now = new Date();
-    const today = new Date(now);
-    today.setHours(0, 0, 0, 0);
     let entityType = "time_record";
     let entityId: string;
     let payload: Record<string, unknown>;
@@ -182,12 +181,12 @@ export async function consumeClockProof(input: {
         .where(and(
           eq(timeRecordsTable.employeeId, input.employeeId),
           isNull(timeRecordsTable.clockOut),
-          gte(timeRecordsTable.clockIn, today),
         ))
         .limit(1);
       if (existing) {
         throw new ClockAuthorizationError(409, "clock_in_already_open", "Acción de fichaje no disponible");
       }
+      const plannedShiftId = await resolvePlannedShiftId(tx, input.employeeId, now);
 
       const [record] = await tx
         .insert(timeRecordsTable)
@@ -196,6 +195,7 @@ export async function consumeClockProof(input: {
           clockIn: now,
           source: authorization.method,
           deviceId: input.deviceId,
+          plannedShiftId,
         })
         .returning();
       entityId = record.id;
@@ -207,7 +207,6 @@ export async function consumeClockProof(input: {
         .where(and(
           eq(timeRecordsTable.employeeId, input.employeeId),
           isNull(timeRecordsTable.clockOut),
-          gte(timeRecordsTable.clockIn, today),
         ))
         .limit(1)
         .for("update");

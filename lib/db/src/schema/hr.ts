@@ -37,6 +37,8 @@ export const hrWorkCentersTable = pgTable("hr_work_centers", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),
   address: text("address").notNull().default(""),
+  /** Optional IANA zone; falls back to the business Fichaje timezone. */
+  timezone: text("timezone"),
   active: boolean("active").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });

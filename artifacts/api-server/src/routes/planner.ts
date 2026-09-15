@@ -97,7 +97,7 @@ const AssignmentBody = z.object({
 });
 
 const AvailabilityBody = z.object({
-  availabilityType: z.enum(["AVAILABLE", "UNAVAILABLE", "PREFERRED", "UNDESIRED"]),
+  availabilityType: z.enum(["AVAILABLE", "UNAVAILABLE", "PREFERRED"]),
   availabilityDate: DateString.nullable().optional(),
   dayOfWeek: z.number().int().min(0).max(6).nullable().optional(),
   startTime: TimeString.nullable().optional(),
@@ -357,7 +357,18 @@ async function canManageDemandCenter(
   workCenterId: string,
 ): Promise<boolean> {
   if (actor.role === "admin") return true;
-  return actor.role === "manager" && await managerWorkCenter(actor.id) === workCenterId;
+  return ["manager", "encargado"].includes(actor.role)
+    && await managerWorkCenter(actor.id) === workCenterId;
+}
+
+async function canManageSchedule(
+  actor: { id: string; role: string },
+  schedule: { workCenterId: string | null },
+): Promise<boolean> {
+  if (actor.role === "admin") return true;
+  return ["manager", "encargado"].includes(actor.role)
+    && Boolean(schedule.workCenterId)
+    && await managerWorkCenter(actor.id) === schedule.workCenterId;
 }
 
 function mapDemandRule(rule: typeof staffingDemandRulesTable.$inferSelect): StaffingDemandRuleInput {
@@ -461,7 +472,7 @@ async function canManagePlanningEmployee(
   employeeId: string,
 ): Promise<boolean> {
   if (actor.role === "admin") return true;
-  if (actor.role !== "manager") return false;
+  if (!["manager", "encargado"].includes(actor.role)) return false;
   const [actorEmployee, targetEmployee] = await Promise.all([
     db.select({ workCenterId: employeesTable.workCenterId }).from(employeesTable)
       .where(eq(employeesTable.id, actor.id)).limit(1),
@@ -485,6 +496,7 @@ async function loadPlanningEmployee(employeeId: string) {
     workCenterId: employeesTable.workCenterId,
     departmentName: hrDepartmentsTable.name,
     workCenterName: hrWorkCentersTable.name,
+    workCenterTimezone: hrWorkCentersTable.timezone,
   }).from(employeesTable)
     .leftJoin(hrPositionsTable, eq(employeesTable.positionId, hrPositionsTable.id))
     .leftJoin(hrDepartmentsTable, eq(employeesTable.departmentId, hrDepartmentsTable.id))
@@ -548,7 +560,7 @@ async function loadPlanningEmployee(employeeId: string) {
       ...absences.map((absence) => ({ dateFrom: absence.date, dateTo: absence.date, type: absence.type })),
       ...requests,
     ],
-    timezone: settings[0]?.timezone ?? "UTC",
+    timezone: employee.workCenterTimezone ?? settings[0]?.timezone ?? "UTC",
     summary: {
       contractedWeeklyMinutes: employee.weeklyHours == null ? null : Math.round(Number(employee.weeklyHours) * 60),
       availableWeeklyMinutes: weeklyAvailableMinutes(availability.map((rule) => ({
@@ -745,18 +757,34 @@ async function validateAndPersistIssues(scheduleId: string): Promise<PlannerIssu
   return issues;
 }
 
-async function isDraft(scheduleId: string): Promise<boolean> {
-  const [schedule] = await db.select({ status: planningSchedulesTable.status })
-    .from(planningSchedulesTable)
-    .where(eq(planningSchedulesTable.id, scheduleId))
-    .limit(1);
-  return schedule?.status === "DRAFT";
-}
-
 router.get("/planner/schedules", requireAuth, requirePermission("planner.view"), async (req, res) => {
   const manager = ["admin", "manager", "encargado"].includes(req.user!.role);
+  if (!manager) {
+    const ownScheduleIds = [...new Set((await db.select({ scheduleId: shiftsTable.scheduleId })
+      .from(shiftsTable)
+      .where(and(
+        eq(shiftsTable.employeeId, req.user!.id),
+        sql`${shiftsTable.scheduleId} IS NOT NULL`,
+      ))).map((row) => row.scheduleId).filter((id): id is string => Boolean(id)))];
+    if (ownScheduleIds.length === 0) { res.json([]); return; }
+    const schedules = await db.select().from(planningSchedulesTable).where(and(
+      eq(planningSchedulesTable.status, "PUBLISHED"),
+      inArray(planningSchedulesTable.id, ownScheduleIds),
+    )).orderBy(asc(planningSchedulesTable.dateFrom));
+    res.json(schedules);
+    return;
+  }
+  const workCenterId = req.user!.role === "admin" || !manager
+    ? null
+    : await managerWorkCenter(req.user!.id);
   const schedules = await db.select().from(planningSchedulesTable)
-    .where(manager ? undefined : eq(planningSchedulesTable.status, "PUBLISHED"))
+    .where(req.user!.role === "admin"
+      ? undefined
+      : manager
+        ? workCenterId
+          ? eq(planningSchedulesTable.workCenterId, workCenterId)
+          : sql`false`
+        : eq(planningSchedulesTable.status, "PUBLISHED"))
     .orderBy(asc(planningSchedulesTable.dateFrom));
   res.json(schedules);
 });
@@ -764,8 +792,17 @@ router.get("/planner/schedules", requireAuth, requirePermission("planner.view"),
 router.post("/planner/schedules", requireAuth, requirePermission("planner.manage"), async (req, res) => {
   const parsed = ScheduleBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: "Datos de periodo inválidos", issues: parsed.error.issues }); return; }
+  let workCenterId = parsed.data.workCenterId ?? null;
+  if (req.user!.role !== "admin") {
+    const actorWorkCenterId = await managerWorkCenter(req.user!.id);
+    if (!actorWorkCenterId || (workCenterId && workCenterId !== actorWorkCenterId)) {
+      res.status(403).json({ error: "El cuadrante debe pertenecer a tu centro de trabajo" }); return;
+    }
+    workCenterId = actorWorkCenterId;
+  }
   const [schedule] = await db.insert(planningSchedulesTable).values({
     ...parsed.data,
+    workCenterId,
     status: "DRAFT",
     createdBy: req.user!.id,
   }).returning();
@@ -777,6 +814,9 @@ router.get("/planner/schedules/:id", requireAuth, requirePermission("planner.vie
   const context = await loadScheduleContext(req.params.id as string);
   if (!context) { res.status(404).json({ error: "Cuadrante no encontrado" }); return; }
   const manager = ["admin", "manager", "encargado"].includes(req.user!.role);
+  if (manager && !await canManageSchedule(req.user!, context.schedule)) {
+    res.status(404).json({ error: "Cuadrante no encontrado" }); return;
+  }
   if (!manager && context.schedule.status !== "PUBLISHED") {
     res.status(404).json({ error: "Cuadrante no encontrado" }); return;
   }
@@ -805,6 +845,9 @@ router.post("/planner/schedules/:id/requirements", requireAuth, requirePermissio
   const [schedule] = await db.select().from(planningSchedulesTable)
     .where(eq(planningSchedulesTable.id, scheduleId)).limit(1);
   if (schedule?.status !== "DRAFT") { res.status(409).json({ error: "Solo se pueden modificar borradores" }); return; }
+  if (!await canManageSchedule(req.user!, schedule)) {
+    res.status(403).json({ error: "No puedes modificar este cuadrante" }); return;
+  }
   const parsed = RequirementBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: "Necesidad inválida", issues: parsed.error.issues }); return; }
   if (parsed.data.requirementDate < schedule.dateFrom || parsed.data.requirementDate > schedule.dateTo) {
@@ -828,6 +871,9 @@ router.put("/planner/requirements/:id", requireAuth, requirePermission("planner.
   const [schedule] = await db.select().from(planningSchedulesTable)
     .where(eq(planningSchedulesTable.id, existing.scheduleId)).limit(1);
   if (schedule?.status !== "DRAFT") { res.status(409).json({ error: "Solo se pueden modificar borradores" }); return; }
+  if (!await canManageSchedule(req.user!, schedule)) {
+    res.status(403).json({ error: "No puedes modificar este cuadrante" }); return;
+  }
   if (parsed.data.requirementDate < schedule.dateFrom || parsed.data.requirementDate > schedule.dateTo) {
     res.status(400).json({ error: "La necesidad debe estar dentro del periodo del cuadrante" }); return;
   }
@@ -844,7 +890,12 @@ router.delete("/planner/requirements/:id", requireAuth, requirePermission("plann
   const [existing] = await db.select().from(staffingRequirementsTable)
     .where(eq(staffingRequirementsTable.id, req.params.id as string)).limit(1);
   if (!existing) { res.status(404).json({ error: "Necesidad no encontrada" }); return; }
-  if (!await isDraft(existing.scheduleId)) { res.status(409).json({ error: "Solo se pueden modificar borradores" }); return; }
+  const [schedule] = await db.select().from(planningSchedulesTable)
+    .where(eq(planningSchedulesTable.id, existing.scheduleId)).limit(1);
+  if (schedule?.status !== "DRAFT") { res.status(409).json({ error: "Solo se pueden modificar borradores" }); return; }
+  if (!await canManageSchedule(req.user!, schedule)) {
+    res.status(403).json({ error: "No puedes modificar este cuadrante" }); return;
+  }
   const [deleted] = await db.delete(staffingRequirementsTable)
     .where(eq(staffingRequirementsTable.id, req.params.id as string)).returning();
   if (!deleted) { res.status(404).json({ error: "Necesidad no encontrada" }); return; }
@@ -954,7 +1005,7 @@ router.get("/planner/planning-employees", requireAuth, requirePermission("planne
     db.select({ timezone: fichajeSettingsTable.timezone }).from(fichajeSettingsTable).limit(1),
     db.select({ id: hrPositionsTable.id, name: hrPositionsTable.name })
       .from(hrPositionsTable).where(eq(hrPositionsTable.active, true)).orderBy(asc(hrPositionsTable.name)),
-    db.select({ id: hrWorkCentersTable.id, name: hrWorkCentersTable.name })
+    db.select({ id: hrWorkCentersTable.id, name: hrWorkCentersTable.name, timezone: hrWorkCentersTable.timezone })
       .from(hrWorkCentersTable).where(eq(hrWorkCentersTable.active, true)).orderBy(asc(hrWorkCentersTable.name)),
   ]);
   res.json({
@@ -976,7 +1027,9 @@ router.get("/planner/planning-employees", requireAuth, requirePermission("planne
     })),
     positions,
     workCenters: workCenterId ? workCenters.filter((center) => center.id === workCenterId) : workCenters,
-    timezone: settings[0]?.timezone ?? "UTC",
+    timezone: workCenters.find((center) => center.id === workCenterId)?.timezone
+      ?? settings[0]?.timezone
+      ?? "UTC",
   });
 });
 
@@ -1223,7 +1276,7 @@ router.get("/planner/availability/team", requireAuth, requirePermission("planner
       workCenterId ? eq(employeesTable.workCenterId, workCenterId) : undefined,
     )).orderBy(asc(employeesTable.name));
   const employeeIds = employees.map((employee) => employee.id);
-  const [rules, absences, requests, settings] = await Promise.all([
+  const [rules, absences, requests, settings, workCenter] = await Promise.all([
     db.select().from(employeeAvailabilityTable).where(inArray(employeeAvailabilityTable.employeeId, employeeIds)),
     db.select().from(absencesTable).where(and(
           inArray(absencesTable.employeeId, employeeIds),
@@ -1239,10 +1292,12 @@ router.get("/planner/availability/team", requireAuth, requirePermission("planner
           gte(hrEmployeeRequestsTable.dateTo, dates[0]!),
         )),
     db.select({ timezone: fichajeSettingsTable.timezone }).from(fichajeSettingsTable).limit(1),
+    db.select({ timezone: hrWorkCentersTable.timezone }).from(hrWorkCentersTable)
+      .where(eq(hrWorkCentersTable.id, workCenterId!)).limit(1),
   ]);
   res.json({
     dates,
-    timezone: settings[0]?.timezone ?? "UTC",
+    timezone: workCenter[0]?.timezone ?? settings[0]?.timezone ?? "UTC",
     employees: employees.map((employee) => ({
       ...employee,
       days: dates.map((date) => {
@@ -1378,6 +1433,23 @@ router.post("/planner/schedules/:id/need-proposals/calculate", requireAuth, requ
   if (schedule.workCenterId && schedule.workCenterId !== parsed.data.workCenterId) {
     res.status(409).json({ error: "El cuadrante pertenece a otro centro" }); return;
   }
+  const centerBound = await db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT id FROM planning_schedules WHERE id = ${scheduleId} FOR UPDATE`);
+    const [locked] = await tx.select().from(planningSchedulesTable)
+      .where(eq(planningSchedulesTable.id, scheduleId)).limit(1);
+    if (locked?.status !== "DRAFT") return false;
+    if (locked.workCenterId && locked.workCenterId !== parsed.data.workCenterId) return false;
+    if (!locked.workCenterId) {
+      await tx.update(planningSchedulesTable).set({
+        workCenterId: parsed.data.workCenterId,
+        updatedAt: new Date(),
+      }).where(eq(planningSchedulesTable.id, scheduleId));
+    }
+    return true;
+  });
+  if (!centerBound) {
+    res.status(409).json({ error: "El cuadrante cambió mientras se iniciaba el cálculo" }); return;
+  }
 
   const ruleRows = await db.select().from(staffingDemandRulesTable).where(and(
     eq(staffingDemandRulesTable.workCenterId, parsed.data.workCenterId),
@@ -1387,15 +1459,16 @@ router.post("/planner/schedules/:id/need-proposals/calculate", requireAuth, requ
     res.status(409).json({ error: "Configura al menos una regla de demanda para este centro" }); return;
   }
   const rules = ruleRows.map(mapDemandRule).sort((left, right) => left.id.localeCompare(right.id));
-  const timezoneRows = await db.select({ timezone: fichajeSettingsTable.timezone })
-    .from(fichajeSettingsTable).limit(1);
-  const timezone = timezoneRows[0]?.timezone ?? "UTC";
+  const [centerTimezone, fallbackTimezone] = await Promise.all([
+    db.select({ timezone: hrWorkCentersTable.timezone }).from(hrWorkCentersTable)
+      .where(eq(hrWorkCentersTable.id, parsed.data.workCenterId)).limit(1),
+    db.select({ timezone: fichajeSettingsTable.timezone }).from(fichajeSettingsTable).limit(1),
+  ]);
+  const timezone = centerTimezone[0]?.timezone ?? fallbackTimezone[0]?.timezone ?? "UTC";
   const maximumWeeks = parsed.data.historicalWeeksOverride
     ?? Math.max(...rules.map((rule) => rule.historicalWeeks));
   const historyFrom = addIsoDays(schedule.dateFrom, -(maximumWeeks * 7));
   const historyTo = addIsoDays(schedule.dateTo, -7);
-  const historyScanFrom = addIsoDays(historyFrom, -1);
-  const historyScanToExclusive = addIsoDays(historyTo, 2);
 
   const [ticketResult, itemResult, reservations] = await Promise.all([
     db.execute(sql`
@@ -1408,12 +1481,13 @@ router.post("/planner/schedules/:id/need-proposals/calculate", requireAuth, requ
       FROM tickets AS ticket
       INNER JOIN orders AS "order" ON "order".id = ticket.order_id
       INNER JOIN employees AS employee ON employee.id = ticket.employee_id
-      WHERE employee.work_center_id = ${parsed.data.workCenterId}
+      WHERE (
+          ticket.work_center_id = ${parsed.data.workCenterId}
+          OR (ticket.work_center_id IS NULL AND employee.work_center_id = ${parsed.data.workCenterId})
+        )
         AND ticket.is_demo = false
-        AND ticket.issued_at >= ${historyScanFrom}::date
-        AND ticket.issued_at < ${historyScanToExclusive}::date
-        AND (ticket.issued_at AT TIME ZONE ${timezone})::date >= ${historyFrom}::date
-        AND (ticket.issued_at AT TIME ZONE ${timezone})::date <= ${historyTo}::date
+        AND ticket.issued_at >= (${historyFrom}::date::timestamp AT TIME ZONE ${timezone})
+        AND ticket.issued_at < ((${historyTo}::date + 1)::timestamp AT TIME ZONE ${timezone})
       ORDER BY ticket.issued_at, ticket.id
     `),
     db.execute(sql`
@@ -1426,13 +1500,14 @@ router.post("/planner/schedules/:id/need-proposals/calculate", requireAuth, requ
       INNER JOIN employees AS employee ON employee.id = ticket.employee_id
       INNER JOIN order_items AS item ON item.order_id = ticket.order_id
       INNER JOIN products AS product ON product.id = item.product_id
-      WHERE employee.work_center_id = ${parsed.data.workCenterId}
+      WHERE (
+          ticket.work_center_id = ${parsed.data.workCenterId}
+          OR (ticket.work_center_id IS NULL AND employee.work_center_id = ${parsed.data.workCenterId})
+        )
         AND ticket.is_demo = false
         AND item.status <> 'cancelled'
-        AND ticket.issued_at >= ${historyScanFrom}::date
-        AND ticket.issued_at < ${historyScanToExclusive}::date
-        AND (ticket.issued_at AT TIME ZONE ${timezone})::date >= ${historyFrom}::date
-        AND (ticket.issued_at AT TIME ZONE ${timezone})::date <= ${historyTo}::date
+        AND ticket.issued_at >= (${historyFrom}::date::timestamp AT TIME ZONE ${timezone})
+        AND ticket.issued_at < ((${historyTo}::date + 1)::timestamp AT TIME ZONE ${timezone})
       GROUP BY ticket.id, product.category_id, product.prep_zone
       ORDER BY ticket.id
     `),
@@ -1500,12 +1575,6 @@ router.post("/planner/schedules/:id/need-proposals/calculate", requireAuth, requ
     historicalWeeksOverride: parsed.data.historicalWeeksOverride,
   });
 
-  if (!schedule.workCenterId) {
-    await db.update(planningSchedulesTable).set({
-      workCenterId: parsed.data.workCenterId,
-      updatedAt: new Date(),
-    }).where(eq(planningSchedulesTable.id, scheduleId));
-  }
   const context = await loadScheduleContext(scheduleId);
   if (!context) { res.status(404).json({ error: "Cuadrante no encontrado" }); return; }
   const proposalNeeds: StaffingNeed[] = recommendations.map((recommendation) => ({
@@ -1531,7 +1600,7 @@ router.post("/planner/schedules/:id/need-proposals/calculate", requireAuth, requ
   });
   const rulesSnapshot = rules.map((rule) => ({ ...rule }));
   const inputSummary = {
-    historicalSource: "tickets.employee_id → employees.work_center_id",
+    historicalSource: "tickets.work_center_id; fallback legado: tickets.employee_id → employees.work_center_id",
     reservationSource: "reservations.work_center_id",
     historyFrom,
     historyTo,
@@ -1632,15 +1701,22 @@ router.patch("/planner/need-proposal-items/:id", requireAuth, requirePermission(
   if (!["PROPOSED", "REVIEWED"].includes(row.proposal.status)) {
     res.status(409).json({ error: "La propuesta ya no se puede editar" }); return;
   }
-  await db.transaction(async (tx) => {
+  const edited = await db.transaction(async (tx) => {
     await tx.execute(sql`SELECT id FROM staffing_need_proposals WHERE id = ${row.proposal.id} FOR UPDATE`);
+    const [lockedProposal] = await tx.select({ status: staffingNeedProposalsTable.status })
+      .from(staffingNeedProposalsTable)
+      .where(eq(staffingNeedProposalsTable.id, row.proposal.id)).limit(1);
+    if (!lockedProposal || !["PROPOSED", "REVIEWED"].includes(lockedProposal.status)) return false;
+    const [lockedItem] = await tx.select().from(staffingNeedProposalItemsTable)
+      .where(eq(staffingNeedProposalItemsTable.id, row.item.id)).limit(1);
+    if (!lockedItem) return false;
     await tx.update(staffingNeedProposalItemsTable).set({
       finalCount: parsed.data.finalCount,
-      difference: row.item.assignableCount - parsed.data.finalCount,
+      difference: lockedItem.assignableCount - parsed.data.finalCount,
       editedBy: req.user!.id,
       editedAt: new Date(),
     }).where(eq(staffingNeedProposalItemsTable.id, row.item.id));
-    if (row.proposal.status === "REVIEWED") {
+    if (lockedProposal.status === "REVIEWED") {
       await tx.update(staffingNeedProposalsTable).set({
         status: "PROPOSED",
         reviewedBy: null,
@@ -1653,9 +1729,11 @@ router.patch("/planner/need-proposal-items/:id", requireAuth, requirePermission(
       performedBy: req.user!.id,
       entityType: "staffing_need_proposal_item",
       entityId: row.item.id,
-      details: { before: row.item.finalCount, after: parsed.data.finalCount, proposalId: row.proposal.id },
+      details: { before: lockedItem.finalCount, after: parsed.data.finalCount, proposalId: row.proposal.id },
     });
+    return true;
   });
+  if (!edited) { res.status(409).json({ error: "La propuesta cambió mientras se editaba" }); return; }
   res.json(await loadNeedProposal(row.proposal.id));
 });
 
@@ -1819,47 +1897,69 @@ router.post("/planner/need-proposals/:id/apply", requireAuth, requirePermission(
 
 router.post("/planner/schedules/:id/generate", requireAuth, requirePermission("planner.manage"), async (req, res) => {
   const scheduleId = req.params.id as string;
-  const context = await loadScheduleContext(scheduleId);
-  if (!context) { res.status(404).json({ error: "Cuadrante no encontrado" }); return; }
-  if (context.schedule.status !== "DRAFT") { res.status(409).json({ error: "Solo se pueden generar borradores" }); return; }
-
-  const existing = context.assignments.filter((assignment) =>
-    assignment.origin === "manual"
-    || !context.shiftRows.some((shift) => shift.id === assignment.id),
-  );
-  const result = generateSchedule(context.employees, context.needs, existing);
-  await db.delete(shiftsTable).where(and(eq(shiftsTable.scheduleId, scheduleId), eq(shiftsTable.origin, "generated")));
-  const generated = result.assignments.filter((assignment) => assignment.origin === "generated" && !assignment.id);
-  if (generated.length > 0) {
-    await db.insert(shiftsTable).values(generated.map((assignment) => ({
-      employeeId: assignment.employeeId,
-      scheduleId,
-      requirementId: assignment.requirementId,
-      positionId: assignment.positionId,
-      shiftDate: assignment.date,
-      startTime: assignment.startTime,
-      endTime: assignment.endTime,
-      origin: "generated",
-      createdBy: req.user!.id,
-    })));
+  const [initialSchedule] = await db.select().from(planningSchedulesTable)
+    .where(eq(planningSchedulesTable.id, scheduleId)).limit(1);
+  if (!initialSchedule) { res.status(404).json({ error: "Cuadrante no encontrado" }); return; }
+  if (!await canManageSchedule(req.user!, initialSchedule)) {
+    res.status(403).json({ error: "No puedes generar este cuadrante" }); return;
   }
-  await db.update(planningSchedulesTable).set({
-    generatedAt: new Date(),
-    generatedBy: req.user!.id,
-    generationSource: "deterministic-v1",
-    updatedAt: new Date(),
-  }).where(eq(planningSchedulesTable.id, scheduleId));
-  const issues = await validateAndPersistIssues(scheduleId) ?? result.issues;
+  const generatedResult = await db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT id FROM planning_schedules WHERE id = ${scheduleId} FOR UPDATE`);
+    const context = await loadScheduleContext(scheduleId);
+    if (!context || context.schedule.status !== "DRAFT") {
+      throw new ShiftChangeError("SCHEDULE_NOT_DRAFT", "Solo se pueden generar borradores.");
+    }
+    const existing = context.assignments.filter((assignment) =>
+      assignment.origin === "manual"
+      || !context.shiftRows.some((shift) => shift.id === assignment.id),
+    );
+    const result = generateSchedule(context.employees, context.needs, existing);
+    await tx.delete(shiftsTable).where(and(
+      eq(shiftsTable.scheduleId, scheduleId),
+      eq(shiftsTable.origin, "generated"),
+    ));
+    const generated = result.assignments.filter((assignment) => assignment.origin === "generated" && !assignment.id);
+    if (generated.length > 0) {
+      await tx.insert(shiftsTable).values(generated.map((assignment) => ({
+        employeeId: assignment.employeeId,
+        scheduleId,
+        requirementId: assignment.requirementId,
+        positionId: assignment.positionId,
+        shiftDate: assignment.date,
+        startTime: assignment.startTime,
+        endTime: assignment.endTime,
+        origin: "generated",
+        createdBy: req.user!.id,
+      })));
+    }
+    await tx.update(planningSchedulesTable).set({
+      generatedAt: new Date(),
+      generatedBy: req.user!.id,
+      generationSource: "deterministic-v1",
+      updatedAt: new Date(),
+    }).where(eq(planningSchedulesTable.id, scheduleId));
+    return { generated: generated.length, initialIssues: result.issues };
+  }).catch((error) => error instanceof ShiftChangeError ? error : Promise.reject(error));
+  if (generatedResult instanceof ShiftChangeError) {
+    res.status(409).json({ error: generatedResult.message, code: generatedResult.code }); return;
+  }
+  const issues = await validateAndPersistIssues(scheduleId) ?? generatedResult.initialIssues;
   await audit("planner_schedule_generated", req.user!.id, "planning_schedule", scheduleId, {
-    assignments: generated.length,
+    assignments: generatedResult.generated,
     issues: issues.length,
   });
-  res.json({ generated: generated.length, issues });
+  res.json({ generated: generatedResult.generated, issues });
 });
 
 router.post("/planner/schedules/:id/validate", requireAuth, requirePermission("planner.manage"), async (req, res) => {
-  const issues = await validateAndPersistIssues(req.params.id as string);
-  if (issues == null) { res.status(404).json({ error: "Cuadrante no encontrado" }); return; }
+  const scheduleId = req.params.id as string;
+  const [schedule] = await db.select().from(planningSchedulesTable)
+    .where(eq(planningSchedulesTable.id, scheduleId)).limit(1);
+  if (!schedule) { res.status(404).json({ error: "Cuadrante no encontrado" }); return; }
+  if (!await canManageSchedule(req.user!, schedule)) {
+    res.status(403).json({ error: "No puedes validar este cuadrante" }); return;
+  }
+  const issues = await validateAndPersistIssues(scheduleId) ?? [];
   res.json({ valid: issues.length === 0, issues });
 });
 
@@ -1868,6 +1968,9 @@ router.post("/planner/schedules/:id/assignments", requireAuth, requirePermission
   const [schedule] = await db.select().from(planningSchedulesTable)
     .where(eq(planningSchedulesTable.id, scheduleId)).limit(1);
   if (schedule?.status !== "DRAFT") { res.status(409).json({ error: "Solo se pueden modificar borradores" }); return; }
+  if (!await canManageSchedule(req.user!, schedule)) {
+    res.status(403).json({ error: "No puedes modificar este cuadrante" }); return;
+  }
   const parsed = AssignmentBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: "Turno inválido", issues: parsed.error.issues }); return; }
   if (parsed.data.shiftDate < schedule.dateFrom || parsed.data.shiftDate > schedule.dateTo) {
@@ -1892,6 +1995,9 @@ router.put("/planner/assignments/:id", requireAuth, requirePermission("planner.m
   const [schedule] = await db.select().from(planningSchedulesTable)
     .where(eq(planningSchedulesTable.id, before.scheduleId)).limit(1);
   if (schedule?.status !== "DRAFT") { res.status(409).json({ error: "Solo se pueden modificar borradores" }); return; }
+  if (!await canManageSchedule(req.user!, schedule)) {
+    res.status(403).json({ error: "No puedes modificar este cuadrante" }); return;
+  }
   if (parsed.data.shiftDate < schedule.dateFrom || parsed.data.shiftDate > schedule.dateTo) {
     res.status(400).json({ error: "El turno debe estar dentro del periodo del cuadrante" }); return;
   }
@@ -1908,7 +2014,12 @@ router.put("/planner/assignments/:id", requireAuth, requirePermission("planner.m
 router.delete("/planner/assignments/:id", requireAuth, requirePermission("planner.manage"), async (req, res) => {
   const [existing] = await db.select().from(shiftsTable).where(eq(shiftsTable.id, req.params.id as string)).limit(1);
   if (!existing?.scheduleId) { res.status(404).json({ error: "Asignación no encontrada" }); return; }
-  if (!await isDraft(existing.scheduleId)) { res.status(409).json({ error: "Solo se pueden modificar borradores" }); return; }
+  const [schedule] = await db.select().from(planningSchedulesTable)
+    .where(eq(planningSchedulesTable.id, existing.scheduleId)).limit(1);
+  if (schedule?.status !== "DRAFT") { res.status(409).json({ error: "Solo se pueden modificar borradores" }); return; }
+  if (!await canManageSchedule(req.user!, schedule)) {
+    res.status(403).json({ error: "No puedes modificar este cuadrante" }); return;
+  }
   const [deleted] = await db.delete(shiftsTable).where(eq(shiftsTable.id, req.params.id as string)).returning();
   if (!deleted?.scheduleId) { res.status(404).json({ error: "Asignación no encontrada" }); return; }
   const issues = await validateAndPersistIssues(deleted.scheduleId) ?? [];
@@ -1918,23 +2029,46 @@ router.delete("/planner/assignments/:id", requireAuth, requirePermission("planne
 
 router.post("/planner/schedules/:id/publish", requireAuth, requirePermission("planner.publish"), async (req, res) => {
   const scheduleId = req.params.id as string;
-  const issues = await validateAndPersistIssues(scheduleId);
-  if (issues == null) { res.status(404).json({ error: "Cuadrante no encontrado" }); return; }
-  if (!canPublish(issues)) {
-    res.status(409).json({ error: "Corrige las incidencias antes de publicar", issues });
-    return;
+  const [initialSchedule] = await db.select().from(planningSchedulesTable)
+    .where(eq(planningSchedulesTable.id, scheduleId)).limit(1);
+  if (!initialSchedule) { res.status(404).json({ error: "Cuadrante no encontrado" }); return; }
+  if (!await canManageSchedule(req.user!, initialSchedule)) {
+    res.status(403).json({ error: "No puedes publicar este cuadrante" }); return;
   }
-  const [schedule] = await db.update(planningSchedulesTable).set({
-    status: "PUBLISHED",
-    publishedAt: new Date(),
-    publishedBy: req.user!.id,
-    updatedAt: new Date(),
-  }).where(eq(planningSchedulesTable.id, scheduleId)).returning();
+  const result = await db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT id FROM planning_schedules WHERE id = ${scheduleId} FOR UPDATE`);
+    const [locked] = await tx.select().from(planningSchedulesTable)
+      .where(eq(planningSchedulesTable.id, scheduleId)).limit(1);
+    if (locked?.status !== "DRAFT") {
+      return { conflict: "El cuadrante ya no está en borrador", issues: [] as PlannerIssue[], schedule: null };
+    }
+    const issues = await validateAndPersistIssues(scheduleId) ?? [];
+    if (!canPublish(issues)) return { conflict: "Corrige las incidencias antes de publicar", issues, schedule: null };
+    const [schedule] = await tx.update(planningSchedulesTable).set({
+      status: "PUBLISHED",
+      publishedAt: new Date(),
+      publishedBy: req.user!.id,
+      updatedAt: new Date(),
+    }).where(and(
+      eq(planningSchedulesTable.id, scheduleId),
+      eq(planningSchedulesTable.status, "DRAFT"),
+    )).returning();
+    return { conflict: null, issues, schedule };
+  });
+  if (result.conflict || !result.schedule) {
+    res.status(409).json({ error: result.conflict, issues: result.issues }); return;
+  }
   await audit("planner_schedule_published", req.user!.id, "planning_schedule", scheduleId);
-  res.json(schedule);
+  res.json(result.schedule);
 });
 
 router.post("/planner/schedules/:id/archive", requireAuth, requirePermission("planner.publish"), async (req, res) => {
+  const [existing] = await db.select().from(planningSchedulesTable)
+    .where(eq(planningSchedulesTable.id, req.params.id as string)).limit(1);
+  if (!existing) { res.status(404).json({ error: "Cuadrante no encontrado" }); return; }
+  if (!await canManageSchedule(req.user!, existing)) {
+    res.status(403).json({ error: "No puedes archivar este cuadrante" }); return;
+  }
   const [schedule] = await db.update(planningSchedulesTable).set({
     status: "ARCHIVED",
     archivedAt: new Date(),
@@ -2264,10 +2398,10 @@ router.post("/planner/shift-changes/:id/approve", requireAuth, requirePermission
       }
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${request.scheduleId}, 0))`);
       const shiftIds = [request.originalShiftId, request.counterpartShiftId].filter((id): id is string => Boolean(id));
-      // A rare planner approval may briefly block time-record writes. This closes
-      // the clock-in race without changing the stable Fichaje write paths.
-      await tx.execute(sql`LOCK TABLE time_records IN SHARE ROW EXCLUSIVE MODE`);
       await tx.execute(sql`SELECT id FROM shifts WHERE id IN (${sqlParameterList(shiftIds)}) FOR UPDATE`);
+      // Clock-in resolves and share-locks its planned shift before writing. Taking
+      // locks in the same order avoids deadlocks and closes approve-vs-clock races.
+      await tx.execute(sql`LOCK TABLE time_records IN SHARE ROW EXCLUSIVE MODE`);
       const currentShifts = await tx.select().from(shiftsTable).where(inArray(shiftsTable.id, shiftIds));
       const persistedLocks = await tx.select().from(shiftChangeLocksTable)
         .where(eq(shiftChangeLocksTable.requestId, requestId));
@@ -2409,6 +2543,12 @@ router.post("/planner/shift-changes/:id/approve", requireAuth, requirePermission
 
 router.get("/planner/schedules/:id/reconciliation", requireAuth, requirePermission("timeclock.manage"), async (req, res) => {
   const scheduleId = req.params.id as string;
+  const [schedule] = await db.select().from(planningSchedulesTable)
+    .where(eq(planningSchedulesTable.id, scheduleId)).limit(1);
+  if (!schedule) { res.status(404).json({ error: "Cuadrante no encontrado" }); return; }
+  if (!await canManageSchedule(req.user!, schedule)) {
+    res.status(403).json({ error: "No puedes conciliar este cuadrante" }); return;
+  }
   const rows = await db.select({
     shiftId: shiftsTable.id,
     employeeId: shiftsTable.employeeId,

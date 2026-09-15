@@ -96,6 +96,8 @@ export const ticketsTable = pgTable("tickets", {
   employeeId: uuid("employee_id")
     .notNull()
     .references(() => employeesTable.id),
+  /** Work-center snapshot at issuance; null only for legacy/unattributed tickets. */
+  workCenterId: uuid("work_center_id"),
   /** True for simulation/demo data; safe to purge without touching real records */
   isDemo: boolean("is_demo").notNull().default(false),
 });

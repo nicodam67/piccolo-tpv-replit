@@ -175,6 +175,15 @@ router.delete("/hr/departments/:id", requireAuth, requireRole("admin"), async (r
 
 // ─── WORK CENTERS ────────────────────────────────────────────────────────────
 
+function validIanaTimezone(value: string): boolean {
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: value }).format();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 router.get("/hr/work-centers", requireAuth, async (req, res) => {
   try {
     const rows = await db.select().from(hrWorkCentersTable).orderBy(hrWorkCentersTable.name);
@@ -187,9 +196,14 @@ router.get("/hr/work-centers", requireAuth, async (req, res) => {
 
 router.post("/hr/work-centers", requireAuth, requireRole("admin", "manager"), async (req, res) => {
   try {
-    const { name, address = "", active = true } = req.body as { name: string; address?: string; active?: boolean };
+    const { name, address = "", active = true, timezone = null } = req.body as {
+      name: string; address?: string; active?: boolean; timezone?: string | null;
+    };
     if (!name?.trim()) { res.status(400).json({ error: "El nombre es obligatorio" }); return; }
-    const [row] = await db.insert(hrWorkCentersTable).values({ name: name.trim(), address, active }).returning();
+    if (timezone && !validIanaTimezone(timezone)) {
+      res.status(400).json({ error: "La zona horaria no es un identificador IANA válido" }); return;
+    }
+    const [row] = await db.insert(hrWorkCentersTable).values({ name: name.trim(), address, active, timezone }).returning();
     res.status(201).json(row);
   } catch (err) {
     console.error(err);
@@ -200,11 +214,19 @@ router.post("/hr/work-centers", requireAuth, requireRole("admin", "manager"), as
 router.patch("/hr/work-centers/:id", requireAuth, requireRole("admin", "manager"), async (req, res) => {
   const id = req.params.id as string;
   try {
-    const { name, address, active } = req.body as { name?: string; address?: string; active?: boolean };
+    const { name, address, active, timezone } = req.body as {
+      name?: string; address?: string; active?: boolean; timezone?: string | null;
+    };
     const updates: Partial<typeof hrWorkCentersTable.$inferInsert> = {};
     if (name !== undefined) updates.name = name.trim();
     if (address !== undefined) updates.address = address;
     if (active !== undefined) updates.active = active;
+    if (timezone !== undefined) {
+      if (timezone && !validIanaTimezone(timezone)) {
+        res.status(400).json({ error: "La zona horaria no es un identificador IANA válido" }); return;
+      }
+      updates.timezone = timezone;
+    }
     const [updated] = await db.update(hrWorkCentersTable).set(updates).where(eq(hrWorkCentersTable.id, id)).returning();
     if (!updated) { res.status(404).json({ error: "Centro no encontrado" }); return; }
     res.json(updated);

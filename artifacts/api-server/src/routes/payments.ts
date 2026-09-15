@@ -350,6 +350,8 @@ router.post("/orders/:id/payments", requireAuth, requireRole(...PAYMENT_ROLES), 
         .innerJoin(paymentMethodsTable, eq(paymentsTable.paymentMethodId, paymentMethodsTable.id))
         .where(and(eq(paymentsTable.orderId, orderId), eq(paymentsTable.status, "completed")))
         .limit(1);
+      const [issuer] = await tx.select({ workCenterId: employeesTable.workCenterId })
+        .from(employeesTable).where(eq(employeesTable.id, employeeId)).limit(1);
 
       const [t] = await tx
         .insert(ticketsTable)
@@ -367,6 +369,7 @@ router.post("/orders/:id/payments", requireAuth, requireRole(...PAYMENT_ROLES), 
           total,
           taxBreakdown: taxBreakdown as any,
           employeeId,
+          workCenterId: issuer?.workCenterId ?? null,
         })
         .returning();
       ticket = t;
