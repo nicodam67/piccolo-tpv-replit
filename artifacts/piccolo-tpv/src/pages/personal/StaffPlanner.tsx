@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
+  ArrowRightLeft,
   CalendarDays,
   CheckCircle2,
   ChevronLeft,
@@ -13,8 +14,10 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "../../lib/api-client";
+import { useAuth } from "../../providers/AuthProvider";
+import { hasPermission } from "../../lib/permissions";
 
-type Tab = "week" | "month" | "needs" | "drafts" | "published" | "issues";
+type Tab = "week" | "month" | "needs" | "drafts" | "published" | "issues" | "changes";
 interface Schedule {
   id: string;
   name: string;
@@ -47,6 +50,29 @@ interface Shift {
   notes?: string | null;
 }
 interface Issue { id?: string; code: string; message: string; shiftId?: string | null; }
+interface ShiftSnapshot {
+  id: string;
+  employeeId: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+}
+interface ShiftChange {
+  id: string;
+  requestType: "SWAP" | "TRANSFER" | "TIME_CHANGE" | "OPEN_REQUEST";
+  status: string;
+  requesterId: string;
+  requesterName: string;
+  recipientId?: string | null;
+  recipientName?: string | null;
+  originalSnapshot: ShiftSnapshot;
+  counterpartSnapshot?: ShiftSnapshot | null;
+  proposal: { employeeId?: string; date?: string; startTime?: string; endTime?: string };
+  requesterComment?: string | null;
+  managerComment?: string | null;
+  validationIssues: Issue[];
+  createdAt: string;
+}
 interface Context {
   schedule: Schedule;
   requirements: Requirement[];
@@ -63,6 +89,7 @@ const TABS: Array<{ id: Tab; label: string }> = [
   { id: "drafts", label: "Borradores" },
   { id: "published", label: "Publicados" },
   { id: "issues", label: "Incidencias / cambios" },
+  { id: "changes", label: "Cambios de turno" },
 ];
 const DAY_NAMES = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
 
@@ -90,6 +117,9 @@ function StatusBadge({ status }: { status: Schedule["status"] }) {
 }
 
 export default function StaffPlanner() {
+  const { user } = useAuth();
+  const canManagePlanner = hasPermission(user?.role, "planner.manage");
+  const canManageChanges = hasPermission(user?.role, "shift_changes.manage");
   const [tab, setTab] = useState<Tab>("week");
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [selectedId, setSelectedId] = useState("");
@@ -99,6 +129,7 @@ export default function StaffPlanner() {
   const [showScheduleForm, setShowScheduleForm] = useState(false);
   const [showNeedForm, setShowNeedForm] = useState(false);
   const [editingShift, setEditingShift] = useState<Shift | null>(null);
+  const [requestingShift, setRequestingShift] = useState<Shift | null>(null);
 
   async function loadSchedules(preferredId?: string) {
     const rows = await api.get<Schedule[]>("/api/planner/schedules");
@@ -153,14 +184,14 @@ export default function StaffPlanner() {
             <option value="">Seleccionar cuadrante</option>
             {schedules.map((schedule) => <option key={schedule.id} value={schedule.id}>{schedule.name}</option>)}
           </select>
-          <button onClick={() => setShowScheduleForm(true)} className="flex items-center gap-2 rounded-lg bg-violet-600 px-3 py-2 text-sm font-semibold text-white hover:bg-violet-700">
+          {canManagePlanner && <button onClick={() => setShowScheduleForm(true)} className="flex items-center gap-2 rounded-lg bg-violet-600 px-3 py-2 text-sm font-semibold text-white hover:bg-violet-700">
             <Plus size={16} /> Nuevo periodo
-          </button>
+          </button>}
         </div>
       </div>
 
       <div className="mb-5 flex gap-1 overflow-x-auto rounded-xl border border-border bg-card p-1">
-        {TABS.map((item) => (
+        {TABS.filter((item) => canManagePlanner || !["needs", "drafts", "issues"].includes(item.id)).map((item) => (
           <button
             key={item.id}
             onClick={() => setTab(item.id)}
@@ -174,7 +205,7 @@ export default function StaffPlanner() {
 
       {loading ? (
         <div className="py-24 text-center text-muted-foreground">Cargando planificador…</div>
-      ) : !context && !["drafts", "published"].includes(tab) ? (
+      ) : !context && !["drafts", "published", "changes"].includes(tab) ? (
         <div className="rounded-2xl border border-dashed border-border bg-card p-12 text-center">
           <CalendarDays className="mx-auto mb-3 text-muted-foreground" />
           <h2 className="font-semibold text-foreground">Crea el primer periodo de planificación</h2>
@@ -190,6 +221,9 @@ export default function StaffPlanner() {
               onNext={() => setWeekStart((value) => addDays(value, 7))}
               onToday={() => setWeekStart(monday(new Date()))}
               onEdit={setEditingShift}
+              onRequest={setRequestingShift}
+              currentEmployeeId={user?.id}
+              canManagePlanner={canManagePlanner}
               onAdd={() => setEditingShift({
                 employeeId: context.employeeRows[0]?.id ?? "",
                 employeeName: "",
@@ -211,23 +245,39 @@ export default function StaffPlanner() {
           {tab === "drafts" && <ScheduleList rows={schedules.filter((row) => row.status === "DRAFT")} onSelect={(id) => { setSelectedId(id); setTab("week"); }} />}
           {tab === "published" && <ScheduleList rows={schedules.filter((row) => row.status === "PUBLISHED")} onSelect={(id) => { setSelectedId(id); setTab("week"); }} />}
           {tab === "issues" && context && <IssuesView issues={context.issues} />}
+          {tab === "changes" && (
+            <ShiftChangesView
+              currentEmployeeId={user?.id ?? ""}
+              canManage={canManageChanges}
+            />
+          )}
         </>
       )}
 
       {showScheduleForm && <ScheduleForm onClose={() => setShowScheduleForm(false)} onCreated={async (id) => { setShowScheduleForm(false); await loadSchedules(id); }} />}
       {showNeedForm && context && <NeedForm schedule={context.schedule} positions={context.positions} onClose={() => setShowNeedForm(false)} onSaved={async () => { setShowNeedForm(false); await loadContext(); }} />}
       {editingShift && context && <ShiftForm context={context} shift={editingShift} onClose={() => setEditingShift(null)} onSaved={async () => { setEditingShift(null); await loadContext(); }} />}
+      {requestingShift?.id && (
+        <ShiftChangeForm
+          shift={requestingShift as Shift & { id: string }}
+          onClose={() => setRequestingShift(null)}
+          onSaved={() => { setRequestingShift(null); setTab("changes"); }}
+        />
+      )}
     </div>
   );
 }
 
-function WeekView({ context, days, onPrevious, onNext, onToday, onEdit, onAdd, onGenerate, onValidate, onPublish }: {
+function WeekView({ context, days, onPrevious, onNext, onToday, onEdit, onRequest, currentEmployeeId, canManagePlanner, onAdd, onGenerate, onValidate, onPublish }: {
   context: Context;
   days: Date[];
   onPrevious: () => void;
   onNext: () => void;
   onToday: () => void;
   onEdit: (shift: Shift) => void;
+  onRequest: (shift: Shift) => void;
+  currentEmployeeId?: string;
+  canManagePlanner: boolean;
   onAdd: () => void;
   onGenerate: () => void;
   onValidate: () => void;
@@ -242,7 +292,7 @@ function WeekView({ context, days, onPrevious, onNext, onToday, onEdit, onAdd, o
           <button aria-label="Semana siguiente" onClick={onNext} className="rounded-lg border border-border p-2 text-muted-foreground hover:bg-secondary"><ChevronRight size={17} /></button>
           <span className="ml-2 text-sm font-medium text-foreground">{days[0].toLocaleDateString("es-ES", { day: "numeric", month: "short" })} – {days[6].toLocaleDateString("es-ES", { day: "numeric", month: "short" })}</span>
         </div>
-        {context.schedule.status === "DRAFT" && (
+        {context.schedule.status === "DRAFT" && canManagePlanner && (
           <div className="flex flex-wrap gap-2">
             <button onClick={onAdd} className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm text-foreground hover:bg-secondary"><Plus size={15} /> Asignación manual</button>
             <button onClick={onGenerate} className="flex items-center gap-2 rounded-lg bg-violet-600 px-3 py-2 text-sm font-semibold text-white hover:bg-violet-700"><Sparkles size={16} /> Generar cuadrante</button>
@@ -269,13 +319,18 @@ function WeekView({ context, days, onPrevious, onNext, onToday, onEdit, onAdd, o
                       {need.startTime}–{need.endTime} · {need.requiredCount} {need.positionName}
                     </div>
                   ))}
-                  {shifts.map((shift) => (
-                    <button key={shift.id} disabled={context.schedule.status !== "DRAFT"} onClick={() => onEdit(shift)} className="w-full rounded-lg border border-teal-500/20 bg-teal-500/10 p-2 text-left enabled:hover:border-teal-500/50 disabled:cursor-default">
+                  {shifts.map((shift) => {
+                    const canEdit = context.schedule.status === "DRAFT" && canManagePlanner;
+                    const canRequest = context.schedule.status === "PUBLISHED" && shift.employeeId === currentEmployeeId;
+                    return (
+                    <button key={shift.id} disabled={!canEdit && !canRequest} onClick={() => canEdit ? onEdit(shift) : onRequest(shift)} className="w-full rounded-lg border border-teal-500/20 bg-teal-500/10 p-2 text-left enabled:hover:border-teal-500/50 disabled:cursor-default">
                       <div className="truncate text-xs font-semibold text-teal-400">{shift.employeeName}</div>
                       <div className="mt-0.5 text-xs text-muted-foreground">{shift.startTime}–{shift.endTime}</div>
                       <div className="mt-1 text-[10px] uppercase text-muted-foreground/70">{shift.origin === "generated" ? "Automático" : "Manual"}</div>
+                      {canRequest && <div className="mt-1 text-[10px] font-semibold text-violet-400">Solicitar cambio</div>}
                     </button>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             );
@@ -325,7 +380,164 @@ function ScheduleList({ rows, onSelect }: { rows: Schedule[]; onSelect: (id: str
 
 function IssuesView({ issues }: { issues: Issue[] }) {
   if (!issues.length) return <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-10 text-center"><CheckCircle2 className="mx-auto text-emerald-500" /><h2 className="mt-3 font-semibold text-foreground">Sin incidencias</h2><p className="text-sm text-muted-foreground">El cuadrante cumple las restricciones obligatorias.</p></div>;
-  return <div className="space-y-2">{issues.map((issue, index) => <div key={issue.id ?? `${issue.code}-${index}`} className="flex gap-3 rounded-xl border border-red-500/20 bg-red-500/5 p-4"><AlertTriangle className="mt-0.5 shrink-0 text-red-400" size={18} /><div><div className="text-xs font-bold uppercase text-red-400">{issue.code}</div><p className="mt-1 text-sm text-foreground">{issue.message}</p></div></div>)}<div className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">Los cambios de turno entre empleados quedan preparados mediante las solicitudes RRHH existentes; aceptación y aprobación se incorporarán en una fase posterior.</div></div>;
+  return <div className="space-y-2">{issues.map((issue, index) => <div key={issue.id ?? `${issue.code}-${index}`} className="flex gap-3 rounded-xl border border-red-500/20 bg-red-500/5 p-4"><AlertTriangle className="mt-0.5 shrink-0 text-red-400" size={18} /><div><div className="text-xs font-bold uppercase text-red-400">{issue.code}</div><p className="mt-1 text-sm text-foreground">{issue.message}</p></div></div>)}</div>;
+}
+
+const CHANGE_TYPE_LABELS: Record<ShiftChange["requestType"], string> = {
+  SWAP: "Intercambio",
+  TRANSFER: "Cesión",
+  TIME_CHANGE: "Cambio de horario",
+  OPEN_REQUEST: "Solicitud al responsable",
+};
+
+const CHANGE_STATUS_LABELS: Record<string, string> = {
+  PENDING_RECIPIENT: "Pendiente del empleado",
+  PENDING_MANAGER: "Pendiente del responsable",
+  REJECTED_BY_RECIPIENT: "Rechazada por el empleado",
+  REJECTED_BY_MANAGER: "Rechazada por el responsable",
+  APPROVED: "Aprobada",
+  CANCELLED: "Cancelada",
+  EXPIRED: "Caducada",
+};
+
+function durationHours(snapshot: Pick<ShiftSnapshot, "startTime" | "endTime">) {
+  const [startHour, startMinute] = snapshot.startTime.split(":").map(Number);
+  const [endHour, endMinute] = snapshot.endTime.split(":").map(Number);
+  const start = startHour * 60 + startMinute;
+  let end = endHour * 60 + endMinute;
+  if (end <= start) end += 1440;
+  return (end - start) / 60;
+}
+
+function shiftLabel(snapshot: ShiftSnapshot, proposal?: ShiftChange["proposal"]) {
+  return `${proposal?.date ?? snapshot.date} · ${proposal?.startTime ?? snapshot.startTime}–${proposal?.endTime ?? snapshot.endTime}`;
+}
+
+function ShiftChangesView({ currentEmployeeId, canManage }: { currentEmployeeId: string; canManage: boolean }) {
+  const [rows, setRows] = useState<ShiftChange[]>([]);
+  const [loading, setLoading] = useState(true);
+  async function load() {
+    setLoading(true);
+    try {
+      setRows(await api.get<ShiftChange[]>(canManage ? "/api/planner/shift-changes/manage" : "/api/planner/shift-changes"));
+    } finally {
+      setLoading(false);
+    }
+  }
+  useEffect(() => { load().catch(() => toast.error("No se pudieron cargar los cambios")); }, [canManage]);
+
+  async function act(id: string, action: string) {
+    try {
+      await api.post(`/api/planner/shift-changes/${id}/${action}`, {});
+      toast.success("Solicitud actualizada");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo actualizar");
+    } finally {
+      await load();
+    }
+  }
+
+  if (loading) return <div className="py-16 text-center text-muted-foreground">Cargando cambios de turno…</div>;
+  return (
+    <div>
+      <div className="mb-4 flex items-center justify-between">
+        <div>
+          <h2 className="font-semibold text-foreground">{canManage ? "Bandeja de cambios" : "Mis cambios de turno"}</h2>
+          <p className="text-sm text-muted-foreground">{canManage ? "Revisa restricciones antes de aprobar." : "Solicitudes enviadas y recibidas."}</p>
+        </div>
+        <button onClick={load} className="rounded-lg border border-border p-2 text-muted-foreground hover:bg-secondary"><RefreshCw size={16} /></button>
+      </div>
+      <div className="space-y-3">
+        {rows.map((row) => {
+          const originalHours = durationHours(row.originalSnapshot);
+          const proposedHours = row.requestType === "TIME_CHANGE" || row.requestType === "OPEN_REQUEST"
+            ? durationHours({
+                ...row.originalSnapshot,
+                startTime: row.proposal.startTime ?? row.originalSnapshot.startTime,
+                endTime: row.proposal.endTime ?? row.originalSnapshot.endTime,
+              })
+            : originalHours;
+          return (
+            <article key={row.id} className="rounded-xl border border-border bg-card p-4">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="rounded-full bg-violet-500/10 px-2 py-1 text-xs font-semibold text-violet-400">{CHANGE_TYPE_LABELS[row.requestType]}</span>
+                    <span className="rounded-full bg-secondary px-2 py-1 text-xs text-muted-foreground">{CHANGE_STATUS_LABELS[row.status] ?? row.status}</span>
+                  </div>
+                  <p className="mt-2 text-sm font-medium text-foreground">{row.requesterName}{row.recipientName ? ` → ${row.recipientName}` : " → Responsable"}</p>
+                </div>
+                <time className="text-xs text-muted-foreground">{new Date(row.createdAt).toLocaleString("es-ES")}</time>
+              </div>
+              <div className="mt-4 grid items-center gap-2 md:grid-cols-[1fr_auto_1fr]">
+                <div className="rounded-lg bg-secondary/60 p-3"><div className="text-[10px] font-bold uppercase text-muted-foreground">Antes</div><div className="mt-1 text-sm text-foreground">{shiftLabel(row.originalSnapshot)}</div></div>
+                <ArrowRightLeft className="mx-auto text-violet-400" size={18} />
+                <div className="rounded-lg bg-violet-500/5 p-3"><div className="text-[10px] font-bold uppercase text-violet-400">Después</div><div className="mt-1 text-sm text-foreground">{row.requestType === "SWAP" && row.counterpartSnapshot ? `Intercambia con ${shiftLabel(row.counterpartSnapshot)}` : shiftLabel(row.originalSnapshot, row.proposal)}</div></div>
+              </div>
+              <div className="mt-3 text-xs text-muted-foreground">Impacto semanal: {proposedHours - originalHours >= 0 ? "+" : ""}{(proposedHours - originalHours).toFixed(1)} h para el turno original.</div>
+              {row.requesterComment && <p className="mt-2 text-sm text-muted-foreground">“{row.requesterComment}”</p>}
+              {row.managerComment && <p className="mt-2 text-sm text-amber-400">Responsable: {row.managerComment}</p>}
+              {Array.isArray(row.validationIssues) && row.validationIssues.length > 0 && (
+                <div className="mt-3 space-y-1 rounded-lg border border-red-500/20 bg-red-500/5 p-3">
+                  {row.validationIssues.map((issue, index) => <p key={`${issue.code}-${index}`} className="text-xs text-red-400">{issue.message}</p>)}
+                </div>
+              )}
+              <div className="mt-4 flex flex-wrap justify-end gap-2">
+                {row.status === "PENDING_RECIPIENT" && row.recipientId === currentEmployeeId && <>
+                  <button onClick={() => act(row.id, "reject")} className="rounded-lg border border-red-500/30 px-3 py-2 text-sm text-red-400">Rechazar</button>
+                  <button onClick={() => act(row.id, "accept")} className="rounded-lg bg-violet-600 px-3 py-2 text-sm font-semibold text-white">Aceptar</button>
+                </>}
+                {["PENDING_RECIPIENT", "PENDING_MANAGER"].includes(row.status) && row.requesterId === currentEmployeeId && (
+                  <button onClick={() => act(row.id, "cancel")} className="rounded-lg border border-border px-3 py-2 text-sm text-muted-foreground">Cancelar</button>
+                )}
+                {canManage && row.status === "PENDING_MANAGER" && <>
+                  <button onClick={() => act(row.id, "manager-reject")} className="rounded-lg border border-red-500/30 px-3 py-2 text-sm text-red-400">Rechazar</button>
+                  <button onClick={() => act(row.id, "approve")} className="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white">Aprobar y validar</button>
+                </>}
+              </div>
+            </article>
+          );
+        })}
+        {!rows.length && <div className="rounded-xl border border-dashed border-border p-12 text-center text-sm text-muted-foreground">No hay solicitudes de cambio.</div>}
+      </div>
+    </div>
+  );
+}
+
+function ShiftChangeForm({ shift, onClose, onSaved }: { shift: Shift & { id: string }; onClose: () => void; onSaved: () => void }) {
+  const [options, setOptions] = useState<{ employees: Employee[]; shifts: Array<ShiftSnapshot> }>({ employees: [], shifts: [] });
+  const [form, setForm] = useState({
+    requestType: "TRANSFER" as ShiftChange["requestType"],
+    recipientId: "",
+    counterpartShiftId: "",
+    date: shift.date,
+    startTime: shift.startTime,
+    endTime: shift.endTime,
+    comment: "",
+  });
+  useEffect(() => {
+    api.get<typeof options>(`/api/planner/shift-changes/options/${shift.id}`)
+      .then(setOptions)
+      .catch((error) => toast.error(error instanceof Error ? error.message : "No se pudieron cargar las opciones"));
+  }, [shift.id]);
+  const counterpartOptions = options.shifts.filter((candidate) => candidate.employeeId === form.recipientId);
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    const needsRecipient = ["SWAP", "TRANSFER"].includes(form.requestType);
+    await api.post("/api/planner/shift-changes", {
+      requestType: form.requestType,
+      originalShiftId: shift.id,
+      recipientId: needsRecipient ? form.recipientId : null,
+      counterpartShiftId: form.requestType === "SWAP" ? form.counterpartShiftId : null,
+      proposal: ["TIME_CHANGE", "OPEN_REQUEST"].includes(form.requestType)
+        ? { date: form.date, startTime: form.startTime, endTime: form.endTime }
+        : {},
+      comment: form.comment || null,
+    });
+    toast.success("Solicitud enviada");
+    onSaved();
+  }
+  return <Modal title="Solicitar cambio de turno" onClose={onClose}><form onSubmit={submit} className="space-y-3"><div className="rounded-lg bg-secondary/60 p-3 text-sm text-foreground">{shift.date} · {shift.startTime}–{shift.endTime}</div><select className={inputClass} value={form.requestType} onChange={(e) => setForm({ ...form, requestType: e.target.value as ShiftChange["requestType"], recipientId: "", counterpartShiftId: "" })}><option value="TRANSFER">Ceder a otro empleado</option><option value="SWAP">Intercambiar turnos</option><option value="TIME_CHANGE">Solicitar cambio de horario</option><option value="OPEN_REQUEST">Solicitar cambio al responsable</option></select>{["SWAP", "TRANSFER"].includes(form.requestType) && <select required className={inputClass} value={form.recipientId} onChange={(e) => setForm({ ...form, recipientId: e.target.value, counterpartShiftId: "" })}><option value="">Empleado receptor</option>{options.employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.name}</option>)}</select>}{form.requestType === "SWAP" && <select required className={inputClass} value={form.counterpartShiftId} onChange={(e) => setForm({ ...form, counterpartShiftId: e.target.value })}><option value="">Turno a intercambiar</option>{counterpartOptions.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.date} · {candidate.startTime}–{candidate.endTime}</option>)}</select>}{["TIME_CHANGE", "OPEN_REQUEST"].includes(form.requestType) && <><input type="date" className={inputClass} value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /><div className="grid grid-cols-2 gap-2"><input type="time" className={inputClass} value={form.startTime} onChange={(e) => setForm({ ...form, startTime: e.target.value })} /><input type="time" className={inputClass} value={form.endTime} onChange={(e) => setForm({ ...form, endTime: e.target.value })} /></div></>}<textarea className={inputClass} value={form.comment} onChange={(e) => setForm({ ...form, comment: e.target.value })} placeholder="Motivo o comentario" /><button className="w-full rounded-lg bg-violet-600 py-2 text-sm font-semibold text-white">Enviar solicitud</button></form></Modal>;
 }
 
 function Modal({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) {

@@ -92,8 +92,61 @@ export const planningIssuesTable = pgTable("planning_issues", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+export const shiftChangeRequestsTable = pgTable("shift_change_requests", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  requestType: text("request_type").notNull(),
+  status: text("status").notNull().default("PENDING_RECIPIENT"),
+  scheduleId: uuid("schedule_id")
+    .notNull()
+    .references(() => planningSchedulesTable.id, { onDelete: "restrict" }),
+  requesterId: uuid("requester_id")
+    .notNull()
+    .references(() => employeesTable.id, { onDelete: "restrict" }),
+  recipientId: uuid("recipient_id").references(() => employeesTable.id, { onDelete: "restrict" }),
+  originalShiftId: uuid("original_shift_id").notNull(),
+  counterpartShiftId: uuid("counterpart_shift_id"),
+  originalShiftUpdatedAt: timestamp("original_shift_updated_at", { withTimezone: true }).notNull(),
+  counterpartShiftUpdatedAt: timestamp("counterpart_shift_updated_at", { withTimezone: true }),
+  originalSnapshot: jsonb("original_snapshot").notNull(),
+  counterpartSnapshot: jsonb("counterpart_snapshot"),
+  proposal: jsonb("proposal").notNull().default({}),
+  requesterComment: text("requester_comment"),
+  managerComment: text("manager_comment"),
+  validationIssues: jsonb("validation_issues").notNull().default([]),
+  expiresAt: timestamp("expires_at", { withTimezone: true }),
+  resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+  approvedBy: uuid("approved_by").references(() => employeesTable.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const shiftChangeLocksTable = pgTable("shift_change_locks", {
+  requestId: uuid("request_id")
+    .notNull()
+    .references(() => shiftChangeRequestsTable.id, { onDelete: "cascade" }),
+  shiftId: uuid("shift_id").primaryKey(),
+  expectedUpdatedAt: timestamp("expected_updated_at", { withTimezone: true }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const shiftChangeEventsTable = pgTable("shift_change_events", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  requestId: uuid("request_id")
+    .notNull()
+    .references(() => shiftChangeRequestsTable.id, { onDelete: "cascade" }),
+  actorId: uuid("actor_id").references(() => employeesTable.id, { onDelete: "set null" }),
+  action: text("action").notNull(),
+  previousStatus: text("previous_status"),
+  newStatus: text("new_status").notNull(),
+  comment: text("comment"),
+  metadata: jsonb("metadata"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export type PlanningSchedule = typeof planningSchedulesTable.$inferSelect;
 export type StaffingRequirement = typeof staffingRequirementsTable.$inferSelect;
 export type EmployeePlanningProfile = typeof employeePlanningProfilesTable.$inferSelect;
 export type EmployeeAvailability = typeof employeeAvailabilityTable.$inferSelect;
 export type PlanningIssue = typeof planningIssuesTable.$inferSelect;
+export type ShiftChangeRequest = typeof shiftChangeRequestsTable.$inferSelect;
+export type ShiftChangeEvent = typeof shiftChangeEventsTable.$inferSelect;

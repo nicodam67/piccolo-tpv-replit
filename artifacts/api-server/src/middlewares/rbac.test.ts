@@ -30,20 +30,20 @@ beforeEach(() => {
 describe("RBAC role matrix", () => {
   const matrix: Record<string, { allowed: string[]; denied: string[] }> = {
     admin: {
-      allowed: ["cash.close", "payments.void", "invoices.correct", "settings.manage", "users.manage", "planner.publish"],
+      allowed: ["cash.close", "payments.void", "invoices.correct", "settings.manage", "users.manage", "planner.publish", "shift_changes.manage"],
       denied: [],
     },
     manager: {
-      allowed: ["cash.close", "payments.refund", "invoices.create", "stock.manage", "suppliers.manage", "planner.publish"],
+      allowed: ["cash.close", "payments.refund", "invoices.create", "stock.manage", "suppliers.manage", "planner.publish", "shift_changes.manage"],
       denied: ["fiscal.configure", "users.manage"],
     },
     encargado: {
-      allowed: ["cash.open", "cash.close", "invoices.create", "timeclock.manage", "planner.manage"],
-      denied: ["payments.refund", "payments.void", "settings.manage", "suppliers.manage", "planner.publish"],
+      allowed: ["cash.open", "cash.close", "invoices.create", "timeclock.manage", "planner.manage", "shift_changes.create"],
+      denied: ["payments.refund", "payments.void", "settings.manage", "suppliers.manage", "planner.publish", "shift_changes.manage"],
     },
     waiter: {
-      allowed: ["tables.view", "orders.create", "payments.create", "planner.view"],
-      denied: ["cash.close", "invoices.create", "stock.manage", "employees.manage", "settings.manage", "planner.manage"],
+      allowed: ["tables.view", "orders.create", "payments.create", "planner.view", "shift_changes.respond"],
+      denied: ["cash.close", "invoices.create", "stock.manage", "employees.manage", "settings.manage", "planner.manage", "shift_changes.manage"],
     },
     cashier: {
       allowed: ["cash.open", "cash.view", "payments.create", "planner.view"],

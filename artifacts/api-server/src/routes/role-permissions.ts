@@ -103,6 +103,16 @@ export const PERMISSION_CATALOG: {
     ],
   },
   {
+    module: "shift_changes",
+    label: "Cambios de turno",
+    actions: [
+      { action: "view_own", label: "Ver solicitudes propias", defaultRoles: ["admin", "manager", "encargado", "waiter", "cashier", "kitchen", "employee"] },
+      { action: "create", label: "Solicitar cambios propios", defaultRoles: ["admin", "manager", "encargado", "waiter", "cashier", "kitchen", "employee"] },
+      { action: "respond", label: "Aceptar o rechazar solicitudes recibidas", defaultRoles: ["admin", "manager", "encargado", "waiter", "cashier", "kitchen", "employee"] },
+      { action: "manage", label: "Aprobar o rechazar cambios", defaultRoles: ["admin", "manager"] },
+    ],
+  },
+  {
     module: "reports",
     label: "Informes",
     actions: [

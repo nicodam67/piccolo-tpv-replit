@@ -367,7 +367,7 @@ function Router() {
         </RequireRole>
       </Route>
       <Route path="/personal/planificador">
-        <RequirePermission permission="planner.manage">
+        <RequirePermission permission="planner.view">
           <PersonalLayout><StaffPlanner /></PersonalLayout>
         </RequirePermission>
       </Route>

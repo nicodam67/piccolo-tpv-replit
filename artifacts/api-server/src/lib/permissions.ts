@@ -21,6 +21,10 @@ export const PERMISSIONS = {
   timeclock: { manage: 'timeclock.manage'                          },
   planner:   { view: 'planner.view', manage: 'planner.manage',
                publish: 'planner.publish'                          },
+  shiftChanges: { viewOwn: 'shift_changes.view_own',
+                  create: 'shift_changes.create',
+                  respond: 'shift_changes.respond',
+                  manage: 'shift_changes.manage'                   },
   reports:   { view: 'reports.view'                                },
   settings:  { manage: 'settings.manage'                           },
   users:     { manage: 'users.manage'                              },
@@ -49,6 +53,7 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     'employees.manage',
     'timeclock.manage',
     'planner.view', 'planner.manage', 'planner.publish',
+    'shift_changes.view_own', 'shift_changes.create', 'shift_changes.respond', 'shift_changes.manage',
     'reports.view',
     'settings.manage',
     'discounts.apply', 'discounts.delete', 'comps.apply', 'taxes.manage',
@@ -66,6 +71,7 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     'stock.view',
     'timeclock.manage',
     'planner.view', 'planner.manage',
+    'shift_changes.view_own', 'shift_changes.create', 'shift_changes.respond',
     'reports.view',
     'discounts.apply',
     'crm.view',
@@ -77,6 +83,7 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     'payments.create',
     'cash.view',
     'planner.view',
+    'shift_changes.view_own', 'shift_changes.create', 'shift_changes.respond',
   ],
   cashier: [
     'tables.view',
@@ -84,12 +91,14 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     'payments.create',
     'cash.open', 'cash.view',
     'planner.view',
+    'shift_changes.view_own', 'shift_changes.create', 'shift_changes.respond',
   ],
   kitchen: [
     'kds.view', 'kds.manage',
     'planner.view',
+    'shift_changes.view_own', 'shift_changes.create', 'shift_changes.respond',
   ],
-  employee: ['planner.view'],
+  employee: ['planner.view', 'shift_changes.view_own', 'shift_changes.create', 'shift_changes.respond'],
 };
 
 export function hasPermission(role: string | undefined | null, permission: string): boolean {
