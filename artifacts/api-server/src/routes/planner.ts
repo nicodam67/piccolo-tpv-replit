@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, asc, eq, gte, isNull, lte, or } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, isNull, lte, or } from "drizzle-orm";
 import { z } from "zod";
 import {
   absencesTable,
@@ -9,6 +9,7 @@ import {
   employeesTable,
   fichajeAuditTable,
   hrEmployeePositionsTable,
+  hrEmployeeRequestsTable,
   hrPositionsTable,
   planningIssuesTable,
   planningSchedulesTable,
@@ -19,6 +20,7 @@ import {
 import { requireAuth, requirePermission } from "../middlewares/auth";
 import {
   canPublish,
+  expandDateRange,
   generateSchedule,
   type PlannedAssignment,
   type PlannerEmployee,
@@ -110,7 +112,7 @@ async function loadScheduleContext(scheduleId: string) {
     .limit(1);
   if (!schedule) return null;
 
-  const [requirements, employeeRows, profiles, availability, absences, positionLinks, shiftRows, constraintShiftRows] = await Promise.all([
+  const [requirements, employeeRows, profiles, availability, absences, approvedRequests, positionLinks, shiftRows, constraintShiftRows] = await Promise.all([
     db.select({
       id: staffingRequirementsTable.id,
       date: staffingRequirementsTable.requirementDate,
@@ -130,6 +132,7 @@ async function loadScheduleContext(scheduleId: string) {
       weeklyHours: employeesTable.weeklyHours,
     }).from(employeesTable).where(and(
       eq(employeesTable.active, true),
+      eq(employeesTable.empStatus, "active"),
       schedule.workCenterId ? eq(employeesTable.workCenterId, schedule.workCenterId) : undefined,
     )),
     db.select().from(employeePlanningProfilesTable),
@@ -145,6 +148,12 @@ async function loadScheduleContext(scheduleId: string) {
       eq(absencesTable.status, "approved"),
       gte(absencesTable.absenceDate, schedule.dateFrom),
       lte(absencesTable.absenceDate, schedule.dateTo),
+    )),
+    db.select().from(hrEmployeeRequestsTable).where(and(
+      eq(hrEmployeeRequestsTable.status, "approved"),
+      inArray(hrEmployeeRequestsTable.requestType, ["vacation", "absence"]),
+      lte(hrEmployeeRequestsTable.dateFrom, schedule.dateTo),
+      gte(hrEmployeeRequestsTable.dateTo, schedule.dateFrom),
     )),
     db.select().from(hrEmployeePositionsTable),
     db.select({
@@ -183,6 +192,14 @@ async function loadScheduleContext(scheduleId: string) {
   ]);
 
   const profileMap = new Map(profiles.map((profile) => [profile.employeeId, profile]));
+  const requestedAbsenceDates = new Map<string, Set<string>>();
+  for (const request of approvedRequests) {
+    const from = request.dateFrom < schedule.dateFrom ? schedule.dateFrom : request.dateFrom;
+    const to = request.dateTo > schedule.dateTo ? schedule.dateTo : request.dateTo;
+    const dates = requestedAbsenceDates.get(request.employeeId) ?? new Set<string>();
+    for (const date of expandDateRange(from, to)) dates.add(date);
+    requestedAbsenceDates.set(request.employeeId, dates);
+  }
   const employees: PlannerEmployee[] = employeeRows.map((employee) => {
     const profile = profileMap.get(employee.id);
     const linked = positionLinks.filter((link) => link.employeeId === employee.id).map((link) => link.positionId);
@@ -206,7 +223,10 @@ async function loadScheduleContext(scheduleId: string) {
         validFrom: rule.validFrom,
         validTo: rule.validTo,
       })),
-      absenceDates: absences.filter((absence) => absence.employeeId === employee.id).map((absence) => absence.absenceDate),
+      absenceDates: [...new Set([
+        ...absences.filter((absence) => absence.employeeId === employee.id).map((absence) => absence.absenceDate),
+        ...(requestedAbsenceDates.get(employee.id) ?? []),
+      ])],
     };
   });
   const needs = requirements as StaffingNeed[];
@@ -215,7 +235,7 @@ async function loadScheduleContext(scheduleId: string) {
     positionId: shift.positionId ?? "",
     origin: shift.origin as PlannedAssignment["origin"],
   })) as PlannedAssignment[];
-  return { schedule, requirements, employeeRows, profiles, availability, absences, positionLinks, shiftRows, employees, needs, assignments };
+  return { schedule, requirements, employeeRows, profiles, availability, absences, approvedRequests, positionLinks, shiftRows, employees, needs, assignments };
 }
 
 async function replaceIssues(scheduleId: string, issues: PlannerIssue[]) {

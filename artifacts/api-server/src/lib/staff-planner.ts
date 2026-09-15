@@ -99,6 +99,18 @@ export function assignmentMinutes(assignment: Pick<PlannedAssignment, "date" | "
   return (end - start) / 60_000;
 }
 
+export function expandDateRange(dateFrom: string, dateTo: string): string[] {
+  const dates: string[] = [];
+  for (
+    let date = new Date(`${dateFrom}T12:00:00Z`);
+    date <= new Date(`${dateTo}T12:00:00Z`);
+    date.setUTCDate(date.getUTCDate() + 1)
+  ) {
+    dates.push(date.toISOString().slice(0, 10));
+  }
+  return dates;
+}
+
 function overlaps(
   a: Pick<PlannedAssignment, "date" | "startTime" | "endTime">,
   b: Pick<PlannedAssignment, "date" | "startTime" | "endTime">,

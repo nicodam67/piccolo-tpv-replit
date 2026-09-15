@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   canPublish,
   comparePlannedWithClock,
+  expandDateRange,
   generateSchedule,
   type PlannedAssignment,
   type PlannerEmployee,
@@ -49,6 +50,14 @@ function assignment(overrides: Partial<PlannedAssignment> = {}): PlannedAssignme
 }
 
 describe("mandatory planner constraints", () => {
+  it("expands approved HR vacation ranges into blocked dates", () => {
+    expect(expandDateRange("2026-09-18", "2026-09-20")).toEqual([
+      "2026-09-18",
+      "2026-09-19",
+      "2026-09-20",
+    ]);
+  });
+
   it("rejects an unavailable employee", () => {
     const candidate = employee({
       availability: [{ type: "UNAVAILABLE", date: need.date, startTime: "18:00", endTime: "23:00" }],
