@@ -457,6 +457,12 @@ function ShiftChangesView({ currentEmployeeId, canManage }: { currentEmployeeId:
                 endTime: row.proposal.endTime ?? row.originalSnapshot.endTime,
               })
             : originalHours;
+          const counterpartHours = row.counterpartSnapshot ? durationHours(row.counterpartSnapshot) : 0;
+          const impact = row.requestType === "TRANSFER"
+            ? `${row.requesterName} −${originalHours.toFixed(1)} h · ${row.recipientName ?? "Receptor"} +${originalHours.toFixed(1)} h`
+            : row.requestType === "SWAP"
+              ? `${row.requesterName} ${(counterpartHours - originalHours) >= 0 ? "+" : ""}${(counterpartHours - originalHours).toFixed(1)} h · ${row.recipientName ?? "Receptor"} ${(originalHours - counterpartHours) >= 0 ? "+" : ""}${(originalHours - counterpartHours).toFixed(1)} h`
+              : `${row.requesterName} ${(proposedHours - originalHours) >= 0 ? "+" : ""}${(proposedHours - originalHours).toFixed(1)} h`;
           return (
             <article key={row.id} className="rounded-xl border border-border bg-card p-4">
               <div className="flex flex-wrap items-start justify-between gap-2">
@@ -474,7 +480,7 @@ function ShiftChangesView({ currentEmployeeId, canManage }: { currentEmployeeId:
                 <ArrowRightLeft className="mx-auto text-violet-400" size={18} />
                 <div className="rounded-lg bg-violet-500/5 p-3"><div className="text-[10px] font-bold uppercase text-violet-400">Después</div><div className="mt-1 text-sm text-foreground">{row.requestType === "SWAP" && row.counterpartSnapshot ? `Intercambia con ${shiftLabel(row.counterpartSnapshot)}` : shiftLabel(row.originalSnapshot, row.proposal)}</div></div>
               </div>
-              <div className="mt-3 text-xs text-muted-foreground">Impacto semanal: {proposedHours - originalHours >= 0 ? "+" : ""}{(proposedHours - originalHours).toFixed(1)} h para el turno original.</div>
+              <div className="mt-3 text-xs text-muted-foreground">Impacto semanal: {impact}.</div>
               {row.requesterComment && <p className="mt-2 text-sm text-muted-foreground">“{row.requesterComment}”</p>}
               {row.managerComment && <p className="mt-2 text-sm text-amber-400">Responsable: {row.managerComment}</p>}
               {Array.isArray(row.validationIssues) && row.validationIssues.length > 0 && (
