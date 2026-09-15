@@ -33,6 +33,7 @@ node_modules
 /coverage
 **/playwright-report/
 **/test-results/
+**/e2e/.auth/
 /libpeerconnection.log
 npm-debug.log
 yarn-error.log

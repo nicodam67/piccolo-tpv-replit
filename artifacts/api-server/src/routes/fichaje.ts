@@ -12,8 +12,10 @@ import {
   fichajeSettingsTable,
   nfcCardsTable,
   tabletDevicesTable,
+  planningSchedulesTable,
+  hrWorkCentersTable,
 } from "@workspace/db";
-import { eq, and, gte, lte, desc, asc, isNull, isNotNull } from "drizzle-orm";
+import { eq, and, gte, inArray, lte, desc, asc, isNull, isNotNull, or, sql } from "drizzle-orm";
 import * as crypto from "node:crypto";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { idempotency } from "../middlewares/idempotency";
@@ -26,6 +28,7 @@ import {
   consumeClockProof,
   issueClockProofs,
 } from "../lib/clock-authorization";
+import { resolvePlannedShiftId } from "../lib/planned-shift-link";
 
 const router: IRouter = Router();
 const publicClockLimiter = rateLimit({
@@ -69,6 +72,30 @@ async function logAudit(
   });
 }
 
+async function canManageEmployeeAtCenter(
+  actor: { id: string; role: string },
+  employeeId: string,
+): Promise<boolean> {
+  if (actor.role === "admin") return true;
+  if (!["manager", "encargado"].includes(actor.role)) return actor.id === employeeId;
+  const rows = await db.select({ id: employeesTable.id, workCenterId: employeesTable.workCenterId })
+    .from(employeesTable)
+    .where(inArray(employeesTable.id, [actor.id, employeeId]));
+  const actorCenter = rows.find((employee) => employee.id === actor.id)?.workCenterId;
+  const targetCenter = rows.find((employee) => employee.id === employeeId)?.workCenterId;
+  return Boolean(actorCenter) && actorCenter === targetCenter;
+}
+
+async function employeeTimezone(employeeId: string): Promise<string> {
+  const [employee, settings] = await Promise.all([
+    db.select({ timezone: hrWorkCentersTable.timezone }).from(employeesTable)
+      .leftJoin(hrWorkCentersTable, eq(employeesTable.workCenterId, hrWorkCentersTable.id))
+      .where(eq(employeesTable.id, employeeId)).limit(1),
+    db.select({ timezone: fichajeSettingsTable.timezone }).from(fichajeSettingsTable).limit(1),
+  ]);
+  return employee[0]?.timezone ?? settings[0]?.timezone ?? "UTC";
+}
+
 // ════════════════════════════════════════════════════════════════════════════
 // PUBLIC ENDPOINTS — no auth (for mobile clock screen at /fichaje)
 // ════════════════════════════════════════════════════════════════════════════
@@ -109,8 +136,6 @@ router.get("/fichaje/public/my-status/:employeeId", async (req, res): Promise<vo
     return;
   }
   const employeeId = req.params.employeeId as string;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
 
   const openRecord = await db
     .select()
@@ -119,7 +144,6 @@ router.get("/fichaje/public/my-status/:employeeId", async (req, res): Promise<vo
       and(
         eq(timeRecordsTable.employeeId, employeeId),
         isNull(timeRecordsTable.clockOut),
-        gte(timeRecordsTable.clockIn, today)
       )
     )
     .limit(1);
@@ -202,6 +226,10 @@ router.get("/fichaje/records", requireAuth, async (req, res): Promise<void> => {
 
   const isManager = ["admin", "manager", "encargado"].includes(user.role);
   const targetId = isManager && employeeId ? employeeId : user.id;
+  if (!await canManageEmployeeAtCenter(user, targetId)) {
+    res.status(403).json({ error: "El empleado no pertenece a tu centro de trabajo" });
+    return;
+  }
 
   const conditions = [eq(timeRecordsTable.employeeId, targetId)];
   if (from) conditions.push(gte(timeRecordsTable.clockIn, new Date(from)));
@@ -233,11 +261,8 @@ router.get(
   "/fichaje/records/today",
   requireAuth,
   requireRole("admin", "manager", "encargado"),
-  async (_req, res): Promise<void> => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
+  async (req, res): Promise<void> => {
+    const timezone = await employeeTimezone(req.user!.id);
 
     const records = await db
       .select({
@@ -252,8 +277,11 @@ router.get(
       .innerJoin(employeesTable, eq(timeRecordsTable.employeeId, employeesTable.id))
       .where(
         and(
-          gte(timeRecordsTable.clockIn, today),
-          lte(timeRecordsTable.clockIn, tomorrow)
+          sql`(${timeRecordsTable.clockIn} AT TIME ZONE ${timezone})::date = (now() AT TIME ZONE ${timezone})::date`,
+          req.user!.role === "admin"
+            ? undefined
+            : eq(employeesTable.workCenterId, (await db.select({ workCenterId: employeesTable.workCenterId })
+              .from(employeesTable).where(eq(employeesTable.id, req.user!.id)).limit(1))[0]?.workCenterId ?? ""),
         )
       )
       .orderBy(asc(timeRecordsTable.clockIn));
@@ -283,16 +311,23 @@ router.post(
 
     const { employeeId, clockIn, clockOut, notes } = parsed.data;
     const user = req.user!;
+    if (!await canManageEmployeeAtCenter(user, employeeId)) {
+      res.status(403).json({ error: "El empleado no pertenece a tu centro de trabajo" });
+      return;
+    }
+    const clockInAt = new Date(clockIn);
+    const plannedShiftId = await resolvePlannedShiftId(db, employeeId, clockInAt);
 
     const [record] = await db
       .insert(timeRecordsTable)
       .values({
         employeeId,
-        clockIn: new Date(clockIn),
+        clockIn: clockInAt,
         clockOut: clockOut ? new Date(clockOut) : undefined,
         source: "manual",
         isManual: true,
         notes: notes ?? null,
+        plannedShiftId,
         createdBy: user.id,
       })
       .returning();
@@ -321,16 +356,25 @@ router.put(
       res.status(404).json({ error: "Registro no encontrado" });
       return;
     }
+    if (!await canManageEmployeeAtCenter(user, existing[0].employeeId)) {
+      res.status(403).json({ error: "El empleado no pertenece a tu centro de trabajo" });
+      return;
+    }
 
     const before = existing[0];
     const { clockIn, clockOut, notes } = req.body;
+    const nextClockIn = clockIn ? new Date(clockIn) : before.clockIn;
+    const plannedShiftId = clockIn
+      ? await resolvePlannedShiftId(db, before.employeeId, nextClockIn)
+      : before.plannedShiftId;
 
     const [updated] = await db
       .update(timeRecordsTable)
       .set({
-        clockIn: clockIn ? new Date(clockIn) : before.clockIn,
+        clockIn: nextClockIn,
         clockOut: clockOut ? new Date(clockOut) : before.clockOut,
         notes: notes ?? before.notes,
+        plannedShiftId,
         updatedAt: new Date(),
       })
       .where(eq(timeRecordsTable.id, id))
@@ -354,6 +398,12 @@ router.put(
 
 router.get("/fichaje/records/:id/breaks", requireAuth, async (req, res): Promise<void> => {
   const recordId = req.params.id as string;
+  const [record] = await db.select({ employeeId: timeRecordsTable.employeeId })
+    .from(timeRecordsTable).where(eq(timeRecordsTable.id, recordId)).limit(1);
+  if (!record) { res.status(404).json({ error: "Registro no encontrado" }); return; }
+  if (!await canManageEmployeeAtCenter(req.user!, record.employeeId)) {
+    res.status(403).json({ error: "No puedes consultar este registro" }); return;
+  }
   const breaks = await db
     .select()
     .from(breaksTable)
@@ -368,9 +418,25 @@ router.get("/fichaje/shifts", requireAuth, async (req, res): Promise<void> => {
   const user = req.user!;
   const { from, to, employeeId } = req.query as Record<string, string>;
   const isManager = ["admin", "manager", "encargado"].includes(user.role);
-  const targetId = isManager && employeeId ? employeeId : user.id;
-
-  const conditions = [eq(shiftsTable.employeeId, targetId)];
+  const conditions = [];
+  if (!isManager) {
+    conditions.push(eq(shiftsTable.employeeId, user.id));
+    conditions.push(or(
+      isNull(shiftsTable.scheduleId),
+      eq(planningSchedulesTable.status, "PUBLISHED"),
+    )!);
+  } else if (employeeId) {
+    if (!await canManageEmployeeAtCenter(user, employeeId)) {
+      res.status(403).json({ error: "El empleado no pertenece a tu centro de trabajo" });
+      return;
+    }
+    conditions.push(eq(shiftsTable.employeeId, employeeId));
+  }
+  if (isManager && user.role !== "admin") {
+    const [actor] = await db.select({ workCenterId: employeesTable.workCenterId })
+      .from(employeesTable).where(eq(employeesTable.id, user.id)).limit(1);
+    conditions.push(eq(employeesTable.workCenterId, actor?.workCenterId ?? ""));
+  }
   if (from) conditions.push(gte(shiftsTable.shiftDate, from));
   if (to) conditions.push(lte(shiftsTable.shiftDate, to));
 
@@ -386,10 +452,15 @@ router.get("/fichaje/shifts", requireAuth, async (req, res): Promise<void> => {
       splitStartTime: shiftsTable.splitStartTime,
       splitEndTime: shiftsTable.splitEndTime,
       notes: shiftsTable.notes,
+      scheduleId: shiftsTable.scheduleId,
+      scheduleStatus: planningSchedulesTable.status,
+      positionId: shiftsTable.positionId,
+      origin: shiftsTable.origin,
     })
     .from(shiftsTable)
     .innerJoin(employeesTable, eq(shiftsTable.employeeId, employeesTable.id))
-    .where(and(...conditions))
+    .leftJoin(planningSchedulesTable, eq(shiftsTable.scheduleId, planningSchedulesTable.id))
+    .where(conditions.length ? and(...conditions) : undefined)
     .orderBy(asc(shiftsTable.shiftDate));
 
   res.json(shifts);
@@ -416,6 +487,10 @@ router.post(
       res.status(400).json({ error: "Datos inválidos" });
       return;
     }
+    if (!await canManageEmployeeAtCenter(req.user!, parsed.data.employeeId)) {
+      res.status(403).json({ error: "El empleado no pertenece a tu centro de trabajo" });
+      return;
+    }
     const [shift] = await db
       .insert(shiftsTable)
       .values({ ...parsed.data, createdBy: req.user!.id })
@@ -431,9 +506,29 @@ router.put(
   requireRole("admin", "manager", "encargado"),
   async (req, res): Promise<void> => {
     const id = req.params.id as string;
+    const parsed = ShiftBody.partial().safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: "Datos inválidos" }); return; }
+    const [existing] = await db.select({
+      scheduleId: shiftsTable.scheduleId,
+      employeeId: shiftsTable.employeeId,
+    })
+      .from(shiftsTable).where(eq(shiftsTable.id, id)).limit(1);
+    if (!existing) { res.status(404).json({ error: "Turno no encontrado" }); return; }
+    if (!await canManageEmployeeAtCenter(req.user!, existing.employeeId)) {
+      res.status(403).json({ error: "El empleado no pertenece a tu centro de trabajo" });
+      return;
+    }
+    if (parsed.data.employeeId && !await canManageEmployeeAtCenter(req.user!, parsed.data.employeeId)) {
+      res.status(403).json({ error: "El empleado no pertenece a tu centro de trabajo" });
+      return;
+    }
+    if (existing.scheduleId) {
+      res.status(409).json({ error: "Los turnos del planificador se modifican desde el cuadrante o mediante cambios de turno" });
+      return;
+    }
     const [updated] = await db
       .update(shiftsTable)
-      .set(req.body)
+      .set({ ...parsed.data, updatedAt: new Date() })
       .where(eq(shiftsTable.id, id))
       .returning();
     if (!updated) { res.status(404).json({ error: "Turno no encontrado" }); return; }
@@ -450,6 +545,14 @@ router.delete(
     const id = req.params.id as string;
     const existing = await db.select().from(shiftsTable).where(eq(shiftsTable.id, id)).limit(1);
     if (!existing[0]) { res.status(404).json({ error: "Turno no encontrado" }); return; }
+    if (!await canManageEmployeeAtCenter(req.user!, existing[0].employeeId)) {
+      res.status(403).json({ error: "El empleado no pertenece a tu centro de trabajo" });
+      return;
+    }
+    if (existing[0].scheduleId) {
+      res.status(409).json({ error: "Los turnos del planificador se eliminan desde el cuadrante" });
+      return;
+    }
     await db.delete(shiftsTable).where(eq(shiftsTable.id, id));
     await logAudit("shift_deleted", existing[0].employeeId, req.user!.id, "shift", id);
     res.json({ success: true });
@@ -463,6 +566,10 @@ router.get("/fichaje/absences", requireAuth, async (req, res): Promise<void> => 
   const { from, to, employeeId, status } = req.query as Record<string, string>;
   const isManager = ["admin", "manager", "encargado"].includes(user.role);
   const targetId = isManager && employeeId ? employeeId : user.id;
+  if (!await canManageEmployeeAtCenter(user, targetId)) {
+    res.status(403).json({ error: "El empleado no pertenece a tu centro de trabajo" });
+    return;
+  }
 
   const conditions = [eq(absencesTable.employeeId, targetId)];
   if (from) conditions.push(gte(absencesTable.absenceDate, from));
@@ -503,6 +610,10 @@ router.post("/fichaje/absences", requireAuth, async (req, res): Promise<void> =>
   const user = req.user!;
   const isManager = ["admin", "manager", "encargado"].includes(user.role);
   const employeeId = isManager ? parsed.data.employeeId : user.id;
+  if (!await canManageEmployeeAtCenter(user, employeeId)) {
+    res.status(403).json({ error: "El empleado no pertenece a tu centro de trabajo" });
+    return;
+  }
 
   const [absence] = await db.insert(absencesTable).values({ ...parsed.data, employeeId }).returning();
   await logAudit("absence_created", employeeId, user.id, "absence", absence.id);
@@ -516,6 +627,15 @@ router.put(
   async (req, res): Promise<void> => {
     const id = req.params.id as string;
     const { status } = req.body; // 'approved' | 'rejected'
+    if (!["approved", "rejected"].includes(status)) {
+      res.status(400).json({ error: "Estado de ausencia inválido" }); return;
+    }
+    const [existing] = await db.select({ employeeId: absencesTable.employeeId })
+      .from(absencesTable).where(eq(absencesTable.id, id)).limit(1);
+    if (!existing) { res.status(404).json({ error: "Ausencia no encontrada" }); return; }
+    if (!await canManageEmployeeAtCenter(req.user!, existing.employeeId)) {
+      res.status(403).json({ error: "El empleado no pertenece a tu centro de trabajo" }); return;
+    }
     const [updated] = await db
       .update(absencesTable)
       .set({ status, approvedBy: req.user!.id, approvedAt: new Date() })
@@ -535,6 +655,9 @@ router.delete(
     const id = req.params.id as string;
     const existing = await db.select().from(absencesTable).where(eq(absencesTable.id, id)).limit(1);
     if (!existing[0]) { res.status(404).json({ error: "Ausencia no encontrada" }); return; }
+    if (!await canManageEmployeeAtCenter(req.user!, existing[0].employeeId)) {
+      res.status(403).json({ error: "El empleado no pertenece a tu centro de trabajo" }); return;
+    }
     await db.delete(absencesTable).where(eq(absencesTable.id, id));
     res.json({ success: true });
   }
@@ -626,12 +749,15 @@ router.post(
           continue;
         }
 
+        const clockInAt = new Date(row.clockIn);
+        const plannedShiftId = await resolvePlannedShiftId(db, employee[0].id, clockInAt);
         await db.insert(timeRecordsTable).values({
           employeeId: employee[0].id,
-          clockIn: new Date(row.clockIn),
+          clockIn: clockInAt,
           clockOut: row.clockOut ? new Date(row.clockOut) : undefined,
           source: "anviz",
           isManual: false,
+          plannedShiftId,
         });
         imported++;
       } catch (err) {
@@ -973,16 +1099,12 @@ router.post("/fichaje/public/nfc/identify", publicClockLimiter, async (req, res)
   }
 
   // Get current clock status
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
   const openRecord = await db
     .select()
     .from(timeRecordsTable)
     .where(and(
       eq(timeRecordsTable.employeeId, emp[0].id),
       isNull(timeRecordsTable.clockOut),
-      gte(timeRecordsTable.clockIn, today)
     ))
     .limit(1);
 
@@ -1036,13 +1158,11 @@ router.post("/fichaje/public/nfc/identify", publicClockLimiter, async (req, res)
 
 router.get("/fichaje/me", requireAuth, async (req, res): Promise<void> => {
   const user = req.user!;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
 
   const openRecord = await db
     .select()
     .from(timeRecordsTable)
-    .where(and(eq(timeRecordsTable.employeeId, user.id), isNull(timeRecordsTable.clockOut), gte(timeRecordsTable.clockIn, today)))
+    .where(and(eq(timeRecordsTable.employeeId, user.id), isNull(timeRecordsTable.clockOut)))
     .limit(1);
 
   const openBreak = openRecord[0]

@@ -10,6 +10,7 @@ import {
   jsonb,
 } from "drizzle-orm/pg-core";
 import { employeesTable } from "./employees";
+import { planningSchedulesTable, staffingRequirementsTable } from "./planner";
 
 // ─── Registros de tiempo (entradas/salidas) ──────────────────────────────────
 export const timeRecordsTable = pgTable("time_records", {
@@ -30,6 +31,7 @@ export const timeRecordsTable = pgTable("time_records", {
   importRowId: uuid("import_row_id"),
   externalRecordId: text("external_record_id"),
   deviceId: text("device_id"),
+  plannedShiftId: uuid("planned_shift_id"),
 });
 
 // ─── Descansos vinculados a un registro ─────────────────────────────────────
@@ -56,6 +58,11 @@ export const shiftsTable = pgTable("shifts", {
   splitStartTime: text("split_start_time"), // HH:MM — inicio turno tarde si es partido
   splitEndTime: text("split_end_time"),     // HH:MM — fin turno tarde si es partido
   notes: text("notes"),
+  scheduleId: uuid("schedule_id").references(() => planningSchedulesTable.id, { onDelete: "cascade" }),
+  positionId: uuid("position_id"),
+  requirementId: uuid("requirement_id").references(() => staffingRequirementsTable.id, { onDelete: "set null" }),
+  origin: text("origin").notNull().default("manual"),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   createdBy: uuid("created_by").references(() => employeesTable.id),
 });

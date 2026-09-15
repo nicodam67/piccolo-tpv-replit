@@ -41,11 +41,11 @@ const NAV: NavItem[] = [
   { label: "Inicio",              icon: <Home size={16} />,            href: "/personal",                        section: "" },
   // ── EMPLEADOS ──
   { label: "Empleados",           icon: <Users size={16} />,           href: "/personal/empleados",              section: "Empleados" },
+  { label: "Planificador",        icon: <Calendar size={16} />,        href: "/personal/planificador",            section: "Planificador" },
   // ── FICHAJE ──
   { label: "Vista general",       icon: <LayoutDashboard size={16} />, href: "/personal/fichaje",                section: "Fichaje" },
   { label: "Registros",           icon: <Clock size={16} />,           href: "/personal/fichaje/registros" },
   { label: "Turnos",              icon: <CalendarClock size={16} />,   href: "/personal/fichaje/turnos" },
-  { label: "Planificación",       icon: <Calendar size={16} />,        href: "/personal/fichaje/planificacion" },
   { label: "Pausas",              icon: <Coffee size={16} />,          href: "/personal/fichaje/pausas" },
   { label: "Incidencias",         icon: <AlertCircle size={16} />,     href: "/personal/fichaje/incidencias" },
   { label: "Correcciones",        icon: <FileEdit size={16} />,        href: "/personal/fichaje/correcciones" },

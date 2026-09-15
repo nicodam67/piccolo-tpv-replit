@@ -1,4 +1,5 @@
 import { defineConfig } from "@playwright/test";
+import { ADMIN_STORAGE_STATE } from "./e2e/global-setup";
 
 /**
  * Piccolo TPV — Playwright E2E configuration
@@ -19,6 +20,7 @@ const API_BASE = process.env.API_BASE_URL ?? "http://localhost:3000/api";
 
 export default defineConfig({
   testDir: "./e2e",
+  globalSetup: "./e2e/global-setup.ts",
   fullyParallel: false,       // TPV state is shared; run tests serially by default
   retries: 0,
   timeout: 30_000,
@@ -39,6 +41,7 @@ export default defineConfig({
       name: "api",
       use: {
         baseURL: API_BASE,
+        storageState: ADMIN_STORAGE_STATE,
       },
     },
   ],

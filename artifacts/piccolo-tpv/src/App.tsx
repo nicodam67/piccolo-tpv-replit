@@ -85,6 +85,7 @@ import FichajeDispositivos from './pages/fichaje/FichajeDispositivos';
 import TabletApp from './pages/fichaje/tablet/TabletApp';
 import PersonalLanding from './pages/personal/PersonalLanding';
 import PersonalLayout from './pages/personal/PersonalLayout';
+import StaffPlanner from './pages/personal/StaffPlanner';
 import Verifactu from './pages/verifactu';
 import Crm from './pages/crm';
 import Branding from './pages/branding';
@@ -364,6 +365,11 @@ function Router() {
         <RequireRole roles={ROLES_MANAGER_UP}>
           <PersonalLayout><FichajeEmpleados /></PersonalLayout>
         </RequireRole>
+      </Route>
+      <Route path="/personal/planificador">
+        <RequirePermission permission="planner.view">
+          <PersonalLayout><StaffPlanner /></PersonalLayout>
+        </RequirePermission>
       </Route>
       <Route path="/personal/fichaje">
         <RequireRole roles={ROLES_MANAGER_UP}>

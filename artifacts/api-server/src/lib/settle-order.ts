@@ -21,6 +21,7 @@ import {
   ticketsTable,
   businessConfigTable,
   discountsTable,
+  employeesTable,
 } from "@workspace/db";
 import { eq, and, sum } from "drizzle-orm";
 import { calcMultiRateBreakdown } from "./tax";
@@ -104,6 +105,8 @@ export async function settleOrderIfFullyPaid({
       .innerJoin(paymentMethodsTable, eq(paymentsTable.paymentMethodId, paymentMethodsTable.id))
       .where(and(eq(paymentsTable.orderId, orderId), eq(paymentsTable.status, "completed")))
       .limit(1);
+    const [issuer] = await tx.select({ workCenterId: employeesTable.workCenterId })
+      .from(employeesTable).where(eq(employeesTable.id, employeeId)).limit(1);
 
     const [ticket] = await tx
       .insert(ticketsTable)
@@ -121,6 +124,7 @@ export async function settleOrderIfFullyPaid({
         total,
         taxBreakdown:         taxBreakdown as any,
         employeeId,
+        workCenterId:         issuer?.workCenterId ?? null,
       })
       .returning();
 

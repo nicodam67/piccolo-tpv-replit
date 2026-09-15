@@ -30,27 +30,27 @@ beforeEach(() => {
 describe("RBAC role matrix", () => {
   const matrix: Record<string, { allowed: string[]; denied: string[] }> = {
     admin: {
-      allowed: ["cash.close", "payments.void", "invoices.correct", "settings.manage", "users.manage"],
+      allowed: ["cash.close", "payments.void", "invoices.correct", "settings.manage", "users.manage", "planner.publish", "shift_changes.manage"],
       denied: [],
     },
     manager: {
-      allowed: ["cash.close", "payments.refund", "invoices.create", "stock.manage", "suppliers.manage"],
+      allowed: ["cash.close", "payments.refund", "invoices.create", "stock.manage", "suppliers.manage", "planner.publish", "shift_changes.manage"],
       denied: ["fiscal.configure", "users.manage"],
     },
     encargado: {
-      allowed: ["cash.open", "cash.close", "invoices.create", "timeclock.manage"],
-      denied: ["payments.refund", "payments.void", "settings.manage", "suppliers.manage"],
+      allowed: ["cash.open", "cash.close", "invoices.create", "timeclock.manage", "planner.manage", "shift_changes.create"],
+      denied: ["payments.refund", "payments.void", "settings.manage", "suppliers.manage", "planner.publish", "shift_changes.manage"],
     },
     waiter: {
-      allowed: ["tables.view", "orders.create", "payments.create"],
-      denied: ["cash.close", "invoices.create", "stock.manage", "employees.manage", "settings.manage"],
+      allowed: ["tables.view", "orders.create", "payments.create", "planner.view", "shift_changes.respond"],
+      denied: ["cash.close", "invoices.create", "stock.manage", "employees.manage", "settings.manage", "planner.manage", "shift_changes.manage"],
     },
     cashier: {
-      allowed: ["cash.open", "cash.view", "payments.create"],
-      denied: ["cash.close", "payments.refund", "invoices.create", "settings.manage"],
+      allowed: ["cash.open", "cash.view", "payments.create", "planner.view"],
+      denied: ["cash.close", "payments.refund", "invoices.create", "settings.manage", "planner.manage"],
     },
     kitchen: {
-      allowed: ["kds.view", "kds.manage"],
+      allowed: ["kds.view", "kds.manage", "planner.view"],
       denied: ["orders.create", "payments.create", "cash.view", "settings.manage"],
     },
   };
