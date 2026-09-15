@@ -251,6 +251,28 @@ async function enrichShiftChangeRows(rows: Array<typeof shiftChangeRequestsTable
   }));
 }
 
+async function managerWorkCenter(employeeId: string): Promise<string | null> {
+  const [employee] = await db.select({ workCenterId: employeesTable.workCenterId })
+    .from(employeesTable).where(eq(employeesTable.id, employeeId)).limit(1);
+  return employee?.workCenterId ?? null;
+}
+
+async function canManageShiftChange(
+  actor: { id: string; role: string },
+  requestId: string,
+): Promise<boolean> {
+  if (actor.role === "admin") return true;
+  if (actor.role !== "manager") return false;
+  const workCenterId = await managerWorkCenter(actor.id);
+  if (!workCenterId) return false;
+  const [row] = await db.select({ scheduleWorkCenterId: planningSchedulesTable.workCenterId })
+    .from(shiftChangeRequestsTable)
+    .innerJoin(planningSchedulesTable, eq(shiftChangeRequestsTable.scheduleId, planningSchedulesTable.id))
+    .where(eq(shiftChangeRequestsTable.id, requestId))
+    .limit(1);
+  return row?.scheduleWorkCenterId === workCenterId;
+}
+
 async function loadScheduleContext(scheduleId: string) {
   const [schedule] = await db
     .select()
@@ -689,8 +711,19 @@ router.get("/planner/shift-changes", requireAuth, requirePermission("shift_chang
 router.get("/planner/shift-changes/manage", requireAuth, requirePermission("shift_changes.manage"), async (req, res) => {
   await expireStaleShiftChanges();
   const status = typeof req.query.status === "string" ? req.query.status : undefined;
+  let scheduleIds: string[] | null = null;
+  if (req.user!.role !== "admin") {
+    const workCenterId = await managerWorkCenter(req.user!.id);
+    if (!workCenterId) { res.json([]); return; }
+    scheduleIds = (await db.select({ id: planningSchedulesTable.id }).from(planningSchedulesTable)
+      .where(eq(planningSchedulesTable.workCenterId, workCenterId))).map((schedule) => schedule.id);
+    if (scheduleIds.length === 0) { res.json([]); return; }
+  }
   const rows = await db.select().from(shiftChangeRequestsTable)
-    .where(status ? eq(shiftChangeRequestsTable.status, status) : undefined)
+    .where(and(
+      status ? eq(shiftChangeRequestsTable.status, status) : undefined,
+      scheduleIds ? inArray(shiftChangeRequestsTable.scheduleId, scheduleIds) : undefined,
+    ))
     .orderBy(desc(shiftChangeRequestsTable.createdAt));
   res.json(await enrichShiftChangeRows(rows));
 });
@@ -937,6 +970,9 @@ router.post("/planner/shift-changes/:id/cancel", requireAuth, requirePermission(
 router.post("/planner/shift-changes/:id/manager-reject", requireAuth, requirePermission("shift_changes.manage"), async (req, res) => {
   const parsed = ShiftChangeCommentBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: "Comentario inválido" }); return; }
+  if (!await canManageShiftChange(req.user!, req.params.id as string)) {
+    res.status(403).json({ error: "La solicitud no pertenece a tu centro de trabajo." }); return;
+  }
   try {
     const result = await transitionShiftChange(req.params.id as string, req.user!.id, "REJECT_MANAGER", parsed.data.comment);
     if (result.expired) { res.status(409).json({ error: "La solicitud ha caducado.", code: "EXPIRED", request: result.request }); return; }
@@ -950,6 +986,9 @@ router.post("/planner/shift-changes/:id/manager-reject", requireAuth, requirePer
 router.post("/planner/shift-changes/:id/approve", requireAuth, requirePermission("shift_changes.manage"), async (req, res) => {
   const parsed = ShiftChangeApproveBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: "Aprobación inválida", issues: parsed.error.issues }); return; }
+  if (!await canManageShiftChange(req.user!, req.params.id as string)) {
+    res.status(403).json({ error: "La solicitud no pertenece a tu centro de trabajo." }); return;
+  }
   try {
     const result = await db.transaction(async (tx) => {
       const requestId = req.params.id as string;
