@@ -1496,7 +1496,7 @@ router.post("/planner/schedules/:id/need-proposals/calculate", requireAuth, requ
       date: recommendation.requirementDate,
       startTime: recommendation.startTime,
       endTime: recommendation.endTime,
-      origin: "proposal",
+      origin: "manual",
     };
     const assignableCount = context.employees.filter((employee) =>
       validateAssignment(employee, { ...assignment, employeeId: employee.id }, context.assignments).length === 0,
