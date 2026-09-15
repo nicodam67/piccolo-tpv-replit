@@ -7,10 +7,13 @@ const ADMIN_PIN = process.env.E2E_ADMIN_PIN ?? "1234";
 
 test("manager configures and compares planner availability", async ({ page }) => {
   test.skip(!ADMIN_ID, "E2E_ADMIN_ID is required for the live availability flow");
-  const login = await page.request.post(`${API}/auth/pin`, {
-    data: { employeeId: ADMIN_ID, pin: ADMIN_PIN },
-  });
-  expect(login.status()).toBe(200);
+  const session = await page.request.get(`${API}/auth/me`);
+  if (session.status() !== 200) {
+    const login = await page.request.post(`${API}/auth/pin`, {
+      data: { employeeId: ADMIN_ID, pin: ADMIN_PIN },
+    });
+    expect(login.status()).toBe(200);
+  }
 
   await page.goto(`${APP}/personal/planificador`);
   await page.getByRole("button", { name: "Disponibilidad" }).click();

@@ -7,10 +7,13 @@ const ADMIN_PIN = process.env.E2E_ADMIN_PIN ?? "1234";
 
 test("manager reviews an explainable staffing-needs proposal", async ({ page }) => {
   test.skip(!ADMIN_ID, "E2E_ADMIN_ID is required for the live demand flow");
-  const login = await page.request.post(`${API}/auth/pin`, {
-    data: { employeeId: ADMIN_ID, pin: ADMIN_PIN },
-  });
-  expect(login.status()).toBe(200);
+  const session = await page.request.get(`${API}/auth/me`);
+  if (session.status() !== 200) {
+    const login = await page.request.post(`${API}/auth/pin`, {
+      data: { employeeId: ADMIN_ID, pin: ADMIN_PIN },
+    });
+    expect(login.status()).toBe(200);
+  }
 
   await page.goto(`${APP}/personal/planificador`);
   const schedules = await page.request.get(`${API}/planner/schedules`).then((response) => response.json());
@@ -41,12 +44,16 @@ test("configured reservation demand becomes an applied need and generated assign
   const centerId = process.env.E2E_DEMAND_CENTER_ID;
   const positionId = process.env.E2E_DEMAND_POSITION_ID;
   test.skip(!ADMIN_ID || !centerId || !positionId, "Demand center and position fixtures are required");
-  const login = await request.post(`${API}/auth/pin`, {
-    data: { employeeId: ADMIN_ID, pin: ADMIN_PIN },
-  });
-  expect(login.status()).toBe(200);
-  const token = (await login.json()).token as string;
-  const headers = { Authorization: `Bearer ${token}` };
+  const session = await request.get(`${API}/auth/me`);
+  let headers: Record<string, string> = {};
+  if (session.status() !== 200) {
+    const login = await request.post(`${API}/auth/pin`, {
+      data: { employeeId: ADMIN_ID, pin: ADMIN_PIN },
+    });
+    expect(login.status()).toBe(200);
+    const token = (await login.json()).token as string;
+    headers = { Authorization: `Bearer ${token}` };
+  }
   const marker = Date.now();
   let ruleId = "";
   let reservationId = "";
