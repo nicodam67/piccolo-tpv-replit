@@ -19,6 +19,7 @@ import {
   ordersTable,
   tableEventsTable,
   crmClientsTable,
+  employeesTable,
 } from "@workspace/db";
 import { sql, eq, and, ne, inArray, gte, lte, asc, desc, or } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
@@ -247,6 +248,14 @@ router.post("/reservations", requireAuth, async (req, res): Promise<void> => {
   const clientId       = typeof b.clientId === "string" && b.clientId ? b.clientId : null;
   const shiftId        = typeof b.shiftId  === "string" && b.shiftId  ? b.shiftId  : null;
   const duracionMinutos = Number.isFinite(b.duracionMinutos) && b.duracionMinutos > 0 ? Math.floor(b.duracionMinutos) : 90;
+  const [actorEmployee] = user?.id
+    ? await db.select({ workCenterId: employeesTable.workCenterId })
+      .from(employeesTable).where(eq(employeesTable.id, user.id)).limit(1)
+    : [];
+  const requestedWorkCenterId = typeof b.workCenterId === "string" && b.workCenterId ? b.workCenterId : null;
+  const workCenterId = req.user?.role === "admin"
+    ? requestedWorkCenterId ?? actorEmployee?.workCenterId ?? null
+    : actorEmployee?.workCenterId ?? null;
 
   if (mesaId) {
     const { conflict, conflictWith } = await hasConflict({ mesaId, fecha: b.fecha, hora: b.hora, duracionMinutos });
@@ -264,6 +273,7 @@ router.post("/reservations", requireAuth, async (req, res): Promise<void> => {
     shiftId,
     zonaPreferida:        typeof b.zonaPreferida === "string" ? b.zonaPreferida.trim() || null : null,
     mesaId,
+    workCenterId,
     duracionMinutos,
     idioma:               typeof b.idioma  === "string" ? b.idioma  : "es",
     alergias:             typeof b.alergias === "string" ? b.alergias.trim() : "",

@@ -4,6 +4,7 @@ import {
 import { restaurantTablesTable } from "./tables";
 import { employeesTable } from "./employees";
 import { crmClientsTable } from "./crm";
+import { hrWorkCentersTable } from "./hr";
 
 // ── service_shifts ─────────────────────────────────────────────────────────────
 export const serviceShiftsTable = pgTable("service_shifts", {
@@ -42,6 +43,7 @@ export const reservationsTable = pgTable("reservations", {
   /** Zone name or id, free text */
   zonaPreferida: text("zona_preferida"),
   mesaId:       uuid("mesa_id").references(() => restaurantTablesTable.id, { onDelete: "set null" }),
+  workCenterId: uuid("work_center_id").references(() => hrWorkCentersTable.id, { onDelete: "set null" }),
   duracionMinutos: integer("duracion_minutos").notNull().default(90),
   idioma:       text("idioma").notNull().default("es"),
   alergias:     text("alergias").notNull().default(""),

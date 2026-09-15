@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { and, asc, desc, eq, gte, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import { z } from "zod";
+import { createHash } from "node:crypto";
 import {
   absencesTable,
   db,
@@ -22,6 +23,10 @@ import {
   shiftChangeLocksTable,
   shiftChangeRequestsTable,
   staffingRequirementsTable,
+  staffingDemandRulesTable,
+  staffingNeedProposalItemsTable,
+  staffingNeedProposalsTable,
+  reservationsTable,
   timeRecordsTable,
 } from "@workspace/db";
 import { requireAuth, requirePermission } from "../middlewares/auth";
@@ -35,6 +40,7 @@ import {
   type PlannerIssue,
   type StaffingNeed,
   validateSchedule,
+  validateAssignment,
 } from "../lib/staff-planner";
 import {
   validatePlanningConfiguration,
@@ -54,6 +60,13 @@ import {
   type ShiftSnapshot,
 } from "../lib/shift-change";
 import { postgresErrorCode, sqlParameterList } from "../lib/postgres";
+import {
+  calculateStaffingNeeds,
+  type HistoricalDemandObservation,
+  type HistoricalMetric,
+  type StaffingDemandRuleInput,
+  type ThresholdRounding,
+} from "../lib/staffing-demand";
 
 const router: IRouter = Router();
 const DateString = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -134,6 +147,59 @@ const PlanningConfigurationBody = z.object({
 const DuplicatePlanningBody = z.object({
   sourceEmployeeId: z.string().uuid(),
 });
+
+const ThresholdRoundingSchema = z.enum(["PER_STARTED_BLOCK", "PER_COMPLETE_BLOCK", "ON_THRESHOLD"]);
+const DemandRuleBody = z.object({
+  name: z.string().trim().min(1).max(120),
+  workCenterId: z.string().uuid(),
+  positionId: z.string().uuid(),
+  departmentId: z.string().uuid().nullable().optional(),
+  dayOfWeek: z.number().int().min(0).max(6).nullable().optional(),
+  startTime: TimeString,
+  endTime: TimeString,
+  validFrom: DateString.nullable().optional(),
+  validTo: DateString.nullable().optional(),
+  baseCount: z.number().int().min(0).max(100),
+  historicalWeeks: z.number().int().min(1).max(52),
+  minimumComparableWeeks: z.number().int().min(1).max(52),
+  historicalMetric: z.enum(["TICKETS", "REVENUE", "GUESTS", "UNITS"]).nullable(),
+  historicalThreshold: z.number().positive().nullable(),
+  historicalIncrement: z.number().int().positive().nullable(),
+  historicalRounding: ThresholdRoundingSchema.nullable(),
+  reservationGuestThreshold: z.number().int().positive().nullable(),
+  reservationIncrement: z.number().int().positive().nullable(),
+  reservationRounding: ThresholdRoundingSchema.nullable(),
+  categoryId: z.string().uuid().nullable().optional(),
+  prepZone: z.string().trim().min(1).max(80).nullable().optional(),
+}).superRefine((value, context) => {
+  if (value.startTime === value.endTime) {
+    context.addIssue({ code: "custom", path: ["endTime"], message: "La franja no puede tener duración cero" });
+  }
+  if (value.validFrom && value.validTo && value.validTo < value.validFrom) {
+    context.addIssue({ code: "custom", path: ["validTo"], message: "El periodo de vigencia no es válido" });
+  }
+  if (value.minimumComparableWeeks > value.historicalWeeks) {
+    context.addIssue({ code: "custom", path: ["minimumComparableWeeks"], message: "El mínimo no puede superar las semanas históricas" });
+  }
+  const historical = [value.historicalMetric, value.historicalThreshold, value.historicalIncrement, value.historicalRounding];
+  if (historical.some((item) => item != null) && historical.some((item) => item == null)) {
+    context.addIssue({ code: "custom", path: ["historicalMetric"], message: "Completa o desactiva todo el bloque histórico" });
+  }
+  const reservations = [value.reservationGuestThreshold, value.reservationIncrement, value.reservationRounding];
+  if (reservations.some((item) => item != null) && reservations.some((item) => item == null)) {
+    context.addIssue({ code: "custom", path: ["reservationGuestThreshold"], message: "Completa o desactiva todo el bloque de reservas" });
+  }
+  if (value.historicalMetric !== "UNITS" && (value.categoryId || value.prepZone)) {
+    context.addIssue({ code: "custom", path: ["categoryId"], message: "Los filtros de producto solo se aplican a unidades" });
+  }
+});
+
+const CalculateNeedsBody = z.object({
+  workCenterId: z.string().uuid(),
+  historicalWeeksOverride: z.number().int().min(1).max(52).nullable().optional(),
+});
+const ProposalItemBody = z.object({ finalCount: z.number().int().min(0).max(100) });
+const ProposalDecisionBody = z.object({ reason: z.string().trim().max(500).nullable().optional() });
 
 const ShiftChangeBody = z.object({
   requestType: z.enum(SHIFT_CHANGE_TYPES),
@@ -287,6 +353,88 @@ async function managerWorkCenter(employeeId: string): Promise<string | null> {
   return employee?.workCenterId ?? null;
 }
 
+async function canManageDemandCenter(
+  actor: { id: string; role: string },
+  workCenterId: string,
+): Promise<boolean> {
+  if (actor.role === "admin") return true;
+  return actor.role === "manager" && await managerWorkCenter(actor.id) === workCenterId;
+}
+
+function mapDemandRule(rule: typeof staffingDemandRulesTable.$inferSelect): StaffingDemandRuleInput {
+  return {
+    id: rule.id,
+    ruleGroupId: rule.ruleGroupId,
+    version: rule.version,
+    name: rule.name,
+    workCenterId: rule.workCenterId,
+    positionId: rule.positionId,
+    departmentId: rule.departmentId,
+    dayOfWeek: rule.dayOfWeek,
+    startTime: rule.startTime,
+    endTime: rule.endTime,
+    validFrom: rule.validFrom,
+    validTo: rule.validTo,
+    baseCount: rule.baseCount,
+    historicalWeeks: rule.historicalWeeks,
+    minimumComparableWeeks: rule.minimumComparableWeeks,
+    historicalMetric: rule.historicalMetric as HistoricalMetric | null,
+    historicalThreshold: rule.historicalThreshold == null ? null : Number(rule.historicalThreshold),
+    historicalIncrement: rule.historicalIncrement,
+    historicalRounding: rule.historicalRounding as ThresholdRounding | null,
+    reservationGuestThreshold: rule.reservationGuestThreshold,
+    reservationIncrement: rule.reservationIncrement,
+    reservationRounding: rule.reservationRounding as ThresholdRounding | null,
+    categoryId: rule.categoryId,
+    prepZone: rule.prepZone,
+  };
+}
+
+function addIsoDays(date: string, days: number): string {
+  const value = new Date(`${date}T12:00:00Z`);
+  value.setUTCDate(value.getUTCDate() + days);
+  return value.toISOString().slice(0, 10);
+}
+
+function stableHash(value: unknown): string {
+  return createHash("sha256").update(JSON.stringify(value)).digest("hex");
+}
+
+async function loadNeedProposal(proposalId: string) {
+  const [proposal] = await db.select().from(staffingNeedProposalsTable)
+    .where(eq(staffingNeedProposalsTable.id, proposalId)).limit(1);
+  if (!proposal) return null;
+  const items = await db.select({
+    id: staffingNeedProposalItemsTable.id,
+    proposalId: staffingNeedProposalItemsTable.proposalId,
+    requirementDate: staffingNeedProposalItemsTable.requirementDate,
+    startTime: staffingNeedProposalItemsTable.startTime,
+    endTime: staffingNeedProposalItemsTable.endTime,
+    positionId: staffingNeedProposalItemsTable.positionId,
+    positionName: hrPositionsTable.name,
+    suggestedCount: staffingNeedProposalItemsTable.suggestedCount,
+    finalCount: staffingNeedProposalItemsTable.finalCount,
+    assignableCount: staffingNeedProposalItemsTable.assignableCount,
+    difference: staffingNeedProposalItemsTable.difference,
+    historicalValue: staffingNeedProposalItemsTable.historicalValue,
+    reservationGuests: staffingNeedProposalItemsTable.reservationGuests,
+    comparableWeeks: staffingNeedProposalItemsTable.comparableWeeks,
+    explanation: staffingNeedProposalItemsTable.explanation,
+    inputSnapshot: staffingNeedProposalItemsTable.inputSnapshot,
+    ruleSnapshot: staffingNeedProposalItemsTable.ruleSnapshot,
+    editedBy: staffingNeedProposalItemsTable.editedBy,
+    editedAt: staffingNeedProposalItemsTable.editedAt,
+  }).from(staffingNeedProposalItemsTable)
+    .innerJoin(hrPositionsTable, eq(staffingNeedProposalItemsTable.positionId, hrPositionsTable.id))
+    .where(eq(staffingNeedProposalItemsTable.proposalId, proposalId))
+    .orderBy(
+      asc(staffingNeedProposalItemsTable.requirementDate),
+      asc(staffingNeedProposalItemsTable.startTime),
+      asc(hrPositionsTable.name),
+    );
+  return { proposal, items };
+}
+
 async function canManagePlanningEmployee(
   actor: { id: string; role: string },
   employeeId: string,
@@ -431,6 +579,7 @@ async function loadScheduleContext(scheduleId: string) {
       positionId: staffingRequirementsTable.positionId,
       positionName: hrPositionsTable.name,
       requiredCount: staffingRequirementsTable.requiredCount,
+      source: staffingRequirementsTable.source,
     }).from(staffingRequirementsTable)
       .innerJoin(hrPositionsTable, eq(staffingRequirementsTable.positionId, hrPositionsTable.id))
       .where(eq(staffingRequirementsTable.scheduleId, scheduleId))
@@ -1098,6 +1247,535 @@ router.get("/planner/availability/team", requireAuth, requirePermission("planner
       }),
     })),
   });
+});
+
+router.get("/planner/demand-rules", requireAuth, requirePermission("planner.manage"), async (req, res) => {
+  const workCenterId = typeof req.query.workCenterId === "string" ? req.query.workCenterId : "";
+  if (!workCenterId) { res.status(400).json({ error: "Selecciona un centro de trabajo" }); return; }
+  if (!await canManageDemandCenter(req.user!, workCenterId)) {
+    res.status(403).json({ error: "No puedes gestionar reglas de este centro" }); return;
+  }
+  const rows = await db.select({
+    rule: staffingDemandRulesTable,
+    positionName: hrPositionsTable.name,
+    departmentName: hrDepartmentsTable.name,
+  }).from(staffingDemandRulesTable)
+    .innerJoin(hrPositionsTable, eq(staffingDemandRulesTable.positionId, hrPositionsTable.id))
+    .leftJoin(hrDepartmentsTable, eq(staffingDemandRulesTable.departmentId, hrDepartmentsTable.id))
+    .where(and(
+      eq(staffingDemandRulesTable.workCenterId, workCenterId),
+      eq(staffingDemandRulesTable.active, true),
+    ))
+    .orderBy(asc(staffingDemandRulesTable.startTime), asc(hrPositionsTable.name));
+  res.json(rows.map((row) => ({ ...row.rule, positionName: row.positionName, departmentName: row.departmentName })));
+});
+
+router.post("/planner/demand-rules", requireAuth, requirePermission("planner.manage"), async (req, res) => {
+  const parsed = DemandRuleBody.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: "Regla inválida", issues: parsed.error.issues }); return; }
+  if (!await canManageDemandCenter(req.user!, parsed.data.workCenterId)) {
+    res.status(403).json({ error: "No puedes gestionar reglas de este centro" }); return;
+  }
+  const duplicateConditions = [
+    eq(staffingDemandRulesTable.workCenterId, parsed.data.workCenterId),
+    eq(staffingDemandRulesTable.positionId, parsed.data.positionId),
+    eq(staffingDemandRulesTable.startTime, parsed.data.startTime),
+    eq(staffingDemandRulesTable.endTime, parsed.data.endTime),
+    eq(staffingDemandRulesTable.active, true),
+    parsed.data.dayOfWeek == null
+      ? isNull(staffingDemandRulesTable.dayOfWeek)
+      : eq(staffingDemandRulesTable.dayOfWeek, parsed.data.dayOfWeek),
+  ];
+  const [duplicate] = await db.select({ id: staffingDemandRulesTable.id })
+    .from(staffingDemandRulesTable).where(and(...duplicateConditions)).limit(1);
+  if (duplicate) { res.status(409).json({ error: "Ya existe una regla activa para ese puesto y franja" }); return; }
+  const [created] = await db.insert(staffingDemandRulesTable).values({
+    ...parsed.data,
+    historicalThreshold: parsed.data.historicalThreshold == null ? null : String(parsed.data.historicalThreshold),
+    createdBy: req.user!.id,
+  }).returning();
+  await audit("staffing_demand_rule_created", req.user!.id, "staffing_demand_rule", created.id, {
+    rule: mapDemandRule(created),
+  });
+  res.status(201).json(created);
+});
+
+router.put("/planner/demand-rules/:id", requireAuth, requirePermission("planner.manage"), async (req, res) => {
+  const parsed = DemandRuleBody.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: "Regla inválida", issues: parsed.error.issues }); return; }
+  const [existing] = await db.select().from(staffingDemandRulesTable)
+    .where(eq(staffingDemandRulesTable.id, req.params.id as string)).limit(1);
+  if (!existing) { res.status(404).json({ error: "Regla no encontrada" }); return; }
+  if (!existing.active) { res.status(409).json({ error: "La regla ya fue sustituida" }); return; }
+  if (!await canManageDemandCenter(req.user!, existing.workCenterId)
+    || !await canManageDemandCenter(req.user!, parsed.data.workCenterId)) {
+    res.status(403).json({ error: "No puedes gestionar reglas de este centro" }); return;
+  }
+  const created = await db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT id FROM staffing_demand_rules WHERE id = ${existing.id} FOR UPDATE`);
+    await tx.update(staffingDemandRulesTable).set({ active: false })
+      .where(eq(staffingDemandRulesTable.id, existing.id));
+    const [revision] = await tx.insert(staffingDemandRulesTable).values({
+      ...parsed.data,
+      ruleGroupId: existing.ruleGroupId,
+      version: existing.version + 1,
+      historicalThreshold: parsed.data.historicalThreshold == null ? null : String(parsed.data.historicalThreshold),
+      supersedesRuleId: existing.id,
+      createdBy: req.user!.id,
+    }).returning();
+    await tx.insert(fichajeAuditTable).values({
+      action: "staffing_demand_rule_revised",
+      performedBy: req.user!.id,
+      entityType: "staffing_demand_rule",
+      entityId: revision.id,
+      details: { before: mapDemandRule(existing), after: mapDemandRule(revision) },
+    });
+    return revision;
+  });
+  res.json(created);
+});
+
+router.delete("/planner/demand-rules/:id", requireAuth, requirePermission("planner.manage"), async (req, res) => {
+  const [existing] = await db.select().from(staffingDemandRulesTable)
+    .where(eq(staffingDemandRulesTable.id, req.params.id as string)).limit(1);
+  if (!existing) { res.status(404).json({ error: "Regla no encontrada" }); return; }
+  if (!await canManageDemandCenter(req.user!, existing.workCenterId)) {
+    res.status(403).json({ error: "No puedes gestionar reglas de este centro" }); return;
+  }
+  await db.update(staffingDemandRulesTable).set({ active: false })
+    .where(eq(staffingDemandRulesTable.id, existing.id));
+  await audit("staffing_demand_rule_disabled", req.user!.id, "staffing_demand_rule", existing.id, {
+    before: mapDemandRule(existing),
+  });
+  res.json({ success: true });
+});
+
+router.post("/planner/schedules/:id/need-proposals/calculate", requireAuth, requirePermission("planner.manage"), async (req, res) => {
+  const parsed = CalculateNeedsBody.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: "Configuración de cálculo inválida", issues: parsed.error.issues }); return; }
+  if (!await canManageDemandCenter(req.user!, parsed.data.workCenterId)) {
+    res.status(403).json({ error: "No puedes calcular necesidades para este centro" }); return;
+  }
+  const scheduleId = req.params.id as string;
+  const [schedule] = await db.select().from(planningSchedulesTable)
+    .where(eq(planningSchedulesTable.id, scheduleId)).limit(1);
+  if (!schedule) { res.status(404).json({ error: "Cuadrante no encontrado" }); return; }
+  if (schedule.status !== "DRAFT") { res.status(409).json({ error: "Solo se calculan necesidades para borradores" }); return; }
+  if (schedule.workCenterId && schedule.workCenterId !== parsed.data.workCenterId) {
+    res.status(409).json({ error: "El cuadrante pertenece a otro centro" }); return;
+  }
+
+  const ruleRows = await db.select().from(staffingDemandRulesTable).where(and(
+    eq(staffingDemandRulesTable.workCenterId, parsed.data.workCenterId),
+    eq(staffingDemandRulesTable.active, true),
+  ));
+  if (ruleRows.length === 0) {
+    res.status(409).json({ error: "Configura al menos una regla de demanda para este centro" }); return;
+  }
+  const rules = ruleRows.map(mapDemandRule);
+  const timezoneRows = await db.select({ timezone: fichajeSettingsTable.timezone })
+    .from(fichajeSettingsTable).limit(1);
+  const timezone = timezoneRows[0]?.timezone ?? "UTC";
+  const maximumWeeks = parsed.data.historicalWeeksOverride
+    ?? Math.max(...rules.map((rule) => rule.historicalWeeks));
+  const historyFrom = addIsoDays(schedule.dateFrom, -(maximumWeeks * 7));
+  const historyTo = addIsoDays(schedule.dateTo, -7);
+
+  const [ticketResult, itemResult, reservations] = await Promise.all([
+    db.execute(sql`
+      SELECT
+        ticket.id AS ticket_id,
+        to_char(ticket.issued_at AT TIME ZONE ${timezone}, 'YYYY-MM-DD') AS local_date,
+        to_char(ticket.issued_at AT TIME ZONE ${timezone}, 'HH24:MI') AS local_time,
+        ticket.total::text AS revenue,
+        "order".guest_count AS guests
+      FROM tickets AS ticket
+      INNER JOIN orders AS "order" ON "order".id = ticket.order_id
+      INNER JOIN employees AS employee ON employee.id = ticket.employee_id
+      WHERE employee.work_center_id = ${parsed.data.workCenterId}
+        AND ticket.is_demo = false
+        AND (ticket.issued_at AT TIME ZONE ${timezone})::date >= ${historyFrom}::date
+        AND (ticket.issued_at AT TIME ZONE ${timezone})::date <= ${historyTo}::date
+      ORDER BY ticket.issued_at, ticket.id
+    `),
+    db.execute(sql`
+      SELECT
+        ticket.id AS ticket_id,
+        product.category_id,
+        product.prep_zone,
+        SUM(item.quantity)::int AS units
+      FROM tickets AS ticket
+      INNER JOIN employees AS employee ON employee.id = ticket.employee_id
+      INNER JOIN order_items AS item ON item.order_id = ticket.order_id
+      INNER JOIN products AS product ON product.id = item.product_id
+      WHERE employee.work_center_id = ${parsed.data.workCenterId}
+        AND ticket.is_demo = false
+        AND item.status <> 'cancelled'
+        AND (ticket.issued_at AT TIME ZONE ${timezone})::date >= ${historyFrom}::date
+        AND (ticket.issued_at AT TIME ZONE ${timezone})::date <= ${historyTo}::date
+      GROUP BY ticket.id, product.category_id, product.prep_zone
+      ORDER BY ticket.id
+    `),
+    db.select({
+      id: reservationsTable.id,
+      date: reservationsTable.fecha,
+      time: reservationsTable.hora,
+      durationMinutes: reservationsTable.duracionMinutos,
+      guests: reservationsTable.personas,
+      status: reservationsTable.status,
+    }).from(reservationsTable).where(and(
+      eq(reservationsTable.workCenterId, parsed.data.workCenterId),
+      eq(reservationsTable.isDemo, false),
+      gte(reservationsTable.fecha, schedule.dateFrom),
+      lte(reservationsTable.fecha, schedule.dateTo),
+      inArray(reservationsTable.status, [
+        "pendiente", "confirmada", "recordatorio_enviado", "cliente_avisado",
+        "cliente_llegado", "sentada", "en_espera",
+      ]),
+    )),
+  ]);
+  type TicketDemandRow = {
+    ticket_id: string;
+    local_date: string;
+    local_time: string;
+    revenue: string;
+    guests: number;
+  };
+  type ItemDemandRow = {
+    ticket_id: string;
+    category_id: string | null;
+    prep_zone: string | null;
+    units: number;
+  };
+  const itemRows = itemResult.rows as ItemDemandRow[];
+  const itemsByTicket = new Map<string, ItemDemandRow[]>();
+  for (const item of itemRows) {
+    itemsByTicket.set(item.ticket_id, [...(itemsByTicket.get(item.ticket_id) ?? []), item]);
+  }
+  const observations: HistoricalDemandObservation[] = (ticketResult.rows as TicketDemandRow[]).map((ticket) => {
+    const ticketItems = itemsByTicket.get(ticket.ticket_id) ?? [];
+    const unitsByCategory: Record<string, number> = {};
+    const unitsByPrepZone: Record<string, number> = {};
+    for (const item of ticketItems) {
+      if (item.category_id) unitsByCategory[item.category_id] = (unitsByCategory[item.category_id] ?? 0) + Number(item.units);
+      if (item.prep_zone) unitsByPrepZone[item.prep_zone] = (unitsByPrepZone[item.prep_zone] ?? 0) + Number(item.units);
+    }
+    return {
+      ticketId: ticket.ticket_id,
+      date: ticket.local_date,
+      time: ticket.local_time,
+      revenue: Number(ticket.revenue),
+      guests: ticket.guests,
+      units: ticketItems.reduce((sum, item) => sum + Number(item.units), 0),
+      unitsByCategory,
+      unitsByPrepZone,
+    };
+  });
+  const dates = expandDateRange(schedule.dateFrom, schedule.dateTo);
+  const recommendations = calculateStaffingNeeds({
+    dates,
+    rules,
+    observations,
+    reservations,
+    historicalWeeksOverride: parsed.data.historicalWeeksOverride,
+  });
+
+  if (!schedule.workCenterId) {
+    await db.update(planningSchedulesTable).set({
+      workCenterId: parsed.data.workCenterId,
+      updatedAt: new Date(),
+    }).where(eq(planningSchedulesTable.id, scheduleId));
+  }
+  const context = await loadScheduleContext(scheduleId);
+  if (!context) { res.status(404).json({ error: "Cuadrante no encontrado" }); return; }
+  const withCoverage = recommendations.map((recommendation) => {
+    const assignment: PlannedAssignment = {
+      id: `proposal:${recommendation.ruleSnapshot.id}:${recommendation.requirementDate}`,
+      employeeId: "",
+      positionId: recommendation.positionId,
+      date: recommendation.requirementDate,
+      startTime: recommendation.startTime,
+      endTime: recommendation.endTime,
+      origin: "proposal",
+    };
+    const assignableCount = context.employees.filter((employee) =>
+      validateAssignment(employee, { ...assignment, employeeId: employee.id }, context.assignments).length === 0,
+    ).length;
+    return {
+      ...recommendation,
+      assignableCount,
+      difference: assignableCount - recommendation.suggestedCount,
+    };
+  });
+  const rulesSnapshot = rules.map((rule) => ({ ...rule }));
+  const inputSummary = {
+    historicalSource: "tickets.employee_id → employees.work_center_id",
+    reservationSource: "reservations.work_center_id",
+    historyFrom,
+    historyTo,
+    historicalTickets: observations.length,
+    attributedReservations: reservations.length,
+    timezone,
+    configurationHash: stableHash(rulesSnapshot),
+  };
+  const proposal = await db.transaction(async (tx) => {
+    const [created] = await tx.insert(staffingNeedProposalsTable).values({
+      scheduleId,
+      workCenterId: parsed.data.workCenterId,
+      status: "PROPOSED",
+      dateFrom: schedule.dateFrom,
+      dateTo: schedule.dateTo,
+      historicalWeeksOverride: parsed.data.historicalWeeksOverride ?? null,
+      timezone,
+      inputSummary,
+      rulesSnapshot,
+      createdBy: req.user!.id,
+    }).returning();
+    if (withCoverage.length > 0) {
+      await tx.insert(staffingNeedProposalItemsTable).values(withCoverage.map((recommendation) => ({
+        proposalId: created.id,
+        requirementDate: recommendation.requirementDate,
+        startTime: recommendation.startTime,
+        endTime: recommendation.endTime,
+        positionId: recommendation.positionId,
+        suggestedCount: recommendation.suggestedCount,
+        finalCount: recommendation.suggestedCount,
+        assignableCount: recommendation.assignableCount,
+        difference: recommendation.difference,
+        historicalValue: recommendation.historicalValue == null ? null : String(recommendation.historicalValue),
+        reservationGuests: recommendation.reservationGuests,
+        comparableWeeks: recommendation.comparableWeeks,
+        explanation: recommendation.explanation,
+        inputSnapshot: recommendation.inputSnapshot,
+        ruleSnapshot: recommendation.ruleSnapshot,
+      })));
+    }
+    await tx.insert(fichajeAuditTable).values({
+      action: "staffing_need_proposal_calculated",
+      performedBy: req.user!.id,
+      entityType: "staffing_need_proposal",
+      entityId: created.id,
+      details: { scheduleId, inputSummary, recommendations: withCoverage.length },
+    });
+    return created;
+  });
+  res.status(201).json(await loadNeedProposal(proposal.id));
+});
+
+router.get("/planner/schedules/:id/need-proposals/latest", requireAuth, requirePermission("planner.manage"), async (req, res) => {
+  const [schedule] = await db.select().from(planningSchedulesTable)
+    .where(eq(planningSchedulesTable.id, req.params.id as string)).limit(1);
+  if (!schedule?.workCenterId) { res.status(404).json({ error: "No hay propuesta para este cuadrante" }); return; }
+  if (!await canManageDemandCenter(req.user!, schedule.workCenterId)) {
+    res.status(403).json({ error: "No puedes consultar este centro" }); return;
+  }
+  const [proposal] = await db.select({ id: staffingNeedProposalsTable.id })
+    .from(staffingNeedProposalsTable)
+    .where(eq(staffingNeedProposalsTable.scheduleId, schedule.id))
+    .orderBy(desc(staffingNeedProposalsTable.createdAt)).limit(1);
+  if (!proposal) { res.status(404).json({ error: "No hay propuesta para este cuadrante" }); return; }
+  res.json(await loadNeedProposal(proposal.id));
+});
+
+router.patch("/planner/need-proposal-items/:id", requireAuth, requirePermission("planner.manage"), async (req, res) => {
+  const parsed = ProposalItemBody.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: "Cantidad inválida", issues: parsed.error.issues }); return; }
+  const [row] = await db.select({
+    item: staffingNeedProposalItemsTable,
+    proposal: staffingNeedProposalsTable,
+  }).from(staffingNeedProposalItemsTable)
+    .innerJoin(staffingNeedProposalsTable, eq(staffingNeedProposalItemsTable.proposalId, staffingNeedProposalsTable.id))
+    .where(eq(staffingNeedProposalItemsTable.id, req.params.id as string)).limit(1);
+  if (!row) { res.status(404).json({ error: "Recomendación no encontrada" }); return; }
+  if (!await canManageDemandCenter(req.user!, row.proposal.workCenterId)) {
+    res.status(403).json({ error: "No puedes editar esta propuesta" }); return;
+  }
+  if (!["PROPOSED", "REVIEWED"].includes(row.proposal.status)) {
+    res.status(409).json({ error: "La propuesta ya no se puede editar" }); return;
+  }
+  await db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT id FROM staffing_need_proposals WHERE id = ${row.proposal.id} FOR UPDATE`);
+    await tx.update(staffingNeedProposalItemsTable).set({
+      finalCount: parsed.data.finalCount,
+      difference: row.item.assignableCount - parsed.data.finalCount,
+      editedBy: req.user!.id,
+      editedAt: new Date(),
+    }).where(eq(staffingNeedProposalItemsTable.id, row.item.id));
+    if (row.proposal.status === "REVIEWED") {
+      await tx.update(staffingNeedProposalsTable).set({
+        status: "PROPOSED",
+        reviewedBy: null,
+        reviewedAt: null,
+        updatedAt: new Date(),
+      }).where(eq(staffingNeedProposalsTable.id, row.proposal.id));
+    }
+    await tx.insert(fichajeAuditTable).values({
+      action: "staffing_need_proposal_item_edited",
+      performedBy: req.user!.id,
+      entityType: "staffing_need_proposal_item",
+      entityId: row.item.id,
+      details: { before: row.item.finalCount, after: parsed.data.finalCount, proposalId: row.proposal.id },
+    });
+  });
+  res.json(await loadNeedProposal(row.proposal.id));
+});
+
+router.post("/planner/need-proposals/:id/review", requireAuth, requirePermission("planner.manage"), async (req, res) => {
+  const parsed = ProposalDecisionBody.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: "Decisión inválida" }); return; }
+  const [proposal] = await db.select().from(staffingNeedProposalsTable)
+    .where(eq(staffingNeedProposalsTable.id, req.params.id as string)).limit(1);
+  if (!proposal) { res.status(404).json({ error: "Propuesta no encontrada" }); return; }
+  if (!await canManageDemandCenter(req.user!, proposal.workCenterId)) {
+    res.status(403).json({ error: "No puedes revisar esta propuesta" }); return;
+  }
+  if (proposal.status !== "PROPOSED") { res.status(409).json({ error: "La propuesta no está pendiente de revisión" }); return; }
+  const reviewed = await db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT id FROM staffing_need_proposals WHERE id = ${proposal.id} FOR UPDATE`);
+    const [locked] = await tx.select({ status: staffingNeedProposalsTable.status })
+      .from(staffingNeedProposalsTable)
+      .where(eq(staffingNeedProposalsTable.id, proposal.id)).limit(1);
+    if (locked?.status !== "PROPOSED") return false;
+    await tx.update(staffingNeedProposalsTable).set({
+      status: "REVIEWED",
+      reviewedBy: req.user!.id,
+      reviewedAt: new Date(),
+      decisionReason: parsed.data.reason ?? null,
+      updatedAt: new Date(),
+    }).where(and(
+      eq(staffingNeedProposalsTable.id, proposal.id),
+      eq(staffingNeedProposalsTable.status, "PROPOSED"),
+    ));
+    await tx.insert(fichajeAuditTable).values({
+      action: "staffing_need_proposal_reviewed",
+      performedBy: req.user!.id,
+      entityType: "staffing_need_proposal",
+      entityId: proposal.id,
+      details: { previousStatus: "PROPOSED", newStatus: "REVIEWED", reason: parsed.data.reason },
+    });
+    return true;
+  });
+  if (!reviewed) { res.status(409).json({ error: "La propuesta cambió mientras se revisaba" }); return; }
+  res.json(await loadNeedProposal(proposal.id));
+});
+
+router.post("/planner/need-proposals/:id/reject", requireAuth, requirePermission("planner.manage"), async (req, res) => {
+  const parsed = ProposalDecisionBody.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: "Decisión inválida" }); return; }
+  const [proposal] = await db.select().from(staffingNeedProposalsTable)
+    .where(eq(staffingNeedProposalsTable.id, req.params.id as string)).limit(1);
+  if (!proposal) { res.status(404).json({ error: "Propuesta no encontrada" }); return; }
+  if (!await canManageDemandCenter(req.user!, proposal.workCenterId)) {
+    res.status(403).json({ error: "No puedes rechazar esta propuesta" }); return;
+  }
+  if (!["PROPOSED", "REVIEWED"].includes(proposal.status)) {
+    res.status(409).json({ error: "La propuesta ya está resuelta" }); return;
+  }
+  const [updated] = await db.update(staffingNeedProposalsTable).set({
+    status: "REJECTED",
+    rejectedBy: req.user!.id,
+    rejectedAt: new Date(),
+    decisionReason: parsed.data.reason ?? null,
+    updatedAt: new Date(),
+  }).where(and(
+    eq(staffingNeedProposalsTable.id, proposal.id),
+    inArray(staffingNeedProposalsTable.status, ["PROPOSED", "REVIEWED"]),
+  )).returning();
+  if (!updated) { res.status(409).json({ error: "La propuesta cambió mientras se rechazaba" }); return; }
+  await audit("staffing_need_proposal_rejected", req.user!.id, "staffing_need_proposal", proposal.id, {
+    previousStatus: proposal.status,
+    newStatus: "REJECTED",
+    reason: parsed.data.reason,
+  });
+  res.json(await loadNeedProposal(proposal.id));
+});
+
+router.post("/planner/need-proposals/:id/apply", requireAuth, requirePermission("planner.manage"), async (req, res) => {
+  const proposalId = req.params.id as string;
+  const [proposal] = await db.select().from(staffingNeedProposalsTable)
+    .where(eq(staffingNeedProposalsTable.id, proposalId)).limit(1);
+  if (!proposal) { res.status(404).json({ error: "Propuesta no encontrada" }); return; }
+  if (!await canManageDemandCenter(req.user!, proposal.workCenterId)) {
+    res.status(403).json({ error: "No puedes aplicar esta propuesta" }); return;
+  }
+  const result = await db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT id FROM staffing_need_proposals WHERE id = ${proposalId} FOR UPDATE`);
+    await tx.execute(sql`SELECT id FROM planning_schedules WHERE id = ${proposal.scheduleId} FOR UPDATE`);
+    const [lockedProposal] = await tx.select().from(staffingNeedProposalsTable)
+      .where(eq(staffingNeedProposalsTable.id, proposalId)).limit(1);
+    const [schedule] = await tx.select().from(planningSchedulesTable)
+      .where(eq(planningSchedulesTable.id, proposal.scheduleId)).limit(1);
+    if (lockedProposal?.status !== "REVIEWED") {
+      throw new ShiftChangeError("PROPOSAL_NOT_REVIEWED", "La propuesta debe revisarse antes de aplicarla.");
+    }
+    if (schedule?.status !== "DRAFT") {
+      throw new ShiftChangeError("SCHEDULE_NOT_DRAFT", "Solo se aplican propuestas sobre borradores.");
+    }
+    const [items, existingRequirements] = await Promise.all([
+      tx.select().from(staffingNeedProposalItemsTable)
+        .where(eq(staffingNeedProposalItemsTable.proposalId, proposalId)),
+      tx.select().from(staffingRequirementsTable)
+        .where(eq(staffingRequirementsTable.scheduleId, proposal.scheduleId)),
+    ]);
+    const keyOf = (row: { requirementDate: string; startTime: string; endTime: string; positionId: string }) =>
+      `${row.requirementDate}:${row.startTime}:${row.endTime}:${row.positionId}`;
+    const protectedKeys = new Set(existingRequirements
+      .filter((requirement) => requirement.source !== "demand-v1")
+      .map(keyOf));
+    await tx.delete(staffingRequirementsTable).where(and(
+      eq(staffingRequirementsTable.scheduleId, proposal.scheduleId),
+      eq(staffingRequirementsTable.source, "demand-v1"),
+    ));
+    const manualConflicts = items.filter((item) => item.finalCount > 0 && protectedKeys.has(keyOf(item)));
+    const applicable = items.filter((item) => item.finalCount > 0 && !protectedKeys.has(keyOf(item)));
+    if (applicable.length > 0) {
+      await tx.insert(staffingRequirementsTable).values(applicable.map((item) => ({
+        scheduleId: proposal.scheduleId,
+        requirementDate: item.requirementDate,
+        startTime: item.startTime,
+        endTime: item.endTime,
+        positionId: item.positionId,
+        requiredCount: item.finalCount,
+        source: "demand-v1",
+        sourceMetadata: {
+          proposalId,
+          proposalItemId: item.id,
+          explanation: item.explanation,
+          inputSnapshot: item.inputSnapshot,
+          ruleSnapshot: item.ruleSnapshot,
+        },
+        createdBy: req.user!.id,
+      })));
+    }
+    await tx.update(staffingNeedProposalsTable).set({
+      status: "APPLIED",
+      appliedBy: req.user!.id,
+      appliedAt: new Date(),
+      updatedAt: new Date(),
+    }).where(eq(staffingNeedProposalsTable.id, proposalId));
+    await tx.insert(fichajeAuditTable).values({
+      action: "staffing_need_proposal_applied",
+      performedBy: req.user!.id,
+      entityType: "staffing_need_proposal",
+      entityId: proposalId,
+      details: {
+        previousStatus: "REVIEWED",
+        newStatus: "APPLIED",
+        insertedRequirements: applicable.length,
+        skippedProtectedRequirements: manualConflicts.length,
+        zeroRequirements: items.filter((item) => item.finalCount === 0).length,
+      },
+    });
+    return { inserted: applicable.length, skippedManual: manualConflicts.length };
+  }).catch((error) => {
+    if (error instanceof ShiftChangeError) return error;
+    throw error;
+  });
+  if (result instanceof ShiftChangeError) {
+    res.status(409).json({ error: result.message, code: result.code }); return;
+  }
+  await validateAndPersistIssues(proposal.scheduleId);
+  res.json({ ...(await loadNeedProposal(proposalId)), application: result });
 });
 
 router.post("/planner/schedules/:id/generate", requireAuth, requirePermission("planner.manage"), async (req, res) => {

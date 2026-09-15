@@ -17,6 +17,7 @@ import { api } from "../../lib/api-client";
 import { useAuth } from "../../providers/AuthProvider";
 import { hasPermission } from "../../lib/permissions";
 import AvailabilityPlanner from "./AvailabilityPlanner";
+import DemandNeedsPanel from "./DemandNeedsPanel";
 
 type Tab = "week" | "month" | "needs" | "availability" | "drafts" | "published" | "issues" | "changes";
 interface Schedule {
@@ -26,6 +27,7 @@ interface Schedule {
   dateTo: string;
   status: "DRAFT" | "PUBLISHED" | "ARCHIVED";
   generatedAt?: string | null;
+  workCenterId?: string | null;
 }
 interface Position { id: string; name: string; }
 interface Employee { id: string; name: string; }
@@ -37,6 +39,7 @@ interface Requirement {
   positionId: string;
   positionName: string;
   requiredCount: number;
+  source?: string;
 }
 interface Shift {
   id?: string;
@@ -369,11 +372,14 @@ function NeedsView({ context, onAdd, onReload }: { context: Context; onAdd: () =
     onReload();
   }
   return (
-    <div className="rounded-xl border border-border bg-card">
-      <div className="flex items-center justify-between border-b border-border p-4"><div><h2 className="font-semibold text-foreground">Necesidades de personal</h2><p className="text-xs text-muted-foreground">Los puestos proceden del catálogo configurable de RRHH.</p></div><button onClick={onAdd} className="flex items-center gap-2 rounded-lg bg-violet-600 px-3 py-2 text-sm text-white"><Plus size={15} /> Añadir</button></div>
-      <div className="divide-y divide-border">
-        {context.requirements.map((need) => <div key={need.id} className="grid grid-cols-[1fr_auto] items-center gap-3 p-4"><div><div className="text-sm font-semibold text-foreground">{new Date(`${need.date}T12:00:00Z`).toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "short" })}</div><div className="mt-1 text-sm text-muted-foreground">{need.startTime}–{need.endTime} · <span className="text-violet-400">{need.requiredCount} × {need.positionName}</span></div></div><button aria-label="Eliminar necesidad" onClick={() => remove(need.id)} className="rounded-lg p-2 text-muted-foreground hover:bg-red-500/10 hover:text-red-400"><Trash2 size={16} /></button></div>)}
-        {!context.requirements.length && <p className="p-8 text-center text-sm text-muted-foreground">Todavía no hay necesidades definidas.</p>}
+    <div className="space-y-4">
+      <DemandNeedsPanel schedule={context.schedule} positions={context.positions} onNeedsReload={onReload} onAddManual={onAdd} />
+      <div className="rounded-xl border border-border bg-card">
+        <div className="border-b border-border p-4"><h2 className="font-semibold text-foreground">Necesidades aplicadas y manuales</h2><p className="text-xs text-muted-foreground">Las necesidades manuales permanecen disponibles y tienen prioridad ante una propuesta automática.</p></div>
+        <div className="divide-y divide-border">
+          {context.requirements.map((need) => <div key={need.id} className="grid grid-cols-[1fr_auto] items-center gap-3 p-4"><div><div className="flex items-center gap-2 text-sm font-semibold text-foreground">{new Date(`${need.date}T12:00:00Z`).toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "short" })}<span className={`rounded-full px-2 py-0.5 text-[10px] ${need.source === "demand-v1" ? "bg-blue-500/10 text-blue-400" : "bg-secondary text-muted-foreground"}`}>{need.source === "demand-v1" ? "Propuesta aplicada" : "Manual"}</span></div><div className="mt-1 text-sm text-muted-foreground">{need.startTime}–{need.endTime} · <span className="text-violet-400">{need.requiredCount} × {need.positionName}</span></div></div><button aria-label="Eliminar necesidad" onClick={() => remove(need.id)} className="rounded-lg p-2 text-muted-foreground hover:bg-red-500/10 hover:text-red-400"><Trash2 size={16} /></button></div>)}
+          {!context.requirements.length && <p className="p-8 text-center text-sm text-muted-foreground">Todavía no hay necesidades aplicadas. Puedes calcular una propuesta o añadirlas manualmente.</p>}
+        </div>
       </div>
     </div>
   );
