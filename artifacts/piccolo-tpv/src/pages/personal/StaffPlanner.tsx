@@ -16,8 +16,9 @@ import { toast } from "sonner";
 import { api } from "../../lib/api-client";
 import { useAuth } from "../../providers/AuthProvider";
 import { hasPermission } from "../../lib/permissions";
+import AvailabilityPlanner from "./AvailabilityPlanner";
 
-type Tab = "week" | "month" | "needs" | "drafts" | "published" | "issues" | "changes";
+type Tab = "week" | "month" | "needs" | "availability" | "drafts" | "published" | "issues" | "changes";
 interface Schedule {
   id: string;
   name: string;
@@ -86,6 +87,7 @@ const TABS: Array<{ id: Tab; label: string }> = [
   { id: "week", label: "Semana" },
   { id: "month", label: "Mes" },
   { id: "needs", label: "Necesidades" },
+  { id: "availability", label: "Disponibilidad" },
   { id: "drafts", label: "Borradores" },
   { id: "published", label: "Publicados" },
   { id: "issues", label: "Incidencias / cambios" },
@@ -205,7 +207,7 @@ export default function StaffPlanner() {
 
       {loading ? (
         <div className="py-24 text-center text-muted-foreground">Cargando planificador…</div>
-      ) : !context && !["drafts", "published", "changes"].includes(tab) ? (
+      ) : !context && !["drafts", "published", "changes", "availability"].includes(tab) ? (
         <div className="rounded-2xl border border-dashed border-border bg-card p-12 text-center">
           <CalendarDays className="mx-auto mb-3 text-muted-foreground" />
           <h2 className="font-semibold text-foreground">Crea el primer periodo de planificación</h2>
@@ -241,6 +243,9 @@ export default function StaffPlanner() {
           {tab === "month" && context && <MonthView context={context} />}
           {tab === "needs" && context && (
             <NeedsView context={context} onAdd={() => setShowNeedForm(true)} onReload={() => loadContext()} />
+          )}
+          {tab === "availability" && (
+            <AvailabilityPlanner currentEmployeeId={user?.id ?? ""} canManage={canManagePlanner} />
           )}
           {tab === "drafts" && <ScheduleList rows={schedules.filter((row) => row.status === "DRAFT")} onSelect={(id) => { setSelectedId(id); setTab("week"); }} />}
           {tab === "published" && <ScheduleList rows={schedules.filter((row) => row.status === "PUBLISHED")} onSelect={(id) => { setSelectedId(id); setTab("week"); }} />}

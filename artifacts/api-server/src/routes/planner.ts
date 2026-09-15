@@ -8,10 +8,13 @@ import {
   employeePlanningProfilesTable,
   employeesTable,
   fichajeAuditTable,
+  fichajeSettingsTable,
+  hrDepartmentsTable,
   hrEmployeePositionsTable,
   hrEmployeeRequestsTable,
   hrNotificationsTable,
   hrPositionsTable,
+  hrWorkCentersTable,
   planningIssuesTable,
   planningSchedulesTable,
   shiftsTable,
@@ -23,6 +26,7 @@ import {
 } from "@workspace/db";
 import { requireAuth, requirePermission } from "../middlewares/auth";
 import {
+  availabilityRulesForDate,
   canPublish,
   expandDateRange,
   generateSchedule,
@@ -32,6 +36,11 @@ import {
   type StaffingNeed,
   validateSchedule,
 } from "../lib/staff-planner";
+import {
+  validatePlanningConfiguration,
+  weeklyAvailableMinutes,
+  type EditableAvailabilityRule,
+} from "../lib/planning-profile";
 import {
   evaluateShiftChange,
   assertShiftOwner,
@@ -76,7 +85,7 @@ const AssignmentBody = z.object({
 });
 
 const AvailabilityBody = z.object({
-  availabilityType: z.enum(["AVAILABLE", "UNAVAILABLE", "PREFERRED"]),
+  availabilityType: z.enum(["AVAILABLE", "UNAVAILABLE", "PREFERRED", "UNDESIRED"]),
   availabilityDate: DateString.nullable().optional(),
   dayOfWeek: z.number().int().min(0).max(6).nullable().optional(),
   startTime: TimeString.nullable().optional(),
@@ -84,8 +93,14 @@ const AvailabilityBody = z.object({
   reason: z.string().max(300).nullable().optional(),
   validFrom: DateString.nullable().optional(),
   validTo: DateString.nullable().optional(),
-}).refine((value) => value.availabilityDate || value.dayOfWeek != null, {
-  message: "Indica una fecha o día de la semana",
+}).refine((value) => value.availabilityDate || value.dayOfWeek != null || value.validFrom || value.validTo, {
+  message: "Indica una fecha, rango o día de la semana",
+}).refine((value) => Boolean(value.startTime) === Boolean(value.endTime), {
+  message: "Indica inicio y fin de la franja",
+}).refine((value) => !value.startTime || value.startTime !== value.endTime, {
+  message: "La hora de inicio y fin deben ser distintas",
+}).refine((value) => !value.validFrom || !value.validTo || value.validTo >= value.validFrom, {
+  message: "El rango de fechas no es válido",
 });
 
 const ProfileBody = z.object({
@@ -94,7 +109,7 @@ const ProfileBody = z.object({
   allowsSplitShift: z.boolean().default(false),
   workingDays: z.array(z.number().int().min(0).max(6)).min(1),
   preferredWindows: z.array(z.object({
-    type: z.literal("PREFERRED"),
+    type: z.enum(["PREFERRED", "UNDESIRED"]),
     date: DateString.nullable().optional(),
     dayOfWeek: z.number().int().min(0).max(6).nullable().optional(),
     startTime: TimeString.nullable().optional(),
@@ -103,6 +118,21 @@ const ProfileBody = z.object({
     validTo: DateString.nullable().optional(),
   })).default([]),
   restrictions: z.record(z.string(), z.unknown()).default({}),
+});
+
+const PlanningConfigurationBody = z.object({
+  profile: ProfileBody,
+  weeklyRules: z.array(AvailabilityBody).max(100),
+  exceptions: z.array(AvailabilityBody).max(100),
+  positionIds: z.array(z.string().uuid()).min(1),
+  primaryPositionId: z.string().uuid(),
+}).refine((value) => value.positionIds.includes(value.primaryPositionId), {
+  message: "El puesto principal debe estar entre los puestos compatibles",
+  path: ["primaryPositionId"],
+});
+
+const DuplicatePlanningBody = z.object({
+  sourceEmployeeId: z.string().uuid(),
 });
 
 const ShiftChangeBody = z.object({
@@ -257,6 +287,115 @@ async function managerWorkCenter(employeeId: string): Promise<string | null> {
   return employee?.workCenterId ?? null;
 }
 
+async function canManagePlanningEmployee(
+  actor: { id: string; role: string },
+  employeeId: string,
+): Promise<boolean> {
+  if (actor.role === "admin") return true;
+  if (actor.role !== "manager") return false;
+  const [actorEmployee, targetEmployee] = await Promise.all([
+    db.select({ workCenterId: employeesTable.workCenterId }).from(employeesTable)
+      .where(eq(employeesTable.id, actor.id)).limit(1),
+    db.select({ workCenterId: employeesTable.workCenterId }).from(employeesTable)
+      .where(eq(employeesTable.id, employeeId)).limit(1),
+  ]);
+  return Boolean(actorEmployee[0]?.workCenterId)
+    && actorEmployee[0]?.workCenterId === targetEmployee[0]?.workCenterId;
+}
+
+async function loadPlanningEmployee(employeeId: string) {
+  const [employee] = await db.select({
+    id: employeesTable.id,
+    name: employeesTable.name,
+    lastName: employeesTable.lastName,
+    weeklyHours: employeesTable.weeklyHours,
+    contractType: employeesTable.contractType,
+    primaryPositionId: employeesTable.positionId,
+    departmentId: employeesTable.departmentId,
+    workCenterId: employeesTable.workCenterId,
+    departmentName: hrDepartmentsTable.name,
+    workCenterName: hrWorkCentersTable.name,
+  }).from(employeesTable)
+    .leftJoin(hrDepartmentsTable, eq(employeesTable.departmentId, hrDepartmentsTable.id))
+    .leftJoin(hrWorkCentersTable, eq(employeesTable.workCenterId, hrWorkCentersTable.id))
+    .where(eq(employeesTable.id, employeeId)).limit(1);
+  if (!employee) return null;
+
+  const [profileRows, availability, positionRows, absences, requests, settings] = await Promise.all([
+    db.select().from(employeePlanningProfilesTable)
+      .where(eq(employeePlanningProfilesTable.employeeId, employeeId)).limit(1),
+    db.select().from(employeeAvailabilityTable)
+      .where(eq(employeeAvailabilityTable.employeeId, employeeId))
+      .orderBy(asc(employeeAvailabilityTable.dayOfWeek), asc(employeeAvailabilityTable.availabilityDate), asc(employeeAvailabilityTable.startTime)),
+    db.select({
+      id: hrPositionsTable.id,
+      name: hrPositionsTable.name,
+      isPrimary: hrEmployeePositionsTable.isPrimary,
+    }).from(hrEmployeePositionsTable)
+      .innerJoin(hrPositionsTable, eq(hrEmployeePositionsTable.positionId, hrPositionsTable.id))
+      .where(eq(hrEmployeePositionsTable.employeeId, employeeId)),
+    db.select({
+      date: absencesTable.absenceDate,
+      type: absencesTable.absenceType,
+    }).from(absencesTable).where(and(
+      eq(absencesTable.employeeId, employeeId),
+      eq(absencesTable.status, "approved"),
+    )),
+    db.select({
+      dateFrom: hrEmployeeRequestsTable.dateFrom,
+      dateTo: hrEmployeeRequestsTable.dateTo,
+      type: hrEmployeeRequestsTable.requestType,
+    }).from(hrEmployeeRequestsTable).where(and(
+      eq(hrEmployeeRequestsTable.employeeId, employeeId),
+      eq(hrEmployeeRequestsTable.status, "approved"),
+      inArray(hrEmployeeRequestsTable.requestType, ["vacation", "absence"]),
+    )),
+    db.select({ timezone: fichajeSettingsTable.timezone }).from(fichajeSettingsTable).limit(1),
+  ]);
+  const profile = profileRows[0] ?? {
+    employeeId,
+    maxWeeklyMinutes: null,
+    minRestMinutes: 720,
+    allowsSplitShift: false,
+    workingDays: [0, 1, 2, 3, 4, 5, 6],
+    preferredWindows: [],
+    restrictions: {},
+    updatedBy: null,
+    updatedAt: new Date(0),
+  };
+  const positionIds = [...new Set([
+    employee.primaryPositionId,
+    ...positionRows.map((position) => position.id),
+  ].filter((id): id is string => Boolean(id)))];
+  return {
+    employee,
+    profile,
+    availability,
+    positions: positionRows,
+    positionIds,
+    approvedAbsences: [
+      ...absences.map((absence) => ({ dateFrom: absence.date, dateTo: absence.date, type: absence.type })),
+      ...requests,
+    ],
+    timezone: settings[0]?.timezone ?? "UTC",
+    summary: {
+      contractedWeeklyMinutes: employee.weeklyHours == null ? null : Math.round(Number(employee.weeklyHours) * 60),
+      availableWeeklyMinutes: weeklyAvailableMinutes(availability.map((rule) => ({
+        type: rule.availabilityType as EditableAvailabilityRule["type"],
+        dayOfWeek: rule.dayOfWeek,
+        date: rule.availabilityDate,
+        startTime: rule.startTime,
+        endTime: rule.endTime,
+        validFrom: rule.validFrom,
+        validTo: rule.validTo,
+      }))),
+      upcomingExceptions: availability.filter((rule) =>
+        rule.availabilityDate || (rule.dayOfWeek == null && (rule.validFrom || rule.validTo)),
+      ).length,
+    },
+  };
+}
+
 async function canManageShiftChange(
   actor: { id: string; role: string },
   requestId: string,
@@ -384,7 +523,7 @@ async function loadScheduleContext(scheduleId: string) {
       workingDays: Array.isArray(profile?.workingDays) ? profile.workingDays as number[] : [0, 1, 2, 3, 4, 5, 6],
       preferredWindows: Array.isArray(profile?.preferredWindows) ? profile.preferredWindows as PlannerEmployee["preferredWindows"] : [],
       availability: availability.filter((rule) => rule.employeeId === employee.id).map((rule) => ({
-        type: rule.availabilityType as "AVAILABLE" | "UNAVAILABLE" | "PREFERRED",
+        type: rule.availabilityType as PlannerEmployee["availability"][number]["type"],
         date: rule.availabilityDate,
         dayOfWeek: rule.dayOfWeek,
         startTime: rule.startTime,
@@ -543,6 +682,9 @@ router.delete("/planner/requirements/:id", requireAuth, requirePermission("plann
 });
 
 router.put("/planner/employees/:id/profile", requireAuth, requirePermission("planner.manage"), async (req, res) => {
+  if (!await canManagePlanningEmployee(req.user!, req.params.id as string)) {
+    res.status(403).json({ error: "El empleado no pertenece a tu centro de trabajo" }); return;
+  }
   const parsed = ProfileBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: "Perfil inválido", issues: parsed.error.issues }); return; }
   const [profile] = await db.insert(employeePlanningProfilesTable).values({
@@ -558,6 +700,9 @@ router.put("/planner/employees/:id/profile", requireAuth, requirePermission("pla
 });
 
 router.post("/planner/employees/:id/availability", requireAuth, requirePermission("planner.manage"), async (req, res) => {
+  if (!await canManagePlanningEmployee(req.user!, req.params.id as string)) {
+    res.status(403).json({ error: "El empleado no pertenece a tu centro de trabajo" }); return;
+  }
   const parsed = AvailabilityBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: "Disponibilidad inválida", issues: parsed.error.issues }); return; }
   const [availability] = await db.insert(employeeAvailabilityTable).values({
@@ -567,6 +712,351 @@ router.post("/planner/employees/:id/availability", requireAuth, requirePermissio
   }).returning();
   await audit("planner_availability_created", req.user!.id, "employee_availability", availability.id, parsed.data);
   res.status(201).json(availability);
+});
+
+router.get("/planner/employees/me/planning", requireAuth, requirePermission("planner.view"), async (req, res) => {
+  const result = await loadPlanningEmployee(req.user!.id);
+  if (!result) { res.status(404).json({ error: "Empleado no encontrado" }); return; }
+  res.json(result);
+});
+
+router.get("/planner/planning-employees", requireAuth, requirePermission("planner.manage"), async (req, res) => {
+  const workCenterId = req.user!.role === "admin" ? null : await managerWorkCenter(req.user!.id);
+  if (req.user!.role !== "admin" && !workCenterId) { res.json({ employees: [], positions: [], timezone: "UTC" }); return; }
+  const employees = await db.select({
+    id: employeesTable.id,
+    name: employeesTable.name,
+    lastName: employeesTable.lastName,
+    weeklyHours: employeesTable.weeklyHours,
+    primaryPositionId: employeesTable.positionId,
+    positionName: hrPositionsTable.name,
+    workCenterId: employeesTable.workCenterId,
+    workCenterName: hrWorkCentersTable.name,
+  }).from(employeesTable)
+    .leftJoin(hrPositionsTable, eq(employeesTable.positionId, hrPositionsTable.id))
+    .leftJoin(hrWorkCentersTable, eq(employeesTable.workCenterId, hrWorkCentersTable.id))
+    .where(and(
+      eq(employeesTable.active, true),
+      eq(employeesTable.empStatus, "active"),
+      workCenterId ? eq(employeesTable.workCenterId, workCenterId) : undefined,
+    )).orderBy(asc(employeesTable.name));
+  const employeeIds = employees.map((employee) => employee.id);
+  const [availability, profiles, settings, positions] = await Promise.all([
+    employeeIds.length
+      ? db.select().from(employeeAvailabilityTable).where(inArray(employeeAvailabilityTable.employeeId, employeeIds))
+      : Promise.resolve([]),
+    employeeIds.length
+      ? db.select().from(employeePlanningProfilesTable).where(inArray(employeePlanningProfilesTable.employeeId, employeeIds))
+      : Promise.resolve([]),
+    db.select({ timezone: fichajeSettingsTable.timezone }).from(fichajeSettingsTable).limit(1),
+    db.select({ id: hrPositionsTable.id, name: hrPositionsTable.name })
+      .from(hrPositionsTable).where(eq(hrPositionsTable.active, true)).orderBy(asc(hrPositionsTable.name)),
+  ]);
+  res.json({
+    employees: employees.map((employee) => ({
+      ...employee,
+      availableWeeklyMinutes: weeklyAvailableMinutes(availability
+        .filter((rule) => rule.employeeId === employee.id)
+        .map((rule) => ({
+          type: rule.availabilityType as EditableAvailabilityRule["type"],
+          dayOfWeek: rule.dayOfWeek,
+          startTime: rule.startTime,
+          endTime: rule.endTime,
+        }))),
+      maxWeeklyMinutes: profiles.find((profile) => profile.employeeId === employee.id)?.maxWeeklyMinutes ?? null,
+      exceptionCount: availability.filter((rule) =>
+        rule.employeeId === employee.id
+        && Boolean(rule.availabilityDate || (rule.dayOfWeek == null && (rule.validFrom || rule.validTo))),
+      ).length,
+    })),
+    positions,
+    timezone: settings[0]?.timezone ?? "UTC",
+  });
+});
+
+router.get("/planner/employees/:id/planning", requireAuth, requirePermission("planner.manage"), async (req, res) => {
+  const employeeId = req.params.id as string;
+  if (!await canManagePlanningEmployee(req.user!, employeeId)) {
+    res.status(403).json({ error: "El empleado no pertenece a tu centro de trabajo" }); return;
+  }
+  const result = await loadPlanningEmployee(employeeId);
+  if (!result) { res.status(404).json({ error: "Empleado no encontrado" }); return; }
+  res.json(result);
+});
+
+router.put("/planner/employees/:id/planning", requireAuth, requirePermission("planner.manage"), async (req, res) => {
+  const employeeId = req.params.id as string;
+  if (!await canManagePlanningEmployee(req.user!, employeeId)) {
+    res.status(403).json({ error: "El empleado no pertenece a tu centro de trabajo" }); return;
+  }
+  const parsed = PlanningConfigurationBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Configuración inválida", issues: parsed.error.issues }); return;
+  }
+  if (parsed.data.weeklyRules.some((rule) =>
+    rule.dayOfWeek == null || rule.availabilityDate || rule.validFrom || rule.validTo
+    || !["AVAILABLE", "UNAVAILABLE"].includes(rule.availabilityType),
+  )) {
+    res.status(400).json({ error: "Las reglas semanales deben usar un día y disponibilidad obligatoria" }); return;
+  }
+  if (parsed.data.exceptions.some((rule) =>
+    rule.dayOfWeek != null || (!rule.availabilityDate && !rule.validFrom && !rule.validTo)
+    || !["AVAILABLE", "UNAVAILABLE"].includes(rule.availabilityType),
+  )) {
+    res.status(400).json({ error: "Las excepciones deben usar una fecha o rango" }); return;
+  }
+  const [employee] = await db.select({
+    weeklyHours: employeesTable.weeklyHours,
+  }).from(employeesTable).where(eq(employeesTable.id, employeeId)).limit(1);
+  if (!employee) { res.status(404).json({ error: "Empleado no encontrado" }); return; }
+  const issues = validatePlanningConfiguration({
+    weeklyRules: parsed.data.weeklyRules.map((rule) => ({
+      type: rule.availabilityType,
+      dayOfWeek: rule.dayOfWeek,
+      startTime: rule.startTime,
+      endTime: rule.endTime,
+    })),
+    exceptions: parsed.data.exceptions.map((rule) => ({
+      type: rule.availabilityType,
+      date: rule.availabilityDate,
+      startTime: rule.startTime,
+      endTime: rule.endTime,
+      validFrom: rule.validFrom,
+      validTo: rule.validTo,
+    })),
+    profile: parsed.data.profile,
+    contractedWeeklyMinutes: employee.weeklyHours == null ? null : Math.round(Number(employee.weeklyHours) * 60),
+    positionIds: parsed.data.positionIds,
+  });
+  if (issues.length > 0) {
+    res.status(400).json({ error: "Corrige la configuración antes de guardar", issues }); return;
+  }
+
+  await db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT id FROM employees WHERE id = ${employeeId} FOR UPDATE`);
+    const [beforeProfile, beforeAvailability, beforePositions] = await Promise.all([
+      tx.select().from(employeePlanningProfilesTable)
+        .where(eq(employeePlanningProfilesTable.employeeId, employeeId)).limit(1),
+      tx.select().from(employeeAvailabilityTable)
+        .where(eq(employeeAvailabilityTable.employeeId, employeeId)),
+      tx.select().from(hrEmployeePositionsTable)
+        .where(eq(hrEmployeePositionsTable.employeeId, employeeId)),
+    ]);
+    await tx.insert(employeePlanningProfilesTable).values({
+      employeeId,
+      ...parsed.data.profile,
+      updatedBy: req.user!.id,
+      updatedAt: new Date(),
+    }).onConflictDoUpdate({
+      target: employeePlanningProfilesTable.employeeId,
+      set: { ...parsed.data.profile, updatedBy: req.user!.id, updatedAt: new Date() },
+    });
+    await tx.delete(employeeAvailabilityTable)
+      .where(eq(employeeAvailabilityTable.employeeId, employeeId));
+    const availabilityRows = [
+      ...parsed.data.weeklyRules.map((rule) => ({
+        employeeId,
+        availabilityType: rule.availabilityType,
+        dayOfWeek: rule.dayOfWeek,
+        startTime: rule.startTime ?? null,
+        endTime: rule.endTime ?? null,
+        reason: rule.reason ?? null,
+        createdBy: req.user!.id,
+      })),
+      ...parsed.data.exceptions.map((rule) => {
+        const exactDate = rule.availabilityDate
+          ?? (rule.validFrom && rule.validFrom === rule.validTo ? rule.validFrom : null);
+        return {
+          employeeId,
+          availabilityType: rule.availabilityType,
+          availabilityDate: exactDate,
+          startTime: rule.startTime ?? null,
+          endTime: rule.endTime ?? null,
+          reason: rule.reason ?? null,
+          validFrom: exactDate ? null : rule.validFrom ?? null,
+          validTo: exactDate ? null : rule.validTo ?? null,
+          createdBy: req.user!.id,
+        };
+      }),
+    ];
+    if (availabilityRows.length > 0) await tx.insert(employeeAvailabilityTable).values(availabilityRows);
+    await tx.update(employeesTable).set({
+      positionId: parsed.data.primaryPositionId,
+    }).where(eq(employeesTable.id, employeeId));
+    await tx.delete(hrEmployeePositionsTable)
+      .where(eq(hrEmployeePositionsTable.employeeId, employeeId));
+    await tx.insert(hrEmployeePositionsTable).values(parsed.data.positionIds.map((positionId) => ({
+      employeeId,
+      positionId,
+      isPrimary: positionId === parsed.data.primaryPositionId,
+    })));
+    await tx.insert(fichajeAuditTable).values({
+      action: "planner_configuration_updated",
+      performedBy: req.user!.id,
+      entityType: "employee",
+      entityId: employeeId,
+      details: {
+        before: {
+          profile: beforeProfile[0] ?? null,
+          availability: beforeAvailability,
+          positions: beforePositions,
+        },
+        after: parsed.data,
+      },
+    });
+  });
+  res.json(await loadPlanningEmployee(employeeId));
+});
+
+router.post("/planner/employees/:id/planning/duplicate", requireAuth, requirePermission("planner.manage"), async (req, res) => {
+  const employeeId = req.params.id as string;
+  const parsed = DuplicatePlanningBody.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: "Empleado origen inválido" }); return; }
+  if (!await canManagePlanningEmployee(req.user!, employeeId)
+    || !await canManagePlanningEmployee(req.user!, parsed.data.sourceEmployeeId)) {
+    res.status(403).json({ error: "Los empleados deben pertenecer a tu ámbito de gestión" }); return;
+  }
+  if (employeeId === parsed.data.sourceEmployeeId) {
+    res.status(400).json({ error: "Selecciona otro empleado como origen" }); return;
+  }
+  await db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT id FROM employees WHERE id IN (${sqlParameterList([employeeId, parsed.data.sourceEmployeeId])}) FOR UPDATE`);
+    const [sourceProfile] = await tx.select().from(employeePlanningProfilesTable)
+      .where(eq(employeePlanningProfilesTable.employeeId, parsed.data.sourceEmployeeId)).limit(1);
+    const sourceAvailability = await tx.select().from(employeeAvailabilityTable)
+      .where(eq(employeeAvailabilityTable.employeeId, parsed.data.sourceEmployeeId));
+    const [beforeProfile, beforeAvailability] = await Promise.all([
+      tx.select().from(employeePlanningProfilesTable)
+        .where(eq(employeePlanningProfilesTable.employeeId, employeeId)).limit(1),
+      tx.select().from(employeeAvailabilityTable)
+        .where(eq(employeeAvailabilityTable.employeeId, employeeId)),
+    ]);
+    if (sourceProfile) {
+      await tx.insert(employeePlanningProfilesTable).values({
+        employeeId,
+        maxWeeklyMinutes: sourceProfile.maxWeeklyMinutes,
+        minRestMinutes: sourceProfile.minRestMinutes,
+        allowsSplitShift: sourceProfile.allowsSplitShift,
+        workingDays: sourceProfile.workingDays,
+        preferredWindows: sourceProfile.preferredWindows,
+        restrictions: sourceProfile.restrictions,
+        updatedBy: req.user!.id,
+        updatedAt: new Date(),
+      }).onConflictDoUpdate({
+        target: employeePlanningProfilesTable.employeeId,
+        set: {
+          maxWeeklyMinutes: sourceProfile.maxWeeklyMinutes,
+          minRestMinutes: sourceProfile.minRestMinutes,
+          allowsSplitShift: sourceProfile.allowsSplitShift,
+          workingDays: sourceProfile.workingDays,
+          preferredWindows: sourceProfile.preferredWindows,
+          restrictions: sourceProfile.restrictions,
+          updatedBy: req.user!.id,
+          updatedAt: new Date(),
+        },
+      });
+    }
+    await tx.delete(employeeAvailabilityTable)
+      .where(eq(employeeAvailabilityTable.employeeId, employeeId));
+    if (sourceAvailability.length > 0) {
+      await tx.insert(employeeAvailabilityTable).values(sourceAvailability.map((rule) => ({
+        employeeId,
+        availabilityType: rule.availabilityType,
+        availabilityDate: rule.availabilityDate,
+        dayOfWeek: rule.dayOfWeek,
+        startTime: rule.startTime,
+        endTime: rule.endTime,
+        reason: rule.reason,
+        validFrom: rule.validFrom,
+        validTo: rule.validTo,
+        createdBy: req.user!.id,
+      })));
+    }
+    await tx.insert(fichajeAuditTable).values({
+      action: "planner_configuration_duplicated",
+      performedBy: req.user!.id,
+      entityType: "employee",
+      entityId: employeeId,
+      details: {
+        sourceEmployeeId: parsed.data.sourceEmployeeId,
+        before: { profile: beforeProfile[0] ?? null, availability: beforeAvailability },
+      },
+    });
+  });
+  res.json(await loadPlanningEmployee(employeeId));
+});
+
+router.get("/planner/availability/team", requireAuth, requirePermission("planner.manage"), async (req, res) => {
+  const parsed = DateString.safeParse(req.query.weekStart);
+  if (!parsed.success) { res.status(400).json({ error: "Indica el lunes de la semana" }); return; }
+  const workCenterId = req.user!.role === "admin"
+    ? (typeof req.query.workCenterId === "string" ? req.query.workCenterId : null)
+    : await managerWorkCenter(req.user!.id);
+  if (req.user!.role !== "admin" && !workCenterId) { res.status(403).json({ error: "No tienes centro asignado" }); return; }
+  const dates = expandDateRange(parsed.data, new Date(`${parsed.data}T12:00:00Z`).toISOString().slice(0, 10));
+  while (dates.length < 7) {
+    const next = new Date(`${dates.at(-1)}T12:00:00Z`);
+    next.setUTCDate(next.getUTCDate() + 1);
+    dates.push(next.toISOString().slice(0, 10));
+  }
+  const employees = await db.select({ id: employeesTable.id, name: employeesTable.name })
+    .from(employeesTable).where(and(
+      eq(employeesTable.active, true),
+      eq(employeesTable.empStatus, "active"),
+      workCenterId ? eq(employeesTable.workCenterId, workCenterId) : undefined,
+    )).orderBy(asc(employeesTable.name));
+  const employeeIds = employees.map((employee) => employee.id);
+  const [rules, absences, requests, settings] = await Promise.all([
+    employeeIds.length
+      ? db.select().from(employeeAvailabilityTable).where(inArray(employeeAvailabilityTable.employeeId, employeeIds))
+      : Promise.resolve([]),
+    employeeIds.length
+      ? db.select().from(absencesTable).where(and(
+          inArray(absencesTable.employeeId, employeeIds),
+          eq(absencesTable.status, "approved"),
+          gte(absencesTable.absenceDate, dates[0]!),
+          lte(absencesTable.absenceDate, dates[6]!),
+        ))
+      : Promise.resolve([]),
+    employeeIds.length
+      ? db.select().from(hrEmployeeRequestsTable).where(and(
+          inArray(hrEmployeeRequestsTable.employeeId, employeeIds),
+          eq(hrEmployeeRequestsTable.status, "approved"),
+          inArray(hrEmployeeRequestsTable.requestType, ["vacation", "absence"]),
+          lte(hrEmployeeRequestsTable.dateFrom, dates[6]!),
+          gte(hrEmployeeRequestsTable.dateTo, dates[0]!),
+        ))
+      : Promise.resolve([]),
+    db.select({ timezone: fichajeSettingsTable.timezone }).from(fichajeSettingsTable).limit(1),
+  ]);
+  res.json({
+    dates,
+    timezone: settings[0]?.timezone ?? "UTC",
+    employees: employees.map((employee) => ({
+      ...employee,
+      days: dates.map((date) => {
+        const approvedAbsence = absences.some((absence) =>
+          absence.employeeId === employee.id && absence.absenceDate === date,
+        ) || requests.some((request) =>
+          request.employeeId === employee.id && request.dateFrom <= date && request.dateTo >= date,
+        );
+        const employeeRules = rules.filter((rule) => rule.employeeId === employee.id).map((rule) => ({
+          type: rule.availabilityType as EditableAvailabilityRule["type"],
+          date: rule.availabilityDate,
+          dayOfWeek: rule.dayOfWeek,
+          startTime: rule.startTime,
+          endTime: rule.endTime,
+          validFrom: rule.validFrom,
+          validTo: rule.validTo,
+        }));
+        return {
+          date,
+          approvedAbsence,
+          rules: approvedAbsence ? [] : availabilityRulesForDate(employeeRules, date),
+        };
+      }),
+    })),
+  });
 });
 
 router.post("/planner/schedules/:id/generate", requireAuth, requirePermission("planner.manage"), async (req, res) => {

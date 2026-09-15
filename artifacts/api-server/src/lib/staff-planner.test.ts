@@ -67,8 +67,50 @@ describe("mandatory planner constraints", () => {
     );
   });
 
+  it("accepts multiple recurrent windows and overnight availability", () => {
+    const candidate = employee({
+      availability: [
+        { type: "AVAILABLE", dayOfWeek: 6, startTime: "12:00", endTime: "16:00" },
+        { type: "AVAILABLE", dayOfWeek: 6, startTime: "19:00", endTime: "02:00" },
+      ],
+    });
+    expect(validateAssignment(candidate, assignment(), [])).toEqual([]);
+  });
+
+  it("lets a dated exception override recurrent unavailability", () => {
+    const candidate = employee({
+      availability: [
+        { type: "UNAVAILABLE", dayOfWeek: 6 },
+        { type: "AVAILABLE", date: need.date, startTime: "18:00", endTime: "02:00" },
+      ],
+    });
+    expect(validateAssignment(candidate, assignment(), [])).toEqual([]);
+  });
+
+  it("applies range exceptions before recurrent availability", () => {
+    const candidate = employee({
+      availability: [
+        { type: "AVAILABLE", dayOfWeek: 6 },
+        { type: "UNAVAILABLE", validFrom: "2026-09-18", validTo: "2026-09-20" },
+      ],
+    });
+    expect(validateAssignment(candidate, assignment(), [])).toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: "UNAVAILABLE" })]),
+    );
+  });
+
   it("rejects approved absence or vacation dates", () => {
     const candidate = employee({ absenceDates: [need.date] });
+    expect(validateAssignment(candidate, assignment(), [])).toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: "ABSENCE" })]),
+    );
+  });
+
+  it("keeps approved absences absolute over available exceptions", () => {
+    const candidate = employee({
+      absenceDates: [need.date],
+      availability: [{ type: "AVAILABLE", date: need.date }],
+    });
     expect(validateAssignment(candidate, assignment(), [])).toEqual(
       expect.arrayContaining([expect.objectContaining({ code: "ABSENCE" })]),
     );

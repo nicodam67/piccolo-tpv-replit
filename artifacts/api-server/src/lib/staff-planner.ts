@@ -1,4 +1,4 @@
-export type AvailabilityType = "AVAILABLE" | "UNAVAILABLE" | "PREFERRED";
+export type AvailabilityType = "AVAILABLE" | "UNAVAILABLE" | "PREFERRED" | "UNDESIRED";
 
 export interface AvailabilityRule {
   type: AvailabilityType;
@@ -125,7 +125,17 @@ function ruleMatchesDate(rule: AvailabilityRule, date: string): boolean {
   if (rule.dayOfWeek != null && rule.dayOfWeek !== utcDay(date)) return false;
   if (rule.validFrom && date < rule.validFrom) return false;
   if (rule.validTo && date > rule.validTo) return false;
-  return Boolean(rule.date || rule.dayOfWeek != null);
+  return Boolean(rule.date || rule.dayOfWeek != null || rule.validFrom || rule.validTo);
+}
+
+function isDatedException(rule: AvailabilityRule): boolean {
+  return Boolean(rule.date || (rule.dayOfWeek == null && (rule.validFrom || rule.validTo)));
+}
+
+export function availabilityRulesForDate(rules: AvailabilityRule[], date: string): AvailabilityRule[] {
+  const matching = rules.filter((rule) => ruleMatchesDate(rule, date));
+  const exceptions = matching.filter(isDatedException);
+  return exceptions.length > 0 ? exceptions : matching.filter((rule) => !isDatedException(rule));
 }
 
 function ruleOverlaps(rule: AvailabilityRule, assignment: PlannedAssignment): boolean {
@@ -180,7 +190,7 @@ export function validateAssignment(
     });
   }
 
-  const dateRules = employee.availability.filter((rule) => ruleMatchesDate(rule, assignment.date));
+  const dateRules = availabilityRulesForDate(employee.availability, assignment.date);
   const unavailable = dateRules.some(
     (rule) => rule.type === "UNAVAILABLE" && ruleOverlaps(rule, assignment),
   );
@@ -259,12 +269,14 @@ function preferenceScore(
   const target = employee.contractedWeeklyMinutes ?? employee.maxWeeklyMinutes ?? 0;
   const preferred = [...employee.availability, ...(employee.preferredWindows ?? [])]
     .some((rule) => rule.type === "PREFERRED" && ruleMatchesDate(rule, assignment.date) && ruleContains(rule, assignment));
+  const undesired = [...employee.availability, ...(employee.preferredWindows ?? [])]
+    .some((rule) => rule.type === "UNDESIRED" && ruleMatchesDate(rule, assignment.date) && ruleOverlaps(rule, assignment));
   const weekendCount = own.filter((item) => [0, 6].includes(utcDay(item.date))).length;
   const splitCount = own.filter((item) => item.date === assignment.date).length;
   const openingCount = own.filter((item) => minutes(item.startTime) < 10 * 60).length;
   const closingCount = own.filter((item) => minutes(item.endTime) < minutes(item.startTime) || minutes(item.endTime) >= 23 * 60).length;
   return [
-    preferred ? 0 : 1,
+    preferred ? 0 : undesired ? 2 : 1,
     Math.abs(target - (assigned + assignmentMinutes(assignment))),
     [0, 6].includes(utcDay(assignment.date)) ? weekendCount : 0,
     splitCount,
