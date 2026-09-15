@@ -232,9 +232,13 @@ export default function DemandNeedsPanel({ schedule, positions, onNeedsReload, o
     }
   }
   async function removeRule(id: string) {
-    await api.delete(`/api/planner/demand-rules/${id}`);
-    toast.success("Regla desactivada");
-    await loadRules();
+    try {
+      await api.delete(`/api/planner/demand-rules/${id}`);
+      toast.success("Regla desactivada");
+      await loadRules();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo desactivar");
+    }
   }
   async function calculate() {
     if (!workCenterId) return;
@@ -253,16 +257,27 @@ export default function DemandNeedsPanel({ schedule, positions, onNeedsReload, o
     }
   }
   async function updateItem(item: ProposalItem, finalCount: number) {
+    if (!Number.isInteger(finalCount) || finalCount < 0) {
+      toast.error("La necesidad debe ser un número entero no negativo");
+      await loadProposal();
+      return;
+    }
     setProposal(await api.patch<Proposal>(`/api/planner/need-proposal-items/${item.id}`, { finalCount }));
   }
   async function transition(action: "review" | "reject" | "apply") {
     if (!proposal) return;
-    const result = await api.post<Proposal>(`/api/planner/need-proposals/${proposal.proposal.id}/${action}`, {});
-    setProposal(result);
-    if (action === "apply") {
-      toast.success("Necesidades aplicadas al borrador; ya puedes generar el cuadrante");
-      onNeedsReload();
-    } else toast.success(action === "review" ? "Propuesta revisada" : "Propuesta rechazada");
+    try {
+      const result = await api.post<Proposal>(`/api/planner/need-proposals/${proposal.proposal.id}/${action}`, {});
+      setProposal(result);
+      if (action === "apply") {
+        toast.success(result.application?.skippedManual
+          ? `Aplicada; ${result.application.skippedManual} franja manual conservada`
+          : "Necesidades aplicadas al borrador; ya puedes generar el cuadrante");
+        onNeedsReload();
+      } else toast.success(action === "review" ? "Propuesta revisada" : "Propuesta rechazada");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo actualizar la propuesta");
+    }
   }
 
   return (

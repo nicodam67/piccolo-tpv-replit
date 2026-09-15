@@ -80,6 +80,23 @@ describe("deterministic staffing demand", () => {
     });
   });
 
+  it("does not claim comparable coverage from tickets outside the rule window", () => {
+    const [result] = calculateStaffingNeeds({
+      dates: ["2026-09-18"],
+      rules: [rule],
+      observations: [
+        observation({ ticketId: "a", date: "2026-09-11", time: "12:00" }),
+        observation({ ticketId: "b", date: "2026-09-04", time: "12:00" }),
+      ],
+      reservations: [],
+    });
+    expect(result).toMatchObject({
+      comparableWeeks: 0,
+      historicalValue: null,
+      explanation: { historical: { sufficientData: false, addition: 0 } },
+    });
+  });
+
   it("includes active future reservations and excludes cancelled ones", () => {
     const [result] = calculateStaffingNeeds({
       dates: ["2026-09-18"],

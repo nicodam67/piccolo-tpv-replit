@@ -176,7 +176,6 @@ export function calculateStaffingNeeds(input: {
   reservations: FutureReservationDemand[];
   historicalWeeksOverride?: number | null;
 }): StaffingNeedRecommendation[] {
-  const activeHistoricalDates = new Set(input.observations.map((observation) => observation.date));
   const recommendations: StaffingNeedRecommendation[] = [];
 
   for (const date of [...input.dates].sort()) {
@@ -188,10 +187,15 @@ export function calculateStaffingNeeds(input: {
       const requestedComparableDates = Array.from({ length: requestedWeeks }, (_, index) =>
         addDays(date, -7 * (index + 1)),
       );
-      const comparableDates = requestedComparableDates.filter((candidate) => activeHistoricalDates.has(candidate));
-      const matchingObservations = input.observations.filter((observation) =>
-        comparableDates.includes(observation.date)
+      const observationsInComparableWindows = input.observations.filter((observation) =>
+        requestedComparableDates.includes(observation.date)
         && timeInWindow(observation.time, rule.startTime, rule.endTime),
+      );
+      const comparableDates = requestedComparableDates.filter((candidate) =>
+        observationsInComparableWindows.some((observation) => observation.date === candidate),
+      );
+      const matchingObservations = observationsInComparableWindows.filter((observation) =>
+        comparableDates.includes(observation.date),
       );
       const historicalValues = comparableDates.map((candidate) =>
         matchingObservations

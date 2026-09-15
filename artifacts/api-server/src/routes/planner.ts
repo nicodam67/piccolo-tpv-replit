@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, asc, desc, eq, gte, inArray, isNull, lte, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, lte, ne, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { createHash } from "node:crypto";
 import {
@@ -40,7 +40,6 @@ import {
   type PlannerIssue,
   type StaffingNeed,
   validateSchedule,
-  validateAssignment,
 } from "../lib/staff-planner";
 import {
   validatePlanningConfiguration,
@@ -398,6 +397,28 @@ function addIsoDays(date: string, days: number): string {
 
 function stableHash(value: unknown): string {
   return createHash("sha256").update(JSON.stringify(value)).digest("hex");
+}
+
+async function hasDemandRuleConflict(
+  rule: z.infer<typeof DemandRuleBody>,
+  excludeId?: string,
+): Promise<boolean> {
+  const candidates = await db.select().from(staffingDemandRulesTable).where(and(
+    eq(staffingDemandRulesTable.workCenterId, rule.workCenterId),
+    eq(staffingDemandRulesTable.positionId, rule.positionId),
+    eq(staffingDemandRulesTable.startTime, rule.startTime),
+    eq(staffingDemandRulesTable.endTime, rule.endTime),
+    eq(staffingDemandRulesTable.active, true),
+    excludeId ? ne(staffingDemandRulesTable.id, excludeId) : undefined,
+  ));
+  return candidates.some((candidate) => {
+    const daysOverlap = candidate.dayOfWeek == null
+      || rule.dayOfWeek == null
+      || candidate.dayOfWeek === rule.dayOfWeek;
+    const periodsOverlap = (candidate.validFrom == null || rule.validTo == null || candidate.validFrom <= rule.validTo)
+      && (rule.validFrom == null || candidate.validTo == null || rule.validFrom <= candidate.validTo);
+    return daysOverlap && periodsOverlap;
+  });
 }
 
 async function loadNeedProposal(proposalId: string) {
@@ -1276,19 +1297,9 @@ router.post("/planner/demand-rules", requireAuth, requirePermission("planner.man
   if (!await canManageDemandCenter(req.user!, parsed.data.workCenterId)) {
     res.status(403).json({ error: "No puedes gestionar reglas de este centro" }); return;
   }
-  const duplicateConditions = [
-    eq(staffingDemandRulesTable.workCenterId, parsed.data.workCenterId),
-    eq(staffingDemandRulesTable.positionId, parsed.data.positionId),
-    eq(staffingDemandRulesTable.startTime, parsed.data.startTime),
-    eq(staffingDemandRulesTable.endTime, parsed.data.endTime),
-    eq(staffingDemandRulesTable.active, true),
-    parsed.data.dayOfWeek == null
-      ? isNull(staffingDemandRulesTable.dayOfWeek)
-      : eq(staffingDemandRulesTable.dayOfWeek, parsed.data.dayOfWeek),
-  ];
-  const [duplicate] = await db.select({ id: staffingDemandRulesTable.id })
-    .from(staffingDemandRulesTable).where(and(...duplicateConditions)).limit(1);
-  if (duplicate) { res.status(409).json({ error: "Ya existe una regla activa para ese puesto y franja" }); return; }
+  if (await hasDemandRuleConflict(parsed.data)) {
+    res.status(409).json({ error: "Ya existe una regla activa que coincide en puesto, franja, día y vigencia" }); return;
+  }
   const [created] = await db.insert(staffingDemandRulesTable).values({
     ...parsed.data,
     historicalThreshold: parsed.data.historicalThreshold == null ? null : String(parsed.data.historicalThreshold),
@@ -1310,6 +1321,9 @@ router.put("/planner/demand-rules/:id", requireAuth, requirePermission("planner.
   if (!await canManageDemandCenter(req.user!, existing.workCenterId)
     || !await canManageDemandCenter(req.user!, parsed.data.workCenterId)) {
     res.status(403).json({ error: "No puedes gestionar reglas de este centro" }); return;
+  }
+  if (await hasDemandRuleConflict(parsed.data, existing.id)) {
+    res.status(409).json({ error: "La nueva versión coincide con otra regla activa" }); return;
   }
   const created = await db.transaction(async (tx) => {
     await tx.execute(sql`SELECT id FROM staffing_demand_rules WHERE id = ${existing.id} FOR UPDATE`);
@@ -1372,7 +1386,7 @@ router.post("/planner/schedules/:id/need-proposals/calculate", requireAuth, requ
   if (ruleRows.length === 0) {
     res.status(409).json({ error: "Configura al menos una regla de demanda para este centro" }); return;
   }
-  const rules = ruleRows.map(mapDemandRule);
+  const rules = ruleRows.map(mapDemandRule).sort((left, right) => left.id.localeCompare(right.id));
   const timezoneRows = await db.select({ timezone: fichajeSettingsTable.timezone })
     .from(fichajeSettingsTable).limit(1);
   const timezone = timezoneRows[0]?.timezone ?? "UTC";
@@ -1380,6 +1394,8 @@ router.post("/planner/schedules/:id/need-proposals/calculate", requireAuth, requ
     ?? Math.max(...rules.map((rule) => rule.historicalWeeks));
   const historyFrom = addIsoDays(schedule.dateFrom, -(maximumWeeks * 7));
   const historyTo = addIsoDays(schedule.dateTo, -7);
+  const historyScanFrom = addIsoDays(historyFrom, -1);
+  const historyScanToExclusive = addIsoDays(historyTo, 2);
 
   const [ticketResult, itemResult, reservations] = await Promise.all([
     db.execute(sql`
@@ -1394,6 +1410,8 @@ router.post("/planner/schedules/:id/need-proposals/calculate", requireAuth, requ
       INNER JOIN employees AS employee ON employee.id = ticket.employee_id
       WHERE employee.work_center_id = ${parsed.data.workCenterId}
         AND ticket.is_demo = false
+        AND ticket.issued_at >= ${historyScanFrom}::date
+        AND ticket.issued_at < ${historyScanToExclusive}::date
         AND (ticket.issued_at AT TIME ZONE ${timezone})::date >= ${historyFrom}::date
         AND (ticket.issued_at AT TIME ZONE ${timezone})::date <= ${historyTo}::date
       ORDER BY ticket.issued_at, ticket.id
@@ -1411,6 +1429,8 @@ router.post("/planner/schedules/:id/need-proposals/calculate", requireAuth, requ
       WHERE employee.work_center_id = ${parsed.data.workCenterId}
         AND ticket.is_demo = false
         AND item.status <> 'cancelled'
+        AND ticket.issued_at >= ${historyScanFrom}::date
+        AND ticket.issued_at < ${historyScanToExclusive}::date
         AND (ticket.issued_at AT TIME ZONE ${timezone})::date >= ${historyFrom}::date
         AND (ticket.issued_at AT TIME ZONE ${timezone})::date <= ${historyTo}::date
       GROUP BY ticket.id, product.category_id, product.prep_zone
@@ -1488,18 +1508,20 @@ router.post("/planner/schedules/:id/need-proposals/calculate", requireAuth, requ
   }
   const context = await loadScheduleContext(scheduleId);
   if (!context) { res.status(404).json({ error: "Cuadrante no encontrado" }); return; }
+  const proposalNeeds: StaffingNeed[] = recommendations.map((recommendation) => ({
+    id: `proposal:${recommendation.ruleSnapshot.id}:${recommendation.requirementDate}`,
+    date: recommendation.requirementDate,
+    startTime: recommendation.startTime,
+    endTime: recommendation.endTime,
+    positionId: recommendation.positionId,
+    positionName: recommendation.positionId,
+    requiredCount: recommendation.suggestedCount,
+  }));
+  const coverageDraft = generateSchedule(context.employees, proposalNeeds, context.assignments);
   const withCoverage = recommendations.map((recommendation) => {
-    const assignment: PlannedAssignment = {
-      id: `proposal:${recommendation.ruleSnapshot.id}:${recommendation.requirementDate}`,
-      employeeId: "",
-      positionId: recommendation.positionId,
-      date: recommendation.requirementDate,
-      startTime: recommendation.startTime,
-      endTime: recommendation.endTime,
-      origin: "manual",
-    };
-    const assignableCount = context.employees.filter((employee) =>
-      validateAssignment(employee, { ...assignment, employeeId: employee.id }, context.assignments).length === 0,
+    const requirementId = `proposal:${recommendation.ruleSnapshot.id}:${recommendation.requirementDate}`;
+    const assignableCount = coverageDraft.assignments.filter((assignment) =>
+      assignment.requirementId === requirementId,
     ).length;
     return {
       ...recommendation,
@@ -1519,6 +1541,7 @@ router.post("/planner/schedules/:id/need-proposals/calculate", requireAuth, requ
     configurationHash: stableHash(rulesSnapshot),
   };
   const proposal = await db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT id FROM planning_schedules WHERE id = ${scheduleId} FOR UPDATE`);
     const [created] = await tx.insert(staffingNeedProposalsTable).values({
       scheduleId,
       workCenterId: parsed.data.workCenterId,
@@ -1531,6 +1554,17 @@ router.post("/planner/schedules/:id/need-proposals/calculate", requireAuth, requ
       rulesSnapshot,
       createdBy: req.user!.id,
     }).returning();
+    const superseded = await tx.update(staffingNeedProposalsTable).set({
+      status: "REJECTED",
+      rejectedBy: req.user!.id,
+      rejectedAt: new Date(),
+      decisionReason: "Sustituida por un cálculo posterior",
+      updatedAt: new Date(),
+    }).where(and(
+      eq(staffingNeedProposalsTable.scheduleId, scheduleId),
+      ne(staffingNeedProposalsTable.id, created.id),
+      inArray(staffingNeedProposalsTable.status, ["PROPOSED", "REVIEWED"]),
+    )).returning({ id: staffingNeedProposalsTable.id });
     if (withCoverage.length > 0) {
       await tx.insert(staffingNeedProposalItemsTable).values(withCoverage.map((recommendation) => ({
         proposalId: created.id,
@@ -1555,7 +1589,12 @@ router.post("/planner/schedules/:id/need-proposals/calculate", requireAuth, requ
       performedBy: req.user!.id,
       entityType: "staffing_need_proposal",
       entityId: created.id,
-      details: { scheduleId, inputSummary, recommendations: withCoverage.length },
+      details: {
+        scheduleId,
+        inputSummary,
+        recommendations: withCoverage.length,
+        supersededProposalIds: superseded.map((row) => row.id),
+      },
     });
     return created;
   });
