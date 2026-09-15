@@ -50,6 +50,7 @@ interface PlanningDetail {
   };
   profile: Profile;
   availability: Array<Rule & { id: string }>;
+  positions: Position[];
   positionIds: string[];
   approvedAbsences: Array<{ dateFrom: string; dateTo: string; type: string }>;
   timezone: string;
@@ -60,6 +61,7 @@ interface PlanningDetail {
   };
 }
 interface Position { id: string; name: string; }
+interface WorkCenter { id: string; name: string; }
 interface TeamDay { date: string; approvedAbsence: boolean; rules: Array<{ type: RuleType; startTime?: string | null; endTime?: string | null }>; }
 interface TeamEmployee { id: string; name: string; days: TeamDay[]; }
 
@@ -97,6 +99,15 @@ function addDate(date: string, days: number) {
   return value.toISOString().slice(0, 10);
 }
 
+function dateInTimezone(timezone: string) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+
 function fullName(employee: Pick<PlanningEmployeeSummary, "name" | "lastName">) {
   return `${employee.name} ${employee.lastName ?? ""}`.trim();
 }
@@ -108,6 +119,7 @@ export default function AvailabilityPlanner({ currentEmployeeId, canManage }: {
   const [mode, setMode] = useState<"employee" | "team">("employee");
   const [employees, setEmployees] = useState<PlanningEmployeeSummary[]>([]);
   const [positions, setPositions] = useState<Position[]>([]);
+  const [workCenters, setWorkCenters] = useState<WorkCenter[]>([]);
   const [selectedId, setSelectedId] = useState(currentEmployeeId);
   const [detail, setDetail] = useState<PlanningDetail | null>(null);
   const [weeklyRules, setWeeklyRules] = useState<Rule[]>([]);
@@ -120,9 +132,10 @@ export default function AvailabilityPlanner({ currentEmployeeId, canManage }: {
 
   async function loadList() {
     if (!canManage) return;
-    const result = await api.get<{ employees: PlanningEmployeeSummary[]; positions: Position[] }>("/api/planner/planning-employees");
+    const result = await api.get<{ employees: PlanningEmployeeSummary[]; positions: Position[]; workCenters: WorkCenter[] }>("/api/planner/planning-employees");
     setEmployees(result.employees);
     setPositions(result.positions);
+    setWorkCenters(result.workCenters);
     setSelectedId((current) => current || result.employees[0]?.id || "");
   }
   async function loadDetail(id = selectedId) {
@@ -133,6 +146,7 @@ export default function AvailabilityPlanner({ currentEmployeeId, canManage }: {
         ? `/api/planner/employees/${id}/planning`
         : "/api/planner/employees/me/planning");
       setDetail(result);
+      if (!canManage) setPositions(result.positions);
       setWeeklyRules(result.availability.filter((rule) =>
         rule.dayOfWeek != null && !rule.availabilityDate && !rule.validFrom && !rule.validTo,
       ));
@@ -247,9 +261,17 @@ export default function AvailabilityPlanner({ currentEmployeeId, canManage }: {
   }
   async function save() {
     if (!profile || errors.length || !selectedId) return;
+    const normalizedWeeklyRules = DAYS.flatMap(({ day }) => {
+      const configured = weeklyRules.filter((rule) => rule.dayOfWeek === day);
+      if (configured.length > 0) return configured;
+      return [{
+        availabilityType: profile.workingDays.includes(day) ? "AVAILABLE" as const : "UNAVAILABLE" as const,
+        dayOfWeek: day,
+      }];
+    });
     await api.put(`/api/planner/employees/${selectedId}/planning`, {
       profile,
-      weeklyRules,
+      weeklyRules: normalizedWeeklyRules,
       exceptions: exceptions.map((rule) => ({
         ...rule,
         validFrom: rule.availabilityDate ? null : rule.validFrom,
@@ -263,7 +285,7 @@ export default function AvailabilityPlanner({ currentEmployeeId, canManage }: {
   }
 
   if (loading && !detail) return <div className="py-20 text-center text-muted-foreground">Cargando disponibilidad…</div>;
-  if (mode === "team" && canManage) return <TeamAvailability onBack={() => setMode("employee")} />;
+  if (mode === "team" && canManage) return <TeamAvailability timezone={detail?.timezone ?? "UTC"} workCenters={workCenters} onBack={() => setMode("employee")} />;
   if (!detail || !profile) return <div className="py-20 text-center text-muted-foreground">No hay empleado disponible.</div>;
 
   return (
@@ -305,7 +327,7 @@ export default function AvailabilityPlanner({ currentEmployeeId, canManage }: {
         </section>
 
         <section className="rounded-xl border border-border bg-card p-4">
-          <div className="mb-3 flex items-center justify-between"><div><h3 className="font-semibold text-foreground">Excepciones por fecha</h3><p className="text-xs text-muted-foreground">Prevalecen sobre la semana. Las ausencias aprobadas siguen teniendo prioridad absoluta.</p></div>{canManage && <button onClick={() => setExceptions((current) => [...current, { availabilityType: "UNAVAILABLE", availabilityDate: new Date().toISOString().slice(0, 10) }])} className="flex items-center gap-1 rounded-lg bg-violet-600 px-3 py-2 text-xs text-white"><Plus size={14} /> Añadir</button>}</div>
+          <div className="mb-3 flex items-center justify-between"><div><h3 className="font-semibold text-foreground">Excepciones por fecha</h3><p className="text-xs text-muted-foreground">Prevalecen sobre la semana. Las ausencias aprobadas siguen teniendo prioridad absoluta.</p></div>{canManage && <button onClick={() => setExceptions((current) => [...current, { availabilityType: "UNAVAILABLE", availabilityDate: dateInTimezone(detail.timezone) }])} className="flex items-center gap-1 rounded-lg bg-violet-600 px-3 py-2 text-xs text-white"><Plus size={14} /> Añadir</button>}</div>
           <div className="space-y-2">{exceptions.map((rule, index) => <div key={index} className="grid gap-2 rounded-lg bg-secondary/50 p-3 md:grid-cols-[130px_1fr_1fr_110px_110px_1fr_auto]"><select disabled={!canManage} className={inputClass} value={rule.availabilityType} onChange={(event) => setExceptions((current) => current.map((item) => item === rule ? { ...item, availabilityType: event.target.value as RuleType } : item))}><option value="AVAILABLE">Disponible</option><option value="UNAVAILABLE">No disponible</option></select><input disabled={!canManage} aria-label="Fecha inicial de excepción" type="date" className={inputClass} value={rule.availabilityDate ?? rule.validFrom ?? ""} onChange={(event) => setExceptions((current) => current.map((item) => item === rule ? { ...item, availabilityDate: null, validFrom: event.target.value, validTo: event.target.value } : item))} /><input disabled={!canManage} aria-label="Fecha final de excepción" type="date" className={inputClass} value={rule.validTo ?? rule.availabilityDate ?? ""} onChange={(event) => setExceptions((current) => current.map((item) => item === rule ? { ...item, availabilityDate: null, validTo: event.target.value } : item))} /><input disabled={!canManage} aria-label="Inicio de excepción" type="time" className={inputClass} value={rule.startTime ?? ""} onChange={(event) => setExceptions((current) => current.map((item) => item === rule ? { ...item, startTime: event.target.value || null, endTime: event.target.value ? item.endTime ?? "23:00" : null } : item))} /><input disabled={!canManage} aria-label="Fin de excepción" type="time" className={inputClass} value={rule.endTime ?? ""} onChange={(event) => setExceptions((current) => current.map((item) => item === rule ? { ...item, endTime: event.target.value || null, startTime: event.target.value ? item.startTime ?? "12:00" : null } : item))} /><input disabled={!canManage} className={inputClass} placeholder="Motivo" value={rule.reason ?? ""} onChange={(event) => setExceptions((current) => current.map((item) => item === rule ? { ...item, reason: event.target.value } : item))} />{canManage && <button onClick={() => setExceptions((current) => current.filter((item) => item !== rule))} className="p-2 text-red-400"><Trash2 size={16} /></button>}</div>)}</div>
           {detail.approvedAbsences.length > 0 && <div className="mt-3 rounded-lg border border-red-500/20 bg-red-500/5 p-3 text-xs text-red-400">{detail.approvedAbsences.length} ausencia(s) aprobada(s) bloquean la planificación y no se editan aquí.</div>}
         </section>
@@ -324,13 +346,15 @@ export default function AvailabilityPlanner({ currentEmployeeId, canManage }: {
   );
 }
 
-function TeamAvailability({ onBack }: { onBack: () => void }) {
-  const [weekStart, setWeekStart] = useState(() => monday(new Date()));
+function TeamAvailability({ timezone, workCenters, onBack }: { timezone: string; workCenters: WorkCenter[]; onBack: () => void }) {
+  const [weekStart, setWeekStart] = useState(() => monday(new Date(`${dateInTimezone(timezone)}T12:00:00Z`)));
+  const [workCenterId, setWorkCenterId] = useState(workCenters[0]?.id ?? "");
   const [data, setData] = useState<{ dates: string[]; timezone: string; employees: TeamEmployee[] } | null>(null);
   useEffect(() => {
-    api.get<typeof data>(`/api/planner/availability/team?weekStart=${weekStart}`)
+    if (!workCenterId) return;
+    api.get<typeof data>(`/api/planner/availability/team?weekStart=${weekStart}&workCenterId=${workCenterId}`)
       .then(setData)
       .catch(() => toast.error("No se pudo cargar la vista del equipo"));
-  }, [weekStart]);
-  return <div className="xl:col-span-2"><div className="mb-4 flex flex-wrap items-center justify-between gap-2"><div><button onClick={onBack} className="mb-2 text-sm text-violet-400">← Volver al empleado</button><h2 className="text-lg font-semibold text-foreground">Disponibilidad del equipo</h2><p className="text-sm text-muted-foreground">Semana local · {data?.timezone ?? "…"}</p></div><div className="flex items-center gap-2"><button onClick={() => setWeekStart(addDate(weekStart, -7))} className="rounded-lg border border-border px-3 py-2">←</button><input type="date" className={inputClass} value={weekStart} onChange={(event) => setWeekStart(monday(new Date(`${event.target.value}T12:00:00Z`)))} /><button onClick={() => setWeekStart(addDate(weekStart, 7))} className="rounded-lg border border-border px-3 py-2">→</button></div></div><div className="overflow-x-auto rounded-xl border border-border bg-card"><div className="grid min-w-[1000px] grid-cols-[180px_repeat(7,1fr)]"><div className="border-b border-r border-border p-3 font-semibold">Empleado</div>{data?.dates.map((date) => <div key={date} className="border-b border-r border-border p-3 text-center text-xs text-muted-foreground">{new Date(`${date}T12:00:00Z`).toLocaleDateString("es-ES", { weekday: "short", day: "numeric" })}</div>)}{data?.employees.map((employee) => <div key={employee.id} className="contents"><div className="border-b border-r border-border p-3 text-sm font-medium text-foreground">{employee.name}</div>{employee.days.map((day) => <div key={day.date} className={`border-b border-r border-border p-2 text-xs ${day.approvedAbsence ? "bg-red-500/10 text-red-400" : "text-foreground"}`}>{day.approvedAbsence ? "Ausencia aprobada" : day.rules.length === 0 ? "Todo el día" : day.rules.map((rule, index) => <div key={index} className={rule.type === "UNAVAILABLE" ? "text-red-400" : "text-emerald-400"}>{rule.type === "UNAVAILABLE" ? "No disponible" : "Disponible"}{rule.startTime ? ` ${rule.startTime}–${rule.endTime}` : " todo el día"}</div>)}</div>)}</div>)}</div></div><div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground"><CalendarRange size={14} /> Las ausencias aprobadas prevalecen sobre cualquier excepción.</div></div>;
+  }, [weekStart, workCenterId]);
+  return <div className="xl:col-span-2"><div className="mb-4 flex flex-wrap items-center justify-between gap-2"><div><button onClick={onBack} className="mb-2 text-sm text-violet-400">← Volver al empleado</button><h2 className="text-lg font-semibold text-foreground">Disponibilidad del equipo</h2><p className="text-sm text-muted-foreground">Semana local · {data?.timezone ?? "…"}</p></div><div className="flex items-center gap-2"><select aria-label="Centro de trabajo" className={inputClass} value={workCenterId} onChange={(event) => setWorkCenterId(event.target.value)}>{workCenters.map((center) => <option key={center.id} value={center.id}>{center.name}</option>)}</select><button onClick={() => setWeekStart(addDate(weekStart, -7))} className="rounded-lg border border-border px-3 py-2">←</button><input type="date" className={inputClass} value={weekStart} onChange={(event) => setWeekStart(monday(new Date(`${event.target.value}T12:00:00Z`)))} /><button onClick={() => setWeekStart(addDate(weekStart, 7))} className="rounded-lg border border-border px-3 py-2">→</button></div></div><div className="overflow-x-auto rounded-xl border border-border bg-card"><div className="grid min-w-[1000px] grid-cols-[180px_repeat(7,1fr)]"><div className="border-b border-r border-border p-3 font-semibold">Empleado</div>{data?.dates.map((date) => <div key={date} className="border-b border-r border-border p-3 text-center text-xs text-muted-foreground">{new Date(`${date}T12:00:00Z`).toLocaleDateString("es-ES", { weekday: "short", day: "numeric" })}</div>)}{data?.employees.map((employee) => <div key={employee.id} className="contents"><div className="border-b border-r border-border p-3 text-sm font-medium text-foreground">{employee.name}</div>{employee.days.map((day) => <div key={day.date} className={`border-b border-r border-border p-2 text-xs ${day.approvedAbsence ? "bg-red-500/10 text-red-400" : "text-foreground"}`}>{day.approvedAbsence ? "Ausencia aprobada" : day.rules.length === 0 ? "Todo el día" : day.rules.map((rule, index) => <div key={index} className={rule.type === "UNAVAILABLE" ? "text-red-400" : "text-emerald-400"}>{rule.type === "UNAVAILABLE" ? "No disponible" : "Disponible"}{rule.startTime ? ` ${rule.startTime}–${rule.endTime}` : " todo el día"}</div>)}</div>)}</div>)}</div></div><div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground"><CalendarRange size={14} /> Las ausencias aprobadas prevalecen sobre cualquier excepción.</div></div>;
 }

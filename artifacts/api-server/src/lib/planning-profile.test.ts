@@ -73,4 +73,21 @@ describe("planning availability configuration", () => {
       expect.arrayContaining(["MAX_BELOW_CONTRACT", "NO_POSITION"]),
     );
   });
+
+  it("rejects contradictory exceptions and unavailable working days", () => {
+    const issues = validatePlanningConfiguration({
+      weeklyRules: [{ type: "AVAILABLE", dayOfWeek: 0 }],
+      exceptions: [
+        { type: "UNAVAILABLE", date: "2026-09-20" },
+        { type: "AVAILABLE", date: "2026-09-20", startTime: "18:00", endTime: "22:00" },
+      ],
+      profile,
+      contractedWeeklyMinutes: 2_400,
+      positionIds: ["waiter"],
+    });
+    expect(issues.map((issue) => issue.code)).toEqual(
+      expect.arrayContaining(["INCOHERENT_DAY"]),
+    );
+    expect(issues).toHaveLength(2);
+  });
 });

@@ -95,6 +95,13 @@ export function validatePlanningConfiguration(input: {
       });
     }
     const available = rules.filter((rule) => rule.type === "AVAILABLE");
+    if (available.length > 0 && !input.profile.workingDays.includes(day)) {
+      issues.push({
+        code: "INCOHERENT_DAY",
+        path: `weeklyRules.${day}`,
+        message: "Hay disponibilidad en un día no permitido como laborable.",
+      });
+    }
     for (let left = 0; left < available.length; left++) {
       for (let right = left + 1; right < available.length; right++) {
         if (overlaps(available[left]!, available[right]!)) {
@@ -102,6 +109,36 @@ export function validatePlanningConfiguration(input: {
             code: "OVERLAPPING_WINDOWS",
             path: `weeklyRules.${day}`,
             message: "Hay franjas disponibles solapadas en el mismo día.",
+          });
+        }
+      }
+    }
+  }
+
+  const exceptionGroups = new Map<string, EditableAvailabilityRule[]>();
+  for (const exception of input.exceptions) {
+    const key = exception.date ?? `${exception.validFrom ?? ""}:${exception.validTo ?? ""}`;
+    exceptionGroups.set(key, [...(exceptionGroups.get(key) ?? []), exception]);
+  }
+  for (const [key, rules] of exceptionGroups) {
+    const fullUnavailable = rules.some((rule) =>
+      rule.type === "UNAVAILABLE" && !rule.startTime && !rule.endTime,
+    );
+    if (fullUnavailable && rules.length > 1) {
+      issues.push({
+        code: "INCOHERENT_DAY",
+        path: `exceptions.${key}`,
+        message: "Una excepción no disponible todo el día no puede combinarse con otras franjas.",
+      });
+    }
+    const available = rules.filter((rule) => rule.type === "AVAILABLE");
+    for (let left = 0; left < available.length; left++) {
+      for (let right = left + 1; right < available.length; right++) {
+        if (overlaps(available[left]!, available[right]!)) {
+          issues.push({
+            code: "OVERLAPPING_WINDOWS",
+            path: `exceptions.${key}`,
+            message: "Hay franjas excepcionales disponibles solapadas.",
           });
         }
       }

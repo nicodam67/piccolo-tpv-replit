@@ -705,6 +705,41 @@ router.post("/planner/employees/:id/availability", requireAuth, requirePermissio
   }
   const parsed = AvailabilityBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: "Disponibilidad inválida", issues: parsed.error.issues }); return; }
+  const planning = await loadPlanningEmployee(req.params.id as string);
+  if (!planning) { res.status(404).json({ error: "Empleado no encontrado" }); return; }
+  const combined = [
+    ...planning.availability.map((rule) => ({
+      type: rule.availabilityType as EditableAvailabilityRule["type"],
+      date: rule.availabilityDate,
+      dayOfWeek: rule.dayOfWeek,
+      startTime: rule.startTime,
+      endTime: rule.endTime,
+      validFrom: rule.validFrom,
+      validTo: rule.validTo,
+    })),
+    {
+      type: parsed.data.availabilityType,
+      date: parsed.data.availabilityDate,
+      dayOfWeek: parsed.data.dayOfWeek,
+      startTime: parsed.data.startTime,
+      endTime: parsed.data.endTime,
+      validFrom: parsed.data.validFrom,
+      validTo: parsed.data.validTo,
+    },
+  ];
+  const configIssues = validatePlanningConfiguration({
+    weeklyRules: combined.filter((rule) => rule.dayOfWeek != null && !rule.date && !rule.validFrom && !rule.validTo),
+    exceptions: combined.filter((rule) => Boolean(rule.date || (rule.dayOfWeek == null && (rule.validFrom || rule.validTo)))),
+    profile: planning.profile as typeof planning.profile & {
+      workingDays: number[];
+      preferredWindows: EditableAvailabilityRule[];
+    },
+    contractedWeeklyMinutes: planning.summary.contractedWeeklyMinutes,
+    positionIds: planning.positionIds,
+  });
+  if (configIssues.length > 0) {
+    res.status(400).json({ error: "La regla crea una configuración incoherente", issues: configIssues }); return;
+  }
   const [availability] = await db.insert(employeeAvailabilityTable).values({
     employeeId: req.params.id as string,
     ...parsed.data,
@@ -741,12 +776,14 @@ router.get("/planner/planning-employees", requireAuth, requirePermission("planne
       workCenterId ? eq(employeesTable.workCenterId, workCenterId) : undefined,
     )).orderBy(asc(employeesTable.name));
   const employeeIds = employees.map((employee) => employee.id);
-  const [availability, profiles, settings, positions] = await Promise.all([
+  const [availability, profiles, settings, positions, workCenters] = await Promise.all([
     db.select().from(employeeAvailabilityTable).where(inArray(employeeAvailabilityTable.employeeId, employeeIds)),
     db.select().from(employeePlanningProfilesTable).where(inArray(employeePlanningProfilesTable.employeeId, employeeIds)),
     db.select({ timezone: fichajeSettingsTable.timezone }).from(fichajeSettingsTable).limit(1),
     db.select({ id: hrPositionsTable.id, name: hrPositionsTable.name })
       .from(hrPositionsTable).where(eq(hrPositionsTable.active, true)).orderBy(asc(hrPositionsTable.name)),
+    db.select({ id: hrWorkCentersTable.id, name: hrWorkCentersTable.name })
+      .from(hrWorkCentersTable).where(eq(hrWorkCentersTable.active, true)).orderBy(asc(hrWorkCentersTable.name)),
   ]);
   res.json({
     employees: employees.map((employee) => ({
@@ -766,6 +803,7 @@ router.get("/planner/planning-employees", requireAuth, requirePermission("planne
       ).length,
     })),
     positions,
+    workCenters: workCenterId ? workCenters.filter((center) => center.id === workCenterId) : workCenters,
     timezone: settings[0]?.timezone ?? "UTC",
   });
 });
@@ -794,6 +832,9 @@ router.put("/planner/employees/:id/planning", requireAuth, requirePermission("pl
     || !["AVAILABLE", "UNAVAILABLE"].includes(rule.availabilityType),
   )) {
     res.status(400).json({ error: "Las reglas semanales deben usar un día y disponibilidad obligatoria" }); return;
+  }
+  if (new Set(parsed.data.weeklyRules.map((rule) => rule.dayOfWeek)).size !== 7) {
+    res.status(400).json({ error: "Configura explícitamente los siete días de la semana" }); return;
   }
   if (parsed.data.exceptions.some((rule) =>
     rule.dayOfWeek != null || (!rule.availabilityDate && !rule.validFrom && !rule.validTo)
@@ -897,7 +938,12 @@ router.put("/planner/employees/:id/planning", requireAuth, requirePermission("pl
           availability: beforeAvailability,
           positions: beforePositions,
         },
-        after: parsed.data,
+        after: {
+          profile: parsed.data.profile,
+          availability: availabilityRows,
+          positionIds: parsed.data.positionIds,
+          primaryPositionId: parsed.data.primaryPositionId,
+        },
       },
     });
   });
@@ -988,6 +1034,9 @@ router.get("/planner/availability/team", requireAuth, requirePermission("planner
   const workCenterId = req.user!.role === "admin"
     ? (typeof req.query.workCenterId === "string" ? req.query.workCenterId : null)
     : await managerWorkCenter(req.user!.id);
+  if (req.user!.role === "admin" && !workCenterId) {
+    res.status(400).json({ error: "Selecciona un centro de trabajo" }); return;
+  }
   if (req.user!.role !== "admin" && !workCenterId) { res.status(403).json({ error: "No tienes centro asignado" }); return; }
   const dates = expandDateRange(parsed.data, new Date(`${parsed.data}T12:00:00Z`).toISOString().slice(0, 10));
   while (dates.length < 7) {

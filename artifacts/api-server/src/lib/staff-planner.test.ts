@@ -99,6 +99,19 @@ describe("mandatory planner constraints", () => {
     );
   });
 
+  it("combines a partial unavailable exception with the recurrent baseline", () => {
+    const candidate = employee({
+      availability: [
+        { type: "AVAILABLE", dayOfWeek: 6, startTime: "09:00", endTime: "17:00" },
+        { type: "UNAVAILABLE", date: need.date, startTime: "12:00", endTime: "14:00" },
+      ],
+    });
+    expect(validateAssignment(candidate, assignment({ startTime: "08:00", endTime: "09:30" }), []))
+      .toEqual(expect.arrayContaining([expect.objectContaining({ code: "UNAVAILABLE" })]));
+    expect(validateAssignment(candidate, assignment({ startTime: "10:00", endTime: "11:00" }), []))
+      .toEqual([]);
+  });
+
   it("rejects approved absence or vacation dates", () => {
     const candidate = employee({ absenceDates: [need.date] });
     expect(validateAssignment(candidate, assignment(), [])).toEqual(

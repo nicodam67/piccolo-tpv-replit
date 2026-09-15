@@ -135,7 +135,14 @@ function isDatedException(rule: AvailabilityRule): boolean {
 export function availabilityRulesForDate(rules: AvailabilityRule[], date: string): AvailabilityRule[] {
   const matching = rules.filter((rule) => ruleMatchesDate(rule, date));
   const exceptions = matching.filter(isDatedException);
-  return exceptions.length > 0 ? exceptions : matching.filter((rule) => !isDatedException(rule));
+  if (exceptions.length === 0) return matching.filter((rule) => !isDatedException(rule));
+  const replacesDay = exceptions.some((rule) =>
+    rule.type === "AVAILABLE"
+    || (rule.type === "UNAVAILABLE" && !rule.startTime && !rule.endTime),
+  );
+  return replacesDay
+    ? exceptions
+    : [...matching.filter((rule) => !isDatedException(rule)), ...exceptions];
 }
 
 function ruleOverlaps(rule: AvailabilityRule, assignment: PlannedAssignment): boolean {
