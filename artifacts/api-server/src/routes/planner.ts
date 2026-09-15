@@ -311,11 +311,13 @@ async function loadPlanningEmployee(employeeId: string) {
     weeklyHours: employeesTable.weeklyHours,
     contractType: employeesTable.contractType,
     primaryPositionId: employeesTable.positionId,
+    positionName: hrPositionsTable.name,
     departmentId: employeesTable.departmentId,
     workCenterId: employeesTable.workCenterId,
     departmentName: hrDepartmentsTable.name,
     workCenterName: hrWorkCentersTable.name,
   }).from(employeesTable)
+    .leftJoin(hrPositionsTable, eq(employeesTable.positionId, hrPositionsTable.id))
     .leftJoin(hrDepartmentsTable, eq(employeesTable.departmentId, hrDepartmentsTable.id))
     .leftJoin(hrWorkCentersTable, eq(employeesTable.workCenterId, hrWorkCentersTable.id))
     .where(eq(employeesTable.id, employeeId)).limit(1);
