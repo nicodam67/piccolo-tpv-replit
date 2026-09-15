@@ -68,7 +68,7 @@ CREATE TABLE IF NOT EXISTS employee_availability (
 CREATE TABLE IF NOT EXISTS planning_issues (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   schedule_id uuid NOT NULL REFERENCES planning_schedules(id) ON DELETE CASCADE,
-  shift_id uuid,
+  shift_id uuid REFERENCES shifts(id) ON DELETE CASCADE,
   requirement_id uuid REFERENCES staffing_requirements(id) ON DELETE CASCADE,
   employee_id uuid REFERENCES employees(id) ON DELETE SET NULL,
   code text NOT NULL,

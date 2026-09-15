@@ -91,6 +91,26 @@ describe("mandatory planner constraints", () => {
     );
   });
 
+  it("uses contracted hours as a preference, not a hard limit", () => {
+    const candidate = employee({ contractedWeeklyMinutes: 300, maxWeeklyMinutes: null });
+    expect(validateAssignment(candidate, assignment(), [])).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: "MAX_HOURS" })]),
+    );
+  });
+
+  it("applies the configured limit independently to each week", () => {
+    const candidate = employee({ maxWeeklyMinutes: 600 });
+    const previousWeek = assignment({
+      id: "previous-week",
+      date: "2026-09-12",
+      startTime: "08:00",
+      endTime: "16:00",
+    });
+    expect(validateAssignment(candidate, assignment(), [previousWeek])).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: "MAX_HOURS" })]),
+    );
+  });
+
   it("rejects insufficient rest between days", () => {
     const existing = assignment({
       id: "existing",

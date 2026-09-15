@@ -212,6 +212,14 @@ async function validateAndPersistIssues(scheduleId: string): Promise<PlannerIssu
   return issues;
 }
 
+async function isDraft(scheduleId: string): Promise<boolean> {
+  const [schedule] = await db.select({ status: planningSchedulesTable.status })
+    .from(planningSchedulesTable)
+    .where(eq(planningSchedulesTable.id, scheduleId))
+    .limit(1);
+  return schedule?.status === "DRAFT";
+}
+
 router.get("/planner/schedules", requireAuth, requirePermission("planner.view"), async (req, res) => {
   const manager = ["admin", "manager", "encargado"].includes(req.user!.role);
   const schedules = await db.select().from(planningSchedulesTable)
@@ -239,6 +247,14 @@ router.get("/planner/schedules/:id", requireAuth, requirePermission("planner.vie
   if (!manager && context.schedule.status !== "PUBLISHED") {
     res.status(404).json({ error: "Cuadrante no encontrado" }); return;
   }
+  if (!manager) {
+    res.json({
+      schedule: context.schedule,
+      shiftRows: context.shiftRows.filter((shift) => shift.employeeId === req.user!.id),
+      issues: [],
+    });
+    return;
+  }
   const issues = manager
     ? await db.select().from(planningIssuesTable).where(eq(planningIssuesTable.scheduleId, context.schedule.id))
     : [];
@@ -248,6 +264,7 @@ router.get("/planner/schedules/:id", requireAuth, requirePermission("planner.vie
 
 router.post("/planner/schedules/:id/requirements", requireAuth, requirePermission("planner.manage"), async (req, res) => {
   const scheduleId = req.params.id as string;
+  if (!await isDraft(scheduleId)) { res.status(409).json({ error: "Solo se pueden modificar borradores" }); return; }
   const parsed = RequirementBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: "Necesidad inválida", issues: parsed.error.issues }); return; }
   const [requirement] = await db.insert(staffingRequirementsTable).values({
@@ -262,6 +279,10 @@ router.post("/planner/schedules/:id/requirements", requireAuth, requirePermissio
 router.put("/planner/requirements/:id", requireAuth, requirePermission("planner.manage"), async (req, res) => {
   const parsed = RequirementBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: "Necesidad inválida", issues: parsed.error.issues }); return; }
+  const [existing] = await db.select().from(staffingRequirementsTable)
+    .where(eq(staffingRequirementsTable.id, req.params.id as string)).limit(1);
+  if (!existing) { res.status(404).json({ error: "Necesidad no encontrada" }); return; }
+  if (!await isDraft(existing.scheduleId)) { res.status(409).json({ error: "Solo se pueden modificar borradores" }); return; }
   const [updated] = await db.update(staffingRequirementsTable)
     .set({ ...parsed.data, updatedAt: new Date() })
     .where(eq(staffingRequirementsTable.id, req.params.id as string)).returning();
@@ -272,6 +293,10 @@ router.put("/planner/requirements/:id", requireAuth, requirePermission("planner.
 });
 
 router.delete("/planner/requirements/:id", requireAuth, requirePermission("planner.manage"), async (req, res) => {
+  const [existing] = await db.select().from(staffingRequirementsTable)
+    .where(eq(staffingRequirementsTable.id, req.params.id as string)).limit(1);
+  if (!existing) { res.status(404).json({ error: "Necesidad no encontrada" }); return; }
+  if (!await isDraft(existing.scheduleId)) { res.status(409).json({ error: "Solo se pueden modificar borradores" }); return; }
   const [deleted] = await db.delete(staffingRequirementsTable)
     .where(eq(staffingRequirementsTable.id, req.params.id as string)).returning();
   if (!deleted) { res.status(404).json({ error: "Necesidad no encontrada" }); return; }
@@ -352,6 +377,7 @@ router.post("/planner/schedules/:id/validate", requireAuth, requirePermission("p
 
 router.post("/planner/schedules/:id/assignments", requireAuth, requirePermission("planner.manage"), async (req, res) => {
   const scheduleId = req.params.id as string;
+  if (!await isDraft(scheduleId)) { res.status(409).json({ error: "Solo se pueden modificar borradores" }); return; }
   const parsed = AssignmentBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: "Turno inválido", issues: parsed.error.issues }); return; }
   const [shift] = await db.insert(shiftsTable).values({
@@ -370,6 +396,7 @@ router.put("/planner/assignments/:id", requireAuth, requirePermission("planner.m
   if (!parsed.success) { res.status(400).json({ error: "Turno inválido", issues: parsed.error.issues }); return; }
   const [before] = await db.select().from(shiftsTable).where(eq(shiftsTable.id, req.params.id as string)).limit(1);
   if (!before?.scheduleId) { res.status(404).json({ error: "Asignación no encontrada" }); return; }
+  if (!await isDraft(before.scheduleId)) { res.status(409).json({ error: "Solo se pueden modificar borradores" }); return; }
   const [shift] = await db.update(shiftsTable).set({
     ...parsed.data,
     origin: "manual",
@@ -381,6 +408,9 @@ router.put("/planner/assignments/:id", requireAuth, requirePermission("planner.m
 });
 
 router.delete("/planner/assignments/:id", requireAuth, requirePermission("planner.manage"), async (req, res) => {
+  const [existing] = await db.select().from(shiftsTable).where(eq(shiftsTable.id, req.params.id as string)).limit(1);
+  if (!existing?.scheduleId) { res.status(404).json({ error: "Asignación no encontrada" }); return; }
+  if (!await isDraft(existing.scheduleId)) { res.status(409).json({ error: "Solo se pueden modificar borradores" }); return; }
   const [deleted] = await db.delete(shiftsTable).where(eq(shiftsTable.id, req.params.id as string)).returning();
   if (!deleted?.scheduleId) { res.status(404).json({ error: "Asignación no encontrada" }); return; }
   const issues = await validateAndPersistIssues(deleted.scheduleId) ?? [];

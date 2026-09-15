@@ -75,6 +75,12 @@ function utcDay(date: string): number {
   return new Date(`${date}T12:00:00Z`).getUTCDay();
 }
 
+function weekKey(date: string): string {
+  const value = new Date(`${date}T12:00:00Z`);
+  value.setUTCDate(value.getUTCDate() - ((value.getUTCDay() + 6) % 7));
+  return value.toISOString().slice(0, 10);
+}
+
 function minutes(time: string): number {
   const [hours, mins] = time.split(":").map(Number);
   return hours * 60 + mins;
@@ -213,9 +219,10 @@ export function validateAssignment(
     });
   }
 
-  const totalMinutes = ownAssignments.reduce((total, item) => total + assignmentMinutes(item), 0)
+  const sameWeekAssignments = ownAssignments.filter((item) => weekKey(item.date) === weekKey(assignment.date));
+  const totalMinutes = sameWeekAssignments.reduce((total, item) => total + assignmentMinutes(item), 0)
     + assignmentMinutes(assignment);
-  const limit = employee.maxWeeklyMinutes ?? employee.contractedWeeklyMinutes;
+  const limit = employee.maxWeeklyMinutes;
   if (limit != null && totalMinutes > limit) {
     issues.push({
       code: "MAX_HOURS",
