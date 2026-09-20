@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS payment_voids_original_payment_unique;

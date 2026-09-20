@@ -740,15 +740,22 @@ router.post(
       .from(cashSessionsTable)
       .where(eq(cashSessionsTable.id, sessionId));
 
-    // Mark payment as voided and create counter cash movement (for cash payments)
-    const result = await db.transaction(async (tx) => {
-      await tx
+    // Conditional transition + unique ledger entry make concurrent retries safe.
+    let result;
+    try {
+      result = await db.transaction(async (tx) => {
+      const [voidedPayment] = await tx
         .update(paymentsTable)
         .set({ status: "voided" })
-        .where(eq(paymentsTable.id, paymentId));
+        .where(and(
+          eq(paymentsTable.id, paymentId),
+          eq(paymentsTable.status, "completed"),
+        ))
+        .returning({ id: paymentsTable.id });
+      if (!voidedPayment) return null;
 
       // Get method
-      const [method] = await db
+      const [method] = await tx
         .select({ code: paymentMethodsTable.code })
         .from(paymentMethodsTable)
         .where(eq(paymentMethodsTable.id, payment.paymentMethodId));
@@ -782,7 +789,18 @@ router.post(
         .returning();
 
       return voidRecord;
-    });
+      });
+    } catch (error) {
+      if ((error as { code?: string }).code === "23505") {
+        res.status(409).json({ error: "Este pago ya ha sido anulado" });
+        return;
+      }
+      throw error;
+    }
+    if (!result) {
+      res.status(409).json({ error: "Este pago ya ha sido anulado" });
+      return;
+    }
 
     await logDocumentAction({
       action: "void_payment",

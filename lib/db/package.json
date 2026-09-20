@@ -10,7 +10,8 @@
   "scripts": {
     "migrate": "node --no-warnings --experimental-strip-types ./src/migrations.ts apply",
     "migrate:check": "node --no-warnings --experimental-strip-types ./src/migrations.ts check",
-    "certify:foodcost": "node --no-warnings --experimental-strip-types ./src/foodcost-migration-certification.ts"
+    "certify:foodcost": "node --no-warnings --experimental-strip-types ./src/foodcost-migration-certification.ts",
+    "certify:foodcost-economic": "node --no-warnings --experimental-strip-types ./src/foodcost-economic-migration-certification.ts"
   },
   "dependencies": {
     "drizzle-orm": "catalog:",

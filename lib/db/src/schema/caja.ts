@@ -1,4 +1,4 @@
-import { boolean, numeric, pgTable, text, timestamp, uuid, integer } from "drizzle-orm/pg-core";
+import { boolean, numeric, pgTable, text, timestamp, uuid, integer, uniqueIndex } from "drizzle-orm/pg-core";
 import { ordersTable } from "./orders";
 import { orderItemsTable } from "./order-items";
 import { paymentsTable } from "./payments";
@@ -88,7 +88,9 @@ export const paymentVoidsTable = pgTable("payment_voids", {
   cashSessionId: uuid("cash_session_id").references(() => cashSessionsTable.id),
   counterMovementId: uuid("counter_movement_id"), // reference to cash_movements if cash
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (table) => [
+  uniqueIndex("payment_voids_original_payment_unique").on(table.originalPaymentId),
+]);
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 export type Discount = typeof discountsTable.$inferSelect;

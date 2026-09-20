@@ -18,9 +18,21 @@ import {
 import { eq, and, inArray, desc, asc, sql } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import { idempotency } from "../middlewares/idempotency";
-import { recipeItemsTable, ingredientsTable, stockMovementsTable } from "@workspace/db";
+import {
+  recipeItemsTable,
+  ingredientsTable,
+  stockMovementsTable,
+  subrecipesTable,
+  subrecipeItemsTable,
+} from "@workspace/db";
 import { emitToEmployee, emitToFunction } from "../lib/socket-events";
 import { logger } from "../lib/logger";
+import {
+  expandRecipeConsumption,
+  type IngredientCostBasis,
+  type RecipeComponent,
+  type SubrecipeDefinition,
+} from "../lib/cogs-snapshot";
 
 const router: IRouter = Router();
 
@@ -687,6 +699,11 @@ router.post("/orders/:orderId/send", requireAuth, idempotency, async (req, res):
       formatName: string | null;
       itemId: string;
     }>();
+
+    const ingredientCosts = new Map<string, IngredientCostBasis>();
+    const subrecipes = new Map<string, SubrecipeDefinition>();
+    let subrecipesLoaded = false;
+
     for (const row of draftItems) {
       const item = row.order_items;
       const product = row.products;
@@ -695,13 +712,17 @@ router.post("/orders/:orderId/send", requireAuth, idempotency, async (req, res):
       let recipeLines = await tx
         .select({
           ingredientId: recipeItemsTable.ingredientId,
+          subrecipeId: recipeItemsTable.subrecipeId,
           quantity: recipeItemsTable.quantity,
+          unit: recipeItemsTable.unit,
           wastePercent: recipeItemsTable.wastePercent,
           averageCost: ingredientsTable.averageCost,
           purchaseCost: ingredientsTable.purchaseCost,
+          consumptionUnit: ingredientsTable.consumptionUnit,
+          conversionFactor: ingredientsTable.conversionFactor,
         })
         .from(recipeItemsTable)
-        .innerJoin(ingredientsTable, eq(recipeItemsTable.ingredientId, ingredientsTable.id))
+        .leftJoin(ingredientsTable, eq(recipeItemsTable.ingredientId, ingredientsTable.id))
         .where(and(
           eq(recipeItemsTable.productId, item.productId),
           item.formatId
@@ -714,28 +735,105 @@ router.post("/orders/:orderId/send", requireAuth, idempotency, async (req, res):
         recipeLines = await tx
           .select({
             ingredientId: recipeItemsTable.ingredientId,
+            subrecipeId: recipeItemsTable.subrecipeId,
             quantity: recipeItemsTable.quantity,
+            unit: recipeItemsTable.unit,
             wastePercent: recipeItemsTable.wastePercent,
             averageCost: ingredientsTable.averageCost,
             purchaseCost: ingredientsTable.purchaseCost,
+            consumptionUnit: ingredientsTable.consumptionUnit,
+            conversionFactor: ingredientsTable.conversionFactor,
           })
           .from(recipeItemsTable)
-          .innerJoin(ingredientsTable, eq(recipeItemsTable.ingredientId, ingredientsTable.id))
+          .leftJoin(ingredientsTable, eq(recipeItemsTable.ingredientId, ingredientsTable.id))
           .where(and(
             eq(recipeItemsTable.productId, item.productId),
             sql`(${recipeItemsTable.formatId} IS NULL)`,
           ));
       }
 
+      if (recipeLines.length === 0) continue;
       for (const line of recipeLines) {
         if (!line.ingredientId) continue;
-        const consumed =
-          parseFloat(line.quantity) *
-          (1 + parseFloat(line.wastePercent) / 100) *
-          item.quantity;
+        ingredientCosts.set(line.ingredientId, {
+          id: line.ingredientId,
+          consumptionUnit: line.consumptionUnit ?? line.unit,
+          averageCost: parseFloat(line.averageCost ?? "0"),
+          purchaseCost: parseFloat(line.purchaseCost ?? "0"),
+          conversionFactor: parseFloat(line.conversionFactor ?? "1"),
+        });
+      }
+      if (!subrecipesLoaded && recipeLines.some((line) => line.subrecipeId)) {
+        const [subrecipeRows, subrecipeItemRows] = await Promise.all([
+          tx.select({
+            id: subrecipesTable.id,
+            unit: subrecipesTable.unit,
+            yieldQuantity: subrecipesTable.yieldQuantity,
+          }).from(subrecipesTable),
+          tx.select({
+            subrecipeId: subrecipeItemsTable.subrecipeId,
+            ingredientId: subrecipeItemsTable.ingredientId,
+            quantity: subrecipeItemsTable.quantity,
+            unit: subrecipeItemsTable.unit,
+            wastePercent: subrecipeItemsTable.wastePercent,
+            averageCost: ingredientsTable.averageCost,
+            purchaseCost: ingredientsTable.purchaseCost,
+            consumptionUnit: ingredientsTable.consumptionUnit,
+            conversionFactor: ingredientsTable.conversionFactor,
+          }).from(subrecipeItemsTable)
+            .innerJoin(ingredientsTable, eq(subrecipeItemsTable.ingredientId, ingredientsTable.id)),
+        ]);
+        for (const subrecipeItem of subrecipeItemRows) {
+          ingredientCosts.set(subrecipeItem.ingredientId, {
+            id: subrecipeItem.ingredientId,
+            consumptionUnit: subrecipeItem.consumptionUnit,
+            averageCost: parseFloat(subrecipeItem.averageCost),
+            purchaseCost: parseFloat(subrecipeItem.purchaseCost),
+            conversionFactor: parseFloat(subrecipeItem.conversionFactor),
+          });
+        }
+        for (const subrecipe of subrecipeRows) {
+          subrecipes.set(subrecipe.id, {
+            id: subrecipe.id,
+            unit: subrecipe.unit,
+            yieldQuantity: parseFloat(subrecipe.yieldQuantity),
+            items: subrecipeItemRows
+              .filter((item) => item.subrecipeId === subrecipe.id)
+              .map((item) => ({
+                ingredientId: item.ingredientId,
+                quantity: parseFloat(item.quantity),
+                unit: item.unit,
+                wastePercent: parseFloat(item.wastePercent),
+              })),
+          });
+        }
+        subrecipesLoaded = true;
+      }
+
+      let expanded;
+      try {
+        expanded = expandRecipeConsumption({
+          lines: recipeLines.map((line): RecipeComponent => ({
+            ingredientId: line.ingredientId,
+            subrecipeId: line.subrecipeId,
+            quantity: parseFloat(line.quantity),
+            unit: line.unit,
+            wastePercent: parseFloat(line.wastePercent),
+          })),
+          orderQuantity: item.quantity,
+          ingredients: ingredientCosts,
+          subrecipes,
+        });
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : "composición inválida";
+        throw new Error(`COGS_SNAPSHOT:${detail}`);
+      }
+
+      for (const line of expanded) {
+        const consumed = line.quantity;
         const movementKey = `${item.id}:${line.ingredientId}`;
         const existing = consumptionMap.get(movementKey);
-        const avgCost = String(line.averageCost ?? line.purchaseCost ?? "0");
+        const avgCost = String(line.unitCost);
         if (existing) {
           existing.consumed += consumed;
         } else {
@@ -818,6 +916,13 @@ router.post("/orders/:orderId/send", requireAuth, idempotency, async (req, res):
     }
     if (reason === "NO_DRAFT_ITEMS") {
       res.status(409).json({ error: "La comanda ya fue enviada" });
+      return;
+    }
+    if (reason.startsWith("COGS_SNAPSHOT:")) {
+      res.status(422).json({
+        error: "No se pudo calcular el COGS histórico",
+        detail: reason.slice("COGS_SNAPSHOT:".length),
+      });
       return;
     }
     logger.error({ orderId, err }, "Atomic order send failed");

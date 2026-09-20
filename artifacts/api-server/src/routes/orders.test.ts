@@ -29,7 +29,7 @@ function makeChain(value: unknown) {
   for (const m of [
     "select", "from", "where", "orderBy",
     "insert", "update", "delete", "set", "values", "returning",
-    "innerJoin", "limit", "for", "onConflictDoNothing", "execute",
+    "innerJoin", "leftJoin", "limit", "for", "onConflictDoNothing", "execute",
   ]) {
     chain[m] = () => chain;
   }

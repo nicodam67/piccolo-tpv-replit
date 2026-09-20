@@ -77,6 +77,11 @@ vi.mock('@workspace/db', () => {
     orderItemsTable: { id: 'id', orderId: 'order_id', productId: 'product_id', quantity: 'quantity', unitPrice: 'unit_price', taxRate: 'tax_rate', isInvitation: 'is_invitation' },
     ticketsTable: { orderId: 'order_id', issuedAt: 'issued_at', isDemo: 'is_demo' },
     discountsTable: { orderId: 'order_id', orderItemId: 'order_item_id' },
+    paymentsTable: { id: 'id', orderId: 'order_id', amount: 'amount' },
+    paymentVoidsTable: { id: 'id', originalPaymentId: 'original_payment_id', createdAt: 'created_at' },
+    cashMachineTransactionsTable: { id: 'id', orderId: 'order_id', transactionType: 'transaction_type', status: 'status', amountRequested: 'amount_requested', changeDispensed: 'change_dispensed', splitRef: 'split_ref', completedAt: 'completed_at' },
+    paymentAttemptsTable: { id: 'id', orderId: 'order_id', status: 'status', amountCents: 'amount_cents', refundedAt: 'refunded_at' },
+    splitGroupItemsTable: { splitGroupId: 'split_group_id', orderItemId: 'order_item_id', quantity: 'quantity' },
   };
 });
 
@@ -147,6 +152,9 @@ describe('Profitability routes', () => {
         categoryName: 'Pizzas',
       }],
       [],
+      [],
+      [],
+      [],
       [{
         orderId: 'order-1',
         orderItemId: 'item-1',
@@ -178,6 +186,57 @@ describe('Profitability routes', () => {
     expect(res.body.avgMarginPct).toBe('85.00');
     expect(res.body.historicalCogsCoveragePct).toBe('100.00');
     expect(res.body.salesProducts[0].unitsSold).toBe(2);
+  });
+
+  it('nets a later payment void from dashboard revenue, units and historical COGS', async () => {
+    const saleRow = {
+      orderId: 'order-1',
+      orderItemId: 'item-1',
+      productId: 'product-1',
+      quantity: 2,
+      unitPrice: '11.00',
+      taxRate: 10,
+      isInvitation: false,
+      channel: 'tpv',
+      deliveryType: 'table',
+      createdAt: new Date('2026-01-15T12:00:00Z'),
+    };
+    (db as any).__setSelectResults(
+      [{
+        id: 'product-1',
+        name: 'Pizza',
+        price: '11.00',
+        taxRate: 10,
+        categoryId: 'category-1',
+        categoryName: 'Pizzas',
+      }],
+      [],
+      [{
+        id: 'void-1',
+        orderId: 'order-1',
+        amount: '22.00',
+        occurredAt: new Date('2026-01-16T12:00:00Z'),
+      }],
+      [],
+      [],
+      [saleRow],
+      [],
+      [{ orderItemId: 'item-1', quantity: '-2', unitCost: '1.50' }],
+      [],
+      [],
+      [],
+      [],
+    );
+
+    const res = await request(app)
+      .get('/admin/profitability/reports')
+      .query({ from: '2026-01-01', to: '2026-02-01' });
+    expect(res.status).toBe(200);
+    expect(res.body.sales).toBe('0.00');
+    expect(res.body.netSales).toBe('0.00');
+    expect(res.body.costOfGoodsSold).toBe('0.00');
+    expect(res.body.contributionMargin).toBe('0.00');
+    expect(res.body.salesProducts[0].unitsSold).toBe(0);
   });
 
   // 5. GET /admin/cost-history returns array

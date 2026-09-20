@@ -18,6 +18,11 @@ import {
   orderItemsTable,
   ticketsTable,
   discountsTable,
+  paymentsTable,
+  paymentVoidsTable,
+  cashMachineTransactionsTable,
+  paymentAttemptsTable,
+  splitGroupItemsTable,
 } from "@workspace/db";
 import {
   eq,
@@ -43,6 +48,10 @@ import {
   recommendedPvp,
   resolveTargetMargin,
 } from "../lib/profitability-calculator";
+import {
+  projectEconomicActivity,
+  type EconomicAdjustment,
+} from "../lib/economic-activity";
 
 const router: IRouter = Router();
 
@@ -447,7 +456,114 @@ router.get(
       .filter((p) => p.foodCostPct > 35)
       .sort((a, b) => b.foodCostPct - a.foodCostPct);
 
-    // Recognised sales use immutable fiscal tickets and captured order-item prices.
+    // Sales and reversals are projected as immutable, dated economic events.
+    // Read all adjustments up to the report end so retries/over-refunds can be
+    // capped before deciding which events belong to the requested period.
+    const [paymentVoidRows, cashRefundRows, onlineRefundRows] = await Promise.all([
+      db.select({
+        id: paymentVoidsTable.id,
+        orderId: paymentsTable.orderId,
+        amount: paymentsTable.amount,
+        occurredAt: paymentVoidsTable.createdAt,
+      }).from(paymentVoidsTable)
+        .innerJoin(paymentsTable, eq(paymentVoidsTable.originalPaymentId, paymentsTable.id))
+        .innerJoin(ticketsTable, eq(ticketsTable.orderId, paymentsTable.orderId))
+        .where(and(
+          eq(ticketsTable.isDemo, false),
+          lte(paymentVoidsTable.createdAt, toDate),
+        )),
+      db.select({
+        id: cashMachineTransactionsTable.id,
+        orderId: cashMachineTransactionsTable.orderId,
+        amountRequested: cashMachineTransactionsTable.amountRequested,
+        amountDispensed: cashMachineTransactionsTable.changeDispensed,
+        splitRef: cashMachineTransactionsTable.splitRef,
+        occurredAt: cashMachineTransactionsTable.completedAt,
+      }).from(cashMachineTransactionsTable)
+        .innerJoin(ticketsTable, eq(ticketsTable.orderId, cashMachineTransactionsTable.orderId))
+        .where(and(
+          eq(ticketsTable.isDemo, false),
+          eq(cashMachineTransactionsTable.transactionType, "refund"),
+          eq(cashMachineTransactionsTable.status, "completada"),
+          isNotNull(cashMachineTransactionsTable.orderId),
+          isNotNull(cashMachineTransactionsTable.completedAt),
+          lte(cashMachineTransactionsTable.completedAt, toDate),
+        )),
+      db.select({
+        id: paymentAttemptsTable.id,
+        orderId: paymentAttemptsTable.orderId,
+        amountCents: paymentAttemptsTable.amountCents,
+        occurredAt: paymentAttemptsTable.refundedAt,
+      }).from(paymentAttemptsTable)
+        .innerJoin(ticketsTable, eq(ticketsTable.orderId, paymentAttemptsTable.orderId))
+        .where(and(
+          eq(ticketsTable.isDemo, false),
+          eq(paymentAttemptsTable.status, "refunded"),
+          isNotNull(paymentAttemptsTable.orderId),
+          isNotNull(paymentAttemptsTable.refundedAt),
+          lte(paymentAttemptsTable.refundedAt, toDate),
+        )),
+    ]);
+
+    const validSplitIds = [...new Set(cashRefundRows
+      .map((refund) => refund.splitRef)
+      .filter((ref): ref is string =>
+        Boolean(ref && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(ref)),
+      ))];
+    const splitItems = validSplitIds.length > 0
+      ? await db.select({
+          splitGroupId: splitGroupItemsTable.splitGroupId,
+          orderItemId: splitGroupItemsTable.orderItemId,
+          quantity: splitGroupItemsTable.quantity,
+        }).from(splitGroupItemsTable)
+          .where(inArray(splitGroupItemsTable.splitGroupId, validSplitIds))
+      : [];
+    const itemsBySplit = new Map<string, Array<{ orderItemId: string; quantity: number }>>();
+    for (const item of splitItems) {
+      const items = itemsBySplit.get(item.splitGroupId) ?? [];
+      items.push({ orderItemId: item.orderItemId, quantity: parseFloat(item.quantity) });
+      itemsBySplit.set(item.splitGroupId, items);
+    }
+
+    const economicAdjustments: EconomicAdjustment[] = [
+      ...paymentVoidRows.map((row) => ({
+        id: `payment_void:${row.id}`,
+        orderId: row.orderId,
+        grossAmount: parseFloat(row.amount),
+        occurredAt: row.occurredAt,
+      })),
+      ...cashRefundRows
+        .filter((row): row is typeof row & { orderId: string; occurredAt: Date } =>
+          Boolean(row.orderId && row.occurredAt),
+        )
+        .map((row) => ({
+          id: `cash_refund:${row.id}`,
+          orderId: row.orderId,
+          grossAmount: parseFloat(row.amountDispensed) > 0
+            ? parseFloat(row.amountDispensed)
+            : parseFloat(row.amountRequested),
+          occurredAt: row.occurredAt,
+          scopedItems: row.splitRef ? itemsBySplit.get(row.splitRef) : undefined,
+        })),
+      ...onlineRefundRows
+        .filter((row): row is typeof row & { orderId: string; occurredAt: Date } =>
+          Boolean(row.orderId && row.occurredAt),
+        )
+        .map((row) => ({
+          id: `online_refund:${row.id}`,
+          orderId: row.orderId,
+          grossAmount: row.amountCents / 100,
+          occurredAt: row.occurredAt,
+        })),
+    ];
+    const adjustedOrderIds = [...new Set(economicAdjustments.map((row) => row.orderId))];
+
+    // Immutable ticket prices provide the attribution basis for both the sale
+    // event and any later reversal, even when the ticket predates this period.
+    const ticketInPeriod = and(
+      gte(ticketsTable.issuedAt, fromDate),
+      lte(ticketsTable.issuedAt, toDate),
+    );
     const salesRows = await db
       .select({
         orderId: orderItemsTable.orderId,
@@ -467,8 +583,9 @@ router.get(
       .where(
         and(
           eq(ticketsTable.isDemo, false),
-          gte(ticketsTable.issuedAt, fromDate),
-          lte(ticketsTable.issuedAt, toDate),
+          adjustedOrderIds.length > 0
+            ? or(ticketInPeriod, inArray(ordersTable.id, adjustedOrderIds))
+            : ticketInPeriod,
           channel
             ? or(eq(ordersTable.channel, channel), eq(ordersTable.deliveryType, channel))
             : sql`true`,
@@ -528,7 +645,7 @@ router.get(
       }
     }
     const rankedCostById = new Map(ranked.map((product) => [product.id, product.unitCost]));
-    const recognisedSalesRows = salesRows.map((sale) => {
+    const baseSalesRows = salesRows.map((sale) => {
       const quantity = sale.quantity ?? 0;
       const rawGross = parseFloat(sale.unitPrice) * quantity;
       const recognisedGross = recognisedLineRevenue({
@@ -547,6 +664,12 @@ router.get(
         cogs: snapshotCogs ?? (rankedCostById.get(sale.productId) ?? 0) * quantity,
         cogsSource: snapshotCogs == null ? "current_recipe_fallback" as const : "stock_snapshot" as const,
       };
+    });
+    const recognisedSalesRows = projectEconomicActivity({
+      sales: baseSalesRows,
+      adjustments: economicAdjustments,
+      from: fromDate,
+      to: toDate,
     });
 
     const soldByProduct = new Map<string, {
@@ -626,7 +749,9 @@ router.get(
           sales: sale.grossSales,
           netSales: sale.netSales,
           cogs,
-          cogsSnapshotCoveragePct: cogs > 0 ? sale.snapshotCogs / cogs * 100 : 100,
+          cogsSnapshotCoveragePct: Math.abs(cogs) > Number.EPSILON
+            ? Math.abs(sale.snapshotCogs) / Math.abs(cogs) * 100
+            : 100,
           commissions,
           contribution,
           allocatedOperatingCost,
@@ -638,8 +763,12 @@ router.get(
     const snapshotCogs = Array.from(soldByProduct.values())
       .reduce((total, product) => total + product.snapshotCogs, 0);
     const totalContribution = salesProducts.reduce((total, product) => total + product.contribution, 0);
-    const avgFoodCostPct = totalRevenue > 0 ? totalCogs / totalRevenue * 100 : 0;
-    const avgMarginPct = totalRevenue > 0 ? totalContribution / totalRevenue * 100 : 0;
+    const avgFoodCostPct = Math.abs(totalRevenue) > Number.EPSILON
+      ? totalCogs / totalRevenue * 100
+      : 0;
+    const avgMarginPct = Math.abs(totalRevenue) > Number.EPSILON
+      ? totalContribution / totalRevenue * 100
+      : 0;
     const soldAtLoss = salesProducts.filter((product) => product.contribution < 0);
     const topContribution = [...salesProducts]
       .sort((a, b) => b.contribution - a.contribution)
@@ -666,7 +795,9 @@ router.get(
       .map(([date, values]) => ({
         date,
         ...values,
-        marginPct: values.netSales > 0 ? values.contribution / values.netSales * 100 : 0,
+        marginPct: Math.abs(values.netSales) > Number.EPSILON
+          ? values.contribution / values.netSales * 100
+          : 0,
       }));
     const costEvolution = await db.select({
       ingredientId: ingredientCostHistoryTable.ingredientId,
@@ -688,9 +819,13 @@ router.get(
       sales: salesProducts.reduce((total, product) => total + product.sales, 0).toFixed(2),
       netSales: totalRevenue.toFixed(2),
       costOfGoodsSold: totalCogs.toFixed(2),
-      historicalCogsCoveragePct: (totalCogs > 0 ? snapshotCogs / totalCogs * 100 : 100).toFixed(2),
+      historicalCogsCoveragePct: (
+        Math.abs(totalCogs) > Number.EPSILON
+          ? Math.abs(snapshotCogs) / Math.abs(totalCogs) * 100
+          : 100
+      ).toFixed(2),
       revenueRecognition: "fiscal_ticket",
-      revenueAdjustments: "invitations_excluded_discounts_allocated",
+      revenueAdjustments: "invitations_discounts_voids_refunds_event_dated",
       contributionMargin: totalContribution.toFixed(2),
       operatingCost: periodOperatingCost.toFixed(2),
       allocationMethod,
