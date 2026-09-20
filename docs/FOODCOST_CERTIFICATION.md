@@ -3,6 +3,17 @@
 Fecha: 2026-09-20  
 Alcance: migración 0030, fórmulas, dashboard, propuestas, simulador y regresión.
 
+## Resultado de ejecución
+
+- Migración 0030: PASS.
+- Casos FoodCost focalizados: 33/33 PASS.
+- Suite API completa: 651 PASS, 12 omitidos; 0 fallos.
+- Typecheck completo: PASS.
+- Lint: PASS.
+- Auditor de rutas/RBAC: PASS, 64 ficheros sin endpoints desprotegidos.
+- Build web: PASS, 3.089 módulos transformados.
+- Prueba visual autenticada: no ejecutable en este entorno por infraestructura.
+
 ## Ejecución reproducible
 
 ```bash
