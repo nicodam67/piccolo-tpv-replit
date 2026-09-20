@@ -3,13 +3,13 @@ import { RotateCcw, X } from 'lucide-react';
 import type { ThemeFonts } from './types';
 import { DEFAULT_THEME_FONTS } from './types';
 
-// ── Custom CDN fonts (from original program) ─────────────────────────────────
+// ── Custom fonts owned and served by the TPV ─────────────────────────────────
 const CUSTOM_FONTS = [
-  { label: 'Algerian', value: 'Algerian__custom', cdnUrl: 'https://hercules-cdn.com/file_Up90gFAtg9wEAXyeMzwFEHgS' },
-  { label: 'AvantGarde Demi', value: 'AvantGardeBk__custom', cdnUrl: 'https://hercules-cdn.com/file_89mHnxjgA9M4oKd6cCL5tH3G' },
-  { label: 'American Text BT', value: 'AmericanTextBT__custom', cdnUrl: 'https://hercules-cdn.com/file_ZvU6mje17p5pww4n7ZuLTmNH' },
-  { label: 'ZapfChan Demi', value: 'ZapfChanDm__custom', cdnUrl: 'https://hercules-cdn.com/file_H5zrJAiF1ZRToxIbF6PxUlIC' },
-  { label: 'ZapfChan Medium', value: 'ZapfChanMd__custom', cdnUrl: 'https://hercules-cdn.com/file_46LrUGLTssadG0rlxFlWL1tR' },
+  { label: 'Algerian', value: 'Algerian__custom' },
+  { label: 'AvantGarde Demi', value: 'AvantGardeBk__custom' },
+  { label: 'American Text BT', value: 'AmericanTextBT__custom' },
+  { label: 'ZapfChan Demi', value: 'ZapfChanDm__custom' },
+  { label: 'ZapfChan Medium', value: 'ZapfChanMd__custom' },
 ];
 
 const GOOGLE_FONTS = [
@@ -25,7 +25,7 @@ function loadFont(fontValue: string) {
     if (document.getElementById(id)) return;
     const style = document.createElement('style');
     style.id = id;
-    style.textContent = `@font-face { font-family: "${custom.label}"; src: url("${custom.cdnUrl}") format("woff2"), url("${custom.cdnUrl}") format("woff"); font-weight: normal; font-style: normal; font-display: swap; }`;
+    style.textContent = `@font-face { font-family: "${custom.label}"; src: url("/fonts/${custom.value}.woff2") format("woff2"), url("/fonts/${custom.value}.ttf") format("truetype"); font-weight: normal; font-style: normal; font-display: swap; }`;
     document.head.appendChild(style);
     return;
   }

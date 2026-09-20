@@ -15,5 +15,3 @@
 - [ExcelJS migration](exceljs-migration.md) — xlsx replaced in 4 files; async writeBuffer/load patterns, hr-import parseFile must be async, .xls dropped.
 - [Vitest JWT auth mock](vitest-auth-mock.md) — requireAuth calls jwt.verify synchronously; mock must return value (not callback) or all auth routes return 401.
 - [Tablet Fichaje kiosk](tablet-fichaje.md) — /fichaje/tablet standalone PWA; device-token auth bypasses mobileClockEnabled; in-memory PIN lockout; migration 0021.
-- [Convex auth.config.ts v0.0.83](convex-auth-config.md) — @convex-dev/auth@0.0.83 has no `authConfig` export; auth.config.ts must export the JWKS descriptor directly.
-- [QR Menú Convex deployment mismatch](qr-menu-convex-deployment.md) — shell VITE_CONVEX_URL must match CONVEX_DEPLOY_KEY target; .env.local doesn't set process.env at Vite config time.

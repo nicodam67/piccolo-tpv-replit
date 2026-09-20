@@ -2,6 +2,16 @@
 
 > Generado por auditoría técnica — 2026-07-17
 
+## Carta QR oficial
+
+La aplicacion Convex que antes vivia en `artifacts/qr-menu` fue retirada del monorepo.
+El QR oficial es el repositorio independiente `nicodam67/piccolo-qr-menu`.
+Todavia no existe integracion entre ambos repositorios; la futura comunicacion se
+hara mediante APIs versionadas.
+
+El TPV conserva su catalogo PostgreSQL, pedidos online, courier y las rutas
+internas `/carta` y `/admin/qr-menu`. No se eliminaron datos ni migraciones.
+
 ## Diagrama de componentes reales
 
 ```

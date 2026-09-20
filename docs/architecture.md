@@ -3,6 +3,10 @@
 > Last updated: 2026-07-17  
 > Tech stack: TypeScript · Node.js 24 · Express 5 · PostgreSQL · Drizzle ORM · React + Vite · Socket.io · Zod
 
+The legacy Convex QR artifact has been removed. The official QR product is now
+maintained in `nicodam67/piccolo-qr-menu`; no cross-repository integration exists
+yet. Future communication will use versioned APIs.
+
 ---
 
 ## 1. Monorepo Structure
