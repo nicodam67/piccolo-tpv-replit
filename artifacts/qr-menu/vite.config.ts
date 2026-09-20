@@ -4,6 +4,7 @@ import react from "@vitejs/plugin-react";
 import { defineConfig, type Plugin } from "vite";
 
 import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
+import { resolveQrRuntimeMode } from "./src/lib/qr-runtime-mode";
 
 const rawPort = process.env.PORT ?? "5174";
 const port = Number(rawPort);
@@ -15,7 +16,18 @@ const basePath = process.env.BASE_PATH ?? "/qr-menu/";
 
 // When VITE_CONVEX_URL is absent, alias Convex/auth packages to local
 // demo mocks so the app renders with seed data — no cloud credentials needed.
-const isDemoMode = !process.env.VITE_CONVEX_URL;
+if (process.env.NODE_ENV && !["production", "development", "test"].includes(process.env.NODE_ENV)) {
+  throw new Error(`Unsupported NODE_ENV: ${process.env.NODE_ENV}`);
+}
+const runtimeMode = resolveQrRuntimeMode({
+  nodeEnv: process.env.NODE_ENV,
+  convexUrl: process.env.VITE_CONVEX_URL,
+  demoFlag: process.env.QR_MENU_DEMO,
+});
+if (process.env.NODE_ENV === "production" && runtimeMode !== "live") {
+  throw new Error("QR Menu production build requires VITE_CONVEX_URL");
+}
+const isDemoMode = runtimeMode === "demo";
 
 const demoAliases = isDemoMode
   ? {
@@ -27,9 +39,7 @@ const demoAliases = isDemoMode
     }
   : {};
 
-if (isDemoMode) {
-  console.log("[qr-menu] DEMO MODE — serving seed data (no VITE_CONVEX_URL)");
-}
+if (isDemoMode) console.log("[qr-menu] explicit development DEMO MODE");
 
 /**
  * Vite plugin: redirect any request that doesn't start with the base path
@@ -59,6 +69,7 @@ function baseRedirectPlugin(base: string): Plugin {
 }
 
 export default defineConfig({
+  define: { __QR_RUNTIME_MODE__: JSON.stringify(runtimeMode) },
   base: basePath,
   plugins: [
     baseRedirectPlugin(basePath),

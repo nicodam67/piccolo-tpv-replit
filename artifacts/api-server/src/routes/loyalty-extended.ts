@@ -480,6 +480,10 @@ router.get("/crm/campaigns/:id/sends", requireAuth, requireRole("manager", "admi
 
 // POST /crm/campaigns/:id/send — compute recipients based on segment and create send records
 router.post("/crm/campaigns/:id/send", requireAuth, requireRole("manager", "admin"), async (req, res): Promise<void> => {
+  if (process.env["NODE_ENV"] === "production") {
+    res.status(503).json({ error: "Conector de campañas no configurado" });
+    return;
+  }
   const id = req.params.id as string;
   const [campaign] = await db.select().from(crmCampaignsTable).where(eq(crmCampaignsTable.id, id));
   if (!campaign) { res.status(404).json({ error: "Campaña no encontrada" }); return; }

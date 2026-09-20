@@ -42,7 +42,8 @@ const fiscalLimiter = rateLimit({
 // ─────────────────────────────────────────────────────────────────────────────
 
 function getEncKey(): Buffer {
-  const secret = process.env.SESSION_SECRET ?? "fallback-secret-change-me";
+  const secret = process.env.SESSION_SECRET;
+  if (!secret) throw new Error("SESSION_SECRET no está configurado");
   return createHash("sha256").update(secret).digest();
 }
 
@@ -431,6 +432,16 @@ export async function submitRecord(
   record: typeof verifactuRecordsTable.$inferSelect,
   config: typeof verifactuConfigTable.$inferSelect
 ): Promise<AeatSubmitResult> {
+  if (process.env["NODE_ENV"] === "production") {
+    return {
+      ok: false,
+      estado: "rechazado",
+      codigo: "CONNECTOR_NOT_CONFIGURED",
+      descripcion: "Conector real VeriFactu no configurado",
+      csv: "",
+      xmlRespuesta: "",
+    };
+  }
   const xml = record.registroTipo === "alta"
     ? generateXmlAlta(record)
     : generateXmlAnulacion(record);
@@ -543,6 +554,10 @@ router.get("/admin/verifactu/config", requireAuth, requireRole("admin"), async (
 router.put("/admin/verifactu/config", requireAuth, requireRole("admin"), async (req, res) => {
   try {
     const body = req.body as Partial<typeof verifactuConfigTable.$inferInsert> & { certificadoPassword?: string };
+    if (process.env["NODE_ENV"] === "production" && (body.activo === true || body.entorno === "simulador")) {
+      res.status(503).json({ error: "VeriFactu no dispone de conector real en producción" });
+      return;
+    }
     const config = await getConfig();
 
     const update: Partial<typeof verifactuConfigTable.$inferInsert> = {};

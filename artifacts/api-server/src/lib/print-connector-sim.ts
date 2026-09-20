@@ -50,6 +50,13 @@ export async function sendToPrinter(args: SendToPrinterArgs): Promise<{
   simulated: true;
   error?: string;
 }> {
+  if (process.env["NODE_ENV"] === "production") {
+    return {
+      ok: false,
+      simulated: true,
+      error: "Conector de impresión no configurado",
+    };
+  }
   // Simulate network round-trip latency (200–800 ms)
   await randomDelay(200, 800);
 
@@ -72,6 +79,9 @@ export async function sendToPrinter(args: SendToPrinterArgs): Promise<{
 }
 
 export async function getPrinterStatus(printerId: string): Promise<PrinterStatusResult> {
+  if (process.env["NODE_ENV"] === "production") {
+    return { status: "unknown", simulated: true };
+  }
   await randomDelay(50, 200);
 
   // 85% chance: online; 15% chance: other status

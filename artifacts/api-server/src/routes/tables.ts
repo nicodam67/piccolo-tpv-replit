@@ -1,21 +1,14 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { restaurantTablesTable, roomZonesTable, ordersTable, tableEventsTable, alertConfigTable, reservationsTable } from "@workspace/db";
+import { restaurantTablesTable, roomZonesTable, ordersTable, tableEventsTable, alertConfigTable, reservationsTable, auditLogTable } from "@workspace/db";
 import { sql, eq, and, asc, inArray } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
+import { checkPermission } from "./role-permissions";
 
 const router: IRouter = Router();
 
 type Shape = "square" | "round" | "rect";
 const VALID_SHAPES: Shape[] = ["square", "round", "rect"];
-const VALID_STATUSES = [
-  // Canonical 9 statuses
-  "free", "reserved", "occupied",
-  "comanda_abierta", "prefactura_impresa", "pendiente_cobro",
-  "parcialmente_cobrada", "pendiente_limpieza", "bloqueada",
-  // Legacy aliases kept for backward compat
-  "waiting", "bill_requested", "out_of_service",
-];
 const VALID_LAYOUTS = ["normal", "verano", "invierno", "eventos"];
 
 const CANVAS_W = 1600;
@@ -132,7 +125,7 @@ router.get("/zones/:zoneId/tables", requireAuth, async (req, res): Promise<void>
       e.name           AS employee_name,
       COALESCE(SUM(CAST(oi.unit_price AS numeric) * oi.quantity), 0)::float AS current_total
     FROM restaurant_tables t
-    LEFT JOIN orders o        ON o.table_id = t.id AND o.status = 'open'
+    LEFT JOIN orders o        ON o.table_id = t.id AND o.status IN ('open','sent','ready','served','bill_requested')
     LEFT JOIN employees e     ON e.id = o.employee_id
     LEFT JOIN order_items oi  ON oi.order_id = o.id
     WHERE t.zone_id = ${zoneId} AND t.active = true${layoutClause}
@@ -169,7 +162,7 @@ router.get("/tables/occupation-summary", requireAuth, async (_req, res): Promise
         FILTER (WHERE o.id IS NOT NULL), 0
       )::float AS avg_open_min
     FROM restaurant_tables t
-    LEFT JOIN orders o ON o.table_id = t.id AND o.status = 'open'
+    LEFT JOIN orders o ON o.table_id = t.id AND o.status IN ('open','sent','ready','served','bill_requested')
     WHERE t.active = true
     GROUP BY t.status
   `);
@@ -347,7 +340,10 @@ router.patch("/tables/:tableId", requireAuth, requireRole("admin"), async (req, 
   if (Number.isFinite(b.height) && b.height >= 20)            updates.height   = Math.floor(b.height);
   if (VALID_SHAPES.includes(b.shape))                          updates.shape    = b.shape;
   if (Number.isFinite(b.rotation))                             updates.rotation = Math.round(b.rotation) % 360;
-  if (VALID_STATUSES.includes(b.status))                       updates.status   = b.status;
+  if (b.status !== undefined) {
+    res.status(400).json({ error: "El estado de mesa solo puede cambiarse mediante acciones operativas" });
+    return;
+  }
   if (VALID_LAYOUTS.includes(b.layout))                        updates.layout   = b.layout;
   if ("mergeGroup" in b)                                       updates.mergeGroup = b.mergeGroup ?? null;
 
@@ -368,21 +364,27 @@ router.patch("/tables/:tableId", requireAuth, requireRole("admin"), async (req, 
 router.delete("/tables/:tableId", requireAuth, requireRole("admin"), async (req, res): Promise<void> => {
   const tableId = req.params.tableId as string;
 
-  const [openOrder] = await db
-    .select({ id: ordersTable.id })
-    .from(ordersTable)
-    .where(and(eq(ordersTable.tableId, tableId), eq(ordersTable.status, "open")))
-    .limit(1);
+  const result = await db.transaction(async (tx) => {
+    const [lockedTable] = await tx.select({ id: restaurantTablesTable.id })
+      .from(restaurantTablesTable)
+      .where(and(eq(restaurantTablesTable.id, tableId), eq(restaurantTablesTable.active, true)))
+      .for("update");
+    if (!lockedTable) return { status: 404 as const };
+    const [openOrder] = await tx.select({ id: ordersTable.id }).from(ordersTable)
+      .where(and(
+        eq(ordersTable.tableId, tableId),
+        inArray(ordersTable.status, ["open", "sent", "ready", "served", "bill_requested"]),
+      )).limit(1);
+    if (openOrder) return { status: 409 as const };
+    const [table] = await tx.update(restaurantTablesTable)
+      .set({ active: false })
+      .where(and(eq(restaurantTablesTable.id, tableId), eq(restaurantTablesTable.active, true)))
+      .returning();
+    return { status: 204 as const, table };
+  });
 
-  if (openOrder) { res.status(409).json({ error: "La mesa tiene una comanda abierta" }); return; }
-
-  const [table] = await db
-    .update(restaurantTablesTable)
-    .set({ active: false })
-    .where(and(eq(restaurantTablesTable.id, tableId), eq(restaurantTablesTable.active, true)))
-    .returning();
-
-  if (!table) { res.status(404).json({ error: "Mesa no encontrada" }); return; }
+  if (result.status === 409) { res.status(409).json({ error: "La mesa tiene una comanda abierta" }); return; }
+  if (result.status === 404 || !result.table) { res.status(404).json({ error: "Mesa no encontrada" }); return; }
   res.status(204).send();
 });
 
@@ -411,7 +413,8 @@ router.post("/tables/:tableId/open", requireAuth, async (req, res): Promise<void
       .set({ status: "occupied" })
       .where(and(
         eq(restaurantTablesTable.id, tableId),
-        sql`status IN ('free', 'reserved', 'pendiente_limpieza')`,
+        eq(restaurantTablesTable.active, true),
+        sql`status IN ('free', 'reserved')`,
       ))
       .returning();
     if (!table) return null;
@@ -452,27 +455,65 @@ router.post("/tables/:tableId/open", requireAuth, async (req, res): Promise<void
 router.post("/tables/:tableId/close", requireAuth, async (req, res): Promise<void> => {
   const tableId  = req.params.tableId as string;
   const user     = (req as any).user as { id?: string; name?: string } | undefined;
+  const { force = false, reason = "" } = (req.body ?? {}) as { force?: boolean; reason?: string };
 
-  const [table] = await db
-    .update(restaurantTablesTable)
+  const [activeOrder] = await db.select({ id: ordersTable.id, status: ordersTable.status })
+    .from(ordersTable)
+    .where(and(
+      eq(ordersTable.tableId, tableId),
+      inArray(ordersTable.status, ["open", "sent", "ready", "served", "bill_requested"]),
+    ))
+    .limit(1);
+
+  if (activeOrder) {
+    if (!force) {
+      res.status(409).json({ error: "La mesa tiene un pedido pendiente de cobro" });
+      return;
+    }
+    const allowed = await checkPermission(req.user?.role ?? "", "config", "force_close_unpaid");
+    if (!allowed) {
+      res.status(403).json({ error: "Permiso requerido: cierre excepcional sin cobro" });
+      return;
+    }
+    if (reason.trim().length < 3) {
+      res.status(422).json({ error: "El motivo del cierre excepcional es obligatorio" });
+      return;
+    }
+    const table = await db.transaction(async (tx) => {
+      await tx.update(ordersTable).set({ status: "completed" }).where(eq(ordersTable.id, activeOrder.id));
+      const [updated] = await tx.update(restaurantTablesTable)
+        .set({ status: "pendiente_limpieza" })
+        .where(eq(restaurantTablesTable.id, tableId))
+        .returning();
+      await tx.insert(auditLogTable).values({
+        orderId: activeOrder.id,
+        employeeId: req.user?.id ?? null,
+        employeeName: req.user?.name ?? "",
+        action: "force_close_unpaid",
+        details: reason.trim(),
+      });
+      return updated;
+    });
+    void addTableEvent({
+      tableId,
+      orderId: activeOrder.id,
+      employeeId: user?.id,
+      employeeName: user?.name ?? "",
+      action: "force_close_unpaid",
+      details: reason.trim(),
+    });
+    res.json(tableShape(table));
+    return;
+  }
+
+  const [table] = await db.update(restaurantTablesTable)
     .set({ status: "pendiente_limpieza" })
     .where(and(
       eq(restaurantTablesTable.id, tableId),
       sql`status NOT IN ('free', 'pendiente_limpieza', 'bloqueada', 'out_of_service', 'reserved')`,
     ))
     .returning();
-
-  if (!table) {
-    // Fallback: try exact "occupied" match (legacy caller)
-    const [t2] = await db
-      .update(restaurantTablesTable)
-      .set({ status: "free" })
-      .where(and(eq(restaurantTablesTable.id, tableId), eq(restaurantTablesTable.status, "occupied")))
-      .returning();
-    if (!t2) { res.status(409).json({ error: "La mesa no puede cerrarse desde su estado actual" }); return; }
-    res.json(tableShape(t2));
-    return;
-  }
+  if (!table) { res.status(409).json({ error: "La mesa no puede cerrarse desde su estado actual" }); return; }
 
   void addTableEvent({
     tableId,
@@ -517,21 +558,31 @@ router.post("/tables/:tableId/block", requireAuth, requireRole("manager", "admin
   const reason  = typeof req.body?.reason === "string" ? req.body.reason.trim() : "";
   const user    = (req as any).user as { id?: string; name?: string } | undefined;
 
-  const [existing] = await db
-    .select({ status: restaurantTablesTable.status })
-    .from(restaurantTablesTable)
-    .where(and(eq(restaurantTablesTable.id, tableId), eq(restaurantTablesTable.active, true)));
-
-  if (!existing) { res.status(404).json({ error: "Mesa no encontrada" }); return; }
-
-  // Toggle: if already blocked unblock, otherwise block
-  const newStatus = existing.status === "bloqueada" ? "free" : "bloqueada";
-
-  const [table] = await db
-    .update(restaurantTablesTable)
-    .set({ status: newStatus })
-    .where(eq(restaurantTablesTable.id, tableId))
-    .returning();
+  const result = await db.transaction(async (tx) => {
+    const [existing] = await tx.select({ status: restaurantTablesTable.status })
+      .from(restaurantTablesTable)
+      .where(and(eq(restaurantTablesTable.id, tableId), eq(restaurantTablesTable.active, true)))
+      .for("update");
+    if (!existing) return { status: 404 as const };
+    const [activeOrder] = await tx.select({ id: ordersTable.id }).from(ordersTable)
+      .where(and(
+        eq(ordersTable.tableId, tableId),
+        inArray(ordersTable.status, ["open", "sent", "ready", "served", "bill_requested"]),
+      )).limit(1);
+    if (activeOrder) return { status: 409 as const };
+    const newStatus = existing.status === "bloqueada" ? "free" : "bloqueada";
+    const [table] = await tx.update(restaurantTablesTable)
+      .set({ status: newStatus })
+      .where(eq(restaurantTablesTable.id, tableId))
+      .returning();
+    return { status: 200 as const, table, newStatus };
+  });
+  if (result.status === 404) { res.status(404).json({ error: "Mesa no encontrada" }); return; }
+  if (result.status === 409) {
+    res.status(409).json({ error: "No se puede bloquear ni liberar una mesa con pedido pendiente" });
+    return;
+  }
+  const { table, newStatus } = result;
 
   void addTableEvent({
     tableId,

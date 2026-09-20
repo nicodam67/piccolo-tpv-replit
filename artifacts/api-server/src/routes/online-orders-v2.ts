@@ -54,6 +54,7 @@ import { eq, and, desc, asc, sql } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { calcMultiRateBreakdown } from "../lib/tax";
 import { emitToFunction } from "../lib/socket-events";
+import { withoutBearerToken } from "../lib/mask-secrets";
 
 const router: IRouter = Router();
 
@@ -377,6 +378,10 @@ router.post("/public/orders/online-v2", async (req, res): Promise<void> => {
 // Uses real Stripe if STRIPE_SECRET_KEY is set, otherwise returns a simulator ref.
 
 router.post("/public/payment/intent", async (req, res): Promise<void> => {
+  if (process.env["NODE_ENV"] === "production") {
+    res.status(503).json({ error: "Pagos online no configurados" });
+    return;
+  }
   const { orderId, returnUrl } = req.body as { orderId: string; returnUrl?: string };
   if (!orderId) { res.status(400).json({ error: "orderId requerido." }); return; }
 
@@ -466,6 +471,10 @@ router.post("/public/payment/intent", async (req, res): Promise<void> => {
 //     `x-simulator-secret` header for an extra layer of protection.
 
 router.post("/public/payment/webhook", async (req, res): Promise<void> => {
+  if (process.env["NODE_ENV"] === "production") {
+    res.status(503).json({ error: "Pagos online desactivados" });
+    return;
+  }
   const sig = req.headers["stripe-signature"] as string | undefined;
   const webhookSecret = process.env["STRIPE_WEBHOOK_SECRET"] ?? "";
   const body = req.body as Record<string, unknown>;
@@ -583,7 +592,7 @@ router.get("/admin/table-sessions", requireAuth, requireRole("manager", "admin")
     .limit(100);
 
   const filtered = status ? rows.filter(s => s.status === status) : rows;
-  res.json(filtered);
+  res.json(filtered.map((session) => withoutBearerToken(session as unknown as Record<string, unknown>)));
 });
 
 // ── ADMIN: PATCH /admin/table-sessions/:id ───────────────────────────────────
@@ -602,7 +611,7 @@ router.patch("/admin/table-sessions/:id", requireAuth, requireRole("manager", "a
     .returning();
 
   if (!session) { res.status(404).json({ error: "Sesión no encontrada." }); return; }
-  res.json(session);
+  res.json(withoutBearerToken(session as unknown as Record<string, unknown>));
 });
 
 // ── ADMIN: PATCH /admin/products/:id/soldout ─────────────────────────────────
@@ -710,6 +719,10 @@ router.delete("/admin/product-availability-rules/:id", requireAuth, requireRole(
 // ── ADMIN: POST /admin/online-orders/:id/refund ───────────────────────────────
 
 router.post("/admin/online-orders/:id/refund", requireAuth, requireRole("manager", "admin"), async (req, res): Promise<void> => {
+  if (process.env["NODE_ENV"] === "production") {
+    res.status(503).json({ error: "Reembolsos online no configurados" });
+    return;
+  }
   const id = req.params.id as string;
   const { reason = "" } = req.body as { reason?: string };
 
