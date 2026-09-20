@@ -19,12 +19,13 @@ import {
   printersTable,
   printAuditTable,
 } from "@workspace/db";
-import { eq, and, inArray } from "drizzle-orm";
+import { eq, and, inArray, lt } from "drizzle-orm";
 import { sendToPrinter } from "./print-connector-sim";
 import { emitToFunction } from "./socket-events";
 
 const POLL_INTERVAL_MS = 5_000;
 const MAX_ATTEMPTS     = 3;
+const STALE_SENDING_MS = 2 * 60 * 1_000;
 let   workerTimer: ReturnType<typeof setInterval> | null = null;
 
 async function audit(
@@ -41,8 +42,59 @@ async function audit(
   }).catch(() => { /* audit must not block the worker */ });
 }
 
-async function tick(): Promise<void> {
+export async function recoverStalePrintJobs(now = new Date()): Promise<number> {
+  const cutoff = new Date(now.getTime() - STALE_SENDING_MS);
+  const staleJobs = await db
+    .select({ id: printQueueTable.id })
+    .from(printQueueTable)
+    .where(and(
+      eq(printQueueTable.status, "sending"),
+      lt(printQueueTable.sentAt, cutoff),
+    ));
+
+  for (const job of staleJobs) {
+    const [connectorAck] = await db
+      .select({ createdAt: printAuditTable.createdAt })
+      .from(printAuditTable)
+      .where(and(
+        eq(printAuditTable.printQueueId, job.id),
+        eq(printAuditTable.action, "connector_ack"),
+      ))
+      .limit(1);
+    await db
+      .update(printQueueTable)
+      .set(connectorAck
+        ? {
+            status: "printed",
+            printedAt: connectorAck.createdAt,
+            lastError: "Confirmación recuperada tras reinicio",
+          }
+        : {
+            status: "retrying",
+            lastError: "Recuperado automáticamente tras interrupción del worker",
+          })
+      .where(and(
+        eq(printQueueTable.id, job.id),
+        eq(printQueueTable.status, "sending"),
+      ));
+    await audit(job.id, "recovered", "sistema", {
+      reason: "stale_sending",
+      connectorAcknowledged: Boolean(connectorAck),
+      cutoff: cutoff.toISOString(),
+    });
+    try {
+      emitToFunction("admin", "print:status", {
+        jobId: job.id,
+        status: connectorAck ? "printed" : "recovering",
+      });
+    } catch {}
+  }
+  return staleJobs.length;
+}
+
+export async function runPrintWorkerTick(): Promise<void> {
   const now = new Date();
+  await recoverStalePrintJobs(now);
 
   // Pick pending or retrying jobs whose next-attempt time has passed.
   const jobs = await db
@@ -86,6 +138,7 @@ async function tick(): Promise<void> {
     }
 
     const result = await sendToPrinter({
+      idempotencyKey: job.id,
       printerId:  printer.id,
       printerIp:  printer.ip,
       printerPort: printer.port,
@@ -94,6 +147,10 @@ async function tick(): Promise<void> {
     });
 
     if (result.ok) {
+      await audit(job.id, "connector_ack", "sistema", {
+        printer: printer.name,
+        duplicate: result.duplicate === true,
+      });
       await db.update(printQueueTable).set({
         status: "printed",
         printedAt: new Date(),
@@ -114,6 +171,7 @@ async function tick(): Promise<void> {
           const [fallback] = await db.select().from(printersTable).where(eq(printersTable.id, printer.fallbackPrinterId));
           if (fallback) {
             const fbResult = await sendToPrinter({
+              idempotencyKey: `${job.id}:fallback:${fallback.id}`,
               printerId:  fallback.id,
               printerIp:  fallback.ip,
               printerPort: fallback.port,
@@ -122,6 +180,11 @@ async function tick(): Promise<void> {
             });
 
             if (fbResult.ok) {
+              await audit(job.id, "connector_ack", "sistema", {
+                printer: fallback.name,
+                fallbackFor: printer.name,
+                duplicate: fbResult.duplicate === true,
+              });
               await db.update(printQueueTable).set({
                 status: "printed",
                 printedAt: new Date(),
@@ -176,7 +239,9 @@ async function tick(): Promise<void> {
 
 export function startPrintWorker(): void {
   if (workerTimer) return;
-  workerTimer = setInterval(() => { tick().catch(err => console.error("[print-worker]", err)); }, POLL_INTERVAL_MS);
+  workerTimer = setInterval(() => {
+    runPrintWorkerTick().catch(err => console.error("[print-worker]", err));
+  }, POLL_INTERVAL_MS);
   console.log("[print-worker] started, polling every", POLL_INTERVAL_MS, "ms");
 }
 

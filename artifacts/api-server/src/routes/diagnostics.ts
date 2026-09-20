@@ -18,6 +18,7 @@ import {
   printQueueTable,
   offlineQueueTable,
   offlineDevicesTable,
+  businessConfigTable,
 } from "@workspace/db";
 import { eq, desc, and, gte, lte, sql } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
@@ -32,6 +33,23 @@ const MODULES = [
   "tpv", "kds", "caja", "stock", "reservas", "fichaje",
   "crm", "director", "backup", "impresion", "online-orders",
 ];
+
+export type OperationalState = "operational" | "degraded" | "disconnected" | "recovering";
+
+export function deriveOperationalState(input: {
+  total?: number;
+  disconnected?: number;
+  errors?: number;
+  recovering?: number;
+}): OperationalState {
+  const disconnected = input.disconnected ?? 0;
+  const errors = input.errors ?? 0;
+  const recovering = input.recovering ?? 0;
+  if (input.total && disconnected >= input.total) return "disconnected";
+  if (errors > 0 || disconnected > 0) return "degraded";
+  if (recovering > 0) return "recovering";
+  return "operational";
+}
 
 // ─── GET /diagnostics/status ──────────────────────────────────────────────────
 router.get("/diagnostics/status", ...guard, async (_req, res) => {
@@ -63,25 +81,37 @@ router.get("/diagnostics/status", ...guard, async (_req, res) => {
       message: availKb > 500_000 ? "Espacio suficiente" : "⚠️ Espacio insuficiente",
     };
   } catch {
-    status["storage"] = { ok: true, message: "No disponible" };
+    status["storage"] = { ok: false, state: "disconnected", message: "No disponible" };
   }
 
   // Printers
   try {
-    const printers = await db.select({
-      id: printersTable.id,
-      name: printersTable.name,
-      lastStatus: printersTable.lastStatus,
-      lastStatusAt: printersTable.lastStatusAt,
-      active: printersTable.active,
-    }).from(printersTable).where(eq(printersTable.active, true));
+    const [printers, [printConfig]] = await Promise.all([
+      db.select({
+        id: printersTable.id,
+        name: printersTable.name,
+        lastStatus: printersTable.lastStatus,
+        lastStatusAt: printersTable.lastStatusAt,
+        active: printersTable.active,
+      }).from(printersTable).where(eq(printersTable.active, true)),
+      db.select({ printMode: businessConfigTable.printMode })
+        .from(businessConfigTable)
+        .limit(1),
+    ]);
 
     const fifteenMinAgo = new Date(now.getTime() - 15 * 60000);
     const down = printers.filter(
-      (p) => p.lastStatus !== "ok" || !p.lastStatusAt || new Date(p.lastStatusAt) < fifteenMinAgo
+      (p) => !["ok", "online"].includes(p.lastStatus)
+        || !p.lastStatusAt
+        || new Date(p.lastStatusAt) < fifteenMinAgo
     );
+    const printersRequired = ["printers_only", "both"].includes(printConfig?.printMode ?? "kds_only");
+    const missingRequiredPrinters = printersRequired && printers.length === 0;
     status["printers"] = {
-      ok: down.length === 0,
+      ok: down.length === 0 && !missingRequiredPrinters,
+      state: missingRequiredPrinters
+        ? printConfig?.printMode === "printers_only" ? "disconnected" : "degraded"
+        : deriveOperationalState({ total: printers.length, disconnected: down.length }),
       total: printers.length,
       down: down.length,
       devices: printers.map((p) => ({
@@ -89,24 +119,45 @@ router.get("/diagnostics/status", ...guard, async (_req, res) => {
         status: p.lastStatus,
         lastSeenAt: p.lastStatusAt,
       })),
-      message: down.length === 0 ? "Todas activas" : `${down.length} impresora(s) sin respuesta`,
+      message: missingRequiredPrinters
+        ? "El modo de impresión requiere al menos una impresora activa"
+        : down.length === 0 ? "Todas activas" : `${down.length} impresora(s) sin respuesta`,
     };
   } catch {
-    status["printers"] = { ok: true, message: "No disponible" };
+    status["printers"] = { ok: false, state: "disconnected", message: "No disponible" };
   }
 
   // Print queue blocked
   try {
-    const [{ count }] = await db.select({ count: sql<number>`count(*)::int` })
-      .from(printQueueTable)
-      .where(eq(printQueueTable.status, "error"));
+    const [[{ count }], [{ recovering }], [{ staleSending }]] = await Promise.all([
+      db.select({ count: sql<number>`count(*)::int` })
+        .from(printQueueTable)
+        .where(eq(printQueueTable.status, "error")),
+      db.select({ recovering: sql<number>`count(*)::int` })
+        .from(printQueueTable)
+        .where(eq(printQueueTable.status, "retrying")),
+      db.select({ staleSending: sql<number>`count(*)::int` })
+        .from(printQueueTable)
+        .where(and(
+          eq(printQueueTable.status, "sending"),
+          lte(printQueueTable.sentAt, new Date(now.getTime() - 2 * 60_000)),
+        )),
+    ]);
+    const errorJobs = Number(count);
+    const recoveringJobs = Number(recovering) + Number(staleSending);
     status["print_queue"] = {
-      ok: Number(count) === 0,
-      errorJobs: Number(count),
-      message: Number(count) === 0 ? "Sin errores" : `${count} trabajos en error`,
+      ok: errorJobs === 0 && recoveringJobs === 0,
+      state: deriveOperationalState({ errors: errorJobs, recovering: recoveringJobs }),
+      errorJobs,
+      recoveringJobs,
+      message: errorJobs > 0
+        ? `${errorJobs} trabajos en error`
+        : recoveringJobs > 0
+          ? `${recoveringJobs} trabajos recuperándose`
+          : "Sin errores",
     };
   } catch {
-    status["print_queue"] = { ok: true, message: "No disponible" };
+    status["print_queue"] = { ok: false, state: "disconnected", message: "No disponible" };
   }
 
   // Last verified backup
@@ -148,7 +199,7 @@ router.get("/diagnostics/status", ...guard, async (_req, res) => {
       message: Number(count) === 0 ? "Sin operaciones pendientes" : `${count} operaciones pendientes > 2h`,
     };
   } catch {
-    status["offline_queue"] = { ok: true, message: "No disponible" };
+    status["offline_queue"] = { ok: false, state: "disconnected", message: "No disponible" };
   }
 
   // Recent critical events
@@ -166,7 +217,7 @@ router.get("/diagnostics/status", ...guard, async (_req, res) => {
       message: Number(count) === 0 ? "Sin alertas críticas" : `${count} alerta(s) crítica(s) sin resolver`,
     };
   } catch {
-    status["alerts"] = { ok: true };
+    status["alerts"] = { ok: false, state: "disconnected", message: "No disponible" };
   }
 
   const allOk = Object.values(status).every((s) => (s as { ok?: boolean }).ok !== false);
@@ -305,7 +356,14 @@ router.post("/diagnostics/maintenance", ...adminOnly, async (req, res) => {
     // Reset stuck 'sending' operations back to 'pending'
     await db.update(offlineQueueTable).set({ status: "pending" })
       .where(eq(offlineQueueTable.status, "sending"));
-    results["repair_queue"] = "Cola de operaciones reparada";
+    await db.update(printQueueTable).set({
+      status: "retrying",
+      lastError: "Recuperado por mantenimiento",
+    }).where(and(
+      eq(printQueueTable.status, "sending"),
+      lte(printQueueTable.sentAt, new Date(Date.now() - 2 * 60_000)),
+    ));
+    results["repair_queue"] = "Colas de operaciones e impresión reparadas";
   }
 
   if (action === "reindex" || action === "all") {

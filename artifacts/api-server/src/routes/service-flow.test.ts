@@ -59,11 +59,17 @@ const mockDb = vi.hoisted(() => ({
 }));
 
 const mockSocketEmit = vi.hoisted(() => vi.fn());
+const mockPool = vi.hoisted(() => ({
+  connect: vi.fn(async () => ({
+    query: vi.fn().mockResolvedValue({ rows: [] }),
+    release: vi.fn(),
+  })),
+}));
 
 // ─── Module mocks ─────────────────────────────────────────────────────────────
 vi.mock("@workspace/db", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@workspace/db")>();
-  return { ...actual, db: mockDb };
+  return { ...actual, db: mockDb, pool: mockPool };
 });
 
 vi.mock("jsonwebtoken", () => ({

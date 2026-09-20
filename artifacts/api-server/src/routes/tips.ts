@@ -4,16 +4,18 @@ import {
   tipsTable,
   paymentsTable,
   cashSessionsTable,
+  idempotencyKeysTable,
 } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import { logDocumentAction } from "../lib/document-audit";
+import { idempotency } from "../middlewares/idempotency";
 
 const router: IRouter = Router();
 
 // POST /payments/:id/tip
 // Body: { amount, method }
-router.post("/payments/:id/tip", requireAuth, async (req, res): Promise<void> => {
+router.post("/payments/:id/tip", requireAuth, idempotency, async (req, res): Promise<void> => {
   const paymentId = req.params.id as string;
   const employeeId = (req as any).user?.id as string;
   const { amount, method = "cash" } = req.body as {
@@ -47,17 +49,46 @@ router.post("/payments/:id/tip", requireAuth, async (req, res): Promise<void> =>
     .from(cashSessionsTable)
     .where(eq(cashSessionsTable.status, "open"))
     .limit(1);
+  if (method === "cash" && !openSession) {
+    res.status(409).json({ error: "No hay caja abierta para registrar la propina en efectivo" });
+    return;
+  }
 
-  const [tip] = await db
-    .insert(tipsTable)
-    .values({
+  const tip = await db.transaction(async (tx) => {
+    if (openSession) {
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock(hashtext(${"cash-session:" + openSession.id}))`,
+      );
+      const [lockedSession] = await tx
+        .select({ status: cashSessionsTable.status })
+        .from(cashSessionsTable)
+        .where(eq(cashSessionsTable.id, openSession.id))
+        .for("update");
+      if (lockedSession?.status !== "open") return null;
+    }
+    const [created] = await tx.insert(tipsTable).values({
       paymentId,
       orderId: payment.orderId,
       amount: amountNum.toFixed(2),
       method,
       cashSessionId: openSession?.id ?? null,
-    })
-    .returning();
+    }).returning();
+    const requestKey = req.headers["idempotency-key"];
+    if (typeof requestKey === "string" && req.user?.id) {
+      await tx.insert(idempotencyKeysTable).values({
+        cacheKey: `${req.user.id}:${requestKey}`,
+        userId: req.user.id,
+        statusCode: 201,
+        response: created,
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1_000),
+      }).onConflictDoNothing();
+    }
+    return created;
+  });
+  if (!tip) {
+    res.status(409).json({ error: "La caja se cerró antes de registrar la propina" });
+    return;
+  }
 
   await logDocumentAction({
     action: "register_tip",

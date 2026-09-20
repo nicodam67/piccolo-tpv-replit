@@ -149,6 +149,22 @@ export interface OfflineOperation {
   updatedAt: number;
   attempts: number;
   lastError?: string;
+  retryable?: boolean;
+}
+
+export function getRecoverableOfflineOperations(
+  operations: OfflineOperation[],
+  now = Date.now(),
+): OfflineOperation[] {
+  const staleCutoff = now - 5 * 60_000;
+  return operations
+    .filter((op) => (
+      op.status === 'pending'
+      || (op.status === 'failed' && op.retryable !== false)
+      || (op.status === 'sending' && op.updatedAt <= staleCutoff)
+    ))
+    .map((op) => op.status === 'sending' ? { ...op, status: 'pending' as const } : op)
+    .sort((a, b) => a.createdAt - b.createdAt);
 }
 
 export const offlineOps = {
@@ -162,7 +178,19 @@ export const offlineOps = {
     }),
   getPending: async () => {
     const all = await idbGetAll<OfflineOperation>('operations');
-    return all.filter((op) => op.status === 'pending' || op.status === 'failed');
+    const staleCutoff = Date.now() - 5 * 60_000;
+    const staleSending = all.filter(
+      (op) => op.status === 'sending' && op.updatedAt <= staleCutoff
+    );
+    for (const op of staleSending) {
+      await idbPut('operations', {
+        ...op,
+        status: 'pending',
+        lastError: 'Recuperado tras interrupción durante la sincronización',
+        updatedAt: Date.now(),
+      });
+    }
+    return getRecoverableOfflineOperations(all);
   },
   getAll: () => idbGetAll<OfflineOperation>('operations'),
   update: (key: string, patch: Partial<OfflineOperation>) =>
@@ -180,7 +208,12 @@ export const offlineOps = {
   },
   count: async () => {
     const all = await idbGetAll<OfflineOperation>('operations');
-    return all.filter((op) => op.status === 'pending' || op.status === 'failed').length;
+    const staleCutoff = Date.now() - 5 * 60_000;
+    return all.filter((op) => (
+      op.status === 'pending'
+      || op.status === 'failed'
+      || (op.status === 'sending' && op.updatedAt <= staleCutoff)
+    )).length;
   },
 };
 

@@ -20,11 +20,12 @@ export interface NetworkStatus {
 
 export function useNetworkStatus(): NetworkStatus {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
-  const [isServerReachable, setIsServerReachable] = useState(true);
+  const [isServerReachable, setIsServerReachable] = useState(false);
   const [pendingOps, setPendingOps] = useState(0);
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastChecked, setLastChecked] = useState<Date | null>(null);
   const pingTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const wasServerReachable = useRef(false);
 
   const checkServer = useCallback(async () => {
     try {
@@ -80,6 +81,15 @@ export function useNetworkStatus(): NetworkStatus {
       if (pingTimer.current) clearInterval(pingTimer.current);
     };
   }, [checkServer, refreshPending]);
+
+  // Flush persisted operations on startup and whenever the API recovers even
+  // if the browser never emitted a navigator "online" event.
+  useEffect(() => {
+    if (!lastChecked) return;
+    const recovered = isServerReachable && !wasServerReachable.current;
+    wasServerReachable.current = isServerReachable;
+    if (recovered) void triggerSync();
+  }, [isServerReachable, lastChecked, triggerSync]);
 
   // Service worker message listener
   useEffect(() => {
