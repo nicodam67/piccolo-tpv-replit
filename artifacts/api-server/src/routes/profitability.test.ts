@@ -43,6 +43,13 @@ vi.mock('@workspace/db', () => {
     subrecipesTable: { id: 'id', name: 'name', cost: 'cost' },
     stockMovementsTable: { id: 'id', ingredientId: 'ingredient_id', movementType: 'movement_type', quantity: 'quantity', createdAt: 'created_at' },
     ingredientCostHistoryTable: { id: 'id', ingredientId: 'ingredient_id', previousCost: 'previous_cost', newCost: 'new_cost', supplierName: 'supplier_name', reason: 'reason', employeeId: 'employee_id', createdAt: 'created_at' },
+    profitabilitySettingsTable: { id: 'id', defaultTargetMarginPct: 'default_target_margin_pct', warningGapPct: 'warning_gap_pct', allocationMethod: 'allocation_method' },
+    operatingExpensesTable: { id: 'id', name: 'name', active: 'active', amount: 'amount' },
+    channelCommissionsTable: { id: 'id', channel: 'channel', active: 'active', percent: 'percent', fixedAmount: 'fixed_amount' },
+    profitabilityTargetsTable: { id: 'id', active: 'active', updatedAt: 'updated_at' },
+    priceChangeProposalsTable: { id: 'id', status: 'status' },
+    ordersTable: { id: 'id', status: 'status', isDemo: 'is_demo', createdAt: 'created_at', channel: 'channel' },
+    orderItemsTable: { orderId: 'order_id', productId: 'product_id', quantity: 'quantity', unitPrice: 'unit_price', taxRate: 'tax_rate' },
   };
 });
 

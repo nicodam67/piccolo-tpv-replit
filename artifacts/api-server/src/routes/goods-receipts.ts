@@ -14,7 +14,6 @@ import {
 } from "@workspace/db";
 import { eq, and, asc, desc } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
-import { syncProductCost } from "./recipes";
 
 const router: IRouter = Router();
 
@@ -262,8 +261,11 @@ router.post("/admin/goods-receipts", requireAuth, requireRole("admin"), async (r
               ingredientId: item.ingredientId,
               previousCost: oldCost.toFixed(4),
               newCost: newAvgCost.toFixed(4),
+              supplierId,
               supplierName: null,
               reason: `Recepción albarán ${receiptNumber ?? receipt.id} (coste medio actualizado)`,
+              source: "goods_receipt",
+              sourceReference: receipt.id,
               employeeId: user?.id ?? null,
             });
           }
@@ -331,19 +333,9 @@ router.post("/admin/goods-receipts", requireAuth, requireRole("admin"), async (r
 
   // Sync product costs outside transaction (best effort)
   try {
-    const { recipeItemsTable, productsTable } = await import("@workspace/db");
-    const { eq: eqOuter } = await import("drizzle-orm");
+    const { syncIngredientDependents } = await import("./ingredients");
     for (const item of items) {
-      const affected = await db.select({ productId: recipeItemsTable.productId })
-        .from(recipeItemsTable)
-        .where(eqOuter(recipeItemsTable.ingredientId, item.ingredientId));
-      const seen = new Set<string>();
-      for (const a of affected) {
-        if (!seen.has(a.productId)) {
-          seen.add(a.productId);
-          await syncProductCost(a.productId, null);
-        }
-      }
+      await syncIngredientDependents(item.ingredientId);
     }
   } catch (_) { /* best effort */ }
 });

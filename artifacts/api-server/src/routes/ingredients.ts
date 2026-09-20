@@ -6,11 +6,40 @@ import {
   stockMovementsTable,
   productsTable,
   ingredientCostHistoryTable,
+  subrecipeItemsTable,
 } from "@workspace/db";
 import { eq, and, ilike, or, desc, asc, gt, lte, sum, gte, sql } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
+import { syncProductCost } from "./recipes";
+import {
+  propagateSubrecipeCostToProducts,
+  recomputeSubrecipeCost,
+} from "./subrecipes";
 
 const router: IRouter = Router();
+
+export async function syncIngredientDependents(ingredientId: string): Promise<void> {
+  const productLines = await db
+    .select({ productId: recipeItemsTable.productId, formatId: recipeItemsTable.formatId })
+    .from(recipeItemsTable)
+    .where(eq(recipeItemsTable.ingredientId, ingredientId));
+  const productScopes = new Set<string>();
+  for (const line of productLines) {
+    const key = `${line.productId}:${line.formatId ?? ""}`;
+    if (productScopes.has(key)) continue;
+    productScopes.add(key);
+    await syncProductCost(line.productId, line.formatId);
+  }
+
+  const subrecipeLines = await db
+    .select({ subrecipeId: subrecipeItemsTable.subrecipeId })
+    .from(subrecipeItemsTable)
+    .where(eq(subrecipeItemsTable.ingredientId, ingredientId));
+  for (const subrecipeId of new Set(subrecipeLines.map((line) => line.subrecipeId))) {
+    await recomputeSubrecipeCost(subrecipeId);
+    await propagateSubrecipeCostToProducts(subrecipeId);
+  }
+}
 
 // ── GET /admin/ingredients ────────────────────────────────────────────────────
 router.get("/admin/ingredients", requireAuth, requireRole("admin"), async (req, res): Promise<void> => {
@@ -152,8 +181,10 @@ router.patch("/admin/ingredients/:id", requireAuth, requireRole("admin"), async 
       newCost: String(purchaseCost),
       supplierName: (supplierName as string | undefined) ?? existing.supplierName ?? null,
       reason: (reason as string | undefined) ?? null,
+      source: "manual",
       employeeId: user?.id ?? null,
     });
+    await syncIngredientDependents(id);
   }
 
   res.json(updated);
@@ -224,10 +255,15 @@ router.post("/admin/ingredients/:id/stock-in", requireAuth, requireRole("admin")
         newCost: String(costToUse),
         supplierName: ingredient.supplierName ?? null,
         reason: `Stock-in: ${reason}`,
+        source: "stock_in",
         employeeId: user?.id ?? null,
       });
     }
   });
+
+  if (unitCost && String(costToUse) !== String(prevCost)) {
+    await syncIngredientDependents(id);
+  }
 
   const [updated] = await db.select().from(ingredientsTable).where(eq(ingredientsTable.id, id));
   res.json(updated);

@@ -122,8 +122,11 @@ export const ingredientCostHistoryTable = pgTable("ingredient_cost_history", {
   ingredientId: uuid("ingredient_id").notNull().references(() => ingredientsTable.id),
   previousCost: numeric("previous_cost", { precision: 10, scale: 4 }).notNull(),
   newCost: numeric("new_cost", { precision: 10, scale: 4 }).notNull(),
+  supplierId: uuid("supplier_id"),
   supplierName: text("supplier_name"),
   reason: text("reason"),
+  source: text("source").notNull().default("manual"),
+  sourceReference: text("source_reference"),
   employeeId: uuid("employee_id").references(() => employeesTable.id),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });

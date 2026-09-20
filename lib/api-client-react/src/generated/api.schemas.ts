@@ -412,6 +412,7 @@ export interface AdminProduct {
   taxRate: number;
   categoryId: string;
   categoryName: string;
+  department: string;
   subcategoryId?: string | null;
   prepZone: string;
   active: boolean;
@@ -1712,11 +1713,13 @@ export interface ProductProfitability {
   name: string;
   categoryId: string;
   categoryName: string;
+  department: string;
   /** PVP (price with VAT) as a string, e.g. "12.50" */
   pvp: string;
   /** Base price excluding VAT, e.g. "11.36" */
   basePrice: string;
   theoreticalCost: string;
+  wasteCost: string;
   packagingCost: string;
   additionalCost: string;
   /** Sum of theoretical + packaging + additional cost */
@@ -1729,6 +1732,15 @@ export interface ProductProfitability {
   /** Food cost as percent of base price, e.g. "24.10" */
   foodCostPct: string;
   costDeviation: string | null;
+  commission: string;
+  contributionMargin: string;
+  contributionMarginPct: string;
+  allocatedOperatingCost: string | null;
+  estimatedProfit: string | null;
+  targetMarginPct: string;
+  recommendedPrice: string | null;
+  status: "green" | "orange" | "red";
+  channel: string;
   /** "food_cost_high" | "margin_low" | null */
   alert: string | null;
   taxRate: number;
@@ -1780,6 +1792,15 @@ export interface ProfitabilityReport {
   to: string;
   avgFoodCostPct: string;
   avgMarginPct: string;
+  sales: string;
+  netSales: string;
+  costOfGoodsSold: string;
+  contributionMargin: string;
+  operatingCost: string;
+  allocationMethod: "none" | "revenue" | "units";
+  estimatedProfit: string;
+  soldAtLoss: Array<ProfitabilityRankedProduct & { contribution: number }>;
+  topContribution: Array<ProfitabilityRankedProduct & { contribution: number }>;
   mostProfitable: ProfitabilityRankedProduct[];
   leastProfitable: ProfitabilityRankedProduct[];
   highFoodCost: ProfitabilityRankedProduct[];
@@ -1798,7 +1819,10 @@ export interface CostHistoryEntry {
   previousCost: string;
   newCost: string;
   supplierName?: string | null;
+  supplierId?: string | null;
   reason?: string | null;
+  source?: string;
+  sourceReference?: string | null;
   employeeId?: string | null;
   createdAt: string;
 }
@@ -1832,6 +1856,7 @@ export interface PriceSimulatorInput {
   targetMarginPct?: number;
   maxFoodCostPct?: number;
   roundTo?: number;
+  channel?: string;
 }
 
 export interface PriceSimulatorRoundedOption {
@@ -1858,6 +1883,8 @@ export interface PriceSimulatorResult {
   roundedOptions: PriceSimulatorRoundedOption[];
   inputTargetMarginPct: number | null;
   inputMaxFoodCostPct: number | null;
+  currentCommission?: string;
+  channel?: string;
 }
 
 // ─── Purchasing module types ──────────────────────────────────────────────────

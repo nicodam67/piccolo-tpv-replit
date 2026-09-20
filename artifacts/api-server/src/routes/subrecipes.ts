@@ -9,6 +9,7 @@ import {
 import { eq, asc, and } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { syncProductCost } from "./recipes";
+import { calculateRecipeLineCost } from "../lib/profitability-calculator";
 
 const router: IRouter = Router();
 
@@ -17,15 +18,29 @@ function computeSubrecipeLineCost(
   purchaseCost: string,
   quantity: string,
   wastePercent: string,
+  recipeUnit = "ud",
+  consumptionUnit = recipeUnit,
+  conversionFactor = "1",
 ): number {
   const cost = parseFloat(purchaseCost) || 0;
   const qty = parseFloat(quantity) || 0;
   const waste = parseFloat(wastePercent) || 0;
-  return cost * qty * (1 + waste / 100);
+  try {
+    return calculateRecipeLineCost({
+      purchaseCost: cost,
+      conversionFactor: parseFloat(conversionFactor) || 1,
+      quantity: qty,
+      recipeUnit,
+      consumptionUnit,
+      wastePercent: waste,
+    }).effectiveCost;
+  } catch {
+    return cost * qty * (1 + waste / 100);
+  }
 }
 
 // Helper: propagate a subrecipe cost update to all dependent product/format costs
-async function propagateSubrecipeCostToProducts(
+export async function propagateSubrecipeCostToProducts(
   subrecipeId: string,
 ): Promise<void> {
   // Find all recipe items that reference this subrecipe
@@ -49,7 +64,7 @@ async function propagateSubrecipeCostToProducts(
 }
 
 // Helper: recompute and persist a sub-recipe's cost cache
-async function recomputeSubrecipeCost(subrecipeId: string): Promise<number> {
+export async function recomputeSubrecipeCost(subrecipeId: string): Promise<number> {
   const [subrecipe] = await db
     .select({ yieldQuantity: subrecipesTable.yieldQuantity })
     .from(subrecipesTable)
@@ -58,8 +73,11 @@ async function recomputeSubrecipeCost(subrecipeId: string): Promise<number> {
   const items = await db
     .select({
       quantity: subrecipeItemsTable.quantity,
+      unit: subrecipeItemsTable.unit,
       wastePercent: subrecipeItemsTable.wastePercent,
       purchaseCost: ingredientsTable.purchaseCost,
+      consumptionUnit: ingredientsTable.consumptionUnit,
+      conversionFactor: ingredientsTable.conversionFactor,
     })
     .from(subrecipeItemsTable)
     .innerJoin(
@@ -70,7 +88,14 @@ async function recomputeSubrecipeCost(subrecipeId: string): Promise<number> {
 
   const totalRaw = items.reduce(
     (sum, i) =>
-      sum + computeSubrecipeLineCost(i.purchaseCost, i.quantity, i.wastePercent),
+      sum + computeSubrecipeLineCost(
+        i.purchaseCost,
+        i.quantity,
+        i.wastePercent,
+        i.unit,
+        i.consumptionUnit,
+        i.conversionFactor,
+      ),
     0,
   );
   const yield_ = parseFloat(subrecipe?.yieldQuantity ?? "1") || 1;
@@ -161,6 +186,8 @@ router.get(
         ingredientName: ingredientsTable.name,
         ingredientUnit: ingredientsTable.unit,
         ingredientCost: ingredientsTable.purchaseCost,
+        ingredientConsumptionUnit: ingredientsTable.consumptionUnit,
+        ingredientConversionFactor: ingredientsTable.conversionFactor,
         quantity: subrecipeItemsTable.quantity,
         unit: subrecipeItemsTable.unit,
         wastePercent: subrecipeItemsTable.wastePercent,
@@ -179,6 +206,9 @@ router.get(
         item.ingredientCost,
         item.quantity,
         item.wastePercent,
+        item.unit,
+        item.ingredientConsumptionUnit,
+        item.ingredientConversionFactor,
       ).toFixed(4),
     }));
 
@@ -325,6 +355,9 @@ router.post(
       ingredient.purchaseCost,
       item.quantity,
       item.wastePercent,
+      item.unit,
+      ingredient.consumptionUnit,
+      ingredient.conversionFactor,
     );
 
     res.status(201).json({
@@ -386,6 +419,9 @@ router.patch(
       ingredient.purchaseCost,
       updated.quantity,
       updated.wastePercent,
+      updated.unit,
+      ingredient.consumptionUnit,
+      ingredient.conversionFactor,
     );
 
     res.json({
@@ -425,4 +461,3 @@ router.delete(
 );
 
 export default router;
-export { recomputeSubrecipeCost };

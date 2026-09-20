@@ -65,8 +65,8 @@ const NAV: NavItem[] = [
   { label: "Trazabilidad",        icon: <GitBranch size={18} />,        href: "/admin/trazabilidad-lotes" },
   { label: "Retirada de lotes",   icon: <ShieldAlert size={18} />,      href: "/admin/retirada-lote" },
   // ── Análisis de costes ────────────────────────────────────────────────────
-  { label: "Costes",              icon: <Calculator size={18} />,       href: "/admin/simulador-precios",       separator: true },
-  { label: "Márgenes",            icon: <TrendingUp size={18} />,       href: "/admin/rentabilidad" },
+  { label: "Simulador",           icon: <Calculator size={18} />,       href: "/admin/simulador-precios",       separator: true },
+  { label: "Rentabilidad",        icon: <TrendingUp size={18} />,       href: "/admin/rentabilidad" },
   { label: "Informes",            icon: <BarChart3 size={18} />,        href: "/admin/inventario/informes" },
   // ── Configuración ─────────────────────────────────────────────────────────
   { label: "Configuración",       icon: <Settings size={18} />,         href: "/admin/categorias-ingredientes", separator: true },

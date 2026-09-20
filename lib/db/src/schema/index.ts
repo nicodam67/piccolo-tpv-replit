@@ -38,3 +38,4 @@ export * from "./role-permissions";
 export * from "./auth-sessions";
 export * from "./idempotency-keys";
 export * from "./planner";
+export * from "./profitability";

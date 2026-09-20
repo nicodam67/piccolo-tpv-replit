@@ -15,6 +15,7 @@ import { alias } from "drizzle-orm/pg-core";
 const subrecipeItemsTableAlias = alias(subrecipeItemsTable, "sr_items");
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { recalculateProductAllergens } from "./allergens";
+import { calculateRecipeLineCost } from "../lib/profitability-calculator";
 
 const router: IRouter = Router();
 
@@ -23,11 +24,26 @@ function computeLineCost(
   unitCost: string | number,
   quantity: string,
   wastePercent: string,
+  recipeUnit = "ud",
+  consumptionUnit = recipeUnit,
+  conversionFactor = "1",
 ): number {
   const cost = typeof unitCost === "string" ? parseFloat(unitCost) : unitCost;
   const qty = parseFloat(quantity) || 0;
   const waste = parseFloat(wastePercent) || 0;
-  return (cost || 0) * qty * (1 + waste / 100);
+  try {
+    return calculateRecipeLineCost({
+      purchaseCost: cost || 0,
+      conversionFactor: parseFloat(conversionFactor) || 1,
+      quantity: qty,
+      recipeUnit,
+      consumptionUnit,
+      wastePercent: waste,
+    }).effectiveCost;
+  } catch {
+    // Preserve legacy recipes whose free-text units cannot be safely converted.
+    return (cost || 0) * qty * (1 + waste / 100);
+  }
 }
 
 // Helper: recompute and persist product/format cost from its recipe lines.
@@ -40,10 +56,13 @@ export async function syncProductCost(
       ingredientId: recipeItemsTable.ingredientId,
       subrecipeId: recipeItemsTable.subrecipeId,
       quantity: recipeItemsTable.quantity,
+      unit: recipeItemsTable.unit,
       wastePercent: recipeItemsTable.wastePercent,
       packagingCost: recipeItemsTable.packagingCost,
       additionalCost: recipeItemsTable.additionalCost,
       ingredientCost: ingredientsTable.purchaseCost,
+      ingredientConsumptionUnit: ingredientsTable.consumptionUnit,
+      ingredientConversionFactor: ingredientsTable.conversionFactor,
       subrecipeCost: subrecipesTable.cost,
     })
     .from(recipeItemsTable)
@@ -67,9 +86,19 @@ export async function syncProductCost(
       ? parseFloat(line.ingredientCost ?? "0")
       : parseFloat(line.subrecipeCost ?? "0");
     const lineCost = computeLineCost(unitCost, line.quantity, line.wastePercent);
+    const normalizedLineCost = line.ingredientId
+      ? computeLineCost(
+          unitCost,
+          line.quantity,
+          line.wastePercent,
+          line.unit,
+          line.ingredientConsumptionUnit ?? line.unit,
+          line.ingredientConversionFactor ?? "1",
+        )
+      : lineCost;
     return (
       sum +
-      lineCost +
+      normalizedLineCost +
       parseFloat(line.packagingCost ?? "0") +
       parseFloat(line.additionalCost ?? "0")
     );
@@ -160,6 +189,8 @@ function buildLineShape(line: {
   ingredientName?: string | null;
   ingredientUnit?: string | null;
   ingredientCost?: string | null;
+  ingredientConsumptionUnit?: string | null;
+  ingredientConversionFactor?: string | null;
   subrecipeName?: string | null;
   subrecipeUnit?: string | null;
   subrecipeCost?: string | null;
@@ -175,7 +206,16 @@ function buildLineShape(line: {
     ? parseFloat(line.subrecipeCost ?? "0")
     : parseFloat(line.ingredientCost ?? "0");
 
-  const lineCost = computeLineCost(unitCost, line.quantity, line.wastePercent);
+  const lineCost = isSubrecipe
+    ? computeLineCost(unitCost, line.quantity, line.wastePercent)
+    : computeLineCost(
+        unitCost,
+        line.quantity,
+        line.wastePercent,
+        line.unit,
+        line.ingredientConsumptionUnit ?? line.unit,
+        line.ingredientConversionFactor ?? "1",
+      );
   const totalLineCost =
     lineCost +
     parseFloat(line.packagingCost ?? "0") +
@@ -218,6 +258,8 @@ async function fetchRecipeLines(productId: string) {
       ingredientName: ingredientsTable.name,
       ingredientUnit: ingredientsTable.unit,
       ingredientCost: ingredientsTable.purchaseCost,
+      ingredientConsumptionUnit: ingredientsTable.consumptionUnit,
+      ingredientConversionFactor: ingredientsTable.conversionFactor,
       subrecipeName: subrecipesTable.name,
       subrecipeUnit: subrecipesTable.unit,
       subrecipeCost: subrecipesTable.cost,

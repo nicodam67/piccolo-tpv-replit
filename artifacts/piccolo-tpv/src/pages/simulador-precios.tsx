@@ -4,9 +4,12 @@ import { ChevronLeft, Calculator, RefreshCw, Loader2, Check, Search, X } from 'l
 import {
   useGetAdminProfitability,
   useSimulatePrice,
+  useGetAdminIngredients,
 } from '@workspace/api-client-react';
-import type { ProductProfitability, PriceSimulatorResult } from '@workspace/api-client-react';
+import type { Ingredient, ProductProfitability, PriceSimulatorResult } from '@workspace/api-client-react';
 import { toast } from 'sonner';
+import { api } from '../lib/api-client';
+import { useMutation } from '@tanstack/react-query';
 
 function marginColor(pct: number | string) {
   const v = typeof pct === 'string' ? parseFloat(pct) : pct;
@@ -32,6 +35,15 @@ export default function SimuladorPrecios() {
     return () => document.removeEventListener('visibilitychange', onVisibility);
   }, [refetchProfitability]);
   const simulate = useSimulatePrice();
+  const { data: ingredients = [] } = useGetAdminIngredients();
+  const scenario = useMutation({
+    mutationFn: (payload: unknown) => api.post<any>('/api/admin/profitability/scenario', payload),
+  });
+  const createProposal = useMutation({
+    mutationFn: (payload: unknown) => api.post('/api/admin/profitability/price-proposals', payload),
+    onSuccess: () => toast.success('Propuesta registrada para revisión'),
+    onError: () => toast.error('No se pudo registrar la propuesta'),
+  });
 
   const [productId, setProductId] = useState('');
   const [mode, setMode] = useState<'margin' | 'foodcost'>('margin');
@@ -41,6 +53,10 @@ export default function SimuladorPrecios() {
   const [result, setResult] = useState<PriceSimulatorResult | null>(null);
 
   const [productSearch, setProductSearch] = useState('');
+  const [scenarioType, setScenarioType] = useState<'ingredient' | 'operating' | 'commission'>('ingredient');
+  const [scenarioIngredientId, setScenarioIngredientId] = useState('');
+  const [scenarioPercent, setScenarioPercent] = useState('8');
+  const [scenarioChannel, setScenarioChannel] = useState('delivery');
 
   const products = profitability as ProductProfitability[];
   const selectedProduct = products.find(p => p.id === productId);
@@ -74,6 +90,62 @@ export default function SimuladorPrecios() {
       </header>
 
       <div className="flex-1 max-w-xl mx-auto w-full px-4 py-6 space-y-5">
+        <div className="rounded-xl border border-border bg-card p-4 space-y-3">
+          <div>
+            <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide">Simulación de costes</p>
+            <p className="text-[11px] text-muted-foreground mt-1">Escenario aislado: nunca modifica ingredientes, gastos, comisiones ni precios reales.</p>
+          </div>
+          <div className="grid grid-cols-3 gap-1 rounded-lg bg-secondary p-0.5">
+            {([['ingredient', 'Ingrediente'], ['operating', 'Gasto'], ['commission', 'Comisión']] as const).map(([value, label]) => (
+              <button key={value} onClick={() => setScenarioType(value)} className={`py-1.5 rounded-md text-xs font-bold ${scenarioType === value ? 'bg-card shadow' : 'text-muted-foreground'}`}>{label}</button>
+            ))}
+          </div>
+          {scenarioType === 'ingredient' && (
+            <select value={scenarioIngredientId} onChange={e => setScenarioIngredientId(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-background border border-border text-sm">
+              <option value="">Selecciona ingrediente</option>
+              {(ingredients as Ingredient[]).map(ingredient => <option key={ingredient.id} value={ingredient.id}>{ingredient.name}</option>)}
+            </select>
+          )}
+          {scenarioType === 'commission' && (
+            <select value={scenarioChannel} onChange={e => setScenarioChannel(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-background border border-border text-sm">
+              {['sala', 'terraza', 'takeaway', 'delivery', 'plataforma', 'tarjeta', 'otros'].map(channel => <option key={channel} value={channel}>{channel}</option>)}
+            </select>
+          )}
+          <label className="block text-[10px] font-bold text-muted-foreground">
+            {scenarioType === 'commission' ? 'Comisión porcentual' : 'Variación'} (%)
+            <input type="number" value={scenarioPercent} onChange={e => setScenarioPercent(e.target.value)} className="mt-1 w-full px-3 py-2 rounded-lg bg-background border border-border text-sm" />
+          </label>
+          <button
+            onClick={() => scenario.mutate(
+              scenarioType === 'ingredient'
+                ? { ingredientChanges: [{ ingredientId: scenarioIngredientId, percent: Number(scenarioPercent) }] }
+                : scenarioType === 'operating'
+                  ? { operatingExpensePercent: Number(scenarioPercent) }
+                  : { channel: scenarioChannel, commissionPercent: Number(scenarioPercent) },
+            )}
+            disabled={scenario.isPending || (scenarioType === 'ingredient' && !scenarioIngredientId)}
+            className="w-full py-2 rounded-lg bg-secondary text-sm font-bold disabled:opacity-50"
+          >
+            {scenario.isPending ? 'Calculando…' : 'Simular escenario'}
+          </button>
+          {scenario.data && (
+            <div className="space-y-2">
+              <div className="rounded-lg bg-secondary/30 p-2 text-xs">
+                Gastos mensuales: {scenario.data.oldMonthlyOperatingCost}€ → {scenario.data.newMonthlyOperatingCost}€
+              </div>
+              {scenario.data.products.slice(0, 10).map((row: any) => (
+                <div key={row.productId} className="rounded-lg border border-border p-2 text-xs grid grid-cols-2 gap-1">
+                  <strong className="col-span-2">{row.productName}</strong>
+                  <span>Coste {row.oldCost}€ → {row.newCost}€</span>
+                  <span className="text-right">Margen {row.oldMarginPct}% → {row.newMarginPct}%</span>
+                  <span>Precio {parseFloat(row.currentPrice).toFixed(2)}€</span>
+                  <span className="text-right">Recomendado {row.recommendedPrice ? `${row.recommendedPrice}€` : '—'}</span>
+                </div>
+              ))}
+              {scenario.data.products.length === 0 && <p className="text-xs text-muted-foreground">{scenario.data.operatingCostAllocationNote}</p>}
+            </div>
+          )}
+        </div>
 
         {/* Product selector */}
         <div className="rounded-xl border border-border bg-card p-4 space-y-3">
@@ -190,9 +262,20 @@ export default function SimuladorPrecios() {
                   {result.recommendedPrice ? `${parseFloat(result.recommendedPrice).toFixed(2)}€` : '—'}
                 </p>
                 {result.recommendedPrice && (
-                  <p className="text-[11px] text-muted-foreground">
-                    Base s/IVA: {parseFloat(result.recommendedBase ?? '0').toFixed(4)}€
-                  </p>
+                  <>
+                    <p className="text-[11px] text-muted-foreground">
+                      Base s/IVA: {parseFloat(result.recommendedBase ?? '0').toFixed(4)}€
+                    </p>
+                    <button
+                      onClick={() => {
+                        const reason = window.prompt('Motivo de la propuesta');
+                        if (reason) createProposal.mutate({ productId: result.productId, proposedPrice: result.recommendedPrice, reason });
+                      }}
+                      className="mt-2 px-2 py-1 rounded-md bg-primary/10 text-primary text-[10px] font-bold"
+                    >
+                      Enviar a revisión
+                    </button>
+                  </>
                 )}
               </div>
             </div>
