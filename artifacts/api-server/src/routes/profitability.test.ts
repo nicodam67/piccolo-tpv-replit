@@ -48,8 +48,10 @@ vi.mock('@workspace/db', () => {
     channelCommissionsTable: { id: 'id', channel: 'channel', active: 'active', percent: 'percent', fixedAmount: 'fixed_amount' },
     profitabilityTargetsTable: { id: 'id', active: 'active', updatedAt: 'updated_at' },
     priceChangeProposalsTable: { id: 'id', status: 'status' },
-    ordersTable: { id: 'id', status: 'status', isDemo: 'is_demo', createdAt: 'created_at', channel: 'channel' },
-    orderItemsTable: { orderId: 'order_id', productId: 'product_id', quantity: 'quantity', unitPrice: 'unit_price', taxRate: 'tax_rate' },
+    ordersTable: { id: 'id', status: 'status', isDemo: 'is_demo', createdAt: 'created_at', channel: 'channel', deliveryType: 'delivery_type' },
+    orderItemsTable: { id: 'id', orderId: 'order_id', productId: 'product_id', quantity: 'quantity', unitPrice: 'unit_price', taxRate: 'tax_rate', isInvitation: 'is_invitation' },
+    ticketsTable: { orderId: 'order_id', issuedAt: 'issued_at', isDemo: 'is_demo' },
+    discountsTable: { orderId: 'order_id', orderItemId: 'order_item_id' },
   };
 });
 

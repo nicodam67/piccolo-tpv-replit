@@ -31,7 +31,7 @@ export default function Rentabilidad() {
   const [tab, setTab] = useState<Tab>('productos');
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState<'name' | 'margin' | 'foodcost'>('margin');
-  const [channel, setChannel] = useState('sala');
+  const [channel, setChannel] = useState('tpv');
 
   // Re-fetch when returning to foreground so cost data stays fresh
   useEffect(() => {
@@ -155,7 +155,7 @@ function ProductosTab({
       </div>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         <select value={channel} onChange={e => setChannel(e.target.value)} className="px-2 py-2 rounded-lg bg-card border border-border text-xs">
-          {['sala', 'terraza', 'takeaway', 'delivery', 'plataforma', 'tarjeta', 'otros'].map(value => <option key={value} value={value}>{value}</option>)}
+          {['tpv', 'qr', 'web', 'phone', 'counter', 'takeaway', 'delivery', 'sala', 'terraza', 'plataforma', 'tarjeta', 'otros'].map(value => <option key={value} value={value}>{value}</option>)}
         </select>
         <select value={category} onChange={e => setCategory(e.target.value)} className="px-2 py-2 rounded-lg bg-card border border-border text-xs">
           <option value="all">Todas las categorías</option>
@@ -338,6 +338,7 @@ function InformesTab({ channel }: { channel: string }) {
           <p className="text-[10px] font-bold text-muted-foreground uppercase">Costes operativos estimados</p>
           <p className="text-xl font-black">{parseFloat(report.operatingCost ?? '0').toFixed(2)}€</p>
           <p className="text-[11px] text-muted-foreground">Reparto visible: {report.allocationMethod === 'none' ? 'sin asignar' : report.allocationMethod === 'revenue' ? 'por ventas' : 'por unidades'}</p>
+          <p className="text-[11px] text-muted-foreground mt-1">Ventas reconocidas por ticket fiscal; descuentos asignados proporcionalmente. Cobertura COGS histórico: {parseFloat(report.historicalCogsCoveragePct ?? '0').toFixed(1)}%.</p>
         </div>
       </div>
 
@@ -542,7 +543,7 @@ function ConfiguracionTab() {
 
   if (isLoading || !data) return <LoadingState />;
   const settings = data.settings;
-  const channels = ['sala', 'terraza', 'takeaway', 'delivery', 'plataforma', 'tarjeta', 'otros'];
+  const channels = ['tpv', 'qr', 'web', 'phone', 'counter', 'takeaway', 'delivery', 'sala', 'terraza', 'plataforma', 'tarjeta', 'otros'];
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-4 space-y-4">

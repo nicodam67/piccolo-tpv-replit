@@ -5,6 +5,7 @@ import {
   calculateRecipeLineCost,
   convertQuantity,
   profitabilityStatus,
+  recognisedLineRevenue,
   recommendedPvp,
 } from "./profitability-calculator";
 
@@ -105,6 +106,19 @@ describe("profitability calculator", () => {
       totalRevenue: 1000,
       productUnits: 5,
       totalUnits: 100,
+    })).toBe(0);
+  });
+
+  it("recognises discounted revenue without counting invitations", () => {
+    expect(recognisedLineRevenue({
+      gross: 20,
+      lineDiscount: 2,
+      orderDiscount: 9,
+      orderGross: 90,
+    })).toBe(16);
+    expect(recognisedLineRevenue({
+      gross: 20,
+      isInvitation: true,
     })).toBe(0);
   });
 });

@@ -1795,6 +1795,9 @@ export interface ProfitabilityReport {
   sales: string;
   netSales: string;
   costOfGoodsSold: string;
+  historicalCogsCoveragePct: string;
+  revenueRecognition: "fiscal_ticket";
+  revenueAdjustments: "invitations_excluded_discounts_allocated";
   contributionMargin: string;
   operatingCost: string;
   allocationMethod: "none" | "revenue" | "units";

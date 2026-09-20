@@ -16,6 +16,8 @@ import {
   priceChangeProposalsTable,
   ordersTable,
   orderItemsTable,
+  ticketsTable,
+  discountsTable,
 } from "@workspace/db";
 import {
   eq,
@@ -29,6 +31,7 @@ import {
   sum,
   sql,
   inArray,
+  or,
 } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import {
@@ -36,6 +39,7 @@ import {
   calculateProfitability,
   calculateRecipeLineCost,
   profitabilityStatus,
+  recognisedLineRevenue,
   recommendedPvp,
 } from "../lib/profitability-calculator";
 
@@ -217,7 +221,7 @@ router.get(
   requireAuth,
   requireRole("admin"),
   async (req, res): Promise<void> => {
-    const channel = typeof req.query.channel === "string" ? req.query.channel : "sala";
+    const channel = typeof req.query.channel === "string" ? req.query.channel : "tpv";
     const products = await db
       .select({
         id: productsTable.id,
@@ -442,51 +446,135 @@ router.get(
       .filter((p) => p.foodCostPct > 35)
       .sort((a, b) => b.foodCostPct - a.foodCostPct);
 
-    // Real sold quantities and captured prices from paid TPV orders.
+    // Recognised sales use immutable fiscal tickets and captured order-item prices.
     const salesRows = await db
       .select({
+        orderId: orderItemsTable.orderId,
+        orderItemId: orderItemsTable.id,
         productId: orderItemsTable.productId,
         quantity: orderItemsTable.quantity,
         unitPrice: orderItemsTable.unitPrice,
         taxRate: orderItemsTable.taxRate,
+        isInvitation: orderItemsTable.isInvitation,
         channel: ordersTable.channel,
-        createdAt: ordersTable.createdAt,
+        deliveryType: ordersTable.deliveryType,
+        createdAt: ticketsTable.issuedAt,
       })
       .from(orderItemsTable)
       .innerJoin(ordersTable, eq(orderItemsTable.orderId, ordersTable.id))
+      .innerJoin(ticketsTable, eq(ticketsTable.orderId, ordersTable.id))
       .where(
         and(
-          eq(ordersTable.status, "paid"),
-          eq(ordersTable.isDemo, false),
-          gte(ordersTable.createdAt, fromDate),
-          lte(ordersTable.createdAt, toDate),
-          channel ? eq(ordersTable.channel, channel) : sql`true`,
+          eq(ticketsTable.isDemo, false),
+          gte(ticketsTable.issuedAt, fromDate),
+          lte(ticketsTable.issuedAt, toDate),
+          channel
+            ? or(eq(ordersTable.channel, channel), eq(ordersTable.deliveryType, channel))
+            : sql`true`,
         ),
       );
+
+    const orderIds = [...new Set(salesRows.map((sale) => sale.orderId))];
+    const orderItemIds = salesRows.map((sale) => sale.orderItemId);
+    const discounts = orderIds.length > 0
+      ? await db.select().from(discountsTable)
+          .where(inArray(discountsTable.orderId, orderIds))
+      : [];
+    const movementRows = orderItemIds.length > 0
+      ? await db.select({
+          orderItemId: stockMovementsTable.orderItemId,
+          quantity: stockMovementsTable.quantity,
+          unitCost: stockMovementsTable.unitCost,
+        }).from(stockMovementsTable)
+          .where(and(
+            eq(stockMovementsTable.movementType, "sale"),
+            inArray(stockMovementsTable.orderItemId, orderItemIds),
+          ))
+      : [];
+    const snapshotCogsByItem = new Map<string, number>();
+    for (const movement of movementRows) {
+      if (!movement.orderItemId) continue;
+      const cogs = Math.abs(parseFloat(movement.quantity))
+        * parseFloat(movement.unitCost ?? "0");
+      snapshotCogsByItem.set(
+        movement.orderItemId,
+        (snapshotCogsByItem.get(movement.orderItemId) ?? 0) + cogs,
+      );
+    }
+    const orderGross = new Map<string, number>();
+    for (const sale of salesRows) {
+      if (sale.isInvitation) continue;
+      orderGross.set(
+        sale.orderId,
+        (orderGross.get(sale.orderId) ?? 0)
+          + parseFloat(sale.unitPrice) * (sale.quantity ?? 0),
+      );
+    }
+    const lineDiscounts = new Map<string, number>();
+    const orderDiscounts = new Map<string, number>();
+    for (const discount of discounts) {
+      const amount = parseFloat(discount.discountAmount);
+      if (discount.orderItemId) {
+        lineDiscounts.set(
+          discount.orderItemId,
+          (lineDiscounts.get(discount.orderItemId) ?? 0) + amount,
+        );
+      } else {
+        orderDiscounts.set(
+          discount.orderId,
+          (orderDiscounts.get(discount.orderId) ?? 0) + amount,
+        );
+      }
+    }
+    const rankedCostById = new Map(ranked.map((product) => [product.id, product.unitCost]));
+    const recognisedSalesRows = salesRows.map((sale) => {
+      const quantity = sale.quantity ?? 0;
+      const rawGross = parseFloat(sale.unitPrice) * quantity;
+      const recognisedGross = recognisedLineRevenue({
+        gross: rawGross,
+        isInvitation: sale.isInvitation,
+        lineDiscount: lineDiscounts.get(sale.orderItemId),
+        orderDiscount: orderDiscounts.get(sale.orderId),
+        orderGross: orderGross.get(sale.orderId),
+      });
+      const snapshotCogs = snapshotCogsByItem.get(sale.orderItemId);
+      return {
+        ...sale,
+        effectiveChannel: sale.deliveryType === "table" ? sale.channel : sale.deliveryType,
+        recognisedGross,
+        recognisedNet: recognisedGross / (1 + sale.taxRate / 100),
+        cogs: snapshotCogs ?? (rankedCostById.get(sale.productId) ?? 0) * quantity,
+        cogsSource: snapshotCogs == null ? "current_recipe_fallback" as const : "stock_snapshot" as const,
+      };
+    });
 
     const soldByProduct = new Map<string, {
       units: number;
       grossSales: number;
       netSales: number;
+      cogs: number;
+      snapshotCogs: number;
       channels: Map<string, { units: number; netSales: number }>;
     }>();
-    for (const sale of salesRows) {
+    for (const sale of recognisedSalesRows) {
       const quantity = sale.quantity ?? 0;
-      const gross = parseFloat(sale.unitPrice) * quantity;
-      const net = gross / (1 + sale.taxRate / 100);
       const current = soldByProduct.get(sale.productId) ?? {
         units: 0,
         grossSales: 0,
         netSales: 0,
+        cogs: 0,
+        snapshotCogs: 0,
         channels: new Map(),
       };
       current.units += quantity;
-      current.grossSales += gross;
-      current.netSales += net;
-      const channelSales = current.channels.get(sale.channel) ?? { units: 0, netSales: 0 };
+      current.grossSales += sale.recognisedGross;
+      current.netSales += sale.recognisedNet;
+      current.cogs += sale.cogs;
+      if (sale.cogsSource === "stock_snapshot") current.snapshotCogs += sale.cogs;
+      const channelSales = current.channels.get(sale.effectiveChannel) ?? { units: 0, netSales: 0 };
       channelSales.units += quantity;
-      channelSales.netSales += net;
-      current.channels.set(sale.channel, channelSales);
+      channelSales.netSales += sale.recognisedNet;
+      current.channels.set(sale.effectiveChannel, channelSales);
       soldByProduct.set(sale.productId, current);
     }
 
@@ -521,7 +609,7 @@ router.get(
           commissions += values.netSales * parseFloat(commission?.percent ?? "0") / 100
             + values.units * parseFloat(commission?.fixedAmount ?? "0");
         }
-        const cogs = product.unitCost * sale.units;
+        const cogs = sale.cogs;
         const contribution = sale.netSales - cogs - commissions;
         const allocatedOperatingCost = allocateOperatingCost({
           totalOperatingCost: periodOperatingCost,
@@ -537,6 +625,7 @@ router.get(
           sales: sale.grossSales,
           netSales: sale.netSales,
           cogs,
+          cogsSnapshotCoveragePct: cogs > 0 ? sale.snapshotCogs / cogs * 100 : 100,
           commissions,
           contribution,
           allocatedOperatingCost,
@@ -545,6 +634,8 @@ router.get(
       }));
 
     const totalCogs = salesProducts.reduce((total, product) => total + product.cogs, 0);
+    const snapshotCogs = Array.from(soldByProduct.values())
+      .reduce((total, product) => total + product.snapshotCogs, 0);
     const totalContribution = salesProducts.reduce((total, product) => total + product.contribution, 0);
     const avgFoodCostPct = totalRevenue > 0 ? totalCogs / totalRevenue * 100 : 0;
     const avgMarginPct = totalRevenue > 0 ? totalContribution / totalRevenue * 100 : 0;
@@ -554,22 +645,19 @@ router.get(
       .slice(0, 5);
     const rankedById = new Map(ranked.map((product) => [product.id, product]));
     const dailyMap = new Map<string, { sales: number; netSales: number; cogs: number; contribution: number }>();
-    for (const sale of salesRows) {
+    for (const sale of recognisedSalesRows) {
       const product = rankedById.get(sale.productId);
       if (!product) continue;
       const day = sale.createdAt.toISOString().slice(0, 10);
       const quantity = sale.quantity ?? 0;
-      const gross = parseFloat(sale.unitPrice) * quantity;
-      const net = gross / (1 + sale.taxRate / 100);
-      const commission = commissionByChannel.get(sale.channel);
-      const commissionCost = net * parseFloat(commission?.percent ?? "0") / 100
+      const commission = commissionByChannel.get(sale.effectiveChannel);
+      const commissionCost = sale.recognisedNet * parseFloat(commission?.percent ?? "0") / 100
         + quantity * parseFloat(commission?.fixedAmount ?? "0");
-      const cogs = product.unitCost * quantity;
       const current = dailyMap.get(day) ?? { sales: 0, netSales: 0, cogs: 0, contribution: 0 };
-      current.sales += gross;
-      current.netSales += net;
-      current.cogs += cogs;
-      current.contribution += net - cogs - commissionCost;
+      current.sales += sale.recognisedGross;
+      current.netSales += sale.recognisedNet;
+      current.cogs += sale.cogs;
+      current.contribution += sale.recognisedNet - sale.cogs - commissionCost;
       dailyMap.set(day, current);
     }
     const marginEvolution = Array.from(dailyMap.entries())
@@ -599,6 +687,9 @@ router.get(
       sales: salesProducts.reduce((total, product) => total + product.sales, 0).toFixed(2),
       netSales: totalRevenue.toFixed(2),
       costOfGoodsSold: totalCogs.toFixed(2),
+      historicalCogsCoveragePct: (totalCogs > 0 ? snapshotCogs / totalCogs * 100 : 100).toFixed(2),
+      revenueRecognition: "fiscal_ticket",
+      revenueAdjustments: "invitations_excluded_discounts_allocated",
       contributionMargin: totalContribution.toFixed(2),
       operatingCost: periodOperatingCost.toFixed(2),
       allocationMethod,
@@ -683,7 +774,7 @@ router.get(
       .where(eq(productsTable.active, true));
 
     const alerts: any[] = [];
-    const channel = typeof req.query.channel === "string" ? req.query.channel : "sala";
+    const channel = typeof req.query.channel === "string" ? req.query.channel : "tpv";
 
     for (const p of products) {
       const { totalCost } = await computeProductCost(p.id);
@@ -735,7 +826,7 @@ router.post(
       productId,
       targetMarginPct,
       maxFoodCostPct,
-      channel = "sala",
+      channel = "tpv",
       roundTo = 0.05,
     } = req.body as {
       productId: string;
@@ -1038,7 +1129,7 @@ router.post(
     const {
       ingredientChanges = [],
       operatingExpensePercent = 0,
-      channel = "sala",
+      channel = "tpv",
       commissionPercent,
       commissionFixed,
     } = req.body as {

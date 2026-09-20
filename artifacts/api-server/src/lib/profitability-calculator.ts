@@ -141,3 +141,22 @@ export function allocateOperatingCost(input: {
   }
   return 0;
 }
+
+export function recognisedLineRevenue(input: {
+  gross: number;
+  isInvitation?: boolean;
+  lineDiscount?: number;
+  orderDiscount?: number;
+  orderGross?: number;
+}): number {
+  if (input.isInvitation) return 0;
+  const allocatedOrderDiscount = input.orderGross && input.orderGross > 0
+    ? Math.max(0, input.orderDiscount ?? 0) * Math.max(0, input.gross) / input.orderGross
+    : 0;
+  return Math.max(
+    0,
+    Math.max(0, input.gross)
+      - Math.max(0, input.lineDiscount ?? 0)
+      - allocatedOrderDiscount,
+  );
+}

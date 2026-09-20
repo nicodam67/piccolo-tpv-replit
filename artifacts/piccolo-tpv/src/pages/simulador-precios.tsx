@@ -108,7 +108,7 @@ export default function SimuladorPrecios() {
           )}
           {scenarioType === 'commission' && (
             <select value={scenarioChannel} onChange={e => setScenarioChannel(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-background border border-border text-sm">
-              {['sala', 'terraza', 'takeaway', 'delivery', 'plataforma', 'tarjeta', 'otros'].map(channel => <option key={channel} value={channel}>{channel}</option>)}
+              {['tpv', 'qr', 'web', 'phone', 'counter', 'takeaway', 'delivery', 'sala', 'terraza', 'plataforma', 'tarjeta', 'otros'].map(channel => <option key={channel} value={channel}>{channel}</option>)}
             </select>
           )}
           <label className="block text-[10px] font-bold text-muted-foreground">
