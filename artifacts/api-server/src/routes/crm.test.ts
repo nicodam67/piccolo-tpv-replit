@@ -17,12 +17,19 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // ─── Mock @workspace/db ───────────────────────────────────────────────────────
 // vi.hoisted ensures mkTable is available when vi.mock factory is called
-const { mkTable } = vi.hoisted(() => {
+const { mkTable, txState } = vi.hoisted(() => {
   const mkTable = (name: string) =>
     new Proxy({ _tableName: name } as Record<string, unknown>, {
       get: (t, k) => (k in t ? t[k as string] : `${name}.${String(k)}`),
     });
-  return { mkTable };
+  return {
+    mkTable,
+    txState: {
+      selectRows: [] as unknown[][],
+      insertValues: [] as unknown[],
+      updateValues: [] as unknown[],
+    },
+  };
 });
 
 const mockClient = {
@@ -64,6 +71,7 @@ function makeSelect(returnValue: unknown[]) {
     from: vi.fn().mockReturnThis(),
     where: vi.fn().mockReturnThis(),
     orderBy: vi.fn().mockReturnThis(),
+    groupBy: vi.fn().mockReturnThis(),
     limit: vi.fn().mockResolvedValue(returnValue),
     // Make the chain itself awaitable (no .limit() call needed)
     then: (onFulfilled: any, onRejected: any) => resolved.then(onFulfilled, onRejected),
@@ -98,17 +106,38 @@ vi.mock("@workspace/db", () => ({
     update: vi.fn(),
     delete: vi.fn(),
     transaction: vi.fn(async (fn: (tx: any) => Promise<unknown>) => {
+      const txSelect = () => {
+        const rows = txState.selectRows.shift() ?? [];
+        const resolved = Promise.resolve(rows);
+        const chain: any = {
+          from: vi.fn().mockReturnThis(),
+          where: vi.fn().mockReturnThis(),
+          orderBy: vi.fn().mockReturnThis(),
+          groupBy: vi.fn().mockReturnThis(),
+          limit: vi.fn().mockResolvedValue(rows),
+          then: (onFulfilled: any, onRejected: any) => resolved.then(onFulfilled, onRejected),
+        };
+        return chain;
+      };
       const txMock = {
+        execute: vi.fn().mockResolvedValue({ rows: [] }),
+        select: vi.fn(txSelect),
         insert: vi.fn().mockReturnValue({
-          values: vi.fn().mockReturnValue({
+          values: vi.fn((values: unknown) => {
+            txState.insertValues.push(values);
+            return {
             returning: vi.fn().mockResolvedValue([{ id: "movement-001" }]),
+            };
           }),
         }),
         update: vi.fn().mockReturnValue({
-          set: vi.fn().mockReturnValue({
+          set: vi.fn((values: unknown) => {
+            txState.updateValues.push(values);
+            return {
             where: vi.fn().mockReturnValue({
               returning: vi.fn().mockResolvedValue([{ id: "client-001", puntosSaldo: 245 }]),
             }),
+            };
           }),
         }),
       };
@@ -118,9 +147,11 @@ vi.mock("@workspace/db", () => ({
   crmClientsTable: mkTable("crm_clients"),
   crmLoyaltyConfigTable: mkTable("crm_loyalty_config"),
   crmLoyaltyPointsTable: mkTable("crm_loyalty_points"),
+  crmLoyaltyLevelsTable: mkTable("crm_loyalty_levels"),
   crmGiftCardsTable: mkTable("crm_gift_cards"),
   crmGiftCardTransactionsTable: mkTable("crm_gift_card_transactions"),
   crmPromotionsTable: mkTable("crm_promotions"),
+  crmCouponUsesTable: mkTable("crm_coupon_uses"),
   crmAuditLogTable: mkTable("crm_audit_log"),
   ordersTable: mkTable("orders"),
   orderItemsTable: mkTable("order_items"),
@@ -133,6 +164,7 @@ vi.mock("@workspace/db", () => ({
   sql: vi.fn((s: TemplateStringsArray) => s[0]),
   sum: vi.fn(() => "sum"),
   count: vi.fn(() => "count"),
+  inArray: vi.fn(() => "inArray"),
 }));
 
 import { db } from "@workspace/db";
@@ -146,6 +178,9 @@ import {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  txState.selectRows = [];
+  txState.insertValues = [];
+  txState.updateValues = [];
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -198,11 +233,8 @@ describe("Test 2 — Asociar cliente a mesa", () => {
 // ─────────────────────────────────────────────────────────────────────────────
 describe("Test 3 — Acumular puntos tras venta", () => {
   it("issuePoints emite puntos proporcionales al importe (1 punto por euro)", async () => {
-    // Mock: loyalty config returns activo=true, 1 pto/euro
-    // Mock: client returns puntosSaldo=200
-    vi.mocked(db.select)
-      .mockReturnValueOnce(makeSelect([mockLoyaltyConfig])) // getLoyaltyConfig
-      .mockReturnValueOnce(makeSelect([mockClient]));       // get client
+    vi.mocked(db.select).mockReturnValueOnce(makeSelect([mockLoyaltyConfig]));
+    txState.selectRows = [[mockClient], [], []]; // client, audit marker, legacy points
 
     const result = await issuePoints({
       clientId: "client-001",
@@ -216,10 +248,12 @@ describe("Test 3 — Acumular puntos tras venta", () => {
     expect(result).not.toBeNull();
     expect(result!.puntos).toBe(45);
     expect(result!.saldoPosterior).toBe(mockClient.puntosSaldo + 45);
+    expect(result!.alreadyRecorded).toBe(false);
   });
 
-  it("issuePoints returns null when loyalty is disabled", async () => {
+  it("issuePoints records the paid visit when points are disabled", async () => {
     vi.mocked(db.select).mockReturnValueOnce(makeSelect([{ ...mockLoyaltyConfig, activo: false }]));
+    txState.selectRows = [[mockClient], [], []];
 
     const result = await issuePoints({
       clientId: "client-001",
@@ -229,7 +263,29 @@ describe("Test 3 — Acumular puntos tras venta", () => {
       empleadoNombre: "",
     });
 
-    expect(result).toBeNull();
+    expect(result).toMatchObject({
+      puntos: 0,
+      saldoPosterior: mockClient.puntosSaldo,
+      alreadyRecorded: false,
+    });
+    expect(txState.updateValues).toHaveLength(1);
+  });
+
+  it("issuePoints never records the same paid order twice", async () => {
+    vi.mocked(db.select).mockReturnValueOnce(makeSelect([mockLoyaltyConfig]));
+    txState.selectRows = [[mockClient], [{ id: "audit-existing" }]];
+
+    const result = await issuePoints({
+      clientId: "client-001",
+      orderId: "order-001",
+      importeTotal: 100,
+      empleadoId: null,
+      empleadoNombre: "",
+    });
+
+    expect(result?.alreadyRecorded).toBe(true);
+    expect(txState.insertValues).toHaveLength(0);
+    expect(txState.updateValues).toHaveLength(0);
   });
 });
 
@@ -433,7 +489,8 @@ describe("Test 9 — Mostrar historial del cliente", () => {
       .mockReturnValueOnce(makeSelect([{ id: "order-001", createdAt: new Date(), status: "paid" }])) // orders
       .mockReturnValueOnce(makeSelect([]))                   // reservations
       .mockReturnValueOnce(makeSelect([]))                   // points
-      .mockReturnValueOnce(makeSelect([]));                  // giftCards
+      .mockReturnValueOnce(makeSelect([]))                   // giftCards
+      .mockReturnValueOnce(makeSelect([]));                  // promotions
 
     const history = await getClientHistory("client-001");
 
@@ -443,6 +500,8 @@ describe("Test 9 — Mostrar historial del cliente", () => {
     expect(history).toHaveProperty("reservations");
     expect(history).toHaveProperty("points");
     expect(history).toHaveProperty("giftCards");
+    expect(history).toHaveProperty("benefits");
+    expect(history).toHaveProperty("availableRewards");
     expect(history).toHaveProperty("stats");
     expect(history!.stats).toHaveProperty("totalGasto");
     expect(history!.stats).toHaveProperty("totalVisitas");
@@ -457,6 +516,7 @@ describe("Test 9 — Mostrar historial del cliente", () => {
       .mockReturnValueOnce(makeSelect([]))
       .mockReturnValueOnce(makeSelect([]))
       .mockReturnValueOnce(makeSelect([]))
+      .mockReturnValueOnce(makeSelect([]))
       .mockReturnValueOnce(makeSelect([]));
 
     const history = await getClientHistory("client-001");
@@ -467,6 +527,43 @@ describe("Test 9 — Mostrar historial del cliente", () => {
     vi.mocked(db.select).mockReturnValueOnce(makeSelect([]));
     const history = await getClientHistory("nonexistent");
     expect(history).toBeNull();
+  });
+
+  it("getClientHistory returns existing level benefits and usable rewards", async () => {
+    const client = { ...mockClient, nivelId: "level-1", nivelNombre: "Oro" };
+    const reward = {
+      id: "promo-1",
+      nombre: "10% clientes Oro",
+      descripcion: "Descuento fidelización",
+      tipo: "descuento_porcentual",
+      valor: "10",
+      codigo: "",
+      activo: true,
+      fechaInicio: null,
+      fechaFin: null,
+      diasSemana: [],
+      horaInicio: "",
+      horaFin: "",
+      montoMinimo: "0",
+      usoMaximo: 0,
+      usoActual: 0,
+      usoMaximoPorCliente: 1,
+      createdAt: new Date(),
+    };
+    vi.mocked(db.select)
+      .mockReturnValueOnce(makeSelect([client]))
+      .mockReturnValueOnce(makeSelect([])) // orders
+      .mockReturnValueOnce(makeSelect([])) // reservations
+      .mockReturnValueOnce(makeSelect([])) // points
+      .mockReturnValueOnce(makeSelect([])) // gift cards
+      .mockReturnValueOnce(makeSelect([{ id: "level-1", beneficios: ["Postre incluido"], activo: true }]))
+      .mockReturnValueOnce(makeSelect([reward]))
+      .mockReturnValueOnce(makeSelect([])); // coupon uses
+
+    const history = await getClientHistory("client-001");
+
+    expect(history?.benefits).toEqual(["Postre incluido"]);
+    expect(history?.availableRewards).toEqual([reward]);
   });
 });
 
@@ -490,9 +587,8 @@ describe("Test 10 — Caducidad de puntos", () => {
 
   it("issuePoints calcula fecha de caducidad cuando caducidadDias > 0", async () => {
     const configConCaducidad = { ...mockLoyaltyConfig, caducidadDias: 365 };
-    vi.mocked(db.select)
-      .mockReturnValueOnce(makeSelect([configConCaducidad]))
-      .mockReturnValueOnce(makeSelect([mockClient]));
+    vi.mocked(db.select).mockReturnValueOnce(makeSelect([configConCaducidad]));
+    txState.selectRows = [[mockClient], [], []];
 
     const result = await issuePoints({
       clientId: "client-001",
@@ -508,9 +604,8 @@ describe("Test 10 — Caducidad de puntos", () => {
 
   it("issuePoints no calcula caducidad cuando caducidadDias = 0 (nunca caducan)", async () => {
     const configSinCaducidad = { ...mockLoyaltyConfig, caducidadDias: 0 };
-    vi.mocked(db.select)
-      .mockReturnValueOnce(makeSelect([configSinCaducidad]))
-      .mockReturnValueOnce(makeSelect([mockClient]));
+    vi.mocked(db.select).mockReturnValueOnce(makeSelect([configSinCaducidad]));
+    txState.selectRows = [[mockClient], [], []];
 
     const result = await issuePoints({
       clientId: "client-001",

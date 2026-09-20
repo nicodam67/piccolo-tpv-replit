@@ -13,15 +13,20 @@ const mockState = {
   deleteRows:   [] as MockRow[],
   txUpdateRows: [] as MockRow[],
   txInsertRows: [] as MockRow[],
+  updateValues: [] as unknown[],
 };
 
 vi.mock("@workspace/db", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@workspace/db")>();
 
-  function updateChain(resultFn: () => MockRow[]) {
+  function updateChain(resultFn: () => MockRow[], onSet?: (value: unknown) => void) {
     const chain: Record<string, unknown> = {};
-    const methods = ["where","from","set","values","returning","limit","orderBy","innerJoin","leftJoin","groupBy","offset"] as const;
+    const methods = ["where","from","values","returning","limit","orderBy","innerJoin","leftJoin","groupBy","offset"] as const;
     methods.forEach(m => { chain[m] = vi.fn(() => chain); });
+    chain.set = vi.fn((value: unknown) => {
+      onSet?.(value);
+      return chain;
+    });
     chain.then = (resolve: (v: MockRow[]) => unknown) => Promise.resolve(resultFn()).then(resolve);
     return chain;
   }
@@ -51,7 +56,7 @@ vi.mock("@workspace/db", async (importOriginal) => {
   return {
     ...actual,
     db: {
-      update:  () => updateChain(() => mockState.updateRows),
+      update:  () => updateChain(() => mockState.updateRows, value => mockState.updateValues.push(value)),
       insert:  () => makeInsert(() => mockState.insertRows),
       select:  () => makeSelect(() => mockState.selectRows),
       delete:  () => {
@@ -118,6 +123,7 @@ beforeEach(() => {
   mockState.deleteRows   = [];
   mockState.txUpdateRows = [];
   mockState.txInsertRows = [];
+  mockState.updateValues = [];
 });
 
 // ── Test 5: GET /reservations ─────────────────────────────────────────────────
@@ -230,5 +236,23 @@ describe("Test 7 — POST /reservations/:id/arrive", () => {
       expect(res.body.tableOpened.tableId).toBeDefined();
       expect(res.body.tableOpened.orderId).toBeDefined();
     }
+  });
+});
+
+describe("Loyalty visit accounting", () => {
+  it("does not count a second visit when a reservation is finalized", async () => {
+    mockState.selectRows = [{ ...CONFIRMED_RES, status: "sentada", clientId: "client-1" }];
+    mockState.updateRows = [{ ...CONFIRMED_RES, status: "finalizada", clientId: "client-1" }];
+    mockState.insertRows = [{ id: "history-1" }];
+
+    const res = await request(app)
+      .patch("/api/reservations/res-2")
+      .set("Authorization", WAITER)
+      .send({ status: "finalizada" });
+
+    expect(res.status).toBe(200);
+    expect(mockState.updateValues).not.toContainEqual(
+      expect.objectContaining({ totalVisitas: expect.anything() }),
+    );
   });
 });

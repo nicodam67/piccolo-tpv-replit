@@ -430,6 +430,39 @@ function ClientDetail({ client, history, onEdit, onRefresh }: { client: CrmClien
         {client.observaciones && <InfoRow icon={<AlertCircle size={13} />} label={client.observaciones} />}
       </div>
 
+      {history?.benefits?.length > 0 && (
+        <div>
+          <h3 className="font-black text-sm mb-2 text-muted-foreground uppercase tracking-wide">Beneficios del nivel</h3>
+          <div className="flex flex-wrap gap-2">
+            {history.benefits.map((benefit: string) => (
+              <span key={benefit} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300 text-sm">
+                <Trophy size={12} /> {benefit}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {history?.availableRewards?.length > 0 && (
+        <div>
+          <h3 className="font-black text-sm mb-2 text-muted-foreground uppercase tracking-wide">Recompensas disponibles</h3>
+          <div className="space-y-2">
+            {history.availableRewards.map((reward: any) => (
+              <div key={reward.id} className="flex items-start gap-3 py-2.5 px-3 rounded-xl bg-emerald-500/5 border border-emerald-500/15">
+                <Tag size={14} className="text-emerald-400 mt-0.5 shrink-0" />
+                <div>
+                  <p className="font-semibold text-sm">{reward.nombre}</p>
+                  {reward.descripcion && <p className="text-xs text-muted-foreground mt-0.5">{reward.descripcion}</p>}
+                  {parseFloat(reward.montoMinimo ?? '0') > 0 && (
+                    <p className="text-[10px] text-muted-foreground mt-1">Compra mínima: {fmtMoney(reward.montoMinimo)}</p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Recent orders */}
       {history?.orders?.length > 0 && (
         <div>
