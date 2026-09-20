@@ -15,6 +15,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import request from "supertest";
 
 // ── makeChain helper ──────────────────────────────────────────────────────────
+const setPayloads: unknown[] = [];
 function makeChain(value: unknown) {
   const chain: Record<string, unknown> & {
     then: (r: (v: unknown) => unknown, j?: (e: unknown) => unknown) => Promise<unknown>;
@@ -25,8 +26,11 @@ function makeChain(value: unknown) {
     "select", "from", "where", "orderBy", "insert", "update", "delete",
     "set", "values", "returning", "innerJoin", "leftJoin", "limit",
     "groupBy", "offset", "onConflictDoUpdate", "catch",
+    "for",
   ]) {
-    chain[m] = () => chain;
+    chain[m] = m === "set"
+      ? (payload: unknown) => { setPayloads.push(payload); return chain; }
+      : () => chain;
   }
   return chain;
 }
@@ -46,6 +50,7 @@ const mockDb = vi.hoisted(() => ({
   update: vi.fn(),
   delete: vi.fn(),
   transaction: vi.fn(),
+  execute: vi.fn(),
 }));
 
 vi.mock("@workspace/db", async (importOriginal) => {
@@ -130,12 +135,14 @@ const TICKET = {
 
 // ── Setup: reset mocks before each test ──────────────────────────────────────
 beforeEach(() => {
+  setPayloads.length = 0;
   vi.clearAllMocks();
   // Default: most queries return empty / not-found
   mockDb.select.mockReturnValue(makeChain([]));
   mockDb.insert.mockReturnValue(makeChain([]));
   mockDb.update.mockReturnValue(makeChain([]));
   mockDb.delete.mockReturnValue(makeChain([]));
+  mockDb.execute.mockResolvedValue({ rows: [] });
   mockDb.transaction.mockImplementation(async (fn: (tx: typeof mockDb) => Promise<unknown>) =>
     fn(mockDb)
   );
@@ -225,10 +232,11 @@ describe("POST /api/orders/:id/payments", () => {
         return makeChain([]);
       });
       mockDb.transaction.mockImplementationOnce(async (fn: (tx: typeof mockDb) => Promise<unknown>) => {
+        const txSelectRows = [[OPEN_ORDER], [], [{ paid: "0" }]];
         const txMock = {
           ...mockDb,
           insert: vi.fn().mockReturnValue(makeChain([PARTIAL_PAYMENT_1])),
-          select: vi.fn().mockReturnValue(makeChain([])), // no ticket yet (still 10.00 remaining)
+          select: vi.fn(() => makeChain(txSelectRows.shift() ?? [])),
           update: vi.fn().mockReturnValue(makeChain([])),
         };
         return fn(txMock as unknown as typeof mockDb);
@@ -260,10 +268,11 @@ describe("POST /api/orders/:id/payments", () => {
         return makeChain([]);
       });
       mockDb.transaction.mockImplementationOnce(async (fn: (tx: typeof mockDb) => Promise<unknown>) => {
+        const txSelectRows = [[OPEN_ORDER], [], [{ paid: "10.00" }]];
         const txMock = {
           ...mockDb,
           insert: vi.fn().mockReturnValue(makeChain([PARTIAL_PAYMENT_2])),
-          select: vi.fn().mockReturnValue(makeChain([TICKET])), // ticket issued on full payment
+          select: vi.fn(() => makeChain(txSelectRows.shift() ?? [])),
           update: vi.fn().mockReturnValue(makeChain([])),
         };
         return fn(txMock as unknown as typeof mockDb);
@@ -294,6 +303,7 @@ describe("POST /api/orders/:id/payments", () => {
     expect(res.status).toBe(201);
     expect(res.body.payment).toBeTruthy();
     expect(res.body.idempotent).toBeUndefined();
+    expect(setPayloads).toContainEqual(expect.objectContaining({ status: "pendiente_limpieza" }));
   });
 
   // ── Scenario 4 ──────────────────────────────────────────────────────────────

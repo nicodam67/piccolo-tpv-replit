@@ -1,10 +1,23 @@
 import { mutation } from "./_generated/server";
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
+
+function assertExplicitDevelopmentDemo(secret: string): void {
+  const expected = process.env.DEMO_SEED_SECRET;
+  if (
+    process.env.QR_MENU_ENV !== "development"
+    || process.env.QR_MENU_DEMO !== "true"
+    || !expected
+    || secret !== expected
+  ) {
+    throw new ConvexError({ message: "Forbidden", code: "FORBIDDEN" });
+  }
+}
 
 // Seeds the database with sample menu data if empty
 export const seedIfEmpty = mutation({
-  args: {},
-  handler: async (ctx) => {
+  args: { secret: v.string() },
+  handler: async (ctx, args) => {
+    assertExplicitDevelopmentDemo(args.secret);
     const existing = await ctx.db.query("categories").first();
     if (existing) return; // already seeded
 
@@ -207,8 +220,7 @@ export const seedIfEmpty = mutation({
 export const publicSeedIfEmpty = mutation({
   args: { secret: v.string() },
   handler: async (ctx, args) => {
-    // Simple guard — not a real secret, just prevents accidental calls
-    if (args.secret !== "init") return;
+    assertExplicitDevelopmentDemo(args.secret);
     const existing = await ctx.db.query("categories").first();
     if (existing) return;
     // Reuse the same logic — we call inner mutations via ctx.db directly

@@ -127,6 +127,10 @@ router.put(
 router.get("/public/branding", async (_req, res): Promise<void> => {
   const rows = await db.select().from(businessConfigTable).limit(1);
   if (rows.length === 0) {
+    if (process.env["NODE_ENV"] === "production") {
+      res.status(503).json({ error: "Carta no configurada", code: "QR_NOT_CONFIGURED" });
+      return;
+    }
     res.json({
       // New QR-module fields
       restaurantName: "", tagline: "", heroImageUrl: "", heroVideoUrl: "",

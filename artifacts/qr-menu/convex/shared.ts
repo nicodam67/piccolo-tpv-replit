@@ -20,6 +20,7 @@
 
 import { query } from "./_generated/server";
 import { v } from "convex/values";
+import { requireAdmin } from "./requireAdmin";
 
 /**
  * getMenuSnapshot — Returns the complete menu in a single call.
@@ -40,6 +41,7 @@ export const getMenuSnapshot = query({
     includeUnavailable: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
+    if (args.includeUnavailable) await requireAdmin(ctx);
     const includeUnavailable = args.includeUnavailable ?? false;
 
     // ── Categories ─────────────────────────────────────────────────────────
@@ -117,10 +119,12 @@ export const getCategoryWithItems = query({
     includeUnavailable: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
+    if (args.includeUnavailable) await requireAdmin(ctx);
     const includeUnavailable = args.includeUnavailable ?? false;
 
     const category = await ctx.db.get(args.categoryId);
     if (!category) return null;
+    if (!includeUnavailable && category.available === false) return null;
 
     const rawItems = await ctx.db
       .query("menuItems")

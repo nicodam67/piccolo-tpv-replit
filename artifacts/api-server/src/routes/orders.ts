@@ -108,7 +108,7 @@ router.get("/tables/:tableId/order", requireAuth, async (req, res): Promise<void
   const [order] = await db
     .select()
     .from(ordersTable)
-    .where(and(eq(ordersTable.tableId, tableId), inArray(ordersTable.status, ["open", "sent", "ready", "bill_requested"])))
+    .where(and(eq(ordersTable.tableId, tableId), inArray(ordersTable.status, ["open", "sent", "ready", "served", "bill_requested"])))
     .orderBy(ordersTable.createdAt)
     .limit(1);
 
@@ -127,6 +127,19 @@ router.patch("/orders/:orderId", requireAuth, async (req, res): Promise<void> =>
   };
 
   const ALLOWED_STATUSES = ["open", "bill_requested"];
+  const [currentOrder] = await db.select({ status: ordersTable.status })
+    .from(ordersTable)
+    .where(eq(ordersTable.id, orderId))
+    .limit(1);
+  if (!currentOrder) { res.status(404).json({ error: "Pedido no encontrado" }); return; }
+  if (["paid", "completed"].includes(currentOrder.status)) {
+    res.status(409).json({ error: "Un pedido terminal no puede reabrirse" });
+    return;
+  }
+  if (status === "open" && currentOrder.status !== "bill_requested") {
+    res.status(409).json({ error: "Solo puede cancelarse una cuenta previamente solicitada" });
+    return;
+  }
   const updates: Record<string, unknown> = {};
   if (guestCount != null && Number.isFinite(guestCount) && guestCount >= 1)
     updates.guestCount = Math.floor(guestCount);
@@ -135,13 +148,20 @@ router.patch("/orders/:orderId", requireAuth, async (req, res): Promise<void> =>
 
   if (!Object.keys(updates).length) { res.status(400).json({ error: "Sin cambios" }); return; }
 
-  const [order] = await db
-    .update(ordersTable)
-    .set(updates as Partial<typeof ordersTable.$inferInsert>)
-    .where(eq(ordersTable.id, orderId))
-    .returning();
+  const order = await db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${"order-critical:" + orderId}))`);
+    const [locked] = await tx.select({ status: ordersTable.status }).from(ordersTable)
+      .where(eq(ordersTable.id, orderId))
+      .for("update");
+    if (!locked || ["paid", "completed"].includes(locked.status)) return null;
+    const [updated] = await tx.update(ordersTable)
+      .set(updates as Partial<typeof ordersTable.$inferInsert>)
+      .where(and(eq(ordersTable.id, orderId), eq(ordersTable.status, locked.status)))
+      .returning();
+    return updated;
+  });
 
-  if (!order) { res.status(404).json({ error: "Pedido no encontrado" }); return; }
+  if (!order) { res.status(409).json({ error: "El pedido cambió y ya no puede modificarse" }); return; }
 
   if (status === "bill_requested") {
     // Update the table status as well
@@ -1029,25 +1049,36 @@ router.post("/orders/:orderId/pase", requireAuth, async (req, res): Promise<void
     const [order] = await db.select().from(ordersTable).where(eq(ordersTable.id, orderId));
 
     if (!order) { res.status(404).json({ error: "Pedido no encontrado" }); return; }
+    if (["paid", "completed", "bill_requested"].includes(order.status)) {
+      res.status(409).json({ error: "El pedido ya está en un estado terminal o de cobro" });
+      return;
+    }
+    const tasks = await db.select({ status: kitchenTasksTable.status })
+      .from(kitchenTasksTable)
+      .where(eq(kitchenTasksTable.orderId, orderId));
+    if (
+      tasks.length === 0
+      || tasks.some((task) => !["ready", "collected", "served", "cancelled"].includes(task.status))
+    ) {
+      res.status(409).json({ error: "El pedido aún tiene tareas en preparación" });
+      return;
+    }
 
     await db.transaction(async (tx) => {
       await tx
         .update(kitchenTasksTable)
         .set({ status: "served", servedAt: now, updatedAt: now })
-        .where(eq(kitchenTasksTable.orderId, orderId));
+        .where(and(
+          eq(kitchenTasksTable.orderId, orderId),
+          inArray(kitchenTasksTable.status, ["ready", "collected"]),
+        ));
 
       await tx
         .update(ordersTable)
         .set({ status: "served" })
         .where(eq(ordersTable.id, orderId));
-
-      if (order.tableId) {
-        await tx
-          .update(restaurantTablesTable)
-          .set({ status: "free" })
-          .where(eq(restaurantTablesTable.id, order.tableId));
-      }
     });
+    await writeAudit(orderId, req.user?.id, req.user?.name ?? "", "order_served", "Pedido servido; mesa permanece pendiente de cobro");
 
     try {
       if (order.tableId) {

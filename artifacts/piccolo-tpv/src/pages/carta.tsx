@@ -250,6 +250,7 @@ export default function Carta() {
   const [categories, setCategories] = useState<CartaCategory[] | null>(null);
   const [branding, setBranding] = useState<PublicBranding | null>(null);
   const [loading, setLoading] = useState(true);
+  const [configurationUnavailable, setConfigurationUnavailable] = useState(false);
   const [activeAllergen, setActiveAllergen] = useState<string | null>(null);
   const [activeDiet, setActiveDiet] = useState<DietaryKey | null>(null);
   const [scheduleOpen, setScheduleOpen] = useState(false);
@@ -268,7 +269,8 @@ export default function Carta() {
         setBranding(brand);
         applyTheme(brand);
       }
-    }).finally(() => setLoading(false));
+    }).catch(() => setConfigurationUnavailable(true))
+      .finally(() => setLoading(false));
   }, []);
 
   useEffect(() => {
@@ -319,6 +321,17 @@ export default function Carta() {
   const mapsUrl = footerAddress
     ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(footerAddress)}`
     : null;
+
+  if (configurationUnavailable) {
+    return (
+      <main className="min-h-screen grid place-items-center bg-[#faf8f4] p-8 text-center text-stone-800">
+        <div>
+          <h1 className="text-3xl font-bold mb-3">Carta no disponible</h1>
+          <p>La carta todavía no está configurada. Contacta con el establecimiento.</p>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <div className="min-h-screen" style={{ background: branding?.themeColors?.background ?? '#faf8f4' }}>
