@@ -1801,6 +1801,20 @@ export interface ProfitabilityReport {
   estimatedProfit: string;
   soldAtLoss: Array<ProfitabilityRankedProduct & { contribution: number }>;
   topContribution: Array<ProfitabilityRankedProduct & { contribution: number }>;
+  marginEvolution: Array<{
+    date: string;
+    sales: number;
+    netSales: number;
+    cogs: number;
+    contribution: number;
+    marginPct: number;
+  }>;
+  costEvolution: Array<{
+    ingredientId: string;
+    previousCost: string;
+    newCost: string;
+    createdAt: string;
+  }>;
   mostProfitable: ProfitabilityRankedProduct[];
   leastProfitable: ProfitabilityRankedProduct[];
   highFoodCost: ProfitabilityRankedProduct[];

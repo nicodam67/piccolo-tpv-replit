@@ -353,6 +353,29 @@ function InformesTab({ channel }: { channel: string }) {
         </div>
       )}
 
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="rounded-xl border border-border bg-card overflow-hidden">
+          <div className="px-4 py-2.5 bg-secondary/30"><p className="text-xs font-bold">Evolución de márgenes</p></div>
+          {(report.marginEvolution ?? []).slice(-7).map((point: any) => (
+            <div key={point.date} className="flex px-4 py-2 border-t border-border text-xs">
+              <span className="flex-1">{point.date}</span>
+              <span>{point.contribution.toFixed(2)}€ · <strong>{point.marginPct.toFixed(1)}%</strong></span>
+            </div>
+          ))}
+          {!report.marginEvolution?.length && <p className="p-4 text-xs text-muted-foreground">Sin ventas pagadas en el periodo.</p>}
+        </div>
+        <div className="rounded-xl border border-border bg-card overflow-hidden">
+          <div className="px-4 py-2.5 bg-secondary/30"><p className="text-xs font-bold">Evolución de costes</p></div>
+          {(report.costEvolution ?? []).slice(-7).map((point: any, index: number) => (
+            <div key={`${point.ingredientId}-${point.createdAt}-${index}`} className="flex px-4 py-2 border-t border-border text-xs">
+              <span className="flex-1">{new Date(point.createdAt).toLocaleDateString('es-ES')}</span>
+              <span>{parseFloat(point.previousCost).toFixed(2)}€ → <strong>{parseFloat(point.newCost).toFixed(2)}€</strong></span>
+            </div>
+          ))}
+          {!report.costEvolution?.length && <p className="p-4 text-xs text-muted-foreground">Sin cambios de coste en el periodo.</p>}
+        </div>
+      </div>
+
       {/* Most profitable */}
       {report.mostProfitable?.length > 0 && (
         <div className="rounded-xl border border-border bg-card overflow-hidden">

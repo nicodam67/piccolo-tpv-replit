@@ -450,6 +450,7 @@ router.get(
         unitPrice: orderItemsTable.unitPrice,
         taxRate: orderItemsTable.taxRate,
         channel: ordersTable.channel,
+        createdAt: ordersTable.createdAt,
       })
       .from(orderItemsTable)
       .innerJoin(ordersTable, eq(orderItemsTable.orderId, ordersTable.id))
@@ -504,6 +505,11 @@ router.get(
     const totalUnits = Array.from(soldByProduct.values())
       .reduce((total, sale) => total + sale.units, 0);
     const allocationMethod = (settings?.allocationMethod ?? "none") as "none" | "revenue" | "units";
+    const activeCommissions = await db.select().from(channelCommissionsTable)
+      .where(eq(channelCommissionsTable.active, true));
+    const commissionByChannel = new Map(
+      activeCommissions.map((commission) => [commission.channel, commission]),
+    );
 
     const salesProducts = await Promise.all(ranked
       .filter((product) => soldByProduct.has(product.id))
@@ -511,11 +517,7 @@ router.get(
         const sale = soldByProduct.get(product.id)!;
         let commissions = 0;
         for (const [saleChannel, values] of sale.channels) {
-          const [commission] = await db.select().from(channelCommissionsTable)
-            .where(and(
-              eq(channelCommissionsTable.channel, saleChannel),
-              eq(channelCommissionsTable.active, true),
-            ));
+          const commission = commissionByChannel.get(saleChannel);
           commissions += values.netSales * parseFloat(commission?.percent ?? "0") / 100
             + values.units * parseFloat(commission?.fixedAmount ?? "0");
         }
@@ -550,6 +552,44 @@ router.get(
     const topContribution = [...salesProducts]
       .sort((a, b) => b.contribution - a.contribution)
       .slice(0, 5);
+    const rankedById = new Map(ranked.map((product) => [product.id, product]));
+    const dailyMap = new Map<string, { sales: number; netSales: number; cogs: number; contribution: number }>();
+    for (const sale of salesRows) {
+      const product = rankedById.get(sale.productId);
+      if (!product) continue;
+      const day = sale.createdAt.toISOString().slice(0, 10);
+      const quantity = sale.quantity ?? 0;
+      const gross = parseFloat(sale.unitPrice) * quantity;
+      const net = gross / (1 + sale.taxRate / 100);
+      const commission = commissionByChannel.get(sale.channel);
+      const commissionCost = net * parseFloat(commission?.percent ?? "0") / 100
+        + quantity * parseFloat(commission?.fixedAmount ?? "0");
+      const cogs = product.unitCost * quantity;
+      const current = dailyMap.get(day) ?? { sales: 0, netSales: 0, cogs: 0, contribution: 0 };
+      current.sales += gross;
+      current.netSales += net;
+      current.cogs += cogs;
+      current.contribution += net - cogs - commissionCost;
+      dailyMap.set(day, current);
+    }
+    const marginEvolution = Array.from(dailyMap.entries())
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([date, values]) => ({
+        date,
+        ...values,
+        marginPct: values.netSales > 0 ? values.contribution / values.netSales * 100 : 0,
+      }));
+    const costEvolution = await db.select({
+      ingredientId: ingredientCostHistoryTable.ingredientId,
+      previousCost: ingredientCostHistoryTable.previousCost,
+      newCost: ingredientCostHistoryTable.newCost,
+      createdAt: ingredientCostHistoryTable.createdAt,
+    }).from(ingredientCostHistoryTable)
+      .where(and(
+        gte(ingredientCostHistoryTable.createdAt, fromDate),
+        lte(ingredientCostHistoryTable.createdAt, toDate),
+      ))
+      .orderBy(asc(ingredientCostHistoryTable.createdAt));
 
     res.json({
       from: fromDate.toISOString(),
@@ -566,6 +606,8 @@ router.get(
       soldAtLoss,
       topContribution,
       salesProducts,
+      marginEvolution,
+      costEvolution,
       mostProfitable,
       leastProfitable,
       highFoodCost,
@@ -951,14 +993,38 @@ router.post(
       res.status(400).json({ error: "Objetivo no válido" });
       return;
     }
-    const [target] = await db.insert(profitabilityTargetsTable).values({
+    const normalizedCategoryId = scopeType === "category" ? categoryId : null;
+    const normalizedProductId = scopeType === "product" ? productId : null;
+    const normalizedChannel = channel || null;
+    const conditions = and(
+      eq(profitabilityTargetsTable.scopeType, scopeType),
+      normalizedCategoryId
+        ? eq(profitabilityTargetsTable.categoryId, normalizedCategoryId)
+        : isNull(profitabilityTargetsTable.categoryId),
+      normalizedProductId
+        ? eq(profitabilityTargetsTable.productId, normalizedProductId)
+        : isNull(profitabilityTargetsTable.productId),
+      normalizedChannel
+        ? eq(profitabilityTargetsTable.channel, normalizedChannel)
+        : isNull(profitabilityTargetsTable.channel),
+    );
+    const [existing] = await db.select().from(profitabilityTargetsTable).where(conditions);
+    const values = {
       scopeType,
-      categoryId: scopeType === "category" ? categoryId : null,
-      productId: scopeType === "product" ? productId : null,
-      channel: channel || null,
+      categoryId: normalizedCategoryId,
+      productId: normalizedProductId,
+      channel: normalizedChannel,
       targetMarginPct: String(targetMarginPct),
+      active: true,
       updatedBy: req.user?.id ?? null,
-    }).returning();
+      updatedAt: new Date(),
+    };
+    const [target] = existing
+      ? await db.update(profitabilityTargetsTable)
+          .set(values)
+          .where(eq(profitabilityTargetsTable.id, existing.id))
+          .returning()
+      : await db.insert(profitabilityTargetsTable).values(values).returning();
     res.status(201).json(target);
   },
 );

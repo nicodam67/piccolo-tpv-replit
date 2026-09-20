@@ -187,4 +187,27 @@ describe('Profitability routes', () => {
       expect(alert).toHaveProperty('threshold');
     }
   });
+
+  it('POST /admin/profitability/scenario is read-only', async () => {
+    const res = await request(app)
+      .post('/admin/profitability/scenario')
+      .send({ operatingExpensePercent: 15 });
+    expect(res.status).toBe(200);
+    expect(res.body.persisted).toBe(false);
+    expect(res.body.products).toEqual([]);
+  });
+
+  it('PATCH /admin/profitability/config rejects unknown allocation methods', async () => {
+    const res = await request(app)
+      .patch('/admin/profitability/config')
+      .send({ allocationMethod: 'invented_precision' });
+    expect(res.status).toBe(400);
+  });
+
+  it('POST /admin/profitability/price-proposals requires a real product and reason', async () => {
+    const res = await request(app)
+      .post('/admin/profitability/price-proposals')
+      .send({ productId: 'missing', proposedPrice: 12, reason: '' });
+    expect(res.status).toBe(400);
+  });
 });
