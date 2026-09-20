@@ -13,16 +13,30 @@ import { ConvexAuthProvider } from "@convex-dev/auth/react";
 import { ConvexReactClient } from "convex/react";
 
 const convexUrl = import.meta.env.VITE_CONVEX_URL;
-const isDemoMode = !convexUrl;
+declare const __QR_RUNTIME_MODE__: "live" | "demo" | "blocked";
+const runtimeMode = __QR_RUNTIME_MODE__;
 
 // In demo mode the ConvexReactClient stub (src/lib/demo-convex.tsx) is
 // aliased over convex/react, so this cast is safe.
-const convex = isDemoMode
+const convex = runtimeMode !== "live"
   ? (null as unknown as ConvexReactClient)
   : new ConvexReactClient(convexUrl!);
 
 export function ConvexProvider({ children }: { children: React.ReactNode }) {
-  if (isDemoMode) {
+  if (runtimeMode === "blocked") {
+    return (
+      <main style={{
+        minHeight: "100vh", display: "grid", placeItems: "center",
+        background: "#f8f7f4", color: "#292524", padding: "2rem", textAlign: "center",
+      }}>
+        <div>
+          <h1 style={{ fontSize: "1.75rem", marginBottom: "0.75rem" }}>Carta no disponible</h1>
+          <p>La carta todavía no está configurada. Contacta con el establecimiento.</p>
+        </div>
+      </main>
+    );
+  }
+  if (runtimeMode === "demo") {
     // ConvexAuthProvider is aliased to a passthrough in demo mode.
     return <ConvexAuthProvider client={convex}>{children}</ConvexAuthProvider>;
   }
