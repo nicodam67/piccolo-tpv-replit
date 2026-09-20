@@ -1,13 +1,15 @@
 # FoodCost — certificación funcional
 
 Fecha: 2026-09-20  
-Alcance: migración 0030, fórmulas, dashboard, propuestas, simulador y regresión.
+Alcance: migraciones 0030/0031, fórmulas, dashboard, reversiones económicas,
+snapshots COGS, propuestas, simulador y regresión.
 
 ## Resultado de ejecución
 
 - Migración 0030: PASS.
-- Casos FoodCost focalizados: 33/33 PASS.
-- Suite API completa: 651 PASS, 12 omitidos; 0 fallos.
+- Migración 0031: PASS.
+- Casos FoodCost focalizados: 51/51 PASS.
+- Suite API completa: 669 PASS, 12 omitidos; 0 fallos.
 - Typecheck completo: PASS.
 - Lint: PASS.
 - Auditor de rutas/RBAC: PASS, 64 ficheros sin endpoints desprotegidos.
@@ -18,6 +20,7 @@ Alcance: migración 0030, fórmulas, dashboard, propuestas, simulador y regresi�
 
 ```bash
 pnpm --filter @workspace/db certify:foodcost
+pnpm --filter @workspace/db certify:foodcost-economic
 pnpm --filter @workspace/api-server test
 pnpm run typecheck
 pnpm lint
@@ -94,16 +97,45 @@ Caso de control: 2 unidades a 11 € con IVA 10 % y snapshot COGS de 1,50 € po
 unidad debe producir 22 € de ventas, 20 € netos, 3 € COGS, 17 € de contribución,
 FoodCost ponderado 15 % y margen ponderado 85 %.
 
-### Bloqueantes encontrados
+### Cierre de los bloqueantes económicos
 
-1. `payment_voids` y devoluciones/refunds no se incorporan al hecho de venta de
-   FoodCost. Un ticket cuyo cobro se anula puede seguir contando como venta.
-2. El snapshot de consumo creado al enviar a cocina no normaliza la unidad de
-   receta contra la unidad de consumo y no expande subrecetas. Su coste puede
-   ser incorrecto aunque el dashboard informe cobertura histórica del 100 %.
+Las ventas y sus reversiones se proyectan como eventos inmutables:
 
-Hasta resolver ambos puntos no se certifica el dashboard económico para
-producción con anulaciones, conversiones o subrecetas.
+- ticket: evento positivo en `tickets.issued_at`;
+- anulación: evento negativo en `payment_voids.created_at`;
+- devolución de caja automática completada: evento negativo en `completed_at`;
+- devolución online: evento negativo en `payment_attempts.refunded_at`.
+
+Una devolución posterior no reescribe un periodo cerrado. En su propia fecha
+revierte ingreso bruto/neto, unidades y COGS proporcionalmente. Si `split_ref`
+identifica un grupo existente, la reversión se asigna exactamente a sus líneas;
+si no existe ámbito de artículo, se distribuye por ingreso pendiente. Los
+ajustes se limitan al valor reconocido, por lo que un reintento no produce
+ventas o unidades negativas.
+
+La captura COGS convierte la unidad de receta a la unidad de consumo con las
+conversiones FoodCost existentes, aplica cantidad vendida y merma y guarda
+cantidad/coste unitario en `stock_movements`. Las subrecetas se expanden por su
+composición y rendimiento. El resolvedor admite composición recursiva y rechaza
+ciclos, referencias inexistentes, unidades incompatibles, cantidades inválidas,
+rendimiento cero y composiciones vacías en lugar de registrar coste cero.
+
+La prueba de inmutabilidad captura mozzarella a 8 €/kg, cambia después el coste
+a 12 €/kg y confirma que el COGS reconocido permanece en 4 €.
+
+## Migración 0031
+
+Añade el índice único `payment_voids_original_payment_unique`. La certificación
+PGlite verifica:
+
+- conservación de anulaciones existentes;
+- transición condicional `completed → voided` una sola vez;
+- rechazo de una segunda anulación del mismo pago;
+- detección explícita de duplicados preexistentes sin borrarlos;
+- rollback del índice sin eliminar filas.
+
+Si existen duplicados históricos, el upgrade falla deliberadamente y exige
+revisión manual; la migración no destruye trazabilidad para poder continuar.
 
 ## Propuestas de precio
 
@@ -170,7 +202,7 @@ No se crean datos falsos ni se modifica configuración productiva.
 
 ## Recomendación
 
-**NO-GO** para producción mientras el dashboard no trate anulaciones/devoluciones
-y el snapshot histórico no aplique conversiones ni subrecetas. La migración,
-las fórmulas puras, las propuestas y el simulador no presentan bloqueantes
-conocidos dentro del alcance certificado.
+**GO** para cerrar el desarrollo y fusionar la PR dentro del alcance certificado.
+Los dos motivos exclusivos del NO-GO anterior tienen pruebas específicas
+reproducibles y pasan. La validación visual con PostgreSQL real y la arquitectura
+multi-centro siguen fuera de este cierre, tal como se acordó.

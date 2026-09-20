@@ -16,7 +16,10 @@ const rollback = await fs.readFile(
 
 async function createBase(db: PGlite): Promise<void> {
   await db.exec(`
-    CREATE TABLE payments (id uuid PRIMARY KEY DEFAULT gen_random_uuid());
+    CREATE TABLE payments (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      status text NOT NULL DEFAULT 'completed'
+    );
     CREATE TABLE payment_voids (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       original_payment_id uuid NOT NULL REFERENCES payments(id),
@@ -40,6 +43,18 @@ const index = await db.query<{ indexname: string }>(`
   WHERE indexname = 'payment_voids_original_payment_unique'
 `);
 assert.equal(index.rows[0]?.indexname, "payment_voids_original_payment_unique");
+const firstTransition = await db.query<{ id: string }>(`
+  UPDATE payments SET status = 'voided'
+  WHERE id = '00000000-0000-0000-0000-000000000001' AND status = 'completed'
+  RETURNING id
+`);
+const repeatedTransition = await db.query<{ id: string }>(`
+  UPDATE payments SET status = 'voided'
+  WHERE id = '00000000-0000-0000-0000-000000000001' AND status = 'completed'
+  RETURNING id
+`);
+assert.equal(firstTransition.rows.length, 1);
+assert.equal(repeatedTransition.rows.length, 0);
 await assert.rejects(() => db.exec(`
   INSERT INTO payment_voids (original_payment_id, reason)
   VALUES ('00000000-0000-0000-0000-000000000001', 'Reintento');
