@@ -41,6 +41,7 @@ import {
   profitabilityStatus,
   recognisedLineRevenue,
   recommendedPvp,
+  resolveTargetMargin,
 } from "../lib/profitability-calculator";
 
 const router: IRouter = Router();
@@ -186,24 +187,24 @@ async function getProfitabilityContext(
     ));
   const targets = await db.select().from(profitabilityTargetsTable)
     .where(eq(profitabilityTargetsTable.active, true));
-  const candidates = targets
-    .filter((target) => !target.channel || target.channel === channel)
-    .filter((target) =>
-      target.scopeType === "global"
-      || (target.scopeType === "category" && target.categoryId === categoryId)
-      || (target.scopeType === "product" && target.productId === productId),
-    )
-    .sort((a, b) => {
-      const rank = (target: typeof a) =>
-        (target.scopeType === "product" ? 4 : target.scopeType === "category" ? 2 : 0)
-        + (target.channel ? 1 : 0);
-      return rank(b) - rank(a);
-    });
+  const defaultTargetMarginPct = parseFloat(
+    settings?.defaultTargetMarginPct ?? String(DEFAULT_TARGET_MARGIN),
+  );
   return {
     channel,
-    targetMarginPct: parseFloat(candidates[0]?.targetMarginPct
-      ?? settings?.defaultTargetMarginPct
-      ?? String(DEFAULT_TARGET_MARGIN)),
+    targetMarginPct: resolveTargetMargin({
+      productId,
+      categoryId,
+      channel,
+      defaultTargetMarginPct,
+      targets: targets.map((target) => ({
+        scopeType: target.scopeType as "global" | "category" | "product",
+        categoryId: target.categoryId,
+        productId: target.productId,
+        channel: target.channel,
+        targetMarginPct: parseFloat(target.targetMarginPct),
+      })),
+    }),
     warningGapPct: parseFloat(settings?.warningGapPct ?? String(DEFAULT_WARNING_GAP)),
     commissionPercent: parseFloat(commission?.percent ?? "0"),
     commissionFixed: parseFloat(commission?.fixedAmount ?? "0"),

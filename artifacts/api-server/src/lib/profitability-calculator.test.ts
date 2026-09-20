@@ -7,6 +7,7 @@ import {
   profitabilityStatus,
   recognisedLineRevenue,
   recommendedPvp,
+  resolveTargetMargin,
 } from "./profitability-calculator";
 
 describe("profitability calculator", () => {
@@ -120,5 +121,76 @@ describe("profitability calculator", () => {
       gross: 20,
       isInvitation: true,
     })).toBe(0);
+  });
+
+  it("matches the deterministic FoodCost certification case", () => {
+    const recipe = calculateRecipeLineCost({
+      purchaseCost: 24,
+      conversionFactor: 12,
+      quantity: 500,
+      recipeUnit: "g",
+      consumptionUnit: "kg",
+      wastePercent: 10,
+    });
+    const metrics = calculateProfitability({
+      pvp: 11,
+      taxRate: 10,
+      productCost: recipe.effectiveCost,
+      commissionPercent: 10,
+      commissionFixed: 0.5,
+      allocatedOperatingCost: 0.5,
+    });
+    const recommended = recommendedPvp({
+      productCost: recipe.effectiveCost,
+      targetMarginPct: 50,
+      taxRate: 10,
+      commissionPercent: 10,
+      commissionFixed: 0.5,
+      allocatedOperatingCost: 0.5,
+    });
+
+    expect(recipe.ingredientCost).toBeCloseTo(1);
+    expect(recipe.wasteCost).toBeCloseTo(0.1);
+    expect(recipe.effectiveCost).toBeCloseTo(1.1);
+    expect(metrics.foodCostPct).toBeCloseTo(11);
+    expect(metrics.commission).toBeCloseTo(1.5);
+    expect(metrics.contribution).toBeCloseTo(7.4);
+    expect(metrics.contributionPct).toBeCloseTo(74);
+    expect(metrics.estimatedProfit).toBeCloseTo(6.9);
+    expect(metrics.estimatedProfitPct).toBeCloseTo(69);
+    expect(recommended).toBeCloseTo(5.775);
+    expect(profitabilityStatus(metrics.contribution, metrics.contributionPct, 70, 10)).toBe("green");
+  });
+
+  it("resolves margin targets by documented hierarchy", () => {
+    const targets = [
+      { scopeType: "global" as const, targetMarginPct: 55 },
+      { scopeType: "global" as const, channel: "delivery", targetMarginPct: 56 },
+      { scopeType: "category" as const, categoryId: "cat", targetMarginPct: 60 },
+      { scopeType: "category" as const, categoryId: "cat", channel: "delivery", targetMarginPct: 62 },
+      { scopeType: "product" as const, productId: "product", targetMarginPct: 65 },
+      { scopeType: "product" as const, productId: "product", channel: "delivery", targetMarginPct: 68 },
+    ];
+    expect(resolveTargetMargin({
+      productId: "product",
+      categoryId: "cat",
+      channel: "delivery",
+      defaultTargetMarginPct: 50,
+      targets,
+    })).toBe(68);
+    expect(resolveTargetMargin({
+      productId: "other",
+      categoryId: "cat",
+      channel: "delivery",
+      defaultTargetMarginPct: 50,
+      targets,
+    })).toBe(62);
+    expect(resolveTargetMargin({
+      productId: "other",
+      categoryId: "other",
+      channel: "tpv",
+      defaultTargetMarginPct: 50,
+      targets,
+    })).toBe(55);
   });
 });

@@ -19,7 +19,7 @@ ON CONFLICT (id) DO NOTHING;
 
 CREATE TABLE IF NOT EXISTS operating_expenses (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  name text NOT NULL,
+  name text NOT NULL CHECK (btrim(name) <> ''),
   category text NOT NULL CHECK (category IN (
     'personal', 'electricity', 'gas', 'water', 'rent', 'insurance',
     'accounting', 'maintenance', 'software', 'other'
@@ -38,8 +38,8 @@ CREATE TABLE IF NOT EXISTS operating_expenses (
 
 CREATE TABLE IF NOT EXISTS channel_commissions (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  channel text NOT NULL,
-  name text NOT NULL,
+  channel text NOT NULL CHECK (btrim(channel) <> ''),
+  name text NOT NULL CHECK (btrim(name) <> ''),
   percent numeric(5,2) NOT NULL DEFAULT 0 CHECK (percent >= 0 AND percent < 100),
   fixed_amount numeric(10,2) NOT NULL DEFAULT 0 CHECK (fixed_amount >= 0),
   active boolean NOT NULL DEFAULT true,
@@ -80,9 +80,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS profitability_targets_unique_scope
 CREATE TABLE IF NOT EXISTS price_change_proposals (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   product_id uuid NOT NULL REFERENCES products(id),
-  old_price numeric(10,2) NOT NULL,
+  old_price numeric(10,2) NOT NULL CHECK (old_price >= 0),
   proposed_price numeric(10,2) NOT NULL CHECK (proposed_price >= 0),
-  reason text NOT NULL,
+  reason text NOT NULL CHECK (btrim(reason) <> ''),
   status text NOT NULL DEFAULT 'pending'
     CHECK (status IN ('pending', 'approved', 'rejected', 'applied')),
   requested_by uuid REFERENCES employees(id) ON DELETE SET NULL,

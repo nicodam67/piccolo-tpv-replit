@@ -160,3 +160,34 @@ export function recognisedLineRevenue(input: {
       - allocatedOrderDiscount,
   );
 }
+
+export interface MarginTarget {
+  scopeType: "global" | "category" | "product";
+  categoryId?: string | null;
+  productId?: string | null;
+  channel?: string | null;
+  targetMarginPct: number;
+}
+
+export function resolveTargetMargin(input: {
+  productId: string;
+  categoryId: string;
+  channel: string;
+  defaultTargetMarginPct: number;
+  targets: MarginTarget[];
+}): number {
+  const candidates = input.targets
+    .filter((target) => !target.channel || target.channel === input.channel)
+    .filter((target) =>
+      target.scopeType === "global"
+      || (target.scopeType === "category" && target.categoryId === input.categoryId)
+      || (target.scopeType === "product" && target.productId === input.productId),
+    )
+    .sort((left, right) => {
+      const rank = (target: MarginTarget) =>
+        (target.scopeType === "product" ? 4 : target.scopeType === "category" ? 2 : 0)
+        + (target.channel ? 1 : 0);
+      return rank(right) - rank(left);
+    });
+  return candidates[0]?.targetMarginPct ?? input.defaultTargetMarginPct;
+}

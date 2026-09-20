@@ -2,10 +2,14 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import request from 'supertest';
 import express from 'express';
 import profitabilityRouter from './profitability';
+import { db } from '@workspace/db';
 
 // ─── Mock @workspace/db ───────────────────────────────────────────────────────
 vi.mock('@workspace/db', () => {
   const mockDb: any = {};
+  let selectResults: any[] = [];
+  let insertResults: any[] = [];
+  let updateResults: any[] = [];
 
   // Simple chainable query builder
   const chain = (result: any = []) => {
@@ -27,9 +31,30 @@ vi.mock('@workspace/db', () => {
     });
   };
 
-  mockDb.select = vi.fn(() => chain([]));
-  mockDb.insert = vi.fn(() => ({ values: () => ({ returning: () => Promise.resolve([{ id: 'test-id' }]) }) }));
-  mockDb.update = vi.fn(() => ({ set: () => ({ where: () => Promise.resolve([{}]) }) }));
+  mockDb.__setSelectResults = (...results: any[]) => { selectResults = results; };
+  mockDb.__setInsertResults = (...results: any[]) => { insertResults = results; };
+  mockDb.__setUpdateResults = (...results: any[]) => { updateResults = results; };
+  mockDb.__insertValues = vi.fn();
+  mockDb.select = vi.fn(() => chain(selectResults.shift() ?? []));
+  mockDb.insert = vi.fn(() => ({
+    values: (values: any) => {
+      mockDb.__insertValues(values);
+      return {
+        returning: () => Promise.resolve(insertResults.shift() ?? [{ id: 'test-id' }]),
+      };
+    },
+  }));
+  mockDb.update = vi.fn(() => ({
+    set: () => ({
+      where: () => {
+        const result = updateResults.shift() ?? [{}];
+        return {
+          returning: () => Promise.resolve(result),
+          then: (resolve: any, reject: any) => Promise.resolve(result).then(resolve, reject),
+        };
+      },
+    }),
+  }));
   mockDb.delete = vi.fn(() => ({ where: () => Promise.resolve([]) }));
   mockDb.transaction = vi.fn(async (cb: any) => cb(mockDb));
 
@@ -41,7 +66,7 @@ vi.mock('@workspace/db', () => {
     recipeItemsTable: { id: 'id', productId: 'product_id', formatId: 'format_id', ingredientId: 'ingredient_id', subrecipeId: 'subrecipe_id', quantity: 'quantity', wastePercent: 'waste_percent', packagingCost: 'packaging_cost', additionalCost: 'additional_cost' },
     ingredientsTable: { id: 'id', name: 'name', purchaseCost: 'purchase_cost' },
     subrecipesTable: { id: 'id', name: 'name', cost: 'cost' },
-    stockMovementsTable: { id: 'id', ingredientId: 'ingredient_id', movementType: 'movement_type', quantity: 'quantity', createdAt: 'created_at' },
+    stockMovementsTable: { id: 'id', ingredientId: 'ingredient_id', movementType: 'movement_type', quantity: 'quantity', unitCost: 'unit_cost', orderItemId: 'order_item_id', createdAt: 'created_at' },
     ingredientCostHistoryTable: { id: 'id', ingredientId: 'ingredient_id', previousCost: 'previous_cost', newCost: 'new_cost', supplierName: 'supplier_name', reason: 'reason', employeeId: 'employee_id', createdAt: 'created_at' },
     profitabilitySettingsTable: { id: 'id', defaultTargetMarginPct: 'default_target_margin_pct', warningGapPct: 'warning_gap_pct', allocationMethod: 'allocation_method' },
     operatingExpensesTable: { id: 'id', name: 'name', active: 'active', amount: 'amount' },
@@ -74,6 +99,9 @@ describe('Profitability routes', () => {
   beforeEach(() => {
     app = buildApp();
     vi.clearAllMocks();
+    (db as any).__setSelectResults();
+    (db as any).__setInsertResults();
+    (db as any).__setUpdateResults();
   });
 
   // 1. GET /admin/profitability returns array
@@ -106,6 +134,50 @@ describe('Profitability routes', () => {
       .query({ from: '2025-01-01', to: '2025-01-31' });
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty('from');
+  });
+
+  it('weights dashboard metrics with sold quantity and historical COGS snapshots', async () => {
+    (db as any).__setSelectResults(
+      [{
+        id: 'product-1',
+        name: 'Pizza',
+        price: '11.00',
+        taxRate: 10,
+        categoryId: 'category-1',
+        categoryName: 'Pizzas',
+      }],
+      [],
+      [{
+        orderId: 'order-1',
+        orderItemId: 'item-1',
+        productId: 'product-1',
+        quantity: 2,
+        unitPrice: '11.00',
+        taxRate: 10,
+        isInvitation: false,
+        channel: 'tpv',
+        deliveryType: 'table',
+        createdAt: new Date('2026-01-15T12:00:00Z'),
+      }],
+      [],
+      [{ orderItemId: 'item-1', quantity: '-2', unitCost: '1.50' }],
+      [],
+      [],
+      [],
+      [],
+    );
+    const res = await request(app)
+      .get('/admin/profitability/reports')
+      .query({ from: '2026-01-01', to: '2026-02-01' });
+    expect(res.status).toBe(200);
+    expect(res.body.sales).toBe('22.00');
+    expect(res.body.netSales).toBe('20.00');
+    expect(res.body.costOfGoodsSold).toBe('3.00');
+    expect(res.body.contributionMargin).toBe('17.00');
+    expect(res.body.avgFoodCostPct).toBe('15.00');
+    expect(res.body.avgMarginPct).toBe('85.00');
+    expect(res.body.historicalCogsCoveragePct).toBe('100.00');
+    expect(res.body.salesProducts[0].unitsSold).toBe(2);
   });
 
   // 5. GET /admin/cost-history returns array
@@ -191,12 +263,31 @@ describe('Profitability routes', () => {
   });
 
   it('POST /admin/profitability/scenario is read-only', async () => {
+    (db as any).__setSelectResults(
+      [{
+        id: 'product-1',
+        name: 'Pizza',
+        categoryId: 'category-1',
+        categoryName: 'Pizzas',
+        price: '11.00',
+        taxRate: 10,
+      }],
+      [],
+      [],
+      [{ defaultTargetMarginPct: '65', warningGapPct: '10' }],
+      [],
+      [],
+      [],
+    );
     const res = await request(app)
       .post('/admin/profitability/scenario')
-      .send({ operatingExpensePercent: 15 });
+      .send({ channel: 'delivery', commissionPercent: 30 });
     expect(res.status).toBe(200);
     expect(res.body.persisted).toBe(false);
-    expect(res.body.products).toEqual([]);
+    expect(res.body.products).toHaveLength(1);
+    expect((db as any).insert).not.toHaveBeenCalled();
+    expect((db as any).update).not.toHaveBeenCalled();
+    expect((db as any).delete).not.toHaveBeenCalled();
   });
 
   it('PATCH /admin/profitability/config rejects unknown allocation methods', async () => {
@@ -211,5 +302,81 @@ describe('Profitability routes', () => {
       .post('/admin/profitability/price-proposals')
       .send({ productId: 'missing', proposedPrice: 12, reason: '' });
     expect(res.status).toBe(400);
+  });
+
+  it('creates a price proposal without changing the product price', async () => {
+    (db as any).__setSelectResults([{ id: 'product-1', price: '10.00' }]);
+    (db as any).__setInsertResults([{
+      id: 'proposal-1',
+      productId: 'product-1',
+      oldPrice: '10.00',
+      proposedPrice: '12.00',
+      reason: 'Objetivo de margen',
+      status: 'pending',
+    }]);
+    const res = await request(app)
+      .post('/admin/profitability/price-proposals')
+      .send({ productId: 'product-1', proposedPrice: 12, reason: 'Objetivo de margen' });
+    expect(res.status).toBe(201);
+    expect(res.body.status).toBe('pending');
+    expect((db as any).update).not.toHaveBeenCalled();
+    expect((db as any).__insertValues).toHaveBeenCalledWith(expect.objectContaining({
+      productId: 'product-1',
+      oldPrice: '10.00',
+      proposedPrice: '12',
+      reason: 'Objetivo de margen',
+    }));
+  });
+
+  it('approves and applies a current price proposal exactly once', async () => {
+    const proposal = {
+      id: 'proposal-1',
+      productId: 'product-1',
+      oldPrice: '10.00',
+      proposedPrice: '12.00',
+      status: 'pending',
+    };
+    (db as any).__setSelectResults([proposal]);
+    (db as any).__setUpdateResults(
+      [{ id: 'product-1', price: '12.00' }],
+      [{ ...proposal, status: 'applied' }],
+    );
+    const res = await request(app)
+      .post('/admin/profitability/price-proposals/proposal-1/approve');
+    expect(res.status).toBe(200);
+    expect(res.body.product.price).toBe('12.00');
+    expect(res.body.proposal.status).toBe('applied');
+    expect((db as any).update).toHaveBeenCalledTimes(2);
+  });
+
+  it('rejects double approval without writing again', async () => {
+    (db as any).__setSelectResults([{
+      id: 'proposal-1',
+      productId: 'product-1',
+      oldPrice: '10.00',
+      proposedPrice: '12.00',
+      status: 'applied',
+    }]);
+    const res = await request(app)
+      .post('/admin/profitability/price-proposals/proposal-1/approve');
+    expect(res.status).toBe(409);
+    expect(res.body.error).toBe('proposal_not_pending');
+    expect((db as any).update).not.toHaveBeenCalled();
+  });
+
+  it('rejects an obsolete proposal if another user changed the price', async () => {
+    (db as any).__setSelectResults([{
+      id: 'proposal-1',
+      productId: 'product-1',
+      oldPrice: '10.00',
+      proposedPrice: '12.00',
+      status: 'pending',
+    }]);
+    (db as any).__setUpdateResults([]);
+    const res = await request(app)
+      .post('/admin/profitability/price-proposals/proposal-1/approve');
+    expect(res.status).toBe(409);
+    expect(res.body.error).toBe('price_changed_concurrently');
+    expect((db as any).update).toHaveBeenCalledTimes(1);
   });
 });

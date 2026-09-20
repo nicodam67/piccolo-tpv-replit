@@ -9,7 +9,8 @@
   },
   "scripts": {
     "migrate": "node --no-warnings --experimental-strip-types ./src/migrations.ts apply",
-    "migrate:check": "node --no-warnings --experimental-strip-types ./src/migrations.ts check"
+    "migrate:check": "node --no-warnings --experimental-strip-types ./src/migrations.ts check",
+    "certify:foodcost": "node --no-warnings --experimental-strip-types ./src/foodcost-migration-certification.ts"
   },
   "dependencies": {
     "drizzle-orm": "catalog:",
@@ -18,6 +19,7 @@
     "zod": "catalog:"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8",
     "@types/node": "catalog:",
     "@types/pg": "^8.20.0",
     "drizzle-kit": "^0.31.10"
