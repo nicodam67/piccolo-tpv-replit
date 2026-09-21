@@ -86,17 +86,18 @@ export async function recomputeSubrecipeCost(subrecipeId: string): Promise<numbe
     )
     .where(eq(subrecipeItemsTable.subrecipeId, subrecipeId));
 
-  const totalRaw = items.reduce((sum, i) => {
-    const lineCost = computeSubrecipeLineCost(
+  const totalRaw = items.reduce(
+    (sum, i) =>
+      sum + computeSubrecipeLineCost(
         i.purchaseCost,
         i.quantity,
         i.wastePercent,
         i.unit,
         i.consumptionUnit,
         i.conversionFactor,
-      );
-    return sum + lineCost;
-  }, 0);
+      ),
+    0,
+  );
   const yield_ = parseFloat(subrecipe?.yieldQuantity ?? "1") || 1;
   const costPerUnit = totalRaw / yield_;
 
