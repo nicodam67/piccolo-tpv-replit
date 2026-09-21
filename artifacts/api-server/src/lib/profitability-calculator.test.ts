@@ -36,6 +36,29 @@ describe("profitability calculator", () => {
     expect(result.effectiveCost).toBeCloseTo(1.1);
   });
 
+  it("normalizes direct ingredients and cached subrecipes to their cost units", () => {
+    const flour = calculateRecipeLineCost({
+      purchaseCost: 4,
+      conversionFactor: 1,
+      quantity: 500,
+      recipeUnit: "g",
+      consumptionUnit: "kg",
+      wastePercent: 10,
+    });
+    const oilSubrecipe = calculateRecipeLineCost({
+      purchaseCost: 2,
+      conversionFactor: 1,
+      quantity: 250,
+      recipeUnit: "ml",
+      consumptionUnit: "l",
+      wastePercent: 0,
+    });
+
+    expect(flour.effectiveCost).toBeCloseTo(2.2);
+    expect(oilSubrecipe.effectiveCost).toBeCloseTo(0.5);
+    expect(flour.effectiveCost + oilSubrecipe.effectiveCost).toBeCloseTo(2.7);
+  });
+
   it("calculates food cost, commission and contribution over net sales", () => {
     const result = calculateProfitability({
       pvp: 11,

@@ -1,4 +1,5 @@
 import { Router, type IRouter } from "express";
+import { appendFileSync } from "node:fs";
 import { db } from "@workspace/db";
 import {
   productsTable,
@@ -98,6 +99,7 @@ async function computeProductCost(
       ingredientConsumptionUnit: ingredientsTable.consumptionUnit,
       ingredientConversionFactor: ingredientsTable.conversionFactor,
       subrecipeCost: subrecipesTable.cost,
+      subrecipeUnit: subrecipesTable.unit,
     })
     .from(recipeItemsTable)
     .leftJoin(
@@ -121,6 +123,8 @@ async function computeProductCost(
   let additionalCostTotal = 0;
 
   for (const line of lines) {
+    const theoreticalBefore = theoreticalCost;
+    const wasteBefore = wasteCost;
     const unitCost = line.ingredientId
       ? parseFloat(line.ingredientCost ?? "0") * (ingredientMultipliers.get(line.ingredientId) ?? 1)
       : parseFloat(line.subrecipeCost ?? "0");
@@ -142,15 +146,34 @@ async function computeProductCost(
         wasteCost += computeLineCost(unitCost, line.quantity, line.wastePercent) - base;
       }
     } else {
-      const base = unitCost * (parseFloat(line.quantity) || 0);
-      theoreticalCost += base;
-      wasteCost += computeLineCost(unitCost, line.quantity, line.wastePercent) - base;
+      try {
+        const calculated = calculateRecipeLineCost({
+          purchaseCost: unitCost,
+          conversionFactor: 1,
+          quantity: parseFloat(line.quantity) || 0,
+          recipeUnit: line.unit,
+          consumptionUnit: line.subrecipeUnit ?? line.unit,
+          wastePercent: parseFloat(line.wastePercent) || 0,
+        });
+        theoreticalCost += calculated.ingredientCost;
+        wasteCost += calculated.wasteCost;
+      } catch {
+        const base = unitCost * (parseFloat(line.quantity) || 0);
+        theoreticalCost += base;
+        wasteCost += computeLineCost(unitCost, line.quantity, line.wastePercent) - base;
+      }
     }
+    // #region agent log
+    appendFileSync("/opt/cursor/logs/debug.log", JSON.stringify({ hypothesisId: "B", location: "profitability.ts:150", message: "computeProductCost accumulated recipe line", data: { productId, isSubrecipe: Boolean(line.subrecipeId), quantity: line.quantity, recipeUnit: line.unit, normalizationUnit: line.ingredientId ? (line.ingredientConsumptionUnit ?? line.unit) : null, cachedUnitCost: unitCost, theoreticalDelta: theoreticalCost - theoreticalBefore, wasteDelta: wasteCost - wasteBefore }, timestamp: Date.now() }) + "\n");
+    // #endregion
     packagingCostTotal += parseFloat(line.packagingCost ?? "0");
     additionalCostTotal += parseFloat(line.additionalCost ?? "0");
   }
 
   const totalCost = theoreticalCost + wasteCost + packagingCostTotal + additionalCostTotal;
+  // #region agent log
+  appendFileSync("/opt/cursor/logs/debug.log", JSON.stringify({ hypothesisId: "B", location: "profitability.ts:160", message: "computeProductCost return value", data: { productId, formatId, lineCount: lines.length, theoreticalCost, wasteCost, packagingCostTotal, additionalCostTotal, totalCost }, timestamp: Date.now() }) + "\n");
+  // #endregion
   return { theoreticalCost, wasteCost, packagingCost: packagingCostTotal, additionalCost: additionalCostTotal, totalCost };
 }
 

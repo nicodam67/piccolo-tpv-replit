@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import request from 'supertest';
 import express from 'express';
-import profitabilityRouter from './profitability';
+import profitabilityRouter, { computeProductCost } from './profitability';
 import { db } from '@workspace/db';
 
 // ─── Mock @workspace/db ───────────────────────────────────────────────────────
@@ -63,9 +63,9 @@ vi.mock('@workspace/db', () => {
     productsTable: { id: 'id', name: 'name', price: 'price', taxRate: 'tax_rate', cost: 'cost', categoryId: 'category_id', active: 'active' },
     productFormatsTable: { id: 'id', cost: 'cost' },
     categoriesTable: { id: 'id', name: 'name' },
-    recipeItemsTable: { id: 'id', productId: 'product_id', formatId: 'format_id', ingredientId: 'ingredient_id', subrecipeId: 'subrecipe_id', quantity: 'quantity', wastePercent: 'waste_percent', packagingCost: 'packaging_cost', additionalCost: 'additional_cost' },
-    ingredientsTable: { id: 'id', name: 'name', purchaseCost: 'purchase_cost' },
-    subrecipesTable: { id: 'id', name: 'name', cost: 'cost' },
+    recipeItemsTable: { id: 'id', productId: 'product_id', formatId: 'format_id', ingredientId: 'ingredient_id', subrecipeId: 'subrecipe_id', quantity: 'quantity', unit: 'unit', wastePercent: 'waste_percent', packagingCost: 'packaging_cost', additionalCost: 'additional_cost' },
+    ingredientsTable: { id: 'id', name: 'name', purchaseCost: 'purchase_cost', consumptionUnit: 'consumption_unit', conversionFactor: 'conversion_factor' },
+    subrecipesTable: { id: 'id', name: 'name', cost: 'cost', unit: 'unit' },
     stockMovementsTable: { id: 'id', ingredientId: 'ingredient_id', movementType: 'movement_type', quantity: 'quantity', unitCost: 'unit_cost', orderItemId: 'order_item_id', createdAt: 'created_at' },
     ingredientCostHistoryTable: { id: 'id', ingredientId: 'ingredient_id', previousCost: 'previous_cost', newCost: 'new_cost', supplierName: 'supplier_name', reason: 'reason', employeeId: 'employee_id', createdAt: 'created_at' },
     profitabilitySettingsTable: { id: 'id', defaultTargetMarginPct: 'default_target_margin_pct', warningGapPct: 'warning_gap_pct', allocationMethod: 'allocation_method' },
@@ -186,6 +186,45 @@ describe('Profitability routes', () => {
     expect(res.body.avgMarginPct).toBe('85.00');
     expect(res.body.historicalCogsCoveragePct).toBe('100.00');
     expect(res.body.salesProducts[0].unitsSold).toBe(2);
+  });
+
+  it('normalizes direct and subrecipe units in analytical product cost', async () => {
+    (db as any).__setSelectResults([
+      {
+        ingredientId: 'flour',
+        subrecipeId: null,
+        quantity: '500.0000',
+        unit: 'g',
+        wastePercent: '10.00',
+        packagingCost: '0',
+        additionalCost: '0',
+        ingredientCost: '4.0000',
+        ingredientConsumptionUnit: 'kg',
+        ingredientConversionFactor: '1',
+        subrecipeCost: null,
+        subrecipeUnit: null,
+      },
+      {
+        ingredientId: null,
+        subrecipeId: 'oil-subrecipe',
+        quantity: '250.0000',
+        unit: 'ml',
+        wastePercent: '0',
+        packagingCost: '0',
+        additionalCost: '0',
+        ingredientCost: null,
+        ingredientConsumptionUnit: null,
+        ingredientConversionFactor: null,
+        subrecipeCost: '2.0000',
+        subrecipeUnit: 'l',
+      },
+    ]);
+
+    const result = await computeProductCost('product-1');
+
+    expect(result.theoreticalCost).toBeCloseTo(2.5);
+    expect(result.wasteCost).toBeCloseTo(0.2);
+    expect(result.totalCost).toBeCloseTo(2.7);
   });
 
   it('nets a later payment void from dashboard revenue, units and historical COGS', async () => {

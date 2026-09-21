@@ -1,4 +1,5 @@
 import { Router, type IRouter } from "express";
+import { appendFileSync } from "node:fs";
 import { db } from "@workspace/db";
 import {
   subrecipesTable,
@@ -86,20 +87,26 @@ export async function recomputeSubrecipeCost(subrecipeId: string): Promise<numbe
     )
     .where(eq(subrecipeItemsTable.subrecipeId, subrecipeId));
 
-  const totalRaw = items.reduce(
-    (sum, i) =>
-      sum + computeSubrecipeLineCost(
+  const totalRaw = items.reduce((sum, i) => {
+    const lineCost = computeSubrecipeLineCost(
         i.purchaseCost,
         i.quantity,
         i.wastePercent,
         i.unit,
         i.consumptionUnit,
         i.conversionFactor,
-      ),
-    0,
-  );
+      );
+    // #region agent log
+    appendFileSync("/opt/cursor/logs/debug.log", JSON.stringify({ hypothesisId: "C", location: "subrecipes.ts:100", message: "recomputeSubrecipeCost normalized ingredient line", data: { subrecipeId, quantity: i.quantity, recipeUnit: i.unit, consumptionUnit: i.consumptionUnit, conversionFactor: i.conversionFactor, purchaseCost: i.purchaseCost, wastePercent: i.wastePercent, lineCost }, timestamp: Date.now() }) + "\n");
+    // #endregion
+    return sum + lineCost;
+  }, 0);
   const yield_ = parseFloat(subrecipe?.yieldQuantity ?? "1") || 1;
   const costPerUnit = totalRaw / yield_;
+
+  // #region agent log
+  appendFileSync("/opt/cursor/logs/debug.log", JSON.stringify({ hypothesisId: "C", location: "subrecipes.ts:110", message: "recomputeSubrecipeCost cache value", data: { subrecipeId, itemCount: items.length, totalRaw, yieldQuantity: yield_, costPerUnit }, timestamp: Date.now() }) + "\n");
+  // #endregion
 
   await db
     .update(subrecipesTable)
