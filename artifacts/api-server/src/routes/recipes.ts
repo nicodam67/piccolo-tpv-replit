@@ -1,5 +1,4 @@
 import { Router, type IRouter } from "express";
-import { appendFileSync } from "node:fs";
 import { db } from "@workspace/db";
 import {
   recipeItemsTable,
@@ -87,7 +86,6 @@ export async function syncProductCost(
     const unitCost = line.ingredientId
       ? parseFloat(line.ingredientCost ?? "0")
       : parseFloat(line.subrecipeCost ?? "0");
-    const lineCost = computeLineCost(unitCost, line.quantity, line.wastePercent);
     const normalizedLineCost = computeLineCost(
       unitCost,
       line.quantity,
@@ -98,9 +96,6 @@ export async function syncProductCost(
         : (line.subrecipeUnit ?? line.unit),
       line.ingredientId ? (line.ingredientConversionFactor ?? "1") : "1",
     );
-    // #region agent log
-    appendFileSync("/opt/cursor/logs/debug.log", JSON.stringify({ hypothesisId: "A", location: "recipes.ts:100", message: "syncProductCost selected recipe line cost", data: { productId, isSubrecipe: Boolean(line.subrecipeId), quantity: line.quantity, recipeUnit: line.unit, normalizationUnit: line.ingredientId ? (line.ingredientConsumptionUnit ?? line.unit) : null, cachedUnitCost: unitCost, unnormalizedLineCost: lineCost, selectedLineCost: normalizedLineCost }, timestamp: Date.now() }) + "\n");
-    // #endregion
     return (
       sum +
       normalizedLineCost +
@@ -108,10 +103,6 @@ export async function syncProductCost(
       parseFloat(line.additionalCost ?? "0")
     );
   }, 0);
-
-  // #region agent log
-  appendFileSync("/opt/cursor/logs/debug.log", JSON.stringify({ hypothesisId: "A", location: "recipes.ts:110", message: "syncProductCost total before persistence", data: { productId, formatId: formatId ?? null, lineCount: lines.length, totalCost }, timestamp: Date.now() }) + "\n");
-  // #endregion
 
   if (formatId) {
     await db
@@ -231,9 +222,6 @@ function buildLineShape(line: {
         line.ingredientConsumptionUnit ?? line.unit,
         line.ingredientConversionFactor ?? "1",
       );
-  // #region agent log
-  appendFileSync("/opt/cursor/logs/debug.log", JSON.stringify({ hypothesisId: "D", location: "recipes.ts:225", message: "Recipe API built displayed line cost", data: { productId: line.productId, isSubrecipe, quantity: line.quantity, recipeUnit: line.unit, displayUnit, cachedUnitCost: unitCost, lineCost }, timestamp: Date.now() }) + "\n");
-  // #endregion
   const totalLineCost =
     lineCost +
     parseFloat(line.packagingCost ?? "0") +
