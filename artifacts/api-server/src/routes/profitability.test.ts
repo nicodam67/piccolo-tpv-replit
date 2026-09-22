@@ -180,6 +180,8 @@ describe('Profitability routes', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.persistent).toBe(false);
+    expect(res.body.difference.breakEvenMonthlyNet).toBeNull();
+    expect(res.body.difference.requiredDailyTickets).toBeNull();
     expect(db.insert).not.toHaveBeenCalled();
     expect(db.update).not.toHaveBeenCalled();
     expect(db.delete).not.toHaveBeenCalled();

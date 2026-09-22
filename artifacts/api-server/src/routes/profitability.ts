@@ -761,15 +761,27 @@ router.post(
         scenario,
       }),
     ]);
+    const metricDifference = (
+      current: number | null,
+      next: number | null,
+    ): number | null => current == null || next == null ? null : next - current;
     const difference = {
-      breakEvenMonthlyNet:
-        (simulated.metrics.breakEvenMonthlyNet ?? 0) - (actual.metrics.breakEvenMonthlyNet ?? 0),
-      minimumDailySalesNet:
-        (simulated.metrics.minimumDailySalesNet ?? 0) - (actual.metrics.minimumDailySalesNet ?? 0),
-      requiredDailyTickets:
-        (simulated.metrics.requiredDailyTickets ?? 0) - (actual.metrics.requiredDailyTickets ?? 0),
-      estimatedProfitPeriod:
-        (simulated.metrics.estimatedProfitPeriod ?? 0) - (actual.metrics.estimatedProfitPeriod ?? 0),
+      breakEvenMonthlyNet: metricDifference(
+        actual.metrics.breakEvenMonthlyNet,
+        simulated.metrics.breakEvenMonthlyNet,
+      ),
+      minimumDailySalesNet: metricDifference(
+        actual.metrics.minimumDailySalesNet,
+        simulated.metrics.minimumDailySalesNet,
+      ),
+      requiredDailyTickets: metricDifference(
+        actual.metrics.requiredDailyTickets,
+        simulated.metrics.requiredDailyTickets,
+      ),
+      estimatedProfitPeriod: metricDifference(
+        actual.metrics.estimatedProfitPeriod,
+        simulated.metrics.estimatedProfitPeriod,
+      ),
     };
     res.json({ actual, simulated, difference, persistent: false });
   },
