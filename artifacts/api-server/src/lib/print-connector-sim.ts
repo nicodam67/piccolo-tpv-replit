@@ -118,7 +118,12 @@ function sendTcp(
   });
 }
 
-async function sendToWindowsAgent(
+function configuredPrintAgentToken(): string | null {
+  const token = process.env["PRINT_AGENT_TOKEN"];
+  return token && token.trim() ? token : null;
+}
+
+export async function sendToWindowsAgent(
   args: SendToPrinterArgs,
   payload: Buffer,
 ): Promise<PrinterSendResult> {
@@ -130,6 +135,23 @@ async function sendToWindowsAgent(
       error: "URL del agente no configurada",
     };
   }
+  if (!args.dedupeKey) {
+    return {
+      ok: false,
+      simulated: false,
+      confirmationLevel: "spooler",
+      error: "Idempotency-Key no disponible",
+    };
+  }
+  const token = configuredPrintAgentToken();
+  if (!token) {
+    return {
+      ok: false,
+      simulated: false,
+      confirmationLevel: "spooler",
+      error: "PRINT_AGENT_TOKEN no configurado",
+    };
+  }
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 8_000);
   try {
@@ -138,10 +160,8 @@ async function sendToWindowsAgent(
       signal: controller.signal,
       headers: {
         "Content-Type": "application/json",
-        ...(process.env["PRINT_AGENT_TOKEN"]
-          ? { Authorization: `Bearer ${process.env["PRINT_AGENT_TOKEN"]}` }
-          : {}),
-        ...(args.dedupeKey ? { "Idempotency-Key": args.dedupeKey } : {}),
+        Authorization: `Bearer ${token}`,
+        "Idempotency-Key": args.dedupeKey,
       },
       body: JSON.stringify({
         printerId: args.printerId,
@@ -151,7 +171,7 @@ async function sendToWindowsAgent(
     });
     const body = await response.json().catch(() => ({})) as {
       accepted?: boolean;
-      confirmationLevel?: "spooler" | "device";
+      confirmationLevel?: "transport" | "spooler" | "device";
       error?: string;
     };
     if (!response.ok || !body.accepted) {
@@ -162,10 +182,22 @@ async function sendToWindowsAgent(
         error: body.error ?? `Agente HTTP ${response.status}`,
       };
     }
+    if (
+      body.confirmationLevel !== "transport"
+      && body.confirmationLevel !== "spooler"
+      && body.confirmationLevel !== "device"
+    ) {
+      return {
+        ok: false,
+        simulated: false,
+        confirmationLevel: "spooler",
+        error: "Respuesta inválida del agente: confirmationLevel ausente o desconocido",
+      };
+    }
     return {
       ok: true,
       simulated: false,
-      confirmationLevel: body.confirmationLevel === "device" ? "device" : "spooler",
+      confirmationLevel: body.confirmationLevel,
     };
   } catch (error) {
     return {
@@ -224,11 +256,19 @@ export async function getPrinterStatus(
         detail: "Agente no configurado",
       };
     }
+    const token = configuredPrintAgentToken();
+    if (!token) {
+      return {
+        status: "offline",
+        simulated: false,
+        confirmationLevel: "agent",
+        checkedAt,
+        detail: "PRINT_AGENT_TOKEN no configurado",
+      };
+    }
     try {
       const response = await fetch(`${printer.agentUrl.replace(/\/$/, "")}/health`, {
-        headers: process.env["PRINT_AGENT_TOKEN"]
-          ? { Authorization: `Bearer ${process.env["PRINT_AGENT_TOKEN"]}` }
-          : {},
+        headers: { Authorization: `Bearer ${token}` },
         signal: AbortSignal.timeout(3_000),
       });
       return {
