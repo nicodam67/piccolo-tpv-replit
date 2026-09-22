@@ -196,7 +196,7 @@ export async function processPrintQueueOnce(now = new Date()): Promise<void> {
                 originalJobId: fullJob.id,
                 fallbackFrom: printer.id,
               },
-            }).onConflictDoNothing({ target: printQueueTable.dedupeKey });
+            }).onConflictDoNothing();
             await tx.insert(printAuditTable).values({
               printQueueId: job.id,
               action: "fallback_queued",

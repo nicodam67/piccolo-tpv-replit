@@ -96,7 +96,7 @@ async function enqueuePrintJob(
     dedupeKey: dedupeKey ?? null,
     actorId: actorId ?? null,
     actorName: actorName ?? "sistema",
-  }).onConflictDoNothing({ target: printQueueTable.dedupeKey });
+  }).onConflictDoNothing();
 }
 
 // ── dispatchKitchenPrint ───────────────────────────────────────────────────────
