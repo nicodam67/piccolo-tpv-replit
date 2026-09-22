@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { api } from '../lib/api-client';
 import { useParams, Link } from 'wouter';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { connectAuthenticatedSocket } from '../lib/socket-client';
 import { toast } from 'sonner';
 import { History, RefreshCw, AlertTriangle, X, Clock, CheckCircle, ShieldCheck, Search, Flame } from 'lucide-react';
@@ -19,7 +19,6 @@ import {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const ZONES = ['cocina', 'pizza', 'ensalada', 'barra', 'pase'] as const;
-type KdsZone = typeof ZONES[number];
 type TaskStatus = 'new' | 'preparing' | 'in_oven' | 'ready' | 'collected' | 'served' | 'cancelled';
 type PaseAction = 'collected' | 'served';
 
@@ -156,7 +155,15 @@ function ZoneActions({
 export default function KdsPage() {
   const params = useParams();
   const rawZone = params.zone || 'cocina';
-  const zone: KdsZone = (ZONES as readonly string[]).includes(rawZone) ? (rawZone as KdsZone) : 'cocina';
+  const { data: configuredDepartments = [] } = useQuery({
+    queryKey: ['/api/production-departments'],
+    queryFn: () => api.get<Array<{ code: string; name: string; kind: string; kdsEnabled: boolean }>>('/api/production-departments'),
+  });
+  const zoneOptions = configuredDepartments.length > 0
+    ? configuredDepartments.filter(department => department.kdsEnabled || department.kind === 'pass')
+    : ZONES.map(code => ({ code, name: ZONE_LABELS[code], kind: code === 'pase' ? 'pass' : 'production', kdsEnabled: true }));
+  const selectedDepartment = zoneOptions.find(department => department.code === rawZone) ?? zoneOptions[0];
+  const zone = selectedDepartment?.code ?? 'cocina';
   const queryClient = useQueryClient();
   const [updatedBy, setUpdatedBy] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
@@ -287,7 +294,7 @@ export default function KdsPage() {
     );
   };
 
-  const isPase = zone === 'pase';
+  const isPase = selectedDepartment?.kind === 'pass';
 
   return (
     <div className="min-h-[100dvh] bg-background flex flex-col text-foreground overflow-hidden">
@@ -295,18 +302,18 @@ export default function KdsPage() {
         <div className="h-16 flex items-center justify-between px-6">
           <div className="flex items-center gap-6">
             <h1 className="text-3xl font-black uppercase tracking-widest text-primary drop-shadow-sm">
-              {ZONE_LABELS[zone] ?? zone}
+              {selectedDepartment?.name ?? ZONE_LABELS[zone] ?? zone}
             </h1>
             <div className="w-1 h-8 bg-border rounded-full hidden sm:block" />
             <nav className="hidden sm:flex gap-2">
-              {ZONES.map(z => (
-                <Link key={z} href={`/kds/${z}`}
+              {zoneOptions.map(department => (
+                <Link key={department.code} href={`/kds/${department.code}`}
                   className={`px-4 py-2 rounded-lg text-sm font-black uppercase tracking-wider transition-all ${
-                    zone === z
+                    zone === department.code
                       ? 'bg-primary text-primary-foreground shadow-md scale-105'
                       : 'bg-secondary text-muted-foreground hover:bg-secondary/80 hover:text-foreground'
                   }`}>
-                  {ZONE_LABELS[z]}
+                  {department.name}
                 </Link>
               ))}
             </nav>
@@ -338,12 +345,12 @@ export default function KdsPage() {
       )}
 
       <nav className="sm:hidden flex gap-1 p-2 bg-card border-b border-border overflow-x-auto hide-scrollbar shrink-0">
-        {ZONES.map(z => (
-          <Link key={z} href={`/kds/${z}`}
+        {zoneOptions.map(department => (
+          <Link key={department.code} href={`/kds/${department.code}`}
             className={`px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wider whitespace-nowrap transition-all ${
-              zone === z ? 'bg-primary text-primary-foreground shadow-md' : 'bg-secondary text-muted-foreground hover:bg-secondary/80'
+              zone === department.code ? 'bg-primary text-primary-foreground shadow-md' : 'bg-secondary text-muted-foreground hover:bg-secondary/80'
             }`}>
-            {ZONE_LABELS[z]}
+            {department.name}
           </Link>
         ))}
       </nav>
@@ -559,6 +566,11 @@ function TaskCard({
           </div>
           <div className={`text-xl font-bold leading-snug flex-1 ${isCancelled ? 'line-through text-muted-foreground' : ''}`}>
             {task.productName}
+            {Number((task as any).resendCount ?? 0) > 0 && (
+              <div className="mt-1 inline-block rounded bg-purple-600 px-2 py-0.5 text-xs font-black text-white">
+                REENVIADO ×{(task as any).resendCount}
+              </div>
+            )}
           </div>
         </div>
         {task.notes && (

@@ -19,164 +19,247 @@ import {
   printersTable,
   printAuditTable,
 } from "@workspace/db";
-import { eq, and, inArray } from "drizzle-orm";
+import { asc, eq, and, inArray, lte } from "drizzle-orm";
 import { sendToPrinter } from "./print-connector-sim";
 import { emitToFunction } from "./socket-events";
+import { nextPrintRetryAt } from "./print-resilience";
 
 const POLL_INTERVAL_MS = 5_000;
 const MAX_ATTEMPTS     = 3;
+const LEASE_MS         = 30_000;
+const WORKER_ID        = `${process.pid}:${crypto.randomUUID()}`;
 let   workerTimer: ReturnType<typeof setInterval> | null = null;
 
-async function audit(
-  printQueueId: string | null,
+async function transition(
+  jobId: string,
+  values: Partial<typeof printQueueTable.$inferInsert>,
   action: string,
-  actorName = "sistema",
   detail?: Record<string, unknown>,
 ): Promise<void> {
-  await db.insert(printAuditTable).values({
-    printQueueId,
-    action,
-    actorName,
-    detail: detail ?? null,
-  }).catch(() => { /* audit must not block the worker */ });
+  await db.transaction(async (tx) => {
+    await tx.update(printQueueTable)
+      .set({ ...values, updatedAt: new Date() })
+      .where(eq(printQueueTable.id, jobId));
+    await tx.insert(printAuditTable).values({
+      printQueueId: jobId,
+      action,
+      actorName: "sistema",
+      detail: detail ?? null,
+    });
+  });
 }
 
-async function tick(): Promise<void> {
-  const now = new Date();
+export async function recoverStalePrintJobs(now = new Date()): Promise<number> {
+  const recovered = await db.update(printQueueTable)
+    .set({
+      status: "delivery_unknown",
+      lastError: "El proceso terminó durante el envío; requiere verificación manual antes de reintentar",
+      lockedBy: null,
+      leaseUntil: null,
+      updatedAt: now,
+    })
+    .where(and(
+      eq(printQueueTable.status, "sending"),
+      lte(printQueueTable.leaseUntil, now),
+    ))
+    .returning({ id: printQueueTable.id });
 
-  // Pick pending or retrying jobs whose next-attempt time has passed.
+  for (const row of recovered) {
+    await db.insert(printAuditTable).values({
+      printQueueId: row.id,
+      action: "delivery_unknown",
+      actorName: "sistema",
+      detail: { reason: "expired_worker_lease" },
+    });
+  }
+  return recovered.length;
+}
+
+export async function processPrintQueueOnce(now = new Date()): Promise<void> {
+  await recoverStalePrintJobs(now);
   const jobs = await db
     .select({
-      id:         printQueueTable.id,
-      printerId:  printQueueTable.printerId,
-      content:    printQueueTable.content,
-      copies:     printQueueTable.documentType, // just for ref
-      attempts:   printQueueTable.attempts,
-      status:     printQueueTable.status,
+      id: printQueueTable.id,
+      printerId: printQueueTable.printerId,
+      attempts: printQueueTable.attempts,
+      status: printQueueTable.status,
     })
     .from(printQueueTable)
-    .where(
-      and(
-        inArray(printQueueTable.status, ["pending", "retrying"]),
-      ),
+    .where(and(
+      inArray(printQueueTable.status, ["pending", "retrying"]),
+      lte(printQueueTable.availableAt, now),
+    ))
+    .orderBy(
+      asc(printQueueTable.availableAt),
+      asc(printQueueTable.createdAt),
+      asc(printQueueTable.id),
     )
     .limit(10);
 
   for (const job of jobs) {
-    // Lock the row: move to 'sending' so parallel workers don't double-send
-    const [locked] = await db
-      .update(printQueueTable)
-      .set({ status: "sending", sentAt: new Date() })
+    const leaseUntil = new Date(now.getTime() + LEASE_MS);
+    const [locked] = await db.update(printQueueTable)
+      .set({
+        status: "sending",
+        sentAt: now,
+        leaseUntil,
+        lockedBy: WORKER_ID,
+        updatedAt: now,
+      })
       .where(and(
         eq(printQueueTable.id, job.id),
         inArray(printQueueTable.status, ["pending", "retrying"]),
       ))
       .returning({ id: printQueueTable.id });
+    if (!locked) continue;
 
-    if (!locked) continue; // another worker took it
-
-    // Load full job + printer
     const [fullJob] = await db.select().from(printQueueTable).where(eq(printQueueTable.id, job.id));
     if (!fullJob) continue;
-
     const [printer] = await db.select().from(printersTable).where(eq(printersTable.id, fullJob.printerId));
     if (!printer) {
-      await db.update(printQueueTable).set({ status: "error", lastError: "Impresora no encontrada" }).where(eq(printQueueTable.id, job.id));
+      await transition(job.id, {
+        status: "failed",
+        lastError: "Impresora no encontrada",
+        leaseUntil: null,
+        lockedBy: null,
+      }, "failed", { error: "printer_not_found" });
       continue;
     }
 
     const result = await sendToPrinter({
-      printerId:  printer.id,
-      printerIp:  printer.ip,
+      printerId: printer.id,
+      printerIp: printer.ip,
       printerPort: printer.port,
-      content:    fullJob.content,
-      copies:     printer.copies,
+      content: fullJob.content,
+      copies: printer.copies,
+      connectionType: printer.connectionType as "simulation" | "tcp" | "windows_agent",
+      agentUrl: printer.agentUrl,
+      characterSet: printer.characterSet,
+      autoCut: printer.autoCut,
+      openCashDrawer: printer.openCashDrawer,
+      dedupeKey: fullJob.dedupeKey,
     });
 
     if (result.ok) {
-      await db.update(printQueueTable).set({
-        status: "printed",
-        printedAt: new Date(),
+      await transition(job.id, {
+        status: "delivered",
+        printedAt: now,
+        transportAckedAt: now,
+        confirmationLevel: result.confirmationLevel,
         attempts: fullJob.attempts + 1,
-      }).where(eq(printQueueTable.id, job.id));
-
-      await audit(job.id, "sent", "sistema", { printer: printer.name, attempt: fullJob.attempts + 1 });
-
-      try { emitToFunction("admin", "print:status", { jobId: job.id, status: "printed", printerName: printer.name }); } catch {}
-
-    } else {
-      const newAttempts = fullJob.attempts + 1;
-      await audit(job.id, "failed", "sistema", { printer: printer.name, attempt: newAttempts, error: result.error });
-
-      if (newAttempts >= MAX_ATTEMPTS) {
-        // Try fallback printer if configured
-        if (printer.fallbackPrinterId) {
-          const [fallback] = await db.select().from(printersTable).where(eq(printersTable.id, printer.fallbackPrinterId));
-          if (fallback) {
-            const fbResult = await sendToPrinter({
-              printerId:  fallback.id,
-              printerIp:  fallback.ip,
-              printerPort: fallback.port,
-              content:    `[RESPALDO: ${printer.name} no disponible]\n\n${fullJob.content}`,
-              copies:     fallback.copies,
-            });
-
-            if (fbResult.ok) {
-              await db.update(printQueueTable).set({
-                status: "printed",
-                printedAt: new Date(),
-                attempts: newAttempts,
-                lastError: `Enviado a respaldo: ${fallback.name}`,
-              }).where(eq(printQueueTable.id, job.id));
-
-              await audit(job.id, "fallback", "sistema", { primary: printer.name, fallback: fallback.name });
-              try { emitToFunction("admin", "print:status", {
-                jobId: job.id,
-                status: "printed_via_fallback",
-                printerName: fallback.name,
-                originalPrinter: printer.name,
-              }); } catch {}
-              continue;
-            }
-          }
-        }
-
-        // No fallback or fallback also failed → error
-        await db.update(printQueueTable).set({
-          status: "error",
-          attempts: newAttempts,
-          lastError: result.error ?? "Error desconocido",
-        }).where(eq(printQueueTable.id, job.id));
-
-        try { emitToFunction("admin", "print:status", {
+        lastError: null,
+        leaseUntil: null,
+        lockedBy: null,
+      }, "delivered", {
+        printer: printer.name,
+        attempt: fullJob.attempts + 1,
+        confirmationLevel: result.confirmationLevel,
+        simulated: result.simulated,
+      });
+      try {
+        emitToFunction("admin", "print:status", {
           jobId: job.id,
-          status: "error",
+          status: "delivered",
+          printerName: printer.name,
+          confirmationLevel: result.confirmationLevel,
+        });
+      } catch {}
+      continue;
+    }
+
+    const newAttempts = fullJob.attempts + 1;
+    if (newAttempts >= MAX_ATTEMPTS) {
+      if (printer.fallbackPrinterId) {
+        const [fallback] = await db.select().from(printersTable)
+          .where(eq(printersTable.id, printer.fallbackPrinterId));
+        if (fallback?.active) {
+          await db.transaction(async (tx) => {
+            await tx.update(printQueueTable).set({
+              status: "failed",
+              attempts: newAttempts,
+              lastError: `Redirigido a respaldo: ${fallback.name}`,
+              leaseUntil: null,
+              lockedBy: null,
+              updatedAt: now,
+            }).where(eq(printQueueTable.id, job.id));
+            await tx.insert(printQueueTable).values({
+              printerId: fallback.id,
+              orderId: fullJob.orderId,
+              documentType: fullJob.documentType,
+              content: `[RESPALDO: ${printer.name} no disponible]\n\n${fullJob.content}`,
+              status: "pending",
+              dedupeKey: `${fullJob.dedupeKey ?? fullJob.id}:fallback:${fallback.id}`,
+              actorId: fullJob.actorId,
+              actorName: fullJob.actorName,
+              meta: {
+                ...(fullJob.meta as object ?? {}),
+                originalJobId: fullJob.id,
+                fallbackFrom: printer.id,
+              },
+            }).onConflictDoNothing({ target: printQueueTable.dedupeKey });
+            await tx.insert(printAuditTable).values({
+              printQueueId: job.id,
+              action: "fallback_queued",
+              actorName: "sistema",
+              detail: { primary: printer.name, fallback: fallback.name },
+            });
+          });
+          continue;
+        }
+      }
+      await transition(job.id, {
+        status: "failed",
+        attempts: newAttempts,
+        lastError: result.error ?? "Error desconocido",
+        leaseUntil: null,
+        lockedBy: null,
+      }, "failed", {
+        printer: printer.name,
+        attempt: newAttempts,
+        error: result.error,
+      });
+      try {
+        emitToFunction("admin", "print:status", {
+          jobId: job.id,
+          status: "failed",
           printerName: printer.name,
           error: result.error,
-        }); } catch {};
-
-      } else {
-        // Schedule a retry (exponential backoff already implicit by next poll)
-        await db.update(printQueueTable).set({
-          status: "retrying",
-          attempts: newAttempts,
-          lastError: result.error ?? "Error desconocido",
-        }).where(eq(printQueueTable.id, job.id));
-
-        try { emitToFunction("admin", "print:status", {
-          jobId: job.id,
-          status: "retrying",
-          printerName: printer.name,
-          attempt: newAttempts,
-        }); } catch {};
-      }
+        });
+      } catch {}
+      continue;
     }
+
+    const availableAt = nextPrintRetryAt(now, newAttempts);
+    await transition(job.id, {
+      status: "retrying",
+      attempts: newAttempts,
+      lastError: result.error ?? "Error desconocido",
+      availableAt,
+      leaseUntil: null,
+      lockedBy: null,
+    }, "retry_scheduled", {
+      printer: printer.name,
+      attempt: newAttempts,
+      error: result.error,
+      availableAt: availableAt.toISOString(),
+    });
+    try {
+      emitToFunction("admin", "print:status", {
+        jobId: job.id,
+        status: "retrying",
+        printerName: printer.name,
+        attempt: newAttempts,
+      });
+    } catch {}
   }
 }
 
 export function startPrintWorker(): void {
   if (workerTimer) return;
-  workerTimer = setInterval(() => { tick().catch(err => console.error("[print-worker]", err)); }, POLL_INTERVAL_MS);
+  void recoverStalePrintJobs().catch(err => console.error("[print-worker:recovery]", err));
+  workerTimer = setInterval(() => {
+    processPrintQueueOnce().catch(err => console.error("[print-worker]", err));
+  }, POLL_INTERVAL_MS);
   console.log("[print-worker] started, polling every", POLL_INTERVAL_MS, "ms");
 }
 

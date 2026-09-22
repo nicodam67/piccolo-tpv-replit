@@ -17,10 +17,10 @@ const api = (path: string, method = 'GET', body?: unknown) =>
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
   pending:    { label: 'Pendiente',  color: 'text-yellow-400',  icon: <Clock size={14} /> },
   sending:    { label: 'Enviando',   color: 'text-blue-400',    icon: <Send size={14} /> },
-  printed:    { label: 'Impreso',    color: 'text-green-400',   icon: <CheckCircle2 size={14} /> },
-  error:      { label: 'Error',      color: 'text-red-400',     icon: <AlertCircle size={14} /> },
+  delivered:  { label: 'Entregado al transporte', color: 'text-green-400', icon: <CheckCircle2 size={14} /> },
+  failed:     { label: 'Fallido', color: 'text-red-400', icon: <AlertCircle size={14} /> },
   retrying:   { label: 'Reintentando', color: 'text-orange-400', icon: <RotateCcw size={14} /> },
-  reprinted:  { label: 'Reimpreso',  color: 'text-purple-400',  icon: <SkipForward size={14} /> },
+  delivery_unknown: { label: 'Entrega desconocida', color: 'text-purple-400', icon: <AlertCircle size={14} /> },
   cancelled:  { label: 'Cancelado',  color: 'text-muted-foreground', icon: <XCircle size={14} /> },
 };
 
@@ -52,6 +52,14 @@ interface QueueJob {
   printedAt: string | null;
   actorName: string | null;
   createdAt: string;
+  confirmationLevel: string;
+  leaseUntil: string | null;
+}
+
+interface HardwareMonitor {
+  queue: { pending: number; failed: number; deliveryUnknown: number };
+  issues: Array<{ severity: 'error' | 'warning'; department: string; message: string }>;
+  productionReady: boolean;
 }
 
 function formatTs(ts: string | null): string {
@@ -69,13 +77,18 @@ export default function AdminColaImpresion() {
   const [reprintReason, setReprintReason] = useState('');
   const [reprintJobId, setReprintJobId] = useState<string | null>(null);
   const [actioning, setActioning] = useState<string | null>(null);
+  const [monitor, setMonitor] = useState<HardwareMonitor | null>(null);
 
   const load = useCallback(async () => {
     try {
       const params = new URLSearchParams({ limit: '200' });
       if (filterStatus) params.set('status', filterStatus);
-      const data = await api(`/api/admin/print-queue?${params}`) as QueueJob[];
+      const [data, monitorData] = await Promise.all([
+        api(`/api/admin/print-queue?${params}`) as Promise<QueueJob[]>,
+        api('/api/admin/hardware-monitor') as Promise<HardwareMonitor>,
+      ]);
       setJobs(data);
+      setMonitor(monitorData);
     } catch { toast.error('Error al cargar la cola'); }
     finally { setLoading(false); }
   }, [filterStatus]);
@@ -88,10 +101,14 @@ export default function AdminColaImpresion() {
     return () => clearInterval(t);
   }, [load]);
 
-  const handleRetry = async (id: string) => {
-    setActioning(id);
+  const handleRetry = async (job: QueueJob) => {
+    const reason = job.status === 'delivery_unknown'
+      ? prompt('La entrega anterior es ambigua. Indica por qué se autoriza el reintento:')?.trim()
+      : '';
+    if (job.status === 'delivery_unknown' && !reason) return;
+    setActioning(job.id);
     try {
-      await api(`/api/admin/print-queue/${id}/retry`, 'POST');
+      await api(`/api/admin/print-queue/${job.id}/retry`, 'POST', { reason });
       toast.success('Trabajo reencolado');
       load();
     } catch { toast.error('Error al reintentar'); }
@@ -121,7 +138,7 @@ export default function AdminColaImpresion() {
     finally { setReprinting(null); }
   };
 
-  const errorCount = jobs.filter(j => j.status === 'error').length;
+  const errorCount = jobs.filter(j => ['failed', 'delivery_unknown'].includes(j.status)).length;
   const pendingCount = jobs.filter(j => ['pending', 'retrying', 'sending'].includes(j.status)).length;
 
   return (
@@ -161,6 +178,34 @@ export default function AdminColaImpresion() {
           </button>
         ))}
       </div>
+
+      {monitor && (
+        <div className="mx-auto grid max-w-3xl grid-cols-3 gap-2 px-4 pt-4">
+          <div className="rounded-xl border border-border bg-card p-3">
+            <div className="text-xs text-muted-foreground">Pendientes</div>
+            <div className="text-xl font-black">{monitor.queue.pending}</div>
+          </div>
+          <div className="rounded-xl border border-border bg-card p-3">
+            <div className="text-xs text-muted-foreground">Fallidas</div>
+            <div className="text-xl font-black text-red-400">{monitor.queue.failed}</div>
+          </div>
+          <div className="rounded-xl border border-border bg-card p-3">
+            <div className="text-xs text-muted-foreground">Estado</div>
+            <div className={`text-sm font-black ${monitor.productionReady ? 'text-green-400' : 'text-red-400'}`}>
+              {monitor.productionReady ? 'Sin bloqueos' : 'Revisar'}
+            </div>
+          </div>
+          {monitor.issues.length > 0 && (
+            <div className="col-span-3 rounded-xl border border-amber-500/30 bg-amber-500/5 p-3 text-xs">
+              {monitor.issues.map((issue, index) => (
+                <div key={`${issue.department}-${index}`} className={issue.severity === 'error' ? 'text-red-400' : 'text-amber-400'}>
+                  <strong>{issue.department}:</strong> {issue.message}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Jobs list */}
       <div className="p-4 max-w-3xl mx-auto space-y-3">
@@ -202,11 +247,11 @@ export default function AdminColaImpresion() {
                 </div>
               </div>
               {/* Actions */}
-              {['error', 'pending', 'retrying', 'printed'].includes(job.status) && (
+              {['failed', 'delivery_unknown', 'pending', 'retrying', 'delivered'].includes(job.status) && (
                 <div className="flex gap-2 mt-3 pt-3 border-t border-border/50">
-                  {['error', 'pending', 'retrying'].includes(job.status) && (
+                  {['failed', 'delivery_unknown', 'retrying'].includes(job.status) && (
                     <>
-                      <button onClick={() => handleRetry(job.id)} disabled={actioning === job.id}
+                      <button onClick={() => handleRetry(job)} disabled={actioning === job.id}
                         className="text-xs px-3 py-1.5 bg-primary/10 text-primary border border-primary/20 rounded-lg font-bold hover:bg-primary/20 transition-colors disabled:opacity-50">
                         <RotateCcw size={12} className="inline mr-1" />Reintentar
                       </button>
@@ -216,7 +261,7 @@ export default function AdminColaImpresion() {
                       </button>
                     </>
                   )}
-                  {job.status === 'printed' && (
+                  {job.status === 'delivered' && (
                     <button onClick={() => setReprintJobId(job.id)}
                       className="text-xs px-3 py-1.5 border border-border rounded-lg font-bold hover:bg-secondary transition-colors">
                       <SkipForward size={12} className="inline mr-1" />Reimprimir

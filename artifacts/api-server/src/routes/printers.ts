@@ -13,6 +13,8 @@ import {
   businessConfigTable,
   printTestResultsTable,
   categoriesTable,
+  productionDepartmentsTable,
+  kdsStationsTable,
 } from "@workspace/db";
 import { eq, and, desc, inArray } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
@@ -23,6 +25,36 @@ import {
 import { getPrinterStatus } from "../lib/print-connector-sim";
 
 const router: IRouter = Router();
+
+const DEPARTMENT_CODE = /^[a-z0-9][a-z0-9_-]{1,49}$/;
+const CONNECTION_TYPES = ["simulation", "tcp", "windows_agent"] as const;
+
+function validatePrinterInput(input: {
+  port?: number;
+  paperWidth?: number;
+  copies?: number;
+  connectionType?: string;
+  ip?: string;
+  agentUrl?: string | null;
+}): string | null {
+  if (input.port !== undefined && (!Number.isInteger(input.port) || input.port < 1 || input.port > 65535)) {
+    return "Puerto fuera de rango.";
+  }
+  if (input.paperWidth !== undefined && ![58, 80].includes(input.paperWidth)) {
+    return "El ancho debe ser 58 u 80 mm.";
+  }
+  if (input.copies !== undefined && (!Number.isInteger(input.copies) || input.copies < 1 || input.copies > 10)) {
+    return "Las copias deben estar entre 1 y 10.";
+  }
+  if (input.connectionType && !CONNECTION_TYPES.includes(input.connectionType as typeof CONNECTION_TYPES[number])) {
+    return "Tipo de conexión no válido.";
+  }
+  if (input.connectionType === "tcp" && !input.ip?.trim()) return "La conexión TCP requiere una IP.";
+  if (input.connectionType === "windows_agent" && !input.agentUrl?.trim()) {
+    return "La conexión Windows requiere la URL del agente.";
+  }
+  return null;
+}
 
 // ── helpers ────────────────────────────────────────────────────────────────────
 
@@ -53,10 +85,25 @@ router.get("/admin/printers", requireAuth, requireRole("manager", "admin"), asyn
 
 // ── POST /admin/printers ──────────────────────────────────────────────────────
 router.post("/admin/printers", requireAuth, requireRole("manager", "admin"), async (req, res): Promise<void> => {
-  const { name, type, brand, model, ip, port, paperWidth, copies, active, isPrimary, fallbackPrinterId } =
+  const {
+    name, type, brand, model, ip, port, paperWidth, copies, active, isPrimary,
+    fallbackPrinterId, departmentCode, connectionType, agentUrl, characterSet,
+    autoCut, openCashDrawer,
+  } =
     req.body as Partial<typeof printersTable.$inferInsert>;
 
   if (!name?.trim()) { res.status(400).json({ error: "El nombre es obligatorio." }); return; }
+  const validationError = validatePrinterInput({ port, paperWidth, copies, connectionType, ip, agentUrl });
+  if (validationError) { res.status(400).json({ error: validationError }); return; }
+  if (departmentCode) {
+    const [department] = await db.select({ id: productionDepartmentsTable.id })
+      .from(productionDepartmentsTable)
+      .where(and(
+        eq(productionDepartmentsTable.code, departmentCode),
+        eq(productionDepartmentsTable.active, true),
+      ));
+    if (!department) { res.status(400).json({ error: "Departamento no válido." }); return; }
+  }
 
   const [printer] = await db.insert(printersTable).values({
     name: name.trim(),
@@ -70,6 +117,12 @@ router.post("/admin/printers", requireAuth, requireRole("manager", "admin"), asy
     active: active ?? true,
     isPrimary: isPrimary ?? true,
     fallbackPrinterId: fallbackPrinterId ?? null,
+    departmentCode: departmentCode ?? type ?? "cocina",
+    connectionType: connectionType ?? "simulation",
+    agentUrl: agentUrl ?? null,
+    characterSet: characterSet ?? "cp858",
+    autoCut: autoCut ?? true,
+    openCashDrawer: openCashDrawer ?? false,
   }).returning();
 
   await auditPrint(null, "printer_created", req.user?.id, req.user?.name ?? "admin", { printerName: printer.name });
@@ -79,8 +132,24 @@ router.post("/admin/printers", requireAuth, requireRole("manager", "admin"), asy
 // ── PATCH /admin/printers/:id ─────────────────────────────────────────────────
 router.patch("/admin/printers/:id", requireAuth, requireRole("manager", "admin"), async (req, res): Promise<void> => {
   const id = req.params.id as string;
-  const { name, type, brand, model, ip, port, paperWidth, copies, active, isPrimary, fallbackPrinterId } =
+  const {
+    name, type, brand, model, ip, port, paperWidth, copies, active, isPrimary,
+    fallbackPrinterId, departmentCode, connectionType, agentUrl, characterSet,
+    autoCut, openCashDrawer,
+  } =
     req.body as Partial<typeof printersTable.$inferInsert>;
+  const validationError = validatePrinterInput({ port, paperWidth, copies, connectionType, ip, agentUrl });
+  if (validationError) { res.status(400).json({ error: validationError }); return; }
+  if (fallbackPrinterId === id) { res.status(400).json({ error: "Una impresora no puede ser su propio respaldo." }); return; }
+  if (departmentCode) {
+    const [department] = await db.select({ id: productionDepartmentsTable.id })
+      .from(productionDepartmentsTable)
+      .where(and(
+        eq(productionDepartmentsTable.code, departmentCode),
+        eq(productionDepartmentsTable.active, true),
+      ));
+    if (!department) { res.status(400).json({ error: "Departamento no válido." }); return; }
+  }
 
   const [printer] = await db
     .update(printersTable)
@@ -96,6 +165,12 @@ router.patch("/admin/printers/:id", requireAuth, requireRole("manager", "admin")
       ...(active !== undefined && { active }),
       ...(isPrimary !== undefined && { isPrimary }),
       ...(fallbackPrinterId !== undefined && { fallbackPrinterId }),
+      ...(departmentCode !== undefined && { departmentCode }),
+      ...(connectionType !== undefined && { connectionType }),
+      ...(agentUrl !== undefined && { agentUrl }),
+      ...(characterSet !== undefined && { characterSet }),
+      ...(autoCut !== undefined && { autoCut }),
+      ...(openCashDrawer !== undefined && { openCashDrawer }),
       updatedAt: new Date(),
     })
     .where(eq(printersTable.id, id))
@@ -121,6 +196,143 @@ router.delete("/admin/printers/:id", requireAuth, requireRole("manager", "admin"
   res.json({ ok: true });
 });
 
+// ── Production departments ────────────────────────────────────────────────────
+router.get("/production-departments", requireAuth, async (_req, res): Promise<void> => {
+  const departments = await db.select().from(productionDepartmentsTable)
+    .where(eq(productionDepartmentsTable.active, true))
+    .orderBy(productionDepartmentsTable.sortOrder, productionDepartmentsTable.name);
+  res.json(departments);
+});
+
+router.get("/admin/production-departments", requireAuth, requireRole("manager", "admin"), async (_req, res): Promise<void> => {
+  const departments = await db.select().from(productionDepartmentsTable)
+    .orderBy(productionDepartmentsTable.sortOrder, productionDepartmentsTable.name);
+  res.json(departments);
+});
+
+router.post("/admin/production-departments", requireAuth, requireRole("manager", "admin"), async (req, res): Promise<void> => {
+  const { code, name, kind, workflow, kdsEnabled, printerEnabled, sortOrder } =
+    req.body as Partial<typeof productionDepartmentsTable.$inferInsert>;
+  const normalizedCode = code?.trim().toLowerCase() ?? "";
+  if (!DEPARTMENT_CODE.test(normalizedCode)) {
+    res.status(400).json({ error: "Código inválido: usa letras minúsculas, números, guion o guion bajo." });
+    return;
+  }
+  if (!name?.trim()) { res.status(400).json({ error: "El nombre es obligatorio." }); return; }
+  if (!["production", "pass", "none"].includes(kind ?? "production")) {
+    res.status(400).json({ error: "Tipo de departamento no válido." }); return;
+  }
+  if (!["standard", "oven", "pass"].includes(workflow ?? "standard")) {
+    res.status(400).json({ error: "Flujo de trabajo no válido." }); return;
+  }
+  const [department] = await db.insert(productionDepartmentsTable).values({
+    code: normalizedCode,
+    name: name.trim(),
+    kind: kind ?? "production",
+    workflow: workflow ?? "standard",
+    kdsEnabled: kdsEnabled ?? true,
+    printerEnabled: printerEnabled ?? false,
+    sortOrder: sortOrder ?? 0,
+  }).returning();
+  await auditPrint(null, "department_created", req.user?.id, req.user?.name ?? "admin", {
+    departmentCode: department.code,
+  });
+  res.status(201).json(department);
+});
+
+router.patch("/admin/production-departments/:id", requireAuth, requireRole("manager", "admin"), async (req, res): Promise<void> => {
+  const id = req.params.id as string;
+  const { name, kind, workflow, kdsEnabled, printerEnabled, active, sortOrder } =
+    req.body as Partial<typeof productionDepartmentsTable.$inferInsert>;
+  if (kind !== undefined && !["production", "pass", "none"].includes(kind)) {
+    res.status(400).json({ error: "Tipo de departamento no válido." }); return;
+  }
+  if (workflow !== undefined && !["standard", "oven", "pass"].includes(workflow)) {
+    res.status(400).json({ error: "Flujo de trabajo no válido." }); return;
+  }
+  const [department] = await db.update(productionDepartmentsTable).set({
+    ...(name !== undefined && { name: name.trim() }),
+    ...(kind !== undefined && { kind }),
+    ...(workflow !== undefined && { workflow }),
+    ...(kdsEnabled !== undefined && { kdsEnabled }),
+    ...(printerEnabled !== undefined && { printerEnabled }),
+    ...(active !== undefined && { active }),
+    ...(sortOrder !== undefined && { sortOrder }),
+    updatedAt: new Date(),
+  }).where(eq(productionDepartmentsTable.id, id)).returning();
+  if (!department) { res.status(404).json({ error: "Departamento no encontrado." }); return; }
+  await auditPrint(null, "department_updated", req.user?.id, req.user?.name ?? "admin", {
+    departmentCode: department.code,
+  });
+  res.json(department);
+});
+
+// ── Honest operational monitor ────────────────────────────────────────────────
+router.get("/admin/hardware-monitor", requireAuth, requireRole("manager", "admin"), async (_req, res): Promise<void> => {
+  const [departments, printers, stations, jobs] = await Promise.all([
+    db.select().from(productionDepartmentsTable).where(eq(productionDepartmentsTable.active, true)),
+    db.select().from(printersTable).where(eq(printersTable.active, true)),
+    db.select().from(kdsStationsTable).where(eq(kdsStationsTable.active, true)),
+    db.select({
+      status: printQueueTable.status,
+      printerId: printQueueTable.printerId,
+      lastError: printQueueTable.lastError,
+      createdAt: printQueueTable.createdAt,
+      updatedAt: printQueueTable.updatedAt,
+    }).from(printQueueTable).orderBy(desc(printQueueTable.createdAt)).limit(500),
+  ]);
+  const now = Date.now();
+  const printerRows = printers.map((printer) => {
+    const printerJobs = jobs.filter(job => job.printerId === printer.id);
+    return {
+      ...printer,
+      knownState: !printer.lastStatusAt
+        ? "unknown"
+        : now - printer.lastStatusAt.getTime() > 5 * 60_000
+          ? "stale"
+          : printer.lastStatus,
+      stateEvidence: printer.connectionType === "simulation"
+        ? "simulation"
+        : "last_probe",
+      pending: printerJobs.filter(job => ["pending", "sending", "retrying"].includes(job.status)).length,
+      failed: printerJobs.filter(job => ["failed", "delivery_unknown"].includes(job.status)).length,
+      lastError: printerJobs.find(job => job.lastError)?.lastError ?? null,
+    };
+  });
+  const stationRows = stations.map((station) => ({
+    ...station,
+    knownState: !station.lastPingAt
+      ? "unknown"
+      : now - station.lastPingAt.getTime() > 2 * 60_000 ? "stale" : "recently_seen",
+    stateEvidence: "last_probe_only",
+  }));
+  const issues: Array<{ severity: "error" | "warning"; department: string; message: string }> = [];
+  for (const department of departments) {
+    if (department.kind === "production" && !department.kdsEnabled && !department.printerEnabled) {
+      issues.push({ severity: "error", department: department.code, message: "Sin ninguna salida operativa." });
+    }
+    if (department.kdsEnabled && !stations.some(station => station.zoneType === department.code)) {
+      issues.push({ severity: "warning", department: department.code, message: "KDS habilitado sin estación registrada." });
+    }
+    if (department.printerEnabled && !printers.some(printer => (printer.departmentCode ?? printer.type) === department.code)) {
+      issues.push({ severity: "error", department: department.code, message: "Impresión habilitada sin impresora activa." });
+    }
+  }
+  res.json({
+    generatedAt: new Date().toISOString(),
+    printers: printerRows,
+    kds: stationRows,
+    departments,
+    queue: {
+      pending: jobs.filter(job => ["pending", "sending", "retrying"].includes(job.status)).length,
+      failed: jobs.filter(job => ["failed", "delivery_unknown"].includes(job.status)).length,
+      deliveryUnknown: jobs.filter(job => job.status === "delivery_unknown").length,
+    },
+    issues,
+    productionReady: issues.every(issue => issue.severity !== "error"),
+  });
+});
+
 // ── POST /admin/printers/:id/test ─────────────────────────────────────────────
 router.post("/admin/printers/:id/test", requireAuth, requireRole("manager", "admin"), async (req, res): Promise<void> => {
   const id = req.params.id as string;
@@ -134,6 +346,7 @@ router.post("/admin/printers/:id/test", requireAuth, requireRole("manager", "adm
     documentType: "test_ticket",
     content,
     status: "pending",
+    dedupeKey: `test_ticket:${printer.id}:${crypto.randomUUID()}`,
     actorId: req.user?.id ?? null,
     actorName: req.user?.name ?? "admin",
   }).returning();
@@ -148,7 +361,13 @@ router.get("/admin/printers/:id/status", requireAuth, requireRole("manager", "ad
   const [printer] = await db.select().from(printersTable).where(eq(printersTable.id, id));
   if (!printer) { res.status(404).json({ error: "Impresora no encontrada." }); return; }
 
-  const statusResult = await getPrinterStatus(id);
+  const statusResult = await getPrinterStatus({
+    printerId: printer.id,
+    printerIp: printer.ip,
+    printerPort: printer.port,
+    connectionType: printer.connectionType as "simulation" | "tcp" | "windows_agent",
+    agentUrl: printer.agentUrl,
+  });
 
   // Persist last status
   await db.update(printersTable).set({
@@ -216,6 +435,10 @@ router.get("/admin/print-queue", requireAuth, requireRole("manager", "admin"), a
       status: printQueueTable.status,
       attempts: printQueueTable.attempts,
       lastError: printQueueTable.lastError,
+      availableAt: printQueueTable.availableAt,
+      leaseUntil: printQueueTable.leaseUntil,
+      confirmationLevel: printQueueTable.confirmationLevel,
+      transportAckedAt: printQueueTable.transportAckedAt,
       sentAt: printQueueTable.sentAt,
       printedAt: printQueueTable.printedAt,
       actorName: printQueueTable.actorName,
@@ -240,16 +463,38 @@ router.get("/admin/print-queue", requireAuth, requireRole("manager", "admin"), a
 // ── POST /admin/print-queue/:id/retry ────────────────────────────────────────
 router.post("/admin/print-queue/:id/retry", requireAuth, requireRole("manager", "admin"), async (req, res): Promise<void> => {
   const id = req.params.id as string;
+  const reason = typeof req.body?.reason === "string" ? req.body.reason.trim() : "";
   const [job] = await db.select().from(printQueueTable).where(eq(printQueueTable.id, id));
   if (!job) { res.status(404).json({ error: "Trabajo no encontrado." }); return; }
+  if (!["failed", "retrying", "delivery_unknown"].includes(job.status)) {
+    res.status(409).json({ error: "Solo se pueden reintentar trabajos fallidos o de entrega desconocida." });
+    return;
+  }
+  if (job.status === "delivery_unknown" && !reason) {
+    res.status(400).json({ error: "El motivo es obligatorio cuando la entrega anterior es desconocida." });
+    return;
+  }
 
   const [updated] = await db
     .update(printQueueTable)
-    .set({ status: "pending", attempts: 0, lastError: null })
-    .where(eq(printQueueTable.id, id))
+    .set({
+      status: "pending",
+      attempts: 0,
+      lastError: null,
+      availableAt: new Date(),
+      leaseUntil: null,
+      lockedBy: null,
+      confirmationLevel: "queued",
+      updatedAt: new Date(),
+    })
+    .where(and(
+      eq(printQueueTable.id, id),
+      inArray(printQueueTable.status, ["failed", "retrying", "delivery_unknown"]),
+    ))
     .returning();
 
-  await auditPrint(id, "retried", req.user?.id, req.user?.name ?? "admin");
+  if (!updated) { res.status(409).json({ error: "El trabajo cambió de estado." }); return; }
+  await auditPrint(id, "retried", req.user?.id, req.user?.name ?? "admin", { reason: reason || null });
   res.json(updated);
 });
 
@@ -258,7 +503,7 @@ router.delete("/admin/print-queue/:id", requireAuth, requireRole("manager", "adm
   const id = req.params.id as string;
   const [job] = await db.select().from(printQueueTable).where(eq(printQueueTable.id, id));
   if (!job) { res.status(404).json({ error: "Trabajo no encontrado." }); return; }
-  if (!["pending", "retrying", "error"].includes(job.status)) {
+  if (!["pending", "retrying", "failed", "delivery_unknown"].includes(job.status)) {
     res.status(409).json({ error: "Solo se pueden cancelar trabajos pendientes o con error." }); return;
   }
 
@@ -275,26 +520,35 @@ router.delete("/admin/print-queue/:id", requireAuth, requireRole("manager", "adm
 // ── POST /admin/print-queue/:id/reprint ──────────────────────────────────────
 router.post("/admin/print-queue/:id/reprint", requireAuth, requireRole("manager", "admin"), async (req, res): Promise<void> => {
   const id = req.params.id as string;
-  const { reason } = req.body as { reason?: string };
+  const { reason, printerId } = req.body as { reason?: string; printerId?: string };
   if (!reason?.trim()) { res.status(400).json({ error: "El motivo de reimpresión es obligatorio." }); return; }
 
   const [original] = await db.select().from(printQueueTable).where(eq(printQueueTable.id, id));
   if (!original) { res.status(404).json({ error: "Trabajo no encontrado." }); return; }
+  const targetPrinterId = printerId ?? original.printerId;
+  const [targetPrinter] = await db.select().from(printersTable)
+    .where(and(eq(printersTable.id, targetPrinterId), eq(printersTable.active, true)));
+  if (!targetPrinter) { res.status(400).json({ error: "Impresora destino no disponible." }); return; }
 
-  const reprintHeader = buildReprintHeader(reason.trim(), req.user?.name ?? "admin", true);
+  const reprintHeader = buildReprintHeader(
+    reason.trim(),
+    req.user?.name ?? "admin",
+    targetPrinter.paperWidth === 80,
+  );
   const [newJob] = await db.insert(printQueueTable).values({
-    printerId: original.printerId,
+    printerId: targetPrinter.id,
     orderId: original.orderId,
     documentType: "reprint",
     content: reprintHeader + original.content,
     status: "pending",
+    dedupeKey: `reprint:${id}:${targetPrinter.id}:${crypto.randomUUID()}`,
     actorId: req.user?.id ?? null,
     actorName: req.user?.name ?? "admin",
-    meta: { originalJobId: id, reason: reason.trim() },
+    meta: { originalJobId: id, reason: reason.trim(), targetPrinterId: targetPrinter.id },
   }).returning();
 
   await auditPrint(newJob.id, "reprinted", req.user?.id, req.user?.name ?? "admin", {
-    originalJobId: id, reason: reason.trim(),
+    originalJobId: id, reason: reason.trim(), targetPrinterId: targetPrinter.id,
   });
   res.status(201).json(newJob);
 });

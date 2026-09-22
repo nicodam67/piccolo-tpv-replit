@@ -58,13 +58,33 @@ interface Printer {
   fallbackPrinterId: string | null;
   lastStatus: string;
   lastStatusAt: string | null;
+  departmentCode: string | null;
+  connectionType: 'simulation' | 'tcp' | 'windows_agent';
+  agentUrl: string | null;
+  characterSet: string;
+  autoCut: boolean;
+  openCashDrawer: boolean;
 }
 
 const EMPTY_FORM = {
   name: '', type: 'cocina', brand: '', model: '',
   ip: '', port: 9100, paperWidth: 80, copies: 1,
   active: true, isPrimary: true, fallbackPrinterId: '',
+  departmentCode: 'cocina', connectionType: 'simulation',
+  agentUrl: '', characterSet: 'cp858', autoCut: true, openCashDrawer: false,
 };
+
+interface Department {
+  id: string;
+  code: string;
+  name: string;
+  kind: 'production' | 'pass' | 'none';
+  workflow: 'standard' | 'oven' | 'pass';
+  kdsEnabled: boolean;
+  printerEnabled: boolean;
+  active: boolean;
+  sortOrder: number;
+}
 
 export default function AdminImpresoras() {
   const [printers, setPrinters] = useState<Printer[]>([]);
@@ -80,7 +100,9 @@ export default function AdminImpresoras() {
     nombreComercial: '', datosFiscales: '', piePagina: '',
     mensajeAgradecimiento: '¡Gracias por su visita!', mostrarPrecios: false, headerExtra: '',
   });
-  const [activeTab, setActiveTab] = useState<'printers' | 'mode' | 'template' | 'routing'>('printers');
+  const [activeTab, setActiveTab] = useState<'printers' | 'departments' | 'mode' | 'template' | 'routing'>('printers');
+  const [departments, setDepartments] = useState<Department[]>([]);
+  const [newDepartment, setNewDepartment] = useState({ code: '', name: '' });
   const [categories, setCategories] = useState<Array<{ id: string; name: string }>>([]);
   const [routing, setRouting] = useState<Record<string, string[]>>({});
   const [routingLoading, setRoutingLoading] = useState(false);
@@ -88,11 +110,13 @@ export default function AdminImpresoras() {
 
   const load = async () => {
     try {
-      const [ps, cfg] = await Promise.all([
+      const [ps, cfg, deps] = await Promise.all([
         api('/api/admin/printers') as Promise<Printer[]>,
         api('/api/admin/print-config') as Promise<{ printMode: string; printTemplateConfig: any }>,
+        api('/api/admin/production-departments') as Promise<Department[]>,
       ]);
       setPrinters(ps);
+      setDepartments(deps);
       setPrintMode(cfg.printMode ?? 'kds_only');
       if (cfg.printTemplateConfig) setTemplate(t => ({ ...t, ...cfg.printTemplateConfig }));
     } catch { toast.error('Error al cargar impresoras'); }
@@ -147,6 +171,12 @@ export default function AdminImpresoras() {
       ip: p.ip, port: p.port, paperWidth: p.paperWidth, copies: p.copies,
       active: p.active, isPrimary: p.isPrimary,
       fallbackPrinterId: p.fallbackPrinterId ?? '',
+      departmentCode: p.departmentCode ?? p.type,
+      connectionType: p.connectionType ?? 'simulation',
+      agentUrl: p.agentUrl ?? '',
+      characterSet: p.characterSet ?? 'cp858',
+      autoCut: p.autoCut ?? true,
+      openCashDrawer: p.openCashDrawer ?? false,
     });
     setShowModal(true);
   };
@@ -212,6 +242,33 @@ export default function AdminImpresoras() {
     } catch { toast.error('Error al guardar'); }
   };
 
+  const createDepartment = async () => {
+    if (!newDepartment.code.trim() || !newDepartment.name.trim()) {
+      toast.error('Código y nombre son obligatorios');
+      return;
+    }
+    try {
+      await api('/api/admin/production-departments', 'POST', {
+        code: newDepartment.code.trim().toLowerCase(),
+        name: newDepartment.name.trim(),
+        kind: 'production',
+        workflow: 'standard',
+        kdsEnabled: true,
+        printerEnabled: false,
+      });
+      setNewDepartment({ code: '', name: '' });
+      await load();
+      toast.success('Departamento creado');
+    } catch { toast.error('No se pudo crear el departamento'); }
+  };
+
+  const patchDepartment = async (department: Department, patch: Partial<Department>) => {
+    try {
+      await api(`/api/admin/production-departments/${department.id}`, 'PATCH', patch);
+      await load();
+    } catch { toast.error('No se pudo actualizar el departamento'); }
+  };
+
   if (loading) return (
     <div className="min-h-screen bg-background flex items-center justify-center">
       <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent" />
@@ -243,6 +300,7 @@ export default function AdminImpresoras() {
       <div className="flex border-b border-border px-4 pt-2 gap-1 overflow-x-auto">
         {[
           { id: 'printers', label: 'Impresoras', icon: <Printer size={14} /> },
+          { id: 'departments', label: 'Departamentos', icon: <Settings size={14} /> },
           { id: 'mode',     label: 'Modo',       icon: <Settings size={14} /> },
           { id: 'template', label: 'Plantilla',  icon: <FileText size={14} /> },
           { id: 'routing',  label: 'Enrutamiento', icon: <Zap size={14} /> },
@@ -317,6 +375,54 @@ export default function AdminImpresoras() {
               );
             })}
           </>
+        )}
+
+        {activeTab === 'departments' && (
+          <div className="space-y-4">
+            <div className="rounded-2xl border border-border bg-card p-4">
+              <h2 className="font-black">Nuevo departamento</h2>
+              <p className="mt-1 text-xs text-muted-foreground">El código se usa para enrutar productos, KDS e impresoras sin cambios de código.</p>
+              <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
+                <input value={newDepartment.code} onChange={event => setNewDepartment(value => ({ ...value, code: event.target.value }))}
+                  placeholder="ej. postres" className="rounded-xl border border-border bg-secondary px-3 py-2 text-sm font-mono" />
+                <input value={newDepartment.name} onChange={event => setNewDepartment(value => ({ ...value, name: event.target.value }))}
+                  placeholder="Postres" className="rounded-xl border border-border bg-secondary px-3 py-2 text-sm" />
+                <button onClick={createDepartment} className="rounded-xl bg-primary px-4 py-2 text-sm font-black text-primary-foreground">
+                  Añadir
+                </button>
+              </div>
+            </div>
+            {departments.map(department => (
+              <div key={department.id} className={`rounded-2xl border border-border bg-card p-4 ${department.active ? '' : 'opacity-50'}`}>
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="font-black">{department.name}</div>
+                    <div className="font-mono text-xs text-muted-foreground">{department.code} · {department.kind} · {department.workflow}</div>
+                  </div>
+                  <label className="flex items-center gap-2 text-xs font-bold">
+                    <input type="checkbox" checked={department.active}
+                      onChange={event => patchDepartment(department, { active: event.target.checked })} />
+                    Activo
+                  </label>
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <label className="flex items-center gap-2 rounded-xl border border-border p-3 text-sm font-bold">
+                    <input type="checkbox" checked={department.kdsEnabled}
+                      onChange={event => patchDepartment(department, { kdsEnabled: event.target.checked })} />
+                    KDS
+                  </label>
+                  <label className="flex items-center gap-2 rounded-xl border border-border p-3 text-sm font-bold">
+                    <input type="checkbox" checked={department.printerEnabled}
+                      onChange={event => patchDepartment(department, { printerEnabled: event.target.checked })} />
+                    Impresora
+                  </label>
+                </div>
+                {department.kind === 'production' && !department.kdsEnabled && !department.printerEnabled && (
+                  <p className="mt-2 text-xs font-bold text-red-400">Configuración no apta para producción: no tiene ninguna salida.</p>
+                )}
+              </div>
+            ))}
+          </div>
         )}
 
         {/* ── Tab: Mode ── */}
@@ -507,12 +613,31 @@ export default function AdminImpresoras() {
                   className="w-full px-3 py-2 bg-secondary border border-border rounded-xl text-sm" placeholder="Cocina 1" />
               </div>
               <div>
-                <label className="block text-sm font-bold mb-1">Tipo</label>
-                <select value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value }))}
+                <label className="block text-sm font-bold mb-1">Departamento</label>
+                <select value={form.departmentCode} onChange={e => setForm(f => ({ ...f, departmentCode: e.target.value, type: e.target.value }))}
                   className="w-full px-3 py-2 bg-secondary border border-border rounded-xl text-sm">
-                  {PRINTER_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                  {departments.filter(department => department.active && department.kind !== 'pass').map(department => (
+                    <option key={department.code} value={department.code}>{department.name}</option>
+                  ))}
                 </select>
               </div>
+              <div>
+                <label className="block text-sm font-bold mb-1">Conexión</label>
+                <select value={form.connectionType} onChange={e => setForm(f => ({ ...f, connectionType: e.target.value }))}
+                  className="w-full px-3 py-2 bg-secondary border border-border rounded-xl text-sm">
+                  <option value="simulation">Simulación (no productiva)</option>
+                  <option value="tcp">ESC/POS Ethernet / LAN</option>
+                  <option value="windows_agent">Agente local Windows</option>
+                </select>
+              </div>
+              {form.connectionType === 'windows_agent' && (
+                <div>
+                  <label className="block text-sm font-bold mb-1">URL del agente Windows</label>
+                  <input value={form.agentUrl} onChange={e => setForm(f => ({ ...f, agentUrl: e.target.value }))}
+                    className="w-full px-3 py-2 bg-secondary border border-border rounded-xl text-sm font-mono"
+                    placeholder="http://127.0.0.1:17321" />
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-sm font-bold mb-1">Marca</label>
@@ -523,6 +648,27 @@ export default function AdminImpresoras() {
                   <label className="block text-sm font-bold mb-1">Modelo</label>
                   <input value={form.model} onChange={e => setForm(f => ({ ...f, model: e.target.value }))}
                     className="w-full px-3 py-2 bg-secondary border border-border rounded-xl text-sm" placeholder="TM-T88V" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-bold mb-1">Caracteres</label>
+                  <select value={form.characterSet} onChange={e => setForm(f => ({ ...f, characterSet: e.target.value }))}
+                    className="w-full px-3 py-2 bg-secondary border border-border rounded-xl text-sm">
+                    <option value="cp858">CP858 (€, español)</option>
+                    <option value="cp850">CP850</option>
+                    <option value="cp437">CP437</option>
+                  </select>
+                </div>
+                <div className="flex flex-col justify-end gap-2 pb-1">
+                  <label className="flex items-center gap-2 text-sm font-semibold">
+                    <input type="checkbox" checked={form.autoCut} onChange={e => setForm(f => ({ ...f, autoCut: e.target.checked }))} />
+                    Corte automático
+                  </label>
+                  <label className="flex items-center gap-2 text-sm font-semibold">
+                    <input type="checkbox" checked={form.openCashDrawer} onChange={e => setForm(f => ({ ...f, openCashDrawer: e.target.checked }))} />
+                    Abrir cajón
+                  </label>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3">

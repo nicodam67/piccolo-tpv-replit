@@ -14,6 +14,7 @@ import {
   prefacturaPrintsTable,
   businessConfigTable,
   idempotencyKeysTable,
+  productionDepartmentsTable,
 } from "@workspace/db";
 import { eq, and, inArray, desc, asc, sql } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
@@ -33,6 +34,10 @@ import {
   type RecipeComponent,
   type SubrecipeDefinition,
 } from "../lib/cogs-snapshot";
+import {
+  dispatchCancellationPrint,
+  dispatchKitchenPrint,
+} from "../lib/print-dispatch";
 
 const router: IRouter = Router();
 
@@ -456,6 +461,78 @@ router.delete("/order-items/:itemId", requireAuth, async (req, res): Promise<voi
   const itemStatus = item.order_items.status;
 
   if (itemStatus === "sent") {
+    const reason = typeof req.body?.reason === "string" && req.body.reason.trim()
+      ? req.body.reason.trim()
+      : "Anulación solicitada en TPV";
+    const [department] = await db.select().from(productionDepartmentsTable)
+      .where(and(
+        eq(productionDepartmentsTable.code, item.products.prepZone),
+        eq(productionDepartmentsTable.active, true),
+      ));
+    const [legacyConfig] = await db.select({ printMode: businessConfigTable.printMode })
+      .from(businessConfigTable)
+      .limit(1);
+    const printerEnabled = department?.printerEnabled
+      ?? (legacyConfig?.printMode === "printers_only" || legacyConfig?.printMode === "both");
+
+    if (printerEnabled) {
+      const [order] = await db.select({
+        id: ordersTable.id,
+        orderNumber: ordersTable.orderNumber,
+        tableId: ordersTable.tableId,
+        orderType: ordersTable.orderType,
+        deliveryType: ordersTable.deliveryType,
+        clientName: ordersTable.clientName,
+        guestCount: ordersTable.guestCount,
+        createdAt: ordersTable.createdAt,
+        sentAt: ordersTable.sentAt,
+        tableName: restaurantTablesTable.name,
+      }).from(ordersTable)
+        .leftJoin(restaurantTablesTable, eq(ordersTable.tableId, restaurantTablesTable.id))
+        .where(eq(ordersTable.id, item.order_items.orderId));
+      const modifiers = await db.select().from(orderItemModifiersTable)
+        .where(eq(orderItemModifiersTable.orderItemId, itemId));
+      try {
+        await dispatchCancellationPrint({
+          order: {
+            id: order.id,
+            orderNumber: order.orderNumber,
+            tableName: order.tableName,
+            orderType: order.orderType,
+            deliveryType: order.deliveryType,
+            clientName: order.clientName,
+            guestCount: order.guestCount,
+            createdAt: order.createdAt,
+            sentAt: order.sentAt,
+            employeeName: req.user?.name,
+          },
+          item: {
+            quantity: item.order_items.quantity,
+            name: item.products.name,
+            formatName: item.order_items.formatName,
+            notes: item.order_items.notes,
+            allergyNote: item.order_items.allergyNote,
+            hasAllergy: item.order_items.hasAllergy,
+            modifiers: modifiers.map(modifier => modifier.modifierName),
+          },
+          productId: item.products.id,
+          categoryId: item.products.categoryId,
+          prepZone: item.products.prepZone,
+          reason,
+          actorId: req.user?.id,
+          actorName: req.user?.name,
+          operationId: itemId,
+          requireRoutes: true,
+        });
+      } catch (error) {
+        res.status(422).json({
+          error: "No se pudo encolar la anulación para la impresora",
+          detail: error instanceof Error ? error.message : "PRINT_CANCEL_FAILED",
+        });
+        return;
+      }
+    }
+
     // Item already sent to KDS — cancel the kitchen task and propagate to KDS displays
     const now = new Date();
     await db
@@ -522,7 +599,7 @@ router.delete("/order-items/:itemId", requireAuth, async (req, res): Promise<voi
     await db.delete(orderItemsTable).where(eq(orderItemsTable.id, itemId));
 
     await writeAudit(item.order_items.orderId, req.user?.id, req.user?.name ?? "", "cancel_sent_item",
-      `Anulado tras envío a cocina: ${item.products.name}`);
+      `Anulado tras envío a cocina: ${item.products.name}. Motivo: ${reason}`);
 
     // Notify KDS displays immediately
     try { emitToFunction("kds", "kds:refresh", { employeeName: req.user?.name ?? null }); } catch { /* ignore */ }
@@ -581,7 +658,8 @@ router.post("/orders/:orderId/send", requireAuth, idempotency, async (req, res):
     .from(businessConfigTable)
     .limit(1);
   const printMode = (businessCfg?.printMode ?? "kds_only") as "kds_only" | "printers_only" | "both";
-  const sendToKds = printMode !== "printers_only";
+  const legacySendToKds = printMode !== "printers_only";
+  const legacySendToPrinter = printMode !== "kds_only";
 
   // Capture sentAt BEFORE the transaction so isAdded is correct on first send.
   // After the transaction, sentAt is always non-null, so deriving it post-update
@@ -619,6 +697,7 @@ router.post("/orders/:orderId/send", requireAuth, idempotency, async (req, res):
   }
 
   let updated: typeof ordersTable.$inferSelect | undefined;
+  let sentAnyToKds = false;
   try {
     updated = await db.transaction(async (tx) => {
     // Serialize every send for this order, including requests with different
@@ -653,10 +732,24 @@ router.post("/orders/:orderId/send", requireAuth, idempotency, async (req, res):
       modsByItem.get(modifier.orderItemId)!.push(modifier);
     }
 
-    // Only create KDS tasks when the mode includes KDS (kds_only or both).
-    // printers_only mode routes entirely through physical printers — no KDS tasks.
-    if (sendToKds) {
-      for (const row of draftItems) {
+    const departments = await tx.select().from(productionDepartmentsTable)
+      .where(eq(productionDepartmentsTable.active, true));
+    const departmentByCode = new Map(departments.map((department) => [department.code, department]));
+    const hasDepartmentCatalog = departments.length > 0;
+    const outputsFor = (code: string) => {
+      const department = departmentByCode.get(code);
+      if (!department && hasDepartmentCatalog) {
+        throw new Error(`DESTINATION_NOT_CONFIGURED:${code}`);
+      }
+      return {
+        kds: department?.kdsEnabled ?? legacySendToKds,
+        printer: department?.printerEnabled ?? legacySendToPrinter,
+      };
+    };
+
+    for (const row of draftItems) {
+      if (outputsFor(row.products.prepZone).kds) {
+        sentAnyToKds = true;
         const item = row.order_items;
         const product = row.products;
 
@@ -887,6 +980,54 @@ router.post("/orders/:orderId/send", requireAuth, idempotency, async (req, res):
       .where(eq(ordersTable.id, orderId));
     if (!updatedOrder) throw new Error("ORDER_NOT_FOUND");
 
+    const printRows = draftItems.filter((row) => outputsFor(row.products.prepZone).printer);
+    if (printRows.length > 0) {
+      const tableName = updatedOrder.tableId
+        ? (await tx.select({ name: restaurantTablesTable.name })
+            .from(restaurantTablesTable)
+            .where(eq(restaurantTablesTable.id, updatedOrder.tableId)))[0]?.name
+        : null;
+      await dispatchKitchenPrint({
+        executor: tx,
+        requireRoutes: true,
+        order: {
+          id: orderId,
+          tableName: tableName ?? null,
+          orderNumber: updatedOrder.orderNumber ?? null,
+          orderType: updatedOrder.orderType,
+          deliveryType: updatedOrder.deliveryType,
+          clientName: updatedOrder.clientName,
+          guestCount: updatedOrder.guestCount,
+          employeeName: req.user?.name,
+          estimatedReadyAt: updatedOrder.estimatedReadyAt,
+          sentAt: updatedOrder.sentAt,
+          createdAt: updatedOrder.createdAt,
+        },
+        items: printRows.map((row) => {
+          const item = row.order_items;
+          const product = row.products;
+          return {
+            orderItemId: item.id,
+            productId: product.id,
+            categoryId: product.categoryId,
+            prepZone: product.prepZone,
+            ticketItem: {
+              quantity: item.quantity,
+              name: product.name,
+              formatName: item.formatName,
+              notes: item.notes,
+              allergyNote: item.allergyNote,
+              hasAllergy: item.hasAllergy,
+              modifiers: (modsByItem.get(item.id) ?? []).map(modifier => modifier.modifierName),
+            },
+          };
+        }),
+        isAdded: wasAlreadySent,
+        actorId: req.user?.id,
+        actorName: req.user?.name,
+      });
+    }
+
     // Persist the exact successful response in the SAME transaction as KDS and
     // stock side effects. A process crash after COMMIT can still be replayed.
     const requestKey = req.headers["idempotency-key"];
@@ -925,6 +1066,20 @@ router.post("/orders/:orderId/send", requireAuth, idempotency, async (req, res):
       });
       return;
     }
+    if (reason.startsWith("DESTINATION_NOT_CONFIGURED:")) {
+      res.status(422).json({
+        error: "Departamento de preparación no configurado",
+        department: reason.slice("DESTINATION_NOT_CONFIGURED:".length),
+      });
+      return;
+    }
+    if (reason.startsWith("PRINT_ROUTE_MISSING:")) {
+      res.status(422).json({
+        error: "La comanda no tiene una impresora activa para su departamento",
+        department: reason.slice("PRINT_ROUTE_MISSING:".length),
+      });
+      return;
+    }
     logger.error({ orderId, err }, "Atomic order send failed");
     res.status(503).json({ error: "No se pudo enviar la comanda de forma segura" });
     return;
@@ -936,65 +1091,11 @@ router.post("/orders/:orderId/send", requireAuth, idempotency, async (req, res):
   try {
     // kds:refresh is only meaningful when KDS is active (kds_only or both).
     // printers_only mode skips KDS socket event to avoid confusing KDS screens.
-    if (sendToKds) {
+    if (sentAnyToKds) {
       emitToFunction("kds", "kds:refresh", { employeeName: req.user?.name ?? null });
     }
     emitRefresh(orderId, req.user?.name);
   } catch { /* ignore */ }
-
-  // ── Print dispatch (non-blocking, does not affect KDS flow) ──────────────
-  try {
-    const { dispatchKitchenPrint } = await import("../lib/print-dispatch");
-    // isAdded is true only when the order had already been sent BEFORE this
-    // request — derived from the pre-transaction snapshot captured above.
-    const isAdded = wasAlreadySent;
-
-    const printItems = draftItems.map(row => {
-      const item = row.order_items;
-      const product = row.products;
-      const mods = (modsByItem.get(item.id) ?? []).map(m => m.modifierName);
-      return {
-        productId: product.id,
-        categoryId: product.categoryId,
-        prepZone: product.prepZone,
-        ticketItem: {
-          quantity: item.quantity,
-          name: product.name,
-          formatName: item.formatName,
-          notes: item.notes,
-          allergyNote: item.allergyNote,
-          hasAllergy: item.hasAllergy,
-          modifiers: mods,
-        },
-      };
-    });
-
-    const tableName = updated?.tableId
-      ? (await db.select({ name: restaurantTablesTable.name })
-          .from(restaurantTablesTable)
-          .where(eq(restaurantTablesTable.id, updated.tableId)))[0]?.name
-      : null;
-
-    await dispatchKitchenPrint({
-      order: {
-        id: orderId,
-        tableName: tableName ?? null,
-        orderNumber: updated?.orderNumber ?? null,
-        orderType: updated?.orderType,
-        deliveryType: updated?.deliveryType,
-        clientName: updated?.clientName,
-        guestCount: updated?.guestCount,
-        employeeName: req.user?.name,
-        estimatedReadyAt: updated?.estimatedReadyAt,
-        sentAt: updated?.sentAt,
-        createdAt: updated?.createdAt,
-      },
-      items: printItems,
-      isAdded,
-      actorId: req.user?.id,
-      actorName: req.user?.name,
-    });
-  } catch { /* print errors never fail the order send */ }
 
   res.json(updated);
 });

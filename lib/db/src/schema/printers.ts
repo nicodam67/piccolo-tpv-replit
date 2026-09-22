@@ -1,4 +1,4 @@
-import { boolean, integer, jsonb, numeric, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { boolean, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 
 // ── Printer types ─────────────────────────────────────────────────────────────
 // cocina | pizza | ensalada | barra | postres | caja | respaldo
@@ -6,7 +6,15 @@ export const PRINTER_TYPES = ["cocina", "pizza", "ensalada", "barra", "postres",
 export type PrinterType = typeof PRINTER_TYPES[number];
 
 // ── print_queue statuses ──────────────────────────────────────────────────────
-export const PRINT_QUEUE_STATUSES = ["pending", "sending", "printed", "error", "retrying", "reprinted", "cancelled"] as const;
+export const PRINT_QUEUE_STATUSES = [
+  "pending",
+  "sending",
+  "delivered",
+  "failed",
+  "retrying",
+  "delivery_unknown",
+  "cancelled",
+] as const;
 export type PrintQueueStatus = typeof PRINT_QUEUE_STATUSES[number];
 
 // ── Document types ────────────────────────────────────────────────────────────
@@ -39,6 +47,12 @@ export const printersTable = pgTable("printers", {
   copies:           integer("copies").notNull().default(1),
   active:           boolean("active").notNull().default(true),
   isPrimary:        boolean("is_primary").notNull().default(true),
+  departmentCode:   text("department_code"),
+  connectionType:   text("connection_type").notNull().default("simulation"),
+  agentUrl:          text("agent_url"),
+  characterSet:      text("character_set").notNull().default("cp858"),
+  autoCut:           boolean("auto_cut").notNull().default(true),
+  openCashDrawer:    boolean("open_cash_drawer").notNull().default(false),
   /** UUID of fallback printer — null if no fallback configured */
   fallbackPrinterId: uuid("fallback_printer_id"),
   /** Simulated status returned by the print connector */
@@ -58,8 +72,14 @@ export const printQueueTable = pgTable("print_queue", {
   /** Text content of the ticket (ESC/POS commands as text for the simulator) */
   content:       text("content").notNull(),
   status:        text("status").notNull().default("pending"), // PrintQueueStatus
+  dedupeKey:     text("dedupe_key"),
   attempts:      integer("attempts").notNull().default(0),
   lastError:     text("last_error"),
+  availableAt:   timestamp("available_at", { withTimezone: true }).notNull().defaultNow(),
+  leaseUntil:    timestamp("lease_until", { withTimezone: true }),
+  lockedBy:      text("locked_by"),
+  transportAckedAt: timestamp("transport_acked_at", { withTimezone: true }),
+  confirmationLevel: text("confirmation_level").notNull().default("queued"),
   /** Set when the job is sent (or first attempted) */
   sentAt:        timestamp("sent_at", { withTimezone: true }),
   /** Set when successfully printed */
@@ -70,7 +90,30 @@ export const printQueueTable = pgTable("print_queue", {
   /** Metadata: reprint reason, original job id, etc. */
   meta:          jsonb("meta"),
   createdAt:     timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+  updatedAt:     timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  uniqueIndex("print_queue_dedupe_key_unique").on(table.dedupeKey),
+  index("print_queue_worker_idx").on(table.status, table.availableAt, table.createdAt),
+]);
+
+// ── production_departments ───────────────────────────────────────────────────
+// Canonical, extensible routing destinations. Products, KDS stations and
+// printers refer to `code`; no department name is hardcoded in dispatch logic.
+export const productionDepartmentsTable = pgTable("production_departments", {
+  id:             uuid("id").primaryKey().defaultRandom(),
+  code:           text("code").notNull(),
+  name:           text("name").notNull(),
+  kind:           text("kind").notNull().default("production"), // production | pass | none
+  workflow:       text("workflow").notNull().default("standard"), // standard | oven | pass
+  kdsEnabled:     boolean("kds_enabled").notNull().default(true),
+  printerEnabled: boolean("printer_enabled").notNull().default(false),
+  active:         boolean("active").notNull().default(true),
+  sortOrder:      integer("sort_order").notNull().default(0),
+  createdAt:      timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt:      timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  uniqueIndex("production_departments_code_unique").on(table.code),
+]);
 
 // ── print_routing ─────────────────────────────────────────────────────────────
 // Maps entity (category|product) → list of printer IDs that should receive prints.
@@ -123,3 +166,4 @@ export type Printer = typeof printersTable.$inferSelect;
 export type PrintQueue = typeof printQueueTable.$inferSelect;
 export type PrintRouting = typeof printRoutingTable.$inferSelect;
 export type PrintAudit = typeof printAuditTable.$inferSelect;
+export type ProductionDepartment = typeof productionDepartmentsTable.$inferSelect;

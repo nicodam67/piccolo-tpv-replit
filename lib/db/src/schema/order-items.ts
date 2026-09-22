@@ -32,8 +32,7 @@ export const kitchenTasksTable = pgTable("kitchen_tasks", {
     .notNull()
     .references(() => ordersTable.id, { onDelete: "cascade" }),
   orderItemId: uuid("order_item_id")
-    .notNull()
-    .references(() => orderItemsTable.id, { onDelete: "cascade" }),
+    .references(() => orderItemsTable.id, { onDelete: "set null" }),
   prepZone: text("prep_zone").notNull(),
   productName: text("product_name").notNull(),
   quantity: integer("quantity").notNull().default(1),
@@ -48,6 +47,9 @@ export const kitchenTasksTable = pgTable("kitchen_tasks", {
   collectedAt: timestamp("collected_at", { withTimezone: true }),
   servedAt: timestamp("served_at", { withTimezone: true }),
   cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
+  resendCount: integer("resend_count").notNull().default(0),
+  lastResentAt: timestamp("last_resent_at", { withTimezone: true }),
+  lastResentBy: text("last_resent_by"),
 }, (table) => [
   uniqueIndex("kitchen_tasks_order_item_unique").on(table.orderItemId),
 ]);

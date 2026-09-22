@@ -8,6 +8,7 @@ import {
   waiterNotificationsTable,
   auditLogTable,
   kdsStationsTable,
+  productionDepartmentsTable,
 } from "@workspace/db";
 import { eq, and, inArray, desc, sql } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
@@ -17,45 +18,28 @@ const router: IRouter = Router();
 
 // ─── Zones & state machines ───────────────────────────────────────────────────
 
-const VALID_ZONES = ["cocina", "pizza", "ensalada", "barra", "pase", "sin_partida"];
-
 // Active statuses shown per zone
 const ZONE_STATUSES = ["new", "preparing", "in_oven", "ready"];
 const PASE_STATUSES = ["new", "preparing", "in_oven", "ready"];
 
 // Per-zone allowed transitions: { fromStatus → allowedToStatuses[] }
 // The resend endpoint resets to "new" regardless of zone.
-const ZONE_TRANSITIONS: Record<string, Record<string, string[]>> = {
-  cocina: {
+const STANDARD_TRANSITIONS: Record<string, string[]> = {
     new:       ["preparing", "cancelled"],
     preparing: ["ready", "cancelled"],
     ready:     ["collected"],
     collected: [],
     cancelled: [],
-  },
-  pizza: {
+};
+const OVEN_TRANSITIONS: Record<string, string[]> = {
     new:       ["preparing", "cancelled"],
     preparing: ["in_oven", "ready", "cancelled"],
     in_oven:   ["ready", "preparing", "cancelled"],
     ready:     ["collected"],
     collected: [],
     cancelled: [],
-  },
-  ensalada: {
-    new:       ["preparing", "cancelled"],
-    preparing: ["ready", "cancelled"],
-    ready:     ["collected"],
-    collected: [],
-    cancelled: [],
-  },
-  barra: {
-    new:       ["preparing", "cancelled"],
-    preparing: ["ready", "cancelled"],
-    ready:     ["collected"],
-    collected: [],
-    cancelled: [],
-  },
-  pase: {
+};
+const PASS_TRANSITIONS: Record<string, string[]> = {
     new:       [],
     preparing: [],
     in_oven:   [],
@@ -63,15 +47,13 @@ const ZONE_TRANSITIONS: Record<string, Record<string, string[]>> = {
     collected: [],
     served:    [],
     cancelled: [],
-  },
-  sin_partida: {
-    new:       ["preparing", "cancelled"],
-    preparing: ["ready", "cancelled"],
-    ready:     ["collected"],
-    collected: [],
-    cancelled: [],
-  },
 };
+
+function transitionsFor(workflow: string): Record<string, string[]> {
+  if (workflow === "oven") return OVEN_TRANSITIONS;
+  if (workflow === "pass") return PASS_TRANSITIONS;
+  return STANDARD_TRANSITIONS;
+}
 
 const TASK_FIELDS = {
   id: kitchenTasksTable.id,
@@ -90,6 +72,9 @@ const TASK_FIELDS = {
   collectedAt: kitchenTasksTable.collectedAt,
   servedAt: kitchenTasksTable.servedAt,
   cancelledAt: kitchenTasksTable.cancelledAt,
+  resendCount: kitchenTasksTable.resendCount,
+  lastResentAt: kitchenTasksTable.lastResentAt,
+  lastResentBy: kitchenTasksTable.lastResentBy,
   tableName: restaurantTablesTable.name,
   employeeName: employeesTable.name,
   employeeId: ordersTable.employeeId,
@@ -119,8 +104,13 @@ router.get("/kds/history", requireAuth, requireRole("admin", "manager", "encarga
 router.get("/kds/:zone", requireAuth, requireRole("admin", "manager", "encargado", "waiter", "kitchen"), async (req, res): Promise<void> => {
   const zone = req.params.zone as string;
 
-  if (!VALID_ZONES.includes(zone)) {
-    res.status(400).json({ error: "Zona no válida" });
+  const [department] = await db.select().from(productionDepartmentsTable)
+    .where(and(
+      eq(productionDepartmentsTable.code, zone),
+      eq(productionDepartmentsTable.active, true),
+    ));
+  if (!department || (!department.kdsEnabled && department.kind !== "pass")) {
+    res.status(404).json({ error: "Departamento KDS no configurado" });
     return;
   }
 
@@ -133,7 +123,7 @@ router.get("/kds/:zone", requireAuth, requireRole("admin", "manager", "encargado
 
   let rawTasks;
 
-  if (zone === "pase") {
+  if (department.kind === "pass") {
     // Pase aggregator: find orders with at least one ready/in_oven task,
     // then return ALL active tasks for those orders so the pase has full visibility.
     const readyOrders = await db
@@ -167,7 +157,7 @@ router.get("/kds/:zone", requireAuth, requireRole("admin", "manager", "encargado
   }
 
   const tasks = rawTasks.filter(t =>
-    zone === "pase"
+    department.kind === "pass"
       ? PASE_STATUSES.includes(t.status)
       : ZONE_STATUSES.includes(t.status)
   );
@@ -200,7 +190,18 @@ router.patch("/kitchen-tasks/:taskId/status", requireAuth, requireRole("admin", 
 
   // Validate transition against zone machine
   const zone = existing.prepZone;
-  const transitions = ZONE_TRANSITIONS[zone] ?? ZONE_TRANSITIONS.sin_partida;
+  const [department] = await db.select({
+    workflow: productionDepartmentsTable.workflow,
+  }).from(productionDepartmentsTable)
+    .where(and(
+      eq(productionDepartmentsTable.code, zone),
+      eq(productionDepartmentsTable.active, true),
+    ));
+  if (!department) {
+    res.status(422).json({ error: "Departamento de la tarea no configurado", zone });
+    return;
+  }
+  const transitions = transitionsFor(department.workflow);
   const allowed = transitions[existing.status] ?? [];
 
   if (!allowed.includes(status)) {
@@ -224,11 +225,14 @@ router.patch("/kitchen-tasks/:taskId/status", requireAuth, requireRole("admin", 
   const [task] = await db
     .update(kitchenTasksTable)
     .set(updateData)
-    .where(eq(kitchenTasksTable.id, taskId))
+    .where(and(
+      eq(kitchenTasksTable.id, taskId),
+      eq(kitchenTasksTable.status, existing.status),
+    ))
     .returning();
 
   if (!task) {
-    res.status(404).json({ error: "Tarea no encontrada" });
+    res.status(409).json({ error: "La tarea cambió en otra pantalla; actualiza el KDS" });
     return;
   }
 
@@ -241,7 +245,7 @@ router.patch("/kitchen-tasks/:taskId/status", requireAuth, requireRole("admin", 
       .from(kitchenTasksTable)
       .where(eq(kitchenTasksTable.orderId, task.orderId));
 
-    const allReady = allTasks.every(t => ["ready", "collected", "served"].includes(t.status));
+    const allReady = allTasks.every(t => ["ready", "collected", "served", "cancelled"].includes(t.status));
 
     if (allReady) {
       await db.update(ordersTable).set({ status: "ready" }).where(eq(ordersTable.id, task.orderId));
@@ -284,6 +288,9 @@ router.patch("/kitchen-tasks/:taskId/status", requireAuth, requireRole("admin", 
 // ── POST /kitchen-tasks/:taskId/resend ────────────────────────────────────────
 router.post("/kitchen-tasks/:taskId/resend", requireAuth, requireRole("admin", "manager", "encargado", "waiter", "kitchen"), async (req, res): Promise<void> => {
   const taskId = req.params.taskId as string;
+  const reason = typeof req.body?.reason === "string" && req.body.reason.trim()
+    ? req.body.reason.trim()
+    : "Reenvío manual";
 
   const [existing] = await db
     .select({ id: kitchenTasksTable.id, orderId: kitchenTasksTable.orderId, productName: kitchenTasksTable.productName })
@@ -299,7 +306,17 @@ router.post("/kitchen-tasks/:taskId/resend", requireAuth, requireRole("admin", "
   const now = new Date();
   const [updated] = await db
     .update(kitchenTasksTable)
-    .set({ status: "new", updatedAt: now, createdAt: now, readyAt: null, collectedAt: null, servedAt: null, cancelledAt: null })
+    .set({
+      status: "new",
+      updatedAt: now,
+      readyAt: null,
+      collectedAt: null,
+      servedAt: null,
+      cancelledAt: null,
+      resendCount: sql`${kitchenTasksTable.resendCount} + 1`,
+      lastResentAt: now,
+      lastResentBy: req.user?.name ?? "sistema",
+    })
     .where(eq(kitchenTasksTable.id, taskId))
     .returning();
 
@@ -308,7 +325,7 @@ router.post("/kitchen-tasks/:taskId/resend", requireAuth, requireRole("admin", "
     employeeId:   req.user?.id ?? null,
     employeeName: req.user?.name ?? "",
     action:       "resend_kds",
-    details:      `Reenviado a cocina: ${existing.productName}`,
+    details:      `Reenviado a KDS: ${existing.productName}. Motivo: ${reason}`,
   });
 
   try { emitToFunction("kds", "kds:refresh", { employeeName: req.user?.name ?? null }); } catch { /* ignore */ }
@@ -328,6 +345,14 @@ router.get("/admin/kds-stations", requireAuth, requireRole("manager", "admin"), 
 router.post("/admin/kds-stations", requireAuth, requireRole("manager", "admin"), async (req, res): Promise<void> => {
   const { name, zoneType, ip, displayUrl, notes } = req.body as Record<string, string>;
   if (!name?.trim()) { res.status(400).json({ error: "El nombre es obligatorio." }); return; }
+  const [department] = await db.select({ id: productionDepartmentsTable.id })
+    .from(productionDepartmentsTable)
+    .where(and(
+      eq(productionDepartmentsTable.code, zoneType ?? "cocina"),
+      eq(productionDepartmentsTable.active, true),
+      eq(productionDepartmentsTable.kdsEnabled, true),
+    ));
+  if (!department) { res.status(400).json({ error: "Departamento KDS no válido." }); return; }
 
   const [station] = await db.insert(kdsStationsTable).values({
     name: name.trim(),
@@ -346,6 +371,16 @@ router.patch("/admin/kds-stations/:id", requireAuth, requireRole("manager", "adm
   const { name, zoneType, ip, displayUrl, notes, active } = req.body as Record<string, unknown>;
 
   const patch: Record<string, unknown> = { updatedAt: new Date() };
+  if (zoneType !== undefined) {
+    const [department] = await db.select({ id: productionDepartmentsTable.id })
+      .from(productionDepartmentsTable)
+      .where(and(
+        eq(productionDepartmentsTable.code, String(zoneType)),
+        eq(productionDepartmentsTable.active, true),
+        eq(productionDepartmentsTable.kdsEnabled, true),
+      ));
+    if (!department) { res.status(400).json({ error: "Departamento KDS no válido." }); return; }
+  }
   if (name !== undefined)       patch.name       = String(name).trim();
   if (zoneType !== undefined)   patch.zoneType   = zoneType;
   if (ip !== undefined)         patch.ip         = ip;
@@ -407,7 +442,11 @@ router.post("/admin/kds-stations/:id/ping", requireAuth, requireRole("manager", 
 
 // ── GET /admin/kds-zones/transitions — expose state machine for docs/debug ────
 router.get("/admin/kds-zones/transitions", requireAuth, requireRole("manager", "admin"), (_req, res): void => {
-  res.json(ZONE_TRANSITIONS);
+  res.json({
+    standard: STANDARD_TRANSITIONS,
+    oven: OVEN_TRANSITIONS,
+    pass: PASS_TRANSITIONS,
+  });
 });
 
 export default router;

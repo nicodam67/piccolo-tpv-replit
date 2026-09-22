@@ -474,7 +474,14 @@ export default function OrderPage() {
   const dismissAlert = () => { if (activeAlert?.id) handleMarkRead(activeAlert.id); setActiveAlert(null); };
 
   // Mutations
+  const sendKeyStorage = actualOrderId ? `piccolo:order-send:${actualOrderId}` : null;
   const [sendIdempotencyKey, setSendIdempotencyKey] = useState(() => crypto.randomUUID());
+  useEffect(() => {
+    if (!sendKeyStorage) return;
+    const persisted = localStorage.getItem(sendKeyStorage);
+    if (persisted) setSendIdempotencyKey(persisted);
+    else localStorage.setItem(sendKeyStorage, sendIdempotencyKey);
+  }, [sendKeyStorage, sendIdempotencyKey]);
   const addOrderItem = useAddOrderItem();
   const deleteOrderItem = useDeleteOrderItem();
   const sendOrder = useSendOrder({
@@ -586,16 +593,22 @@ export default function OrderPage() {
 
   const handleSendOrder = () => {
     if (!actualOrderId) return;
+    if (sendKeyStorage) localStorage.setItem(sendKeyStorage, sendIdempotencyKey);
     suppressNextRefresh.current = true;
     sendOrder.mutate({ orderId: actualOrderId }, {
       onSuccess: () => {
+        if (sendKeyStorage) localStorage.removeItem(sendKeyStorage);
         setSendIdempotencyKey(crypto.randomUUID());
         invalidateOrder();
         queryClient.invalidateQueries({ queryKey: getGetAllTablesQueryKey() });
         queryClient.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() });
         toast.success('Comanda enviada a preparación');
       },
-      onError: () => { suppressNextRefresh.current = false; toast.error('Error al enviar la comanda'); }
+      onError: () => {
+        suppressNextRefresh.current = false;
+        invalidateOrder();
+        toast.error('Envío no confirmado. Al reconectar se comprobará con la misma referencia; no crees otra comanda.');
+      }
     });
   };
 

@@ -2,7 +2,7 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { api } from '../lib/api-client';
 import { useLocation } from 'wouter';
 import { toast } from 'sonner';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   useGetAdminProducts,
   useGetAdminCategories,
@@ -35,7 +35,7 @@ import {
 } from 'lucide-react';
 
 const TAX_RATES = [4, 10, 21] as const;
-const PREP_ZONES = [
+const FALLBACK_PREP_ZONES = [
   { value: 'cocina',      label: 'Cocina' },
   { value: 'pizza',       label: 'Pizza / Horno' },
   { value: 'ensalada',    label: 'Ensaladas / Frío' },
@@ -220,6 +220,15 @@ function ProductSheet({
   const updateFormat = useUpdateProductFormatFull();
   const deleteFormat = useDeleteProductFormat();
   const assignGroups = useAssignProductModifierGroups();
+  const { data: productionDepartments = [] } = useQuery({
+    queryKey: ['/api/production-departments'],
+    queryFn: () => api.get<Array<{ code: string; name: string; kind: string }>>('/api/production-departments'),
+  });
+  const prepZones = productionDepartments.length > 0
+    ? productionDepartments
+        .filter(department => department.kind !== 'pass')
+        .map(department => ({ value: department.code, label: department.name }))
+    : FALLBACK_PREP_ZONES;
 
   const isNew = !product;
   const [tab, setTab] = useState<'info' | 'formats' | 'modifiers' | 'recipe'>('info');
@@ -425,7 +434,7 @@ function ProductSheet({
               <div>
                 <label className="text-xs text-muted-foreground font-semibold block mb-1">Zona de preparación</label>
                 <div className="flex gap-1.5 flex-wrap">
-                  {PREP_ZONES.map((z) => (
+                  {prepZones.map((z) => (
                     <button key={z.value} onClick={() => setPrepZone(z.value)}
                       className={`px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all ${prepZone === z.value ? 'bg-primary/15 text-primary border-primary/30' : 'bg-secondary/30 text-muted-foreground border-border hover:bg-secondary'}`}>
                       {z.label}
