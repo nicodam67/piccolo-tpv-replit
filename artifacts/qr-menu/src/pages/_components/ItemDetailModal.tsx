@@ -1,6 +1,5 @@
 import { useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import type { Doc } from "@/convex/_generated/dataModel.d.ts";
 import { getTagMeta } from "@/lib/dietary-tags.ts";
 import { getAllergenMeta } from "@/lib/allergens.ts";
 import { cn } from "@/lib/utils.ts";
@@ -9,9 +8,10 @@ import { useTranslation } from "react-i18next";
 import { useParams } from "react-router-dom";
 import { isSupportedLocale } from "@/i18n.ts";
 import { localize } from "@/lib/translations.ts";
+import type { MenuItem } from "@/lib/tpv-menu-integration.ts";
 
 type Props = {
-  item: Doc<"menuItems"> | null;
+  item: MenuItem | null;
   onClose: () => void;
 };
 
@@ -140,6 +140,12 @@ export default function ItemDetailModal({ item, onClose }: Props) {
 
               {/* Divider */}
               <div className="h-px w-12 mb-4" style={{ background: "var(--accent)" }} />
+
+              {item.outOfStock && (
+                <p className="mb-4 text-sm font-bold uppercase tracking-wide text-red-600">
+                  ⛔ {t("menu.sold_out")}
+                </p>
+              )}
 
               {/* Description */}
               {localized?.description && (

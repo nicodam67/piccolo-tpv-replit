@@ -1,8 +1,5 @@
-import { useQuery } from "convex/react";
-import { api } from "@/convex/_generated/api.js";
 import { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import type { Doc } from "@/convex/_generated/dataModel.d.ts";
 import MenuItemCard from "../_components/MenuItemCard.tsx";
 import ItemDetailModal from "../_components/ItemDetailModal.tsx";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
@@ -17,6 +14,10 @@ import { DEFAULT_CARD_SETTINGS } from "@/pages/admin/_components/CardSettingsMan
 import type { CardSettings } from "@/pages/admin/_components/CardSettingsManager.tsx";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog.tsx";
 import ScheduleDisplay from "../_components/ScheduleDisplay.tsx";
+import {
+  type MenuItem,
+  useTpvMenuSnapshot,
+} from "@/lib/tpv-menu-integration.ts";
 
 export default function CategoriaPage() {
   const { lng, categoryId } = useParams<{ lng: string; categoryId: string }>();
@@ -27,10 +28,11 @@ export default function CategoriaPage() {
 
   const catId = categoryId ?? "";
 
-  // ── Convex data ───────────────────────────────────────────────────────────
-  const categories = useQuery(api.menu.listCategories, {});
-  const items      = useQuery(api.menu.getItemsByCategoryId, { catId });
-  const branding   = useQuery(api.branding.get, {});
+  const { categories, items: allItems, branding } = useTpvMenuSnapshot();
+  const items = useMemo(
+    () => allItems?.filter((item) => item.categoryId === catId),
+    [allItems, catId],
+  );
 
   useThemeColors(branding?.themeColors ?? null);
   useThemeFonts(branding?.themeFonts ?? null);
@@ -63,7 +65,7 @@ export default function CategoriaPage() {
   // ── Filter state ──────────────────────────────────────────────────────────
   const [activeTag,      setActiveTag     ] = useState<string | null>(searchParams.get("tag"));
   const [activeAllergen, setActiveAllergen] = useState<string | null>(searchParams.get("allergen"));
-  const [selectedItem,   setSelectedItem  ] = useState<Doc<"menuItems"> | null>(null);
+  const [selectedItem,   setSelectedItem  ] = useState<MenuItem | null>(null);
   const [scheduleOpen,   setScheduleOpen  ] = useState(false);
 
   const displayedItems = useMemo(() => {
