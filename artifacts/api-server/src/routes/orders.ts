@@ -1,5 +1,4 @@
 import { Router, type IRouter } from "express";
-import { appendFileSync } from "node:fs";
 import { db } from "@workspace/db";
 import {
   ordersTable,
@@ -735,9 +734,6 @@ router.post("/orders/:orderId/send", requireAuth, idempotency, async (req, res):
 
     const departments = await tx.select().from(productionDepartmentsTable)
       .where(eq(productionDepartmentsTable.active, true));
-    // #region agent log
-    appendFileSync("/opt/cursor/logs/debug.log", JSON.stringify({ hypothesisId: "H1", location: "orders.ts:send:departments", message: "Resolved send destinations", data: { departmentCount: departments.length, departmentCodes: departments.map((department) => department.code), draftZones: draftItems.map((row) => row.products.prepZone), legacySendToKds, legacySendToPrinter }, timestamp: Date.now() }) + "\n");
-    // #endregion
     const departmentByCode = new Map(departments.map((department) => [department.code, department]));
     const hasDepartmentCatalog = departments.length > 0;
     const outputsFor = (code: string) => {
@@ -1051,9 +1047,6 @@ router.post("/orders/:orderId/send", requireAuth, idempotency, async (req, res):
     });
   } catch (err) {
     const reason = err instanceof Error ? err.message : "SEND_FAILED";
-    // #region agent log
-    appendFileSync("/opt/cursor/logs/debug.log", JSON.stringify({ hypothesisId: "H2", location: "orders.ts:send:catch", message: "Atomic send rejected", data: { orderId, reason }, timestamp: Date.now() }) + "\n");
-    // #endregion
     if (reason === "ORDER_NOT_FOUND") {
       res.status(404).json({ error: "Pedido no encontrado" });
       return;
