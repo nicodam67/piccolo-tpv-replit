@@ -48,6 +48,7 @@ export interface PrinterSendResult {
 const SPECIAL_BYTES: Record<string, number> = {
   "á": 160, "é": 130, "í": 161, "ó": 162, "ú": 163,
   "ñ": 164, "Ñ": 165, "ü": 129, "Ü": 154,
+  "ç": 135, "Ç": 128,
   "¿": 168, "¡": 173, "€": 213,
 };
 

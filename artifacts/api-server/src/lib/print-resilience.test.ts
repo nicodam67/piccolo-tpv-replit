@@ -51,7 +51,7 @@ describe("idempotency and retries", () => {
 describe("ESC/POS encoding", () => {
   it("emits init, configured code page, drawer pulse and cut commands", () => {
     const payload = encodeEscPos({
-      content: "MESA 12\n2 x Pizza\nSIN CEBOLLA\n10€",
+      content: "MESA 12\n2 x Pizza\nSIN CEBOLLA\ná é í ó ú ñ ç €",
       characterSet: "cp858",
       openCashDrawer: true,
       autoCut: true,
@@ -59,6 +59,7 @@ describe("ESC/POS encoding", () => {
     expect([...payload.subarray(0, 5)]).toEqual([0x1b, 0x40, 0x1b, 0x74, 19]);
     expect(payload.includes(Buffer.from([0x1b, 0x70, 0x00, 0x19, 0xfa]))).toBe(true);
     expect([...payload.subarray(-3)]).toEqual([0x1d, 0x56, 0x00]);
+    expect(payload.includes(135)).toBe(true);
     expect(payload.includes(213)).toBe(true);
   });
 
