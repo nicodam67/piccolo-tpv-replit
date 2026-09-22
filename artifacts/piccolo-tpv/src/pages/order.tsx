@@ -475,7 +475,7 @@ export default function OrderPage() {
 
   // Mutations
   const sendKeyStorage = actualOrderId ? `piccolo:order-send:${actualOrderId}` : null;
-  const [sendIdempotencyKey, setSendIdempotencyKey] = useState(() => crypto.randomUUID());
+  const [sendIdempotencyKey, setSendIdempotencyKey] = useState<string>(() => crypto.randomUUID());
   useEffect(() => {
     if (!sendKeyStorage) return;
     const persisted = localStorage.getItem(sendKeyStorage);

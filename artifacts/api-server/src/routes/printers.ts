@@ -4,6 +4,7 @@
  * All admin routes require requireAuth (manager or admin role).
  */
 import { Router, type IRouter } from "express";
+import { appendFileSync } from "node:fs";
 import { db } from "@workspace/db";
 import {
   printersTable,
@@ -465,6 +466,9 @@ router.post("/admin/print-queue/:id/retry", requireAuth, requireRole("manager", 
   const id = req.params.id as string;
   const reason = typeof req.body?.reason === "string" ? req.body.reason.trim() : "";
   const [job] = await db.select().from(printQueueTable).where(eq(printQueueTable.id, id));
+  // #region agent log
+  appendFileSync("/opt/cursor/logs/debug.log", JSON.stringify({ hypothesisId: "H4", location: "printers.ts:retry:job", message: "Loaded retry candidate", data: { id, status: job?.status ?? null }, timestamp: Date.now() }) + "\n");
+  // #endregion
   if (!job) { res.status(404).json({ error: "Trabajo no encontrado." }); return; }
   if (!["failed", "retrying", "delivery_unknown"].includes(job.status)) {
     res.status(409).json({ error: "Solo se pueden reintentar trabajos fallidos o de entrega desconocida." });
@@ -512,6 +516,9 @@ router.delete("/admin/print-queue/:id", requireAuth, requireRole("manager", "adm
     .set({ status: "cancelled" })
     .where(eq(printQueueTable.id, id))
     .returning();
+  // #region agent log
+  appendFileSync("/opt/cursor/logs/debug.log", JSON.stringify({ hypothesisId: "H5", location: "printers.ts:cancel:updated", message: "Cancelled queue candidate", data: { id, loadedStatus: job.status, returnedStatus: updated?.status ?? null }, timestamp: Date.now() }) + "\n");
+  // #endregion
 
   await auditPrint(id, "cancelled", req.user?.id, req.user?.name ?? "admin");
   res.json(updated);
@@ -528,6 +535,9 @@ router.post("/admin/print-queue/:id/reprint", requireAuth, requireRole("manager"
   const targetPrinterId = printerId ?? original.printerId;
   const [targetPrinter] = await db.select().from(printersTable)
     .where(and(eq(printersTable.id, targetPrinterId), eq(printersTable.active, true)));
+  // #region agent log
+  appendFileSync("/opt/cursor/logs/debug.log", JSON.stringify({ hypothesisId: "H6", location: "printers.ts:reprint:target", message: "Resolved reprint target", data: { originalId: id, targetPrinterId, targetFound: Boolean(targetPrinter) }, timestamp: Date.now() }) + "\n");
+  // #endregion
   if (!targetPrinter) { res.status(400).json({ error: "Impresora destino no disponible." }); return; }
 
   const reprintHeader = buildReprintHeader(

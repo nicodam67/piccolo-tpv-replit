@@ -75,6 +75,11 @@ vi.mock("../lib/socket", () => ({
   initSocket: vi.fn(),
 }));
 
+vi.mock("../lib/print-dispatch", () => ({
+  dispatchKitchenPrint: vi.fn().mockResolvedValue(undefined),
+  dispatchCancellationPrint: vi.fn().mockResolvedValue(undefined),
+}));
+
 // ─── App import (after mocks are registered) ──────────────────────────────────
 
 const { default: app } = await import("../app");
@@ -283,6 +288,7 @@ describe("POST /api/orders/:orderId/send — emits kds:refresh and orders:refres
         .mockReturnValueOnce(makeChain([draftRow]))
         .mockReturnValueOnce(makeChain([]))
         .mockReturnValueOnce(makeChain([]))
+        .mockReturnValueOnce(makeChain([]))
         .mockReturnValueOnce(makeChain([UPDATED_ORDER]));
       await cb({
         execute: vi.fn().mockResolvedValue({ rows: [] }),
@@ -292,7 +298,6 @@ describe("POST /api/orders/:orderId/send — emits kds:refresh and orders:refres
       });
       return { txInsert, txUpdate };
     });
-    mockDb.select.mockReturnValueOnce(makeChain([UPDATED_ORDER]));                // 6. updated order
   }
 
   it("emits kds:refresh and orders:refresh after successfully sending draft items (kds_only mode)", async () => {
@@ -353,6 +358,7 @@ describe("POST /api/orders/:orderId/send — emits kds:refresh and orders:refres
         .mockReturnValueOnce(makeChain([DRAFT_ROW]))
         .mockReturnValueOnce(makeChain([]))
         .mockReturnValueOnce(makeChain([]))
+        .mockReturnValueOnce(makeChain([]))
         .mockReturnValueOnce(makeChain([UPDATED_ORDER]));
       await cb({
         execute: vi.fn().mockResolvedValue({ rows: [] }),
@@ -398,6 +404,7 @@ describe("POST /api/orders/:orderId/send — emits kds:refresh and orders:refres
       const txSelect = vi.fn()
         .mockReturnValueOnce(makeChain([{ status: "open" }]))
         .mockReturnValueOnce(makeChain([DRAFT_ROW]))
+        .mockReturnValueOnce(makeChain([]))
         .mockReturnValueOnce(makeChain([]))
         .mockReturnValueOnce(makeChain([]))
         .mockReturnValueOnce(makeChain([UPDATED_ORDER]));

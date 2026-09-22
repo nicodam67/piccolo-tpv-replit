@@ -184,6 +184,14 @@ const F = {
   bizConfig: { id: "biz-1", nif: "B12345678", razonSocial: "Piccolo SL",
                direccionFiscal: "Calle Mayor 1" },
 };
+const DEPT_COCINA = {
+  code: "cocina",
+  active: true,
+  kind: "production",
+  workflow: "standard",
+  kdsEnabled: true,
+  printerEnabled: false,
+};
 
 // ─── beforeEach ───────────────────────────────────────────────────────────────
 beforeEach(() => {
@@ -502,8 +510,9 @@ describe("5. Idempotencia — doble clic y reintentos de red", () => {
       .mockReturnValueOnce(makeChain([{ status: "open" }]))                              // 6. locked order
       .mockReturnValueOnce(makeChain([{ order_items: F.orderItem, products: F.product }])) // 7. locked drafts
       .mockReturnValueOnce(makeChain([]))                                                // 8. locked modifiers
-      .mockReturnValueOnce(makeChain([]))                                                // 9. recipe
-      .mockReturnValueOnce(makeChain([F.order]));                                        // 10. response order
+      .mockReturnValueOnce(makeChain([DEPT_COCINA]))                                     // 9. departments
+      .mockReturnValueOnce(makeChain([]))                                                // 10. recipe
+      .mockReturnValueOnce(makeChain([F.order]));                                        // 11. response order
     mockDb.insert.mockReturnValue(makeChain([F.kdsTask]));
     mockDb.update.mockReturnValue(makeChain([]));
 
@@ -806,6 +815,7 @@ describe("9. Verificación de eventos WebSocket", () => {
       .mockReturnValueOnce(makeChain([{ status: "open" }]))
       .mockReturnValueOnce(makeChain([{ order_items: F.orderItem, products: F.product }]))
       .mockReturnValueOnce(makeChain([])) // locked modifiers
+      .mockReturnValueOnce(makeChain([DEPT_COCINA])) // departments
       .mockReturnValueOnce(makeChain([])) // recipe
       .mockReturnValueOnce(makeChain([F.order])); // response order
     mockDb.insert.mockReturnValue(makeChain([F.kdsTask]));
@@ -841,7 +851,9 @@ describe("9. Verificación de eventos WebSocket", () => {
   });
 
   it("cambio de estado en KDS emite kds:refresh", async () => {
-    mockDb.select.mockReturnValueOnce(makeChain([F.kdsTask]));
+    mockDb.select
+      .mockReturnValueOnce(makeChain([F.kdsTask]))
+      .mockReturnValueOnce(makeChain([DEPT_COCINA]));
     mockDb.update.mockReturnValueOnce(makeChain([{ ...F.kdsTask, status: "preparing" }]));
 
     await request(app)
@@ -879,9 +891,10 @@ describe("9. Verificación de eventos WebSocket", () => {
     // 4. restaurantTablesTable.where(tableId) → nombre de la mesa
     mockDb.select
       .mockReturnValueOnce(makeChain([taskPreparing]))       // 1. task en "preparing"
-      .mockReturnValueOnce(makeChain([taskReady]))           // 2. allTasks → solo este → allReady=true
-      .mockReturnValueOnce(makeChain([F.order]))             // 3. order (tiene tableId y employeeId)
-      .mockReturnValueOnce(makeChain([{ name: "Mesa 1" }])); // 4. tabla para el nombre
+      .mockReturnValueOnce(makeChain([DEPT_COCINA]))         // 2. transition workflow
+      .mockReturnValueOnce(makeChain([taskReady]))           // 3. allTasks → solo este → allReady=true
+      .mockReturnValueOnce(makeChain([F.order]))             // 4. order (tiene tableId y employeeId)
+      .mockReturnValueOnce(makeChain([{ name: "Mesa 1" }])); // 5. tabla para el nombre
     mockDb.update
       .mockReturnValueOnce(makeChain([taskReady]))  // status update → ready
       .mockReturnValue(makeChain([]));              // order status → ready
@@ -912,7 +925,9 @@ describe("10. Transiciones de estado en KDS bajo carga simultánea", () => {
     // si se usan mockReturnValueOnce en un bucle.
 
     // ── Paso 1: new → preparing (sin allReady check) ──
-    mockDb.select.mockReturnValueOnce(makeChain([{ ...F.kdsTask, status: "new" }]));
+    mockDb.select
+      .mockReturnValueOnce(makeChain([{ ...F.kdsTask, status: "new" }]))
+      .mockReturnValueOnce(makeChain([DEPT_COCINA]));
     mockDb.update.mockReturnValueOnce(makeChain([{ ...F.kdsTask, status: "preparing" }]));
 
     const r1 = await request(app)
@@ -925,6 +940,7 @@ describe("10. Transiciones de estado en KDS bajo carga simultánea", () => {
     // Selects: task fetch → allTasks → order → table name
     mockDb.select
       .mockReturnValueOnce(makeChain([{ ...F.kdsTask, status: "preparing" }]))         // task
+      .mockReturnValueOnce(makeChain([DEPT_COCINA]))                                    // transition workflow
       .mockReturnValueOnce(makeChain([{ ...F.kdsTask, status: "ready" }]))              // allTasks (allReady=true)
       .mockReturnValueOnce(makeChain([F.order]))                                        // order completo
       .mockReturnValueOnce(makeChain([{ name: "Mesa 1" }]));                           // tabla nombre
@@ -940,7 +956,9 @@ describe("10. Transiciones de estado en KDS bajo carga simultánea", () => {
     expect([200, 201]).toContain(r2.status);
 
     // ── Paso 3: ready → collected (sin allReady check) ──
-    mockDb.select.mockReturnValueOnce(makeChain([{ ...F.kdsTask, status: "ready" }]));
+    mockDb.select
+      .mockReturnValueOnce(makeChain([{ ...F.kdsTask, status: "ready" }]))
+      .mockReturnValueOnce(makeChain([DEPT_COCINA]));
     mockDb.update.mockReturnValueOnce(makeChain([{ ...F.kdsTask, status: "collected" }]));
 
     const r3 = await request(app)

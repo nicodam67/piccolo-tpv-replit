@@ -18,6 +18,7 @@ type MockRow = Record<string, unknown>;
 
 const mockState = {
   selectRows:   [] as MockRow[],
+  selectQueue:  [] as MockRow[][],
   updateRows:   [] as MockRow[],
   insertRows:   [] as MockRow[],
   txUpdateRows: [] as MockRow[],
@@ -28,6 +29,7 @@ const mockState = {
 
 vi.mock("@workspace/db", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@workspace/db")>();
+  const nextSelectRows = () => mockState.selectQueue.shift() ?? mockState.selectRows;
 
   function makeChain(resultFn: () => MockRow[]) {
     const chain: Record<string, unknown> = {};
@@ -58,15 +60,15 @@ vi.mock("@workspace/db", async (importOriginal) => {
   return {
     ...actual,
     db: {
-      select:  () => makeChain(() => mockState.selectRows),
-      selectDistinct: () => makeChain(() => mockState.selectRows),
+      select:  () => makeChain(nextSelectRows),
+      selectDistinct: () => makeChain(nextSelectRows),
       update:  () => makeChain(() => mockState.updateRows),
       delete:  () => makeChain(() => []),
       insert:  () => makeInsert(() => mockState.insertRows),
       execute: () => Promise.resolve({ rows: [] }),
       transaction: async (fn: (tx: unknown) => unknown) =>
         fn({
-          select:  () => makeChain(() => mockState.selectRows),
+          select:  () => makeChain(nextSelectRows),
           update:  () => makeChain(() => mockState.txUpdateRows),
           insert:  () => makeInsert(() => mockState.insertRows),
           execute: () => Promise.resolve({ rows: [] }),
@@ -137,6 +139,14 @@ const TASK_OVEN: MockRow    = { ...TASK_NEW, prepZone: "pizza", status: "in_oven
 
 const ORDER: MockRow = { id: "order-1", status: "open", tableId: "table-1", employeeId: "emp-waiter" };
 const TABLE: MockRow = { id: "table-1", name: "Mesa 3" };
+const DEPT_COCINA: MockRow = {
+  code: "cocina", active: true, kind: "production", workflow: "standard",
+  kdsEnabled: true, printerEnabled: false,
+};
+const DEPT_PIZZA: MockRow = { ...DEPT_COCINA, code: "pizza", workflow: "oven" };
+const DEPT_PASE: MockRow = {
+  ...DEPT_COCINA, code: "pase", kind: "pass", workflow: "pass",
+};
 
 const SENT_ITEM: MockRow = {
   order_items: { id: "item-sent", orderId: "order-1", status: "sent" },
@@ -155,6 +165,7 @@ const READY_ITEM: MockRow = {
 
 beforeEach(() => {
   mockState.selectRows   = [];
+  mockState.selectQueue  = [];
   mockState.updateRows   = [];
   mockState.insertRows   = [];
   mockState.txUpdateRows = [];
@@ -167,9 +178,12 @@ beforeEach(() => {
 
 describe("Test 1 — GET /kds/:zone filters by prep zone", () => {
   it("returns tasks for cocina zone", async () => {
-    mockState.selectRows = [
-      { ...TASK_NEW, prepZone: "cocina" },
-      { ...TASK_NEW, id: "task-2", prepZone: "cocina", productName: "Sopa" },
+    mockState.selectQueue = [
+      [DEPT_COCINA],
+      [
+        { ...TASK_NEW, prepZone: "cocina" },
+        { ...TASK_NEW, id: "task-2", prepZone: "cocina", productName: "Sopa" },
+      ],
     ];
 
     const res = await request(app).get("/api/kds/cocina").set("Authorization", WAITER);
@@ -179,13 +193,16 @@ describe("Test 1 — GET /kds/:zone filters by prep zone", () => {
     expect(res.body.every((t: { prepZone: string }) => t.prepZone === "cocina")).toBe(true);
   });
 
-  it("returns 400 for an invalid zone name", async () => {
+  it("returns 404 for an unconfigured zone", async () => {
     const res = await request(app).get("/api/kds/invalid-zone").set("Authorization", WAITER);
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(404);
   });
 
   it("returns tasks for pizza zone", async () => {
-    mockState.selectRows = [{ ...TASK_NEW, id: "task-p", prepZone: "pizza", productName: "Margarita" }];
+    mockState.selectQueue = [
+      [DEPT_PIZZA],
+      [{ ...TASK_NEW, id: "task-p", prepZone: "pizza", productName: "Margarita" }],
+    ];
 
     const res = await request(app).get("/api/kds/pizza").set("Authorization", WAITER);
     expect(res.status).toBe(200);
@@ -193,12 +210,15 @@ describe("Test 1 — GET /kds/:zone filters by prep zone", () => {
   });
 
   it("includes notes and allergyNote in response", async () => {
-    mockState.selectRows = [{
-      ...TASK_NEW,
-      notes: "[Media] | Sin cebolla",
-      hasAllergy: true,
-      allergyNote: "Frutos secos",
-    }];
+    mockState.selectQueue = [
+      [DEPT_COCINA],
+      [{
+        ...TASK_NEW,
+        notes: "[Media] | Sin cebolla",
+        hasAllergy: true,
+        allergyNote: "Frutos secos",
+      }],
+    ];
 
     const res = await request(app).get("/api/kds/cocina").set("Authorization", WAITER);
     expect(res.status).toBe(200);
@@ -208,11 +228,14 @@ describe("Test 1 — GET /kds/:zone filters by prep zone", () => {
   });
 
   it("never returns finished or cancelled tasks from a production zone", async () => {
-    mockState.selectRows = [
-      TASK_NEW,
-      { ...TASK_NEW, id: "task-collected", status: "collected" },
-      { ...TASK_NEW, id: "task-served", status: "served" },
-      { ...TASK_NEW, id: "task-cancelled", status: "cancelled" },
+    mockState.selectQueue = [
+      [DEPT_COCINA],
+      [
+        TASK_NEW,
+        { ...TASK_NEW, id: "task-collected", status: "collected" },
+        { ...TASK_NEW, id: "task-served", status: "served" },
+        { ...TASK_NEW, id: "task-cancelled", status: "cancelled" },
+      ],
     ];
 
     const res = await request(app).get("/api/kds/cocina").set("Authorization", WAITER);
@@ -222,10 +245,14 @@ describe("Test 1 — GET /kds/:zone filters by prep zone", () => {
   });
 
   it("never returns collected or served tasks from pase", async () => {
-    mockState.selectRows = [
-      TASK_READY,
-      { ...TASK_NEW, id: "task-collected", status: "collected" },
-      { ...TASK_NEW, id: "task-served", status: "served" },
+    mockState.selectQueue = [
+      [DEPT_PASE],
+      [{ orderId: "order-1" }],
+      [
+        TASK_READY,
+        { ...TASK_NEW, id: "task-collected", status: "collected" },
+        { ...TASK_NEW, id: "task-served", status: "served" },
+      ],
     ];
 
     const res = await request(app).get("/api/kds/pase").set("Authorization", WAITER);
@@ -315,7 +342,7 @@ describe("Test 3 — POST /kitchen-tasks/:taskId/resend", () => {
 
 describe("Test 4 — Status flow: new → preparing → ready → served", () => {
   it("new → preparing: returns updated task with status 'preparing'", async () => {
-    mockState.selectRows = [TASK_NEW]; // existing task must be "new" for new→preparing transition
+    mockState.selectQueue = [[TASK_NEW], [DEPT_COCINA]];
     mockState.updateRows = [TASK_PREP];
 
     const res = await request(app)
@@ -333,7 +360,7 @@ describe("Test 4 — Status flow: new → preparing → ready → served", () =>
     // The existing task must have status "preparing" for the preparing→ready transition to be valid.
     // The allTasks select also returns TASK_PREP (not ready), so no waiter notification fires,
     // but kds:refresh is still emitted — which is what this test checks.
-    mockState.selectRows = [TASK_PREP];
+    mockState.selectQueue = [[TASK_PREP], [DEPT_COCINA], [TASK_PREP]];
 
     const res = await request(app)
       .patch("/api/kitchen-tasks/task-1/status")
@@ -347,7 +374,7 @@ describe("Test 4 — Status flow: new → preparing → ready → served", () =>
   });
 
   it("pizza preparing → in_oven → ready follows the zone state machine", async () => {
-    mockState.selectRows = [{ ...TASK_PREP, prepZone: "pizza" }];
+    mockState.selectQueue = [[{ ...TASK_PREP, prepZone: "pizza" }], [DEPT_PIZZA]];
     mockState.updateRows = [TASK_OVEN];
 
     const ovenRes = await request(app)
@@ -358,7 +385,7 @@ describe("Test 4 — Status flow: new → preparing → ready → served", () =>
     expect(ovenRes.status).toBe(200);
     expect(ovenRes.body.status).toBe("in_oven");
 
-    mockState.selectRows = [TASK_OVEN];
+    mockState.selectQueue = [[TASK_OVEN], [DEPT_PIZZA], [TASK_OVEN]];
     mockState.updateRows = [{ ...TASK_OVEN, status: "ready", readyAt: NOW }];
 
     const readyRes = await request(app)
@@ -416,7 +443,12 @@ describe("Test 5 — Real-time socket sync", () => {
     for (const status of ["preparing", "ready", "cancelled"]) {
       mockState.socketEmit.mockReset();
       mockState.updateRows = [{ ...TASK_NEW, status }];
-      mockState.selectRows = [{ ...TASK_NEW, status: prevStatus[status] }];
+      const priorTask = { ...TASK_NEW, status: prevStatus[status] };
+      mockState.selectQueue = [
+        [priorTask],
+        [DEPT_COCINA],
+        ...(status === "ready" ? [[priorTask]] : []),
+      ];
 
       await request(app)
         .patch("/api/kitchen-tasks/task-1/status")

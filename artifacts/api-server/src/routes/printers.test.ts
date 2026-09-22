@@ -139,7 +139,7 @@ const JOB_PENDING = {
 const JOB_ERROR = {
   ...JOB_PENDING,
   id: "job-2",
-  status: "error",
+  status: "failed",
   attempts: 3,
   lastError: "Connection refused",
 };
@@ -397,7 +397,7 @@ describe("14. GET /api/admin/print-queue — list queue jobs", () => {
 
     expect(res.status).toBe(200);
     expect(res.body).toHaveLength(2);
-    expect(res.body.some((j: any) => j.status === "error")).toBe(true);
+    expect(res.body.some((j: any) => j.status === "failed")).toBe(true);
   });
 });
 
@@ -447,7 +447,9 @@ describe("16. DELETE /api/admin/print-queue/:id — cancel pending job", () => {
 // ── 17. POST /admin/print-queue/:id/reprint ──────────────────────────────────
 describe("17. POST /api/admin/print-queue/:id/reprint — reprint with reason", () => {
   it("creates a new reprint job with REIMPRESION header", async () => {
-    mockDb.select.mockReturnValueOnce(makeChain([JOB_PRINTED]));
+    mockDb.select
+      .mockReturnValueOnce(makeChain([JOB_PRINTED]))
+      .mockReturnValueOnce(makeChain([PRINTER_COCINA]));
     mockDb.insert
       .mockReturnValueOnce(makeChain([{ id: "job-reprint-1", documentType: "reprint", status: "pending" }]))
       .mockReturnValueOnce(makeChain([])); // audit

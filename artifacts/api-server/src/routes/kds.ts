@@ -1,4 +1,5 @@
 import { Router, type IRouter } from "express";
+import { appendFileSync } from "node:fs";
 import { db } from "@workspace/db";
 import {
   kitchenTasksTable,
@@ -109,6 +110,9 @@ router.get("/kds/:zone", requireAuth, requireRole("admin", "manager", "encargado
       eq(productionDepartmentsTable.code, zone),
       eq(productionDepartmentsTable.active, true),
     ));
+  // #region agent log
+  appendFileSync("/opt/cursor/logs/debug.log", JSON.stringify({ hypothesisId: "H3", location: "kds.ts:get:department", message: "Resolved KDS department", data: { zone, department: department ? { code: department.code, kind: department.kind, kdsEnabled: department.kdsEnabled } : null }, timestamp: Date.now() }) + "\n");
+  // #endregion
   if (!department || (!department.kdsEnabled && department.kind !== "pass")) {
     res.status(404).json({ error: "Departamento KDS no configurado" });
     return;
@@ -197,6 +201,9 @@ router.patch("/kitchen-tasks/:taskId/status", requireAuth, requireRole("admin", 
       eq(productionDepartmentsTable.code, zone),
       eq(productionDepartmentsTable.active, true),
     ));
+  // #region agent log
+  appendFileSync("/opt/cursor/logs/debug.log", JSON.stringify({ hypothesisId: "H3", location: "kds.ts:patch:department", message: "Resolved transition workflow", data: { taskId, zone, from: existing.status, to: status, workflow: department?.workflow ?? null }, timestamp: Date.now() }) + "\n");
+  // #endregion
   if (!department) {
     res.status(422).json({ error: "Departamento de la tarea no configurado", zone });
     return;

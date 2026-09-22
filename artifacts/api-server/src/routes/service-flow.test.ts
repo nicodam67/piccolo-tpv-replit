@@ -178,6 +178,15 @@ const F = {
 
 // Draft item in the JOIN shape that Drizzle returns for SELECT...innerJoin
 const F_DRAFT_JOIN = { order_items: F.orderItem, products: F.product };
+const DEPT_COCINA = {
+  code: "cocina",
+  active: true,
+  kind: "production",
+  workflow: "standard",
+  kdsEnabled: true,
+  printerEnabled: false,
+};
+const DEPT_PIZZA = { ...DEPT_COCINA, code: "pizza", workflow: "oven" };
 
 // ─── beforeEach: reset all mocks + restore constant behaviors ─────────────────
 beforeEach(() => {
@@ -582,8 +591,9 @@ describe("Paso 5 — Enviar comanda al KDS (POST /api/orders/:orderId/send)", ()
       .mockReturnValueOnce(makeChain([{ status: "open" }]))           // 6. locked order
       .mockReturnValueOnce(makeChain([F_DRAFT_JOIN]))                 // 7. locked draft items
       .mockReturnValueOnce(makeChain([]))                             // 8. locked modifiers
-      .mockReturnValueOnce(makeChain([]))                             // 9. recipe items (stock) → empty
-      .mockReturnValue(makeChain([sentOrder]));                       // 10. updated order + fallback
+      .mockReturnValueOnce(makeChain([DEPT_COCINA]))                  // 9. active departments
+      .mockReturnValueOnce(makeChain([]))                             // 10. recipe items (stock) → empty
+      .mockReturnValue(makeChain([sentOrder]));                       // 11. updated order + fallback
 
     mockDb.insert.mockReturnValue(makeChain([F.kdsTask]));
     mockDb.update.mockReturnValue(makeChain([]));
@@ -612,6 +622,7 @@ describe("Paso 5 — Enviar comanda al KDS (POST /api/orders/:orderId/send)", ()
       .mockReturnValueOnce(makeChain([{ status: "open" }]))
       .mockReturnValueOnce(makeChain([F_DRAFT_JOIN]))
       .mockReturnValueOnce(makeChain([]))
+      .mockReturnValueOnce(makeChain([DEPT_COCINA]))
       .mockReturnValueOnce(makeChain([]))
       .mockReturnValue(makeChain([sentOrder]));
     mockDb.insert.mockReturnValue(makeChain([F.kdsTask]));
@@ -660,7 +671,9 @@ describe("Paso 6 — Transiciones KDS (PATCH /api/kitchen-tasks/:taskId/status)"
   });
 
   it("422 transición inválida (ready → preparing en cocina no permitida)", async () => {
-    mockDb.select.mockReturnValueOnce(makeChain([TASK_READY]));
+    mockDb.select
+      .mockReturnValueOnce(makeChain([TASK_READY]))
+      .mockReturnValueOnce(makeChain([DEPT_COCINA]));
     const res = await request(app)
       .patch(`/api/kitchen-tasks/${TASK_ID}/status`)
       .set("Authorization", AUTH_HDR)
@@ -671,7 +684,9 @@ describe("Paso 6 — Transiciones KDS (PATCH /api/kitchen-tasks/:taskId/status)"
   });
 
   it("200 new → preparing — kds:refresh emitido", async () => {
-    mockDb.select.mockReturnValueOnce(makeChain([TASK_NEW]));
+    mockDb.select
+      .mockReturnValueOnce(makeChain([TASK_NEW]))
+      .mockReturnValueOnce(makeChain([DEPT_COCINA]));
     mockDb.update.mockReturnValueOnce(makeChain([TASK_PREP]));
 
     const res = await request(app)
@@ -689,9 +704,10 @@ describe("Paso 6 — Transiciones KDS (PATCH /api/kitchen-tasks/:taskId/status)"
 
     mockDb.select
       .mockReturnValueOnce(makeChain([TASK_PREP]))               // existing task
+      .mockReturnValueOnce(makeChain([DEPT_COCINA]))             // transition workflow
       .mockReturnValueOnce(makeChain([TASK_READY]))              // all tasks for order
       .mockReturnValueOnce(makeChain([orderWithTable]))          // order (for notification)
-      .mockReturnValueOnce(makeChain([{ name: "Mesa 1" }]));    // table name
+      .mockReturnValueOnce(makeChain([{ name: "Mesa 1" }]));     // table name
     mockDb.update
       .mockReturnValueOnce(makeChain([TASK_READY]))              // task updated
       .mockReturnValueOnce(makeChain([]));                       // order status → ready
@@ -710,7 +726,9 @@ describe("Paso 6 — Transiciones KDS (PATCH /api/kitchen-tasks/:taskId/status)"
   });
 
   it("422 transición new → collected inválida en pizza", async () => {
-    mockDb.select.mockReturnValueOnce(makeChain([{ ...TASK_NEW, prepZone: "pizza" }]));
+    mockDb.select
+      .mockReturnValueOnce(makeChain([{ ...TASK_NEW, prepZone: "pizza" }]))
+      .mockReturnValueOnce(makeChain([DEPT_PIZZA]));
     const res = await request(app)
       .patch(`/api/kitchen-tasks/${TASK_ID}/status`)
       .set("Authorization", AUTH_HDR)
@@ -1363,9 +1381,11 @@ describe("Manejo de errores — corte transversal", () => {
   });
 
   it("Transición KDS inválida (collected → new) retorna 422", async () => {
-    mockDb.select.mockReturnValueOnce(makeChain([
-      { ...F.kdsTask, status: "collected", prepZone: "cocina" },
-    ]));
+    mockDb.select
+      .mockReturnValueOnce(makeChain([
+        { ...F.kdsTask, status: "collected", prepZone: "cocina" },
+      ]))
+      .mockReturnValueOnce(makeChain([DEPT_COCINA]));
     const res = await request(app)
       .patch(`/api/kitchen-tasks/${TASK_ID}/status`)
       .set("Authorization", AUTH_HDR)
