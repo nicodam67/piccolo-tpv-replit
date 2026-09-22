@@ -92,6 +92,16 @@ const TABLE_ID = "table-222";
 const PRODUCT_ID = "prod-abc";
 const ITEM_ID = "item-xyz";
 
+function resetRouteMocks() {
+  vi.resetAllMocks();
+  process.env["SESSION_SECRET"] = "test-secret";
+  mockJwtVerify.mockImplementation(() => ({ id: "waiter-1", name: "Test Waiter", role: "waiter" }));
+  mockDb.select.mockImplementation(() => makeChain([]));
+  mockDb.insert.mockImplementation(() => makeChain([]));
+  mockDb.update.mockImplementation(() => makeChain([]));
+  mockDb.delete.mockImplementation(() => makeChain([]));
+}
+
 const PRODUCT = {
   id: PRODUCT_ID,
   name: "Paella Valenciana",
@@ -126,15 +136,7 @@ const DELETE_ITEM_ROW = {
 
 describe("POST /api/orders/:orderId/items — add item emits orders:refresh", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
-    process.env["SESSION_SECRET"] = "test-secret";
-    // Default: any unmocked DB call returns an empty chain so the route
-    // doesn't throw when it hits optional queries (modifiers, audit log,
-    // prefactura status, ingredient stock) that tests don't need to assert on.
-    mockDb.select.mockImplementation(() => makeChain([]));
-    mockDb.insert.mockImplementation(() => makeChain([]));
-    mockDb.update.mockImplementation(() => makeChain([]));
-    mockDb.delete.mockImplementation(() => makeChain([]));
+    resetRouteMocks();
   });
 
   it("emits orders:refresh with the correct orderId after adding an item", async () => {
@@ -186,12 +188,7 @@ describe("POST /api/orders/:orderId/items — add item emits orders:refresh", ()
 
 describe("DELETE /api/order-items/:itemId — remove item emits orders:refresh", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
-    process.env["SESSION_SECRET"] = "test-secret";
-    mockDb.select.mockImplementation(() => makeChain([]));
-    mockDb.insert.mockImplementation(() => makeChain([]));
-    mockDb.update.mockImplementation(() => makeChain([]));
-    mockDb.delete.mockImplementation(() => makeChain([]));
+    resetRouteMocks();
   });
 
   it("emits orders:refresh with the correct orderId after deleting a draft item", async () => {
@@ -269,8 +266,7 @@ describe("POST /api/orders/:orderId/send — emits kds:refresh and orders:refres
   };
 
   beforeEach(() => {
-    vi.clearAllMocks();
-    process.env["SESSION_SECRET"] = "test-secret";
+    resetRouteMocks();
   });
 
   // Helper: sets up the full mock chain for a successful send, with a given printMode.
@@ -289,7 +285,8 @@ describe("POST /api/orders/:orderId/send — emits kds:refresh and orders:refres
         .mockReturnValueOnce(makeChain([]))
         .mockReturnValueOnce(makeChain([]))
         .mockReturnValueOnce(makeChain([]))
-        .mockReturnValueOnce(makeChain([UPDATED_ORDER]));
+        .mockReturnValueOnce(makeChain([UPDATED_ORDER]))
+        .mockReturnValue(makeChain([]));
       await cb({
         execute: vi.fn().mockResolvedValue({ rows: [] }),
         select: txSelect,
@@ -359,7 +356,8 @@ describe("POST /api/orders/:orderId/send — emits kds:refresh and orders:refres
         .mockReturnValueOnce(makeChain([]))
         .mockReturnValueOnce(makeChain([]))
         .mockReturnValueOnce(makeChain([]))
-        .mockReturnValueOnce(makeChain([UPDATED_ORDER]));
+        .mockReturnValueOnce(makeChain([UPDATED_ORDER]))
+        .mockReturnValue(makeChain([]));
       await cb({
         execute: vi.fn().mockResolvedValue({ rows: [] }),
         select: txSelect,
@@ -407,7 +405,8 @@ describe("POST /api/orders/:orderId/send — emits kds:refresh and orders:refres
         .mockReturnValueOnce(makeChain([]))
         .mockReturnValueOnce(makeChain([]))
         .mockReturnValueOnce(makeChain([]))
-        .mockReturnValueOnce(makeChain([UPDATED_ORDER]));
+        .mockReturnValueOnce(makeChain([UPDATED_ORDER]))
+        .mockReturnValue(makeChain([]));
       await cb({
         execute: vi.fn().mockResolvedValue({ rows: [] }),
         select: txSelect,
@@ -454,12 +453,7 @@ describe("orders:refresh employeeName — name always comes from the JWT, never 
    */
 
   beforeEach(() => {
-    vi.clearAllMocks();
-    process.env["SESSION_SECRET"] = "test-secret";
-    mockDb.select.mockImplementation(() => makeChain([]));
-    mockDb.insert.mockImplementation(() => makeChain([]));
-    mockDb.update.mockImplementation(() => makeChain([]));
-    mockDb.delete.mockImplementation(() => makeChain([]));
+    resetRouteMocks();
   });
 
   it("carries the name from the JWT in the orders:refresh payload (add-item path)", async () => {
@@ -535,12 +529,7 @@ describe("Two-session live sync — end-to-end scenario", () => {
    */
 
   beforeEach(() => {
-    vi.clearAllMocks();
-    process.env["SESSION_SECRET"] = "test-secret";
-    mockDb.select.mockImplementation(() => makeChain([]));
-    mockDb.insert.mockImplementation(() => makeChain([]));
-    mockDb.update.mockImplementation(() => makeChain([]));
-    mockDb.delete.mockImplementation(() => makeChain([]));
+    resetRouteMocks();
   });
 
   it("add-item path: Device A adds, orders:refresh reaches Device B's listener", async () => {
