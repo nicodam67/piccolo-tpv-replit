@@ -240,6 +240,26 @@ describe("DELETE /api/order-items/:itemId — remove item emits orders:refresh",
   });
 });
 
+describe("PATCH /api/order-items/:itemId — sent item safety", () => {
+  beforeEach(() => {
+    resetRouteMocks();
+  });
+
+  it("rejects silent preparation changes after send and directs cancel/add flow", async () => {
+    mockDb.select.mockReturnValueOnce(makeChain([{ ...ORDER_ITEM, status: "sent" }]));
+
+    const res = await request(app)
+      .patch(`/api/order-items/${ITEM_ID}`)
+      .set("Authorization", AUTH)
+      .send({ notes: "SIN CEBOLLA" });
+
+    expect(res.status).toBe(409);
+    expect(res.body.error).toMatch(/ANULADO\/AÑADIDO/);
+    expect(mockDb.update).not.toHaveBeenCalled();
+    expect(mockEmit).not.toHaveBeenCalled();
+  });
+});
+
 describe("POST /api/orders/:orderId/send — emits kds:refresh and orders:refresh", () => {
   const DRAFT_ROW = {
     order_items: {

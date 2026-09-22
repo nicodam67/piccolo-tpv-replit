@@ -583,6 +583,16 @@ router.patch("/admin/print-config", requireAuth, requireRole("manager", "admin")
       updatedAt: new Date(),
     }).where(eq(businessConfigTable.id, existing.id));
   }
+  if (printMode) {
+    // Legacy global mode remains a useful bulk preset. Departments are the
+    // authoritative per-destination configuration and can be adjusted
+    // independently afterwards.
+    await db.update(productionDepartmentsTable).set({
+      kdsEnabled: printMode !== "printers_only",
+      printerEnabled: printMode !== "kds_only",
+      updatedAt: new Date(),
+    }).where(eq(productionDepartmentsTable.kind, "production"));
+  }
 
   res.json({ ok: true });
 });

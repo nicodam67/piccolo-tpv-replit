@@ -122,6 +122,11 @@ comercial. Una anulación con impresión habilitada debe encolar primero un
 ticket `ANULADO`; si no hay ruta, no se acepta. Los reenvíos conservan la fecha
 original y muestran `REENVIADO ×N`, actor, fecha y motivo en auditoría.
 
+Una línea ya enviada no puede cambiar silenciosamente cantidad, notas o
+alérgenos. El API exige anularla y añadir la corrección como una línea nueva;
+así cocina recibe dos deltas inequívocos (`ANULADO` y `AÑADIDO`) y nunca vuelve a
+producir el contenido original por una mutación invisible.
+
 Las reimpresiones crean un trabajo nuevo, incluyen una cabecera inequívoca
 `REIMPRESION`, exigen motivo y pueden elegir otra impresora.
 

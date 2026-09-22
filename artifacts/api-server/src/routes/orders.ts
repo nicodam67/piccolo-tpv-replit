@@ -338,8 +338,14 @@ router.patch("/order-items/:itemId", requireAuth, async (req, res): Promise<void
 
   if (!item) { res.status(404).json({ error: "Línea no encontrada" }); return; }
 
-  if (quantity != null && item.status !== "draft") {
-    res.status(400).json({ error: "Solo se puede cambiar la cantidad de líneas en borrador" });
+  const changesPreparation = quantity != null
+    || notes != null
+    || allergyNote != null
+    || hasAllergy != null;
+  if (changesPreparation && item.status !== "draft") {
+    res.status(409).json({
+      error: "La línea ya fue enviada. Anúlala y añade una nueva para que cocina reciba ANULADO/AÑADIDO.",
+    });
     return;
   }
 
