@@ -70,6 +70,7 @@ describe.runIf(run)("print worker with PostgreSQL", () => {
       documentType: "test_ticket",
       content: "MESA 12\n1 x TEST",
       dedupeKey: `integration:${id}`,
+      availableAt: new Date(Date.now() - 60_000),
       ...patch,
     });
     return id;
