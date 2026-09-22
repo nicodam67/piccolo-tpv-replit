@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useLocation } from 'wouter';
-import { ChevronLeft, TrendingUp, TrendingDown, AlertTriangle, Loader2, RefreshCw, Clock, X } from 'lucide-react';
+import { ChevronLeft, TrendingUp, TrendingDown, AlertTriangle, Loader2, RefreshCw, Clock, X, Calculator } from 'lucide-react';
 import {
   useGetAdminProfitabilityByCategory,
   useGetAdminCostAlerts,
@@ -10,7 +10,7 @@ import type { ProductProfitability, ProfitabilityByCategory, CostAlert, CostHist
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api-client';
 
-type Tab = 'productos' | 'categoria' | 'informes' | 'alertas' | 'configuracion';
+type Tab = 'productos' | 'categoria' | 'informes' | 'equilibrio' | 'alertas' | 'configuracion';
 
 function marginColor(pct: string | number) {
   const v = typeof pct === 'string' ? parseFloat(pct) : pct;
@@ -53,6 +53,7 @@ export default function Rentabilidad() {
     { id: 'productos', label: 'Productos' },
     { id: 'categoria', label: 'Categoría' },
     { id: 'informes', label: 'Dashboard' },
+    { id: 'equilibrio', label: 'Punto de equilibrio' },
     { id: 'alertas', label: 'Alertas' },
     { id: 'configuracion', label: 'Configuración' },
   ];
@@ -69,7 +70,7 @@ export default function Rentabilidad() {
       </header>
 
       {/* Tab bar */}
-      <div className="flex gap-0.5 px-4 pt-3 pb-0">
+      <div className="flex gap-0.5 px-4 pt-3 pb-0 overflow-x-auto">
         {tabs.map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
             className={`px-3 py-1.5 rounded-t-lg text-xs font-bold transition-colors ${
@@ -89,6 +90,7 @@ export default function Rentabilidad() {
         )}
         {tab === 'categoria' && <CategoriaTab />}
         {tab === 'informes' && <InformesTab channel={channel} />}
+        {tab === 'equilibrio' && <BreakEvenTab channel={channel} />}
         {tab === 'alertas' && <AlertasTab />}
         {tab === 'configuracion' && <ConfiguracionTab />}
       </div>
@@ -448,6 +450,261 @@ function InformesTab({ channel }: { channel: string }) {
   );
 }
 
+// ── Punto de equilibrio tab ──────────────────────────────────────────────────
+type PeriodPreset = 'current' | 'previous' | 'custom';
+
+function dateInput(date: Date) {
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 10);
+}
+
+function periodDates(preset: PeriodPreset, customFrom: string, customTo: string) {
+  const now = new Date();
+  if (preset === 'previous') {
+    return {
+      from: dateInput(new Date(now.getFullYear(), now.getMonth() - 1, 1)),
+      to: dateInput(new Date(now.getFullYear(), now.getMonth(), 0)),
+    };
+  }
+  if (preset === 'custom') return { from: customFrom, to: customTo };
+  return {
+    from: dateInput(new Date(now.getFullYear(), now.getMonth(), 1)),
+    to: dateInput(now),
+  };
+}
+
+function euro(value: number | null | undefined) {
+  return value == null || !Number.isFinite(value)
+    ? '—'
+    : `${value.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
+}
+
+function qualityLabel(value: string) {
+  return ({ REAL: 'REAL', CONFIGURED: 'CONFIGURADO', ESTIMATED: 'ESTIMADO', NO_DATA: 'SIN DATOS' } as Record<string, string>)[value] ?? value;
+}
+
+function QualityBadge({ value }: { value: string }) {
+  const color = value === 'REAL'
+    ? 'text-green-400 border-green-500/30 bg-green-500/10'
+    : value === 'NO_DATA'
+      ? 'text-red-400 border-red-500/30 bg-red-500/10'
+      : 'text-amber-400 border-amber-500/30 bg-amber-500/10';
+  return <span className={`px-1.5 py-0.5 rounded border text-[9px] font-black ${color}`}>{qualityLabel(value)}</span>;
+}
+
+function BreakEvenTab({ channel }: { channel: string }) {
+  const now = new Date();
+  const [preset, setPreset] = useState<PeriodPreset>('current');
+  const [customFrom, setCustomFrom] = useState(dateInput(new Date(now.getFullYear(), now.getMonth(), 1)));
+  const [customTo, setCustomTo] = useState(dateInput(now));
+  const [targetProfit, setTargetProfit] = useState('0');
+  const [scenario, setScenario] = useState({
+    personnelPercent: '0',
+    rawMaterialPercent: '0',
+    electricityPercent: '0',
+    averageTicketDelta: '0',
+    openDaysDelta: '0',
+    targetProfitDelta: '0',
+    foodCostPct: '',
+    commissionPercent: '0',
+  });
+  const dates = periodDates(preset, customFrom, customTo);
+  const query = new URLSearchParams({
+    from: `${dates.from}T00:00:00.000Z`,
+    to: `${dates.to}T23:59:59.999Z`,
+    targetProfit: targetProfit || '0',
+    channel,
+  });
+  const { data, isLoading, isFetching, refetch } = useQuery({
+    queryKey: ['/api/admin/profitability/break-even', dates.from, dates.to, targetProfit, channel],
+    queryFn: () => api.get<any>(`/api/admin/profitability/break-even?${query.toString()}`),
+    enabled: Boolean(dates.from && dates.to),
+  });
+  const simulation = useMutation({
+    mutationFn: () => api.post<any>('/api/admin/profitability/break-even/scenario', {
+      from: `${dates.from}T00:00:00.000Z`,
+      to: `${dates.to}T23:59:59.999Z`,
+      targetProfitMonthly: Number(targetProfit) || 0,
+      channel,
+      scenario: Object.fromEntries(
+        Object.entries(scenario).map(([key, value]) => [key, value === '' ? undefined : Number(value)]),
+      ),
+    }),
+  });
+
+  if (isLoading) return <LoadingState />;
+  if (!data) return <EmptyState text="Sin datos para calcular el punto de equilibrio." />;
+  const analysis = data as any;
+  const metrics = analysis.metrics;
+  const showTargets = analysis.complete;
+  const monthlyPrimary = metrics.breakEvenMonthlyGross ?? metrics.breakEvenMonthlyNet;
+  const dailyPrimary = metrics.minimumDailySalesGross ?? metrics.minimumDailySalesNet;
+  const safetyPositive = (metrics.safetyMarginAmount ?? 0) >= 0;
+  const progress = metrics.periodBreakEvenNet > 0
+    ? Math.max(0, Math.min(100, analysis.actual.netSales / metrics.periodBreakEvenNet * 100))
+    : 100;
+
+  const metricCard = (label: string, value: string, subtext: string) => (
+    <div className="rounded-xl border border-border bg-card p-4">
+      <p className="text-[10px] font-black uppercase tracking-wide text-muted-foreground">{label}</p>
+      <p className="text-2xl font-black mt-1">{value}</p>
+      <p className="text-[10px] text-muted-foreground mt-1">{subtext}</p>
+    </div>
+  );
+
+  return (
+    <div className="max-w-5xl mx-auto px-4 py-4 space-y-4">
+      <div className="flex flex-wrap gap-2 items-end rounded-xl border border-border bg-card p-3">
+        <label className="text-[10px] font-bold text-muted-foreground uppercase">Periodo
+          <select value={preset} onChange={e => setPreset(e.target.value as PeriodPreset)} className="block mt-1 p-2 rounded-lg bg-background border border-border text-xs text-foreground">
+            <option value="current">Mes actual</option>
+            <option value="previous">Mes anterior</option>
+            <option value="custom">Rango personalizado</option>
+          </select>
+        </label>
+        {preset === 'custom' && <>
+          <label className="text-[10px] font-bold text-muted-foreground uppercase">Desde
+            <input type="date" value={customFrom} onChange={e => setCustomFrom(e.target.value)} className="block mt-1 p-2 rounded-lg bg-background border border-border text-xs" />
+          </label>
+          <label className="text-[10px] font-bold text-muted-foreground uppercase">Hasta
+            <input type="date" value={customTo} onChange={e => setCustomTo(e.target.value)} className="block mt-1 p-2 rounded-lg bg-background border border-border text-xs" />
+          </label>
+        </>}
+        <label className="text-[10px] font-bold text-muted-foreground uppercase">Beneficio objetivo mensual
+          <input type="number" min="0" value={targetProfit} onChange={e => setTargetProfit(e.target.value)} className="block mt-1 p-2 rounded-lg bg-background border border-border text-xs" />
+        </label>
+        <button onClick={() => refetch()} disabled={isFetching} className="p-2 rounded-lg bg-secondary text-xs font-bold flex gap-1.5 items-center">
+          <RefreshCw size={13} className={isFetching ? 'animate-spin' : ''} /> Actualizar
+        </button>
+      </div>
+
+      {!showTargets && (
+        <div className="rounded-xl border border-red-500/30 bg-red-500/5 p-4">
+          <p className="text-sm font-bold text-red-400">Cálculo incompleto: no se muestra una cifra aparentemente exacta.</p>
+          <p className="text-xs text-muted-foreground mt-1">Faltan: {(analysis.missingData ?? []).join(', ') || (metrics.issues ?? []).join(', ')}.</p>
+        </div>
+      )}
+      {(analysis.warnings ?? []).map((warning: string) => (
+        <div key={warning} className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-200">{warning}</div>
+      ))}
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {metricCard('Punto de equilibrio mensual', showTargets ? euro(monthlyPrimary) : 'Sin datos', metrics.breakEvenMonthlyGross != null ? 'Facturación, IVA incluido' : 'Importe neto, sin IVA')}
+        {metricCard('Venta mínima diaria', showTargets ? euro(dailyPrimary) : 'Sin datos', `${analysis.actual.configuredOpenDays || analysis.actual.actualOpenDays} días abiertos en el periodo`)}
+        {metricCard('Tickets necesarios / día', showTargets && metrics.requiredDailyTickets != null ? Math.ceil(metrics.requiredDailyTickets).toString() : '—', 'Calculado con ticket medio neto')}
+        {metricCard('Ticket medio actual', euro(metrics.averageTicketGross), `${analysis.actual.issuedTickets} tickets emitidos`)}
+      </div>
+
+      <div className="rounded-xl border border-border bg-card p-4 space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-bold">Ventas reales frente al equilibrio del periodo</p>
+            <p className="text-[11px] text-muted-foreground">Importes netos de IVA · anulaciones y devoluciones incluidas</p>
+          </div>
+          <span className={`text-sm font-black ${safetyPositive ? 'text-green-400' : 'text-red-400'}`}>{euro(metrics.safetyMarginAmount)}</span>
+        </div>
+        <div className="h-3 rounded-full bg-secondary overflow-hidden">
+          <div className={`h-full ${safetyPositive ? 'bg-green-500' : 'bg-amber-500'}`} style={{ width: `${progress}%` }} />
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+          <div><span className="text-muted-foreground">Ventas netas</span><strong className="block">{euro(analysis.actual.netSales)}</strong></div>
+          <div><span className="text-muted-foreground">Equilibrio periodo</span><strong className="block">{euro(metrics.periodBreakEvenNet)}</strong></div>
+          <div><span className="text-muted-foreground">Margen seguridad</span><strong className="block">{metrics.safetyMarginPct == null ? '—' : `${metrics.safetyMarginPct.toFixed(1)}%`}</strong></div>
+          <div><span className="text-muted-foreground">Beneficio estimado</span><strong className="block">{euro(metrics.estimatedProfitPeriod)}</strong></div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="rounded-xl border border-border bg-card p-4 space-y-2">
+          <h2 className="text-sm font-bold">Estructura económica</h2>
+          {[
+            ['Costes fijos mensuales', analysis.costs.fixedMonthly, analysis.sources.expenses],
+            ['Personal mensual', analysis.costs.personnelMonthly, analysis.sources.personnel],
+            ['COGS del periodo', analysis.actual.cogs, analysis.sources.cogs],
+            ['Comisiones', analysis.actual.commissions, analysis.sources.commissions],
+            ['Costes variables del periodo', analysis.costs.variablePeriod, analysis.sources.expenses],
+          ].map(([label, value, source]) => (
+            <div key={label as string} className="flex items-center gap-2 border-t border-border pt-2 text-xs">
+              <span className="flex-1">{label as string}</span>
+              <QualityBadge value={source as string} />
+              <strong>{euro(value as number)}</strong>
+            </div>
+          ))}
+          <div className="flex items-center gap-2 border-t border-border pt-2 text-xs">
+            <span className="flex-1">Días de apertura</span><QualityBadge value={analysis.sources.openDays} />
+            <strong>{analysis.actual.configuredOpenDays || analysis.actual.actualOpenDays}</strong>
+          </div>
+          <p className="text-[10px] text-muted-foreground">Ratio variable {(metrics.variableCostRatio * 100 || 0).toFixed(1)}% · margen de contribución {(metrics.contributionMarginRatio * 100 || 0).toFixed(1)}% · equilibrio semanal neto {euro(metrics.breakEvenWeeklyNet)}.</p>
+        </div>
+        <div className="rounded-xl border border-border bg-card p-4 space-y-2">
+          <h2 className="text-sm font-bold">Objetivo de beneficio</h2>
+          <div className="grid grid-cols-2 gap-3 text-xs">
+            <div><span className="text-muted-foreground">Beneficio mensual</span><strong className="block text-lg">{euro(analysis.targetProfitMonthly)}</strong></div>
+            <div><span className="text-muted-foreground">Facturación necesaria</span><strong className="block text-lg">{showTargets ? euro(metrics.targetRevenueMonthlyGross ?? metrics.targetRevenueMonthlyNet) : '—'}</strong></div>
+            <div><span className="text-muted-foreground">Venta diaria necesaria</span><strong className="block">{showTargets ? euro(metrics.targetDailySalesGross ?? metrics.targetDailySalesNet) : '—'}</strong></div>
+            <div><span className="text-muted-foreground">Tickets diarios</span><strong className="block">{showTargets && metrics.targetDailyTickets != null ? Math.ceil(metrics.targetDailyTickets) : '—'}</strong></div>
+          </div>
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-border bg-card p-4 space-y-3">
+        <div className="flex items-center gap-2"><Calculator size={15} className="text-primary" /><h2 className="text-sm font-bold">Simulador sin persistencia</h2></div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          {[
+            ['personnelPercent', 'Personal %'],
+            ['rawMaterialPercent', 'Materia prima %'],
+            ['electricityPercent', 'Electricidad %'],
+            ['averageTicketDelta', 'Ticket medio +€'],
+            ['openDaysDelta', 'Días apertura +/-'],
+            ['targetProfitDelta', 'Beneficio objetivo +€'],
+            ['foodCostPct', 'FoodCost objetivo %'],
+            ['commissionPercent', 'Comisión delivery %'],
+          ].map(([key, label]) => (
+            <label key={key} className="text-[10px] text-muted-foreground">{label}
+              <input type="number" value={scenario[key as keyof typeof scenario]} onChange={e => setScenario(current => ({ ...current, [key]: e.target.value }))} className="mt-1 w-full p-2 rounded-lg bg-background border border-border text-xs text-foreground" />
+            </label>
+          ))}
+        </div>
+        <button onClick={() => simulation.mutate()} disabled={simulation.isPending} className="px-3 py-2 rounded-lg bg-primary text-primary-foreground text-xs font-bold">
+          {simulation.isPending ? 'Calculando…' : 'Simular escenario'}
+        </button>
+        {simulation.data && (
+          <div className="overflow-x-auto">
+            <div className="grid grid-cols-4 min-w-[560px] text-xs">
+              <strong className="p-2">Métrica</strong><strong className="p-2 text-right">Actual</strong><strong className="p-2 text-right">Simulado</strong><strong className="p-2 text-right">Diferencia</strong>
+              {[
+                ['Punto equilibrio', 'breakEvenMonthlyNet'],
+                ['Venta diaria', 'minimumDailySalesNet'],
+                ['Tickets / día', 'requiredDailyTickets'],
+                ['Beneficio estimado', 'estimatedProfitPeriod'],
+              ].map(([label, key]) => (
+                <div key={key} className="contents">
+                  <span className="p-2 border-t border-border">{label}</span>
+                  <span className="p-2 border-t border-border text-right">{key === 'requiredDailyTickets' ? simulation.data.actual.metrics[key]?.toFixed(1) ?? '—' : euro(simulation.data.actual.metrics[key])}</span>
+                  <span className="p-2 border-t border-border text-right font-bold">{key === 'requiredDailyTickets' ? simulation.data.simulated.metrics[key]?.toFixed(1) ?? '—' : euro(simulation.data.simulated.metrics[key])}</span>
+                  <span className="p-2 border-t border-border text-right">{key === 'requiredDailyTickets' ? simulation.data.difference[key]?.toFixed(1) : euro(simulation.data.difference[key])}</span>
+                </div>
+              ))}
+            </div>
+            <p className="text-[10px] text-green-400 mt-2">Escenario calculado en memoria; no se ha modificado ningún dato.</p>
+          </div>
+        )}
+      </div>
+
+      <div className="rounded-xl border border-border bg-card overflow-hidden">
+        <div className="px-4 py-2.5 bg-secondary/30"><p className="text-xs font-bold">Evolución: venta neta vs. objetivo diario</p></div>
+        {(analysis.evolution ?? []).slice(-14).map((point: any) => (
+          <div key={point.date} className="flex px-4 py-2 border-t border-border text-xs">
+            <span className="flex-1">{new Date(`${point.date}T12:00:00`).toLocaleDateString('es-ES')}</span>
+            <span>{euro(point.netSales)} / <strong>{euro(point.targetNet)}</strong></span>
+          </div>
+        ))}
+        {!analysis.evolution?.length && <p className="p-4 text-xs text-muted-foreground">Sin actividad económica en el periodo.</p>}
+      </div>
+    </div>
+  );
+}
+
 // ── Alertas tab ───────────────────────────────────────────────────────────────
 function AlertasTab() {
   const { data, isLoading } = useGetAdminCostAlerts();
@@ -540,6 +797,8 @@ function ConfiguracionTab() {
   });
   const [expenseName, setExpenseName] = useState('');
   const [expenseAmount, setExpenseAmount] = useState('');
+  const [expenseCategory, setExpenseCategory] = useState('other');
+  const [expenseCostType, setExpenseCostType] = useState('fixed');
 
   if (isLoading || !data) return <LoadingState />;
   const settings = data.settings;
@@ -575,10 +834,17 @@ function ConfiguracionTab() {
             <strong>{parseFloat(expense.amount).toFixed(2)}€ / {expense.periodMonths} mes(es)</strong>
           </div>
         ))}
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
           <input value={expenseName} onChange={e => setExpenseName(e.target.value)} placeholder="Ej. Electricidad" className="p-2 rounded-lg bg-background border border-border text-sm" />
           <input value={expenseAmount} onChange={e => setExpenseAmount(e.target.value)} type="number" placeholder="Importe mensual" className="p-2 rounded-lg bg-background border border-border text-sm" />
-          <button onClick={() => addExpense.mutate({ name: expenseName, amount: Number(expenseAmount), category: 'other', costType: 'fixed', frequency: 'monthly' })} className="rounded-lg bg-secondary text-xs font-bold">Añadir</button>
+          <select value={expenseCategory} onChange={e => setExpenseCategory(e.target.value)} className="p-2 rounded-lg bg-background border border-border text-xs">
+            {['personal', 'rent', 'electricity', 'gas', 'water', 'software', 'insurance', 'maintenance', 'management', 'other'].map(value => <option key={value} value={value}>{value}</option>)}
+          </select>
+          <select value={expenseCostType} onChange={e => setExpenseCostType(e.target.value)} className="p-2 rounded-lg bg-background border border-border text-xs">
+            <option value="fixed">Fijo</option>
+            <option value="variable">Variable</option>
+          </select>
+          <button onClick={() => addExpense.mutate({ name: expenseName, amount: Number(expenseAmount), category: expenseCategory, costType: expenseCostType, frequency: 'monthly' })} className="rounded-lg bg-secondary text-xs font-bold">Añadir</button>
         </div>
       </div>
 

@@ -69,7 +69,7 @@ vi.mock('@workspace/db', () => {
     stockMovementsTable: { id: 'id', ingredientId: 'ingredient_id', movementType: 'movement_type', quantity: 'quantity', unitCost: 'unit_cost', orderItemId: 'order_item_id', createdAt: 'created_at' },
     ingredientCostHistoryTable: { id: 'id', ingredientId: 'ingredient_id', previousCost: 'previous_cost', newCost: 'new_cost', supplierName: 'supplier_name', reason: 'reason', employeeId: 'employee_id', createdAt: 'created_at' },
     profitabilitySettingsTable: { id: 'id', defaultTargetMarginPct: 'default_target_margin_pct', warningGapPct: 'warning_gap_pct', allocationMethod: 'allocation_method' },
-    operatingExpensesTable: { id: 'id', name: 'name', active: 'active', amount: 'amount' },
+    operatingExpensesTable: { id: 'id', name: 'name', active: 'active', amount: 'amount', category: 'category', costType: 'cost_type', periodMonths: 'period_months' },
     channelCommissionsTable: { id: 'id', channel: 'channel', active: 'active', percent: 'percent', fixedAmount: 'fixed_amount' },
     profitabilityTargetsTable: { id: 'id', active: 'active', updatedAt: 'updated_at' },
     priceChangeProposalsTable: { id: 'id', status: 'status' },
@@ -82,6 +82,9 @@ vi.mock('@workspace/db', () => {
     cashMachineTransactionsTable: { id: 'id', orderId: 'order_id', transactionType: 'transaction_type', status: 'status', amountRequested: 'amount_requested', changeDispensed: 'change_dispensed', splitRef: 'split_ref', completedAt: 'completed_at' },
     paymentAttemptsTable: { id: 'id', orderId: 'order_id', status: 'status', amountCents: 'amount_cents', refundedAt: 'refunded_at' },
     splitGroupItemsTable: { splitGroupId: 'split_group_id', orderItemId: 'order_item_id', quantity: 'quantity' },
+    businessConfigTable: { active: 'active', openingHours: 'opening_hours' },
+    employeesTable: { id: 'id', active: 'active', isDemo: 'is_demo', hourlyRate: 'hourly_rate', monthlySalary: 'monthly_salary', employerCostRate: 'employer_cost_rate' },
+    timeRecordsTable: { employeeId: 'employee_id', clockIn: 'clock_in', clockOut: 'clock_out' },
   };
 });
 
@@ -139,6 +142,47 @@ describe('Profitability routes', () => {
       .query({ from: '2025-01-01', to: '2025-01-31' });
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty('from');
+  });
+
+  it('GET /admin/profitability/break-even exposes missing data without NaN or infinity', async () => {
+    const res = await request(app)
+      .get('/admin/profitability/break-even')
+      .query({ from: '2026-09-01', to: '2026-09-30', targetProfit: '5000' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.complete).toBe(false);
+    expect(res.body.missingData).toEqual(expect.arrayContaining([
+      'PERSONNEL_COST',
+      'OPERATING_EXPENSES',
+      'OPEN_DAYS',
+      'NET_SALES',
+    ]));
+    expect(res.body.metrics.breakEvenMonthlyNet).toBeNull();
+    expect(JSON.stringify(res.body)).not.toMatch(/NaN|Infinity/);
+  });
+
+  it('rejects invalid break-even periods before querying economic data', async () => {
+    const res = await request(app)
+      .get('/admin/profitability/break-even')
+      .query({ from: '2026-10-01', to: '2026-09-01' });
+
+    expect(res.status).toBe(400);
+  });
+
+  it('runs break-even scenarios without persistence', async () => {
+    const res = await request(app)
+      .post('/admin/profitability/break-even/scenario')
+      .send({
+        from: '2026-09-01',
+        to: '2026-09-30',
+        scenario: { personnelPercent: 10, openDaysDelta: 1 },
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.persistent).toBe(false);
+    expect(db.insert).not.toHaveBeenCalled();
+    expect(db.update).not.toHaveBeenCalled();
+    expect(db.delete).not.toHaveBeenCalled();
   });
 
   it('weights dashboard metrics with sold quantity and historical COGS snapshots', async () => {

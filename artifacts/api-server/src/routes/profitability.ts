@@ -7,22 +7,15 @@ import {
   recipeItemsTable,
   ingredientsTable,
   subrecipesTable,
-  stockMovementsTable,
   ingredientCostHistoryTable,
   profitabilitySettingsTable,
   operatingExpensesTable,
   channelCommissionsTable,
   profitabilityTargetsTable,
   priceChangeProposalsTable,
-  ordersTable,
-  orderItemsTable,
-  ticketsTable,
-  discountsTable,
-  paymentsTable,
-  paymentVoidsTable,
-  cashMachineTransactionsTable,
-  paymentAttemptsTable,
-  splitGroupItemsTable,
+  businessConfigTable,
+  employeesTable,
+  timeRecordsTable,
 } from "@workspace/db";
 import {
   eq,
@@ -30,13 +23,8 @@ import {
   desc,
   and,
   isNull,
-  isNotNull,
   gte,
   lte,
-  sum,
-  sql,
-  inArray,
-  or,
 } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import {
@@ -44,14 +32,19 @@ import {
   calculateProfitability,
   calculateRecipeLineCost,
   profitabilityStatus,
-  recognisedLineRevenue,
   recommendedPvp,
   resolveTargetMargin,
 } from "../lib/profitability-calculator";
 import {
-  projectEconomicActivity,
-  type EconomicAdjustment,
-} from "../lib/economic-activity";
+  loadProjectedEconomicActivity,
+} from "../lib/profitability-economic-data";
+import {
+  calculateBreakEven,
+  countConfiguredOpenDays,
+  normalizeOpenDaysToMonth,
+  type BreakEvenInput,
+  type DataQuality,
+} from "../lib/break-even-calculator";
 
 const router: IRouter = Router();
 
@@ -239,6 +232,291 @@ function monthlyExpenseAmount(expense: typeof operatingExpensesTable.$inferSelec
   return parseFloat(expense.amount) / months;
 }
 
+type BreakEvenScenario = {
+  personnelPercent?: number;
+  rawMaterialPercent?: number;
+  electricityPercent?: number;
+  averageTicketDelta?: number;
+  openDaysDelta?: number;
+  targetProfitDelta?: number;
+  foodCostPct?: number;
+  commissionPercent?: number;
+};
+
+function validScenarioNumber(value: unknown, min = -100, max = 10_000): number {
+  const parsed = typeof value === "number" ? value : Number(value ?? 0);
+  return Number.isFinite(parsed) ? Math.min(max, Math.max(min, parsed)) : 0;
+}
+
+async function buildBreakEvenAnalysis(input: {
+  from: Date;
+  to: Date;
+  targetProfitMonthly: number;
+  channel?: string;
+  scenario?: BreakEvenScenario;
+}) {
+  const periodDays = Math.max(
+    1,
+    (input.to.getTime() - input.from.getTime()) / 86_400_000,
+  );
+  const [productCosts, expenses, commissions, businessConfigs, employees, timeRecords] =
+    await Promise.all([
+      db.select({ id: productsTable.id, cost: productsTable.cost })
+        .from(productsTable)
+        .where(eq(productsTable.active, true)),
+      db.select().from(operatingExpensesTable)
+        .where(eq(operatingExpensesTable.active, true)),
+      db.select().from(channelCommissionsTable)
+        .where(eq(channelCommissionsTable.active, true)),
+      db.select({ openingHours: businessConfigTable.openingHours })
+        .from(businessConfigTable)
+        .where(eq(businessConfigTable.active, true)),
+      db.select({
+        id: employeesTable.id,
+        hourlyRate: employeesTable.hourlyRate,
+        monthlySalary: employeesTable.monthlySalary,
+        employerCostRate: employeesTable.employerCostRate,
+      }).from(employeesTable)
+        .where(and(eq(employeesTable.active, true), eq(employeesTable.isDemo, false))),
+      db.select({
+        employeeId: timeRecordsTable.employeeId,
+        clockIn: timeRecordsTable.clockIn,
+        clockOut: timeRecordsTable.clockOut,
+      }).from(timeRecordsTable)
+        .where(and(
+          gte(timeRecordsTable.clockIn, input.from),
+          lte(timeRecordsTable.clockIn, input.to),
+        )),
+    ]);
+  const currentCostByProduct = new Map(
+    productCosts.map((product) => [product.id, parseFloat(product.cost ?? "0")]),
+  );
+  const economic = await loadProjectedEconomicActivity({
+    from: input.from,
+    to: input.to,
+    channel: input.channel,
+    currentCostByProduct,
+  });
+  const grossSales = economic.rows.reduce((total, row) => total + row.recognisedGross, 0);
+  const netSales = economic.rows.reduce((total, row) => total + row.recognisedNet, 0);
+  const cogs = economic.totalCogs;
+  const commissionByChannel = new Map(
+    commissions.map((commission) => [commission.channel, commission]),
+  );
+  let deliveryCommissionCost = 0;
+  const commissionCost = economic.rows.reduce((total, row) => {
+    const commission = commissionByChannel.get(row.effectiveChannel);
+    const rowCost = row.recognisedNet * parseFloat(commission?.percent ?? "0") / 100
+      + row.quantity * parseFloat(commission?.fixedAmount ?? "0");
+    if (row.effectiveChannel === "delivery") deliveryCommissionCost += rowCost;
+    return total + rowCost;
+  }, 0);
+
+  const manualPersonnel = expenses.filter((expense) => expense.category === "personal");
+  let personnelPeriod = 0;
+  let hasHrPersonnelData = false;
+  for (const employee of employees) {
+    const employerRate = parseFloat(employee.employerCostRate ?? "1.35");
+    const monthlySalary = parseFloat(employee.monthlySalary ?? "0");
+    if (monthlySalary > 0) {
+      personnelPeriod += monthlySalary * employerRate * periodDays / 30.4375;
+      hasHrPersonnelData = true;
+      continue;
+    }
+    const hourlyRate = parseFloat(employee.hourlyRate ?? "0");
+    if (hourlyRate <= 0) continue;
+    const hours = timeRecords
+      .filter((record) => record.employeeId === employee.id && record.clockOut)
+      .reduce(
+        (total, record) =>
+          total
+          + (record.clockOut!.getTime() - record.clockIn.getTime()) / 3_600_000,
+        0,
+      );
+    if (hours > 0) {
+      personnelPeriod += hours * hourlyRate * employerRate;
+      hasHrPersonnelData = true;
+    }
+  }
+  const manualPersonnelMonthly = manualPersonnel.reduce(
+    (total, expense) => total + monthlyExpenseAmount(expense),
+    0,
+  );
+  const personnelMonthly = hasHrPersonnelData
+    ? personnelPeriod * 30.4375 / periodDays
+    : manualPersonnelMonthly;
+  const nonPersonnelExpenses = expenses.filter((expense) => expense.category !== "personal");
+  const fixedExpensesMonthly = nonPersonnelExpenses
+    .filter((expense) => expense.costType === "fixed")
+    .reduce((total, expense) => total + monthlyExpenseAmount(expense), 0);
+  const variableExpensesPeriod = nonPersonnelExpenses
+    .filter((expense) => expense.costType === "variable")
+    .reduce(
+      (total, expense) =>
+        total + monthlyExpenseAmount(expense) * periodDays / 30.4375,
+      0,
+    );
+  const electricityFixedMonthly = nonPersonnelExpenses
+    .filter((expense) => expense.category === "electricity" && expense.costType === "fixed")
+    .reduce((total, expense) => total + monthlyExpenseAmount(expense), 0);
+  const electricityVariablePeriod = nonPersonnelExpenses
+    .filter((expense) => expense.category === "electricity" && expense.costType === "variable")
+    .reduce(
+      (total, expense) =>
+        total + monthlyExpenseAmount(expense) * periodDays / 30.4375,
+      0,
+    );
+
+  const configuredOpenDays = countConfiguredOpenDays(
+    input.from,
+    input.to,
+    businessConfigs[0]?.openingHours,
+  );
+  const openDaysPeriod = configuredOpenDays || economic.actualOpenDays;
+  const normalizedOpenDaysMonthly = normalizeOpenDaysToMonth(openDaysPeriod, periodDays);
+  const scenario = input.scenario;
+  const personnelMultiplier = 1 + validScenarioNumber(scenario?.personnelPercent) / 100;
+  const electricityMultiplier = 1 + validScenarioNumber(scenario?.electricityPercent) / 100;
+  const rawMaterialMultiplier = 1 + validScenarioNumber(scenario?.rawMaterialPercent) / 100;
+  const commissionMultiplier = 1 + validScenarioNumber(scenario?.commissionPercent) / 100;
+  const adjustedPersonnelMonthly = personnelMonthly * personnelMultiplier;
+  const adjustedFixedMonthly = adjustedPersonnelMonthly
+    + fixedExpensesMonthly
+    + electricityFixedMonthly * (electricityMultiplier - 1);
+  const adjustedCogs = scenario?.foodCostPct != null && Number.isFinite(scenario.foodCostPct)
+    ? Math.max(0, netSales * Math.max(0, scenario.foodCostPct) / 100)
+    : cogs * rawMaterialMultiplier;
+  const adjustedVariableExpenses = variableExpensesPeriod
+    + electricityVariablePeriod * (electricityMultiplier - 1);
+  const variableCostsPeriod = adjustedCogs
+    + commissionCost
+    + deliveryCommissionCost * (commissionMultiplier - 1)
+    + adjustedVariableExpenses;
+  const adjustedOpenDaysMonthly = Math.max(
+    0,
+    normalizedOpenDaysMonthly + validScenarioNumber(scenario?.openDaysDelta, -31, 31),
+  );
+  const actualAverageTicketNet = economic.issuedTicketCount > 0
+    ? netSales / economic.issuedTicketCount
+    : 0;
+  const actualAverageTicketGross = economic.issuedTicketCount > 0
+    ? grossSales / economic.issuedTicketCount
+    : 0;
+  const netToGross = netSales > 0 ? grossSales / netSales : 1;
+  const adjustedAverageTicketNet = Math.max(
+    0,
+    actualAverageTicketNet + validScenarioNumber(scenario?.averageTicketDelta, -10_000, 10_000),
+  );
+  const adjustedAverageTicketGross = adjustedAverageTicketNet * netToGross;
+  const targetProfit = Math.max(
+    0,
+    input.targetProfitMonthly
+      + validScenarioNumber(scenario?.targetProfitDelta, -1_000_000, 1_000_000),
+  );
+  const calculatorInput: BreakEvenInput = {
+    fixedCostsMonthly: adjustedFixedMonthly,
+    variableCostsPeriod,
+    netSalesPeriod: Math.max(0, netSales),
+    grossSalesPeriod: Math.max(0, grossSales),
+    issuedTickets: economic.issuedTicketCount,
+    openDaysPeriod,
+    normalizedOpenDaysMonthly: adjustedOpenDaysMonthly,
+    periodDays,
+    targetProfitMonthly: targetProfit,
+    averageTicketNet: scenario ? adjustedAverageTicketNet : undefined,
+    averageTicketGross: scenario ? adjustedAverageTicketGross : undefined,
+  };
+  const metrics = calculateBreakEven(calculatorInput);
+  const missingData: string[] = [];
+  if (!hasHrPersonnelData && manualPersonnel.length === 0) missingData.push("PERSONNEL_COST");
+  if (expenses.length === 0) missingData.push("OPERATING_EXPENSES");
+  if (openDaysPeriod === 0) missingData.push("OPEN_DAYS");
+  if (netSales <= 0) missingData.push("NET_SALES");
+  const warnings: string[] = [];
+  if (hasHrPersonnelData && manualPersonnel.length > 0) {
+    warnings.push("El coste de personal de RR. HH. prevalece; el gasto manual de personal no se suma.");
+  }
+  if (configuredOpenDays === 0 && economic.actualOpenDays > 0) {
+    warnings.push("Sin horario configurado: los días abiertos se estiman a partir de tickets emitidos.");
+  }
+  if (economic.historicalCogsCoveragePct < 100) {
+    warnings.push("Parte del COGS histórico usa la receta actual porque no existe snapshot de venta.");
+  }
+  if (expenses.some((expense) => expense.category === "other")) {
+    warnings.push("Los gastos sin clasificación se incluyen según su tipo fijo o variable.");
+  }
+  const personnelSource: DataQuality = hasHrPersonnelData
+    ? "ESTIMATED"
+    : manualPersonnel.length > 0 ? "CONFIGURED" : "NO_DATA";
+  const openDaysSource: DataQuality = configuredOpenDays > 0
+    ? "CONFIGURED"
+    : economic.actualOpenDays > 0 ? "ESTIMATED" : "NO_DATA";
+  const dailySales = new Map<string, number>();
+  for (const row of economic.rows) {
+    const date = row.createdAt.toISOString().slice(0, 10);
+    dailySales.set(date, (dailySales.get(date) ?? 0) + row.recognisedNet);
+  }
+  const now = new Date();
+  const selectedCurrentMonth = input.to.getUTCFullYear() === now.getUTCFullYear()
+    && input.to.getUTCMonth() === now.getUTCMonth();
+  const endOfCurrentMonth = new Date(Date.UTC(
+    now.getUTCFullYear(),
+    now.getUTCMonth() + 1,
+    0,
+    23,
+    59,
+    59,
+    999,
+  ));
+
+  return {
+    period: {
+      from: input.from.toISOString(),
+      to: input.to.toISOString(),
+      days: periodDays,
+      incomplete: selectedCurrentMonth && input.to < endOfCurrentMonth,
+    },
+    actual: {
+      grossSales,
+      netSales,
+      issuedTickets: economic.issuedTicketCount,
+      actualOpenDays: economic.actualOpenDays,
+      configuredOpenDays,
+      cogs,
+      commissions: commissionCost,
+      variableExpenses: variableExpensesPeriod,
+      contributionMargin: netSales - cogs - commissionCost - variableExpensesPeriod,
+      historicalCogsCoveragePct: economic.historicalCogsCoveragePct,
+    },
+    costs: {
+      fixedMonthly: adjustedFixedMonthly,
+      personnelMonthly: adjustedPersonnelMonthly,
+      otherFixedMonthly: adjustedFixedMonthly - adjustedPersonnelMonthly,
+      variablePeriod: variableCostsPeriod,
+    },
+    targetProfitMonthly: targetProfit,
+    metrics,
+    sources: {
+      sales: netSales > 0 ? "REAL" as DataQuality : "NO_DATA" as DataQuality,
+      cogs: economic.historicalCogsCoveragePct >= 100 ? "REAL" as DataQuality : "ESTIMATED" as DataQuality,
+      expenses: expenses.length > 0 ? "CONFIGURED" as DataQuality : "NO_DATA" as DataQuality,
+      personnel: personnelSource,
+      commissions: commissions.length > 0 ? "CONFIGURED" as DataQuality : "NO_DATA" as DataQuality,
+      openDays: openDaysSource,
+    },
+    missingData,
+    warnings,
+    complete: missingData.length === 0 && metrics.issues.length === 0,
+    evolution: Array.from(dailySales.entries())
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([date, sales]) => ({
+        date,
+        netSales: sales,
+        targetNet: metrics.minimumDailySalesNet,
+      })),
+  };
+}
+
 // ── GET /admin/profitability ──────────────────────────────────────────────────
 router.get(
   "/admin/profitability",
@@ -409,6 +687,94 @@ router.get(
   },
 );
 
+// ── GET /admin/profitability/break-even ──────────────────────────────────────
+router.get(
+  "/admin/profitability/break-even",
+  requireAuth,
+  requireRole("admin"),
+  async (req, res): Promise<void> => {
+    const now = new Date();
+    const defaultFrom = new Date(now.getFullYear(), now.getMonth(), 1);
+    const from = typeof req.query.from === "string" ? new Date(req.query.from) : defaultFrom;
+    const to = typeof req.query.to === "string" ? new Date(req.query.to) : now;
+    if (!Number.isFinite(from.getTime()) || !Number.isFinite(to.getTime()) || to < from) {
+      res.status(400).json({ error: "Periodo no válido" });
+      return;
+    }
+    const targetProfitMonthly = Math.max(
+      0,
+      validScenarioNumber(req.query.targetProfit, 0, 1_000_000),
+    );
+    const channel = typeof req.query.channel === "string" ? req.query.channel : undefined;
+    res.json(await buildBreakEvenAnalysis({
+      from,
+      to,
+      targetProfitMonthly,
+      channel,
+    }));
+  },
+);
+
+// ── POST /admin/profitability/break-even/scenario ────────────────────────────
+router.post(
+  "/admin/profitability/break-even/scenario",
+  requireAuth,
+  requireRole("admin"),
+  async (req, res): Promise<void> => {
+    const now = new Date();
+    const from = req.body?.from
+      ? new Date(req.body.from)
+      : new Date(now.getFullYear(), now.getMonth(), 1);
+    const to = req.body?.to ? new Date(req.body.to) : now;
+    if (!Number.isFinite(from.getTime()) || !Number.isFinite(to.getTime()) || to < from) {
+      res.status(400).json({ error: "Periodo no válido" });
+      return;
+    }
+    const targetProfitMonthly = Math.max(
+      0,
+      validScenarioNumber(req.body?.targetProfitMonthly, 0, 1_000_000),
+    );
+    const scenario: BreakEvenScenario = {
+      personnelPercent: validScenarioNumber(req.body?.scenario?.personnelPercent),
+      rawMaterialPercent: validScenarioNumber(req.body?.scenario?.rawMaterialPercent),
+      electricityPercent: validScenarioNumber(req.body?.scenario?.electricityPercent),
+      averageTicketDelta: validScenarioNumber(req.body?.scenario?.averageTicketDelta, -10_000, 10_000),
+      openDaysDelta: validScenarioNumber(req.body?.scenario?.openDaysDelta, -31, 31),
+      targetProfitDelta: validScenarioNumber(req.body?.scenario?.targetProfitDelta, -1_000_000, 1_000_000),
+      foodCostPct: req.body?.scenario?.foodCostPct == null
+        ? undefined
+        : validScenarioNumber(req.body.scenario.foodCostPct, 0, 1_000),
+      commissionPercent: validScenarioNumber(req.body?.scenario?.commissionPercent),
+    };
+    const [actual, simulated] = await Promise.all([
+      buildBreakEvenAnalysis({
+        from,
+        to,
+        targetProfitMonthly,
+        channel: typeof req.body?.channel === "string" ? req.body.channel : undefined,
+      }),
+      buildBreakEvenAnalysis({
+        from,
+        to,
+        targetProfitMonthly,
+        channel: typeof req.body?.channel === "string" ? req.body.channel : undefined,
+        scenario,
+      }),
+    ]);
+    const difference = {
+      breakEvenMonthlyNet:
+        (simulated.metrics.breakEvenMonthlyNet ?? 0) - (actual.metrics.breakEvenMonthlyNet ?? 0),
+      minimumDailySalesNet:
+        (simulated.metrics.minimumDailySalesNet ?? 0) - (actual.metrics.minimumDailySalesNet ?? 0),
+      requiredDailyTickets:
+        (simulated.metrics.requiredDailyTickets ?? 0) - (actual.metrics.requiredDailyTickets ?? 0),
+      estimatedProfitPeriod:
+        (simulated.metrics.estimatedProfitPeriod ?? 0) - (actual.metrics.estimatedProfitPeriod ?? 0),
+    };
+    res.json({ actual, simulated, difference, persistent: false });
+  },
+);
+
 // ── GET /admin/profitability/reports ─────────────────────────────────────────
 router.get(
   "/admin/profitability/reports",
@@ -470,221 +836,14 @@ router.get(
       .filter((p) => p.foodCostPct > 35)
       .sort((a, b) => b.foodCostPct - a.foodCostPct);
 
-    // Sales and reversals are projected as immutable, dated economic events.
-    // Read all adjustments up to the report end so retries/over-refunds can be
-    // capped before deciding which events belong to the requested period.
-    const [paymentVoidRows, cashRefundRows, onlineRefundRows] = await Promise.all([
-      db.select({
-        id: paymentVoidsTable.id,
-        orderId: paymentsTable.orderId,
-        amount: paymentsTable.amount,
-        occurredAt: paymentVoidsTable.createdAt,
-      }).from(paymentVoidsTable)
-        .innerJoin(paymentsTable, eq(paymentVoidsTable.originalPaymentId, paymentsTable.id))
-        .innerJoin(ticketsTable, eq(ticketsTable.orderId, paymentsTable.orderId))
-        .where(and(
-          eq(ticketsTable.isDemo, false),
-          lte(paymentVoidsTable.createdAt, toDate),
-        )),
-      db.select({
-        id: cashMachineTransactionsTable.id,
-        orderId: cashMachineTransactionsTable.orderId,
-        amountRequested: cashMachineTransactionsTable.amountRequested,
-        amountDispensed: cashMachineTransactionsTable.changeDispensed,
-        splitRef: cashMachineTransactionsTable.splitRef,
-        occurredAt: cashMachineTransactionsTable.completedAt,
-      }).from(cashMachineTransactionsTable)
-        .innerJoin(ticketsTable, eq(ticketsTable.orderId, cashMachineTransactionsTable.orderId))
-        .where(and(
-          eq(ticketsTable.isDemo, false),
-          eq(cashMachineTransactionsTable.transactionType, "refund"),
-          eq(cashMachineTransactionsTable.status, "completada"),
-          isNotNull(cashMachineTransactionsTable.orderId),
-          isNotNull(cashMachineTransactionsTable.completedAt),
-          lte(cashMachineTransactionsTable.completedAt, toDate),
-        )),
-      db.select({
-        id: paymentAttemptsTable.id,
-        orderId: paymentAttemptsTable.orderId,
-        amountCents: paymentAttemptsTable.amountCents,
-        occurredAt: paymentAttemptsTable.refundedAt,
-      }).from(paymentAttemptsTable)
-        .innerJoin(ticketsTable, eq(ticketsTable.orderId, paymentAttemptsTable.orderId))
-        .where(and(
-          eq(ticketsTable.isDemo, false),
-          eq(paymentAttemptsTable.status, "refunded"),
-          isNotNull(paymentAttemptsTable.orderId),
-          isNotNull(paymentAttemptsTable.refundedAt),
-          lte(paymentAttemptsTable.refundedAt, toDate),
-        )),
-    ]);
-
-    const validSplitIds = [...new Set(cashRefundRows
-      .map((refund) => refund.splitRef)
-      .filter((ref): ref is string =>
-        Boolean(ref && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(ref)),
-      ))];
-    const splitItems = validSplitIds.length > 0
-      ? await db.select({
-          splitGroupId: splitGroupItemsTable.splitGroupId,
-          orderItemId: splitGroupItemsTable.orderItemId,
-          quantity: splitGroupItemsTable.quantity,
-        }).from(splitGroupItemsTable)
-          .where(inArray(splitGroupItemsTable.splitGroupId, validSplitIds))
-      : [];
-    const itemsBySplit = new Map<string, Array<{ orderItemId: string; quantity: number }>>();
-    for (const item of splitItems) {
-      const items = itemsBySplit.get(item.splitGroupId) ?? [];
-      items.push({ orderItemId: item.orderItemId, quantity: parseFloat(item.quantity) });
-      itemsBySplit.set(item.splitGroupId, items);
-    }
-
-    const economicAdjustments: EconomicAdjustment[] = [
-      ...paymentVoidRows.map((row) => ({
-        id: `payment_void:${row.id}`,
-        orderId: row.orderId,
-        grossAmount: parseFloat(row.amount),
-        occurredAt: row.occurredAt,
-      })),
-      ...cashRefundRows
-        .filter((row): row is typeof row & { orderId: string; occurredAt: Date } =>
-          Boolean(row.orderId && row.occurredAt),
-        )
-        .map((row) => ({
-          id: `cash_refund:${row.id}`,
-          orderId: row.orderId,
-          grossAmount: parseFloat(row.amountDispensed) > 0
-            ? parseFloat(row.amountDispensed)
-            : parseFloat(row.amountRequested),
-          occurredAt: row.occurredAt,
-          scopedItems: row.splitRef ? itemsBySplit.get(row.splitRef) : undefined,
-        })),
-      ...onlineRefundRows
-        .filter((row): row is typeof row & { orderId: string; occurredAt: Date } =>
-          Boolean(row.orderId && row.occurredAt),
-        )
-        .map((row) => ({
-          id: `online_refund:${row.id}`,
-          orderId: row.orderId,
-          grossAmount: row.amountCents / 100,
-          occurredAt: row.occurredAt,
-        })),
-    ];
-    const adjustedOrderIds = [...new Set(economicAdjustments.map((row) => row.orderId))];
-
-    // Immutable ticket prices provide the attribution basis for both the sale
-    // event and any later reversal, even when the ticket predates this period.
-    const ticketInPeriod = and(
-      gte(ticketsTable.issuedAt, fromDate),
-      lte(ticketsTable.issuedAt, toDate),
-    );
-    const salesRows = await db
-      .select({
-        orderId: orderItemsTable.orderId,
-        orderItemId: orderItemsTable.id,
-        productId: orderItemsTable.productId,
-        quantity: orderItemsTable.quantity,
-        unitPrice: orderItemsTable.unitPrice,
-        taxRate: orderItemsTable.taxRate,
-        isInvitation: orderItemsTable.isInvitation,
-        channel: ordersTable.channel,
-        deliveryType: ordersTable.deliveryType,
-        createdAt: ticketsTable.issuedAt,
-      })
-      .from(orderItemsTable)
-      .innerJoin(ordersTable, eq(orderItemsTable.orderId, ordersTable.id))
-      .innerJoin(ticketsTable, eq(ticketsTable.orderId, ordersTable.id))
-      .where(
-        and(
-          eq(ticketsTable.isDemo, false),
-          adjustedOrderIds.length > 0
-            ? or(ticketInPeriod, inArray(ordersTable.id, adjustedOrderIds))
-            : ticketInPeriod,
-          channel
-            ? or(eq(ordersTable.channel, channel), eq(ordersTable.deliveryType, channel))
-            : sql`true`,
-        ),
-      );
-
-    const orderIds = [...new Set(salesRows.map((sale) => sale.orderId))];
-    const orderItemIds = salesRows.map((sale) => sale.orderItemId);
-    const discounts = orderIds.length > 0
-      ? await db.select().from(discountsTable)
-          .where(inArray(discountsTable.orderId, orderIds))
-      : [];
-    const movementRows = orderItemIds.length > 0
-      ? await db.select({
-          orderItemId: stockMovementsTable.orderItemId,
-          quantity: stockMovementsTable.quantity,
-          unitCost: stockMovementsTable.unitCost,
-        }).from(stockMovementsTable)
-          .where(and(
-            eq(stockMovementsTable.movementType, "sale"),
-            inArray(stockMovementsTable.orderItemId, orderItemIds),
-          ))
-      : [];
-    const snapshotCogsByItem = new Map<string, number>();
-    for (const movement of movementRows) {
-      if (!movement.orderItemId) continue;
-      const cogs = Math.abs(parseFloat(movement.quantity))
-        * parseFloat(movement.unitCost ?? "0");
-      snapshotCogsByItem.set(
-        movement.orderItemId,
-        (snapshotCogsByItem.get(movement.orderItemId) ?? 0) + cogs,
-      );
-    }
-    const orderGross = new Map<string, number>();
-    for (const sale of salesRows) {
-      if (sale.isInvitation) continue;
-      orderGross.set(
-        sale.orderId,
-        (orderGross.get(sale.orderId) ?? 0)
-          + parseFloat(sale.unitPrice) * (sale.quantity ?? 0),
-      );
-    }
-    const lineDiscounts = new Map<string, number>();
-    const orderDiscounts = new Map<string, number>();
-    for (const discount of discounts) {
-      const amount = parseFloat(discount.discountAmount);
-      if (discount.orderItemId) {
-        lineDiscounts.set(
-          discount.orderItemId,
-          (lineDiscounts.get(discount.orderItemId) ?? 0) + amount,
-        );
-      } else {
-        orderDiscounts.set(
-          discount.orderId,
-          (orderDiscounts.get(discount.orderId) ?? 0) + amount,
-        );
-      }
-    }
     const rankedCostById = new Map(ranked.map((product) => [product.id, product.unitCost]));
-    const baseSalesRows = salesRows.map((sale) => {
-      const quantity = sale.quantity ?? 0;
-      const rawGross = parseFloat(sale.unitPrice) * quantity;
-      const recognisedGross = recognisedLineRevenue({
-        gross: rawGross,
-        isInvitation: sale.isInvitation,
-        lineDiscount: lineDiscounts.get(sale.orderItemId),
-        orderDiscount: orderDiscounts.get(sale.orderId),
-        orderGross: orderGross.get(sale.orderId),
-      });
-      const snapshotCogs = snapshotCogsByItem.get(sale.orderItemId);
-      return {
-        ...sale,
-        effectiveChannel: sale.deliveryType === "table" ? sale.channel : sale.deliveryType,
-        recognisedGross,
-        recognisedNet: recognisedGross / (1 + sale.taxRate / 100),
-        cogs: snapshotCogs ?? (rankedCostById.get(sale.productId) ?? 0) * quantity,
-        cogsSource: snapshotCogs == null ? "current_recipe_fallback" as const : "stock_snapshot" as const,
-      };
-    });
-    const recognisedSalesRows = projectEconomicActivity({
-      sales: baseSalesRows,
-      adjustments: economicAdjustments,
+    const economicData = await loadProjectedEconomicActivity({
       from: fromDate,
       to: toDate,
+      channel,
+      currentCostByProduct: rankedCostById,
     });
+    const recognisedSalesRows = economicData.rows;
 
     const soldByProduct = new Map<string, {
       units: number;
