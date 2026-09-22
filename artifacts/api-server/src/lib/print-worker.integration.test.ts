@@ -12,7 +12,7 @@ import {
   recoverStalePrintJobs,
 } from "./print-worker";
 
-const run = Boolean(process.env["DATABASE_URL"]);
+const run = process.env["RUN_DB_INTEGRATION_TESTS"] === "1";
 const ids = {
   simulation: randomUUID(),
   down: randomUUID(),
